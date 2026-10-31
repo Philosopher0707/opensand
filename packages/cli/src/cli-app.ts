@@ -10,7 +10,7 @@ import {
   registerOrchestratorTools,
   AgentRecord,
 } from "@opensand/coordinator";
-import { parseCliArgs, CliConfig } from "./config.js";
+import { parseCliArgs, CliConfig, probeLocalOllama, validateConfig } from "./config.js";
 import { TerminalUI } from "./terminal-ui.js";
 
 export async function runCli(argv: string[]): Promise<void> {
@@ -59,6 +59,27 @@ Examples:
 
   const config = parseCliArgs(argv);
   const ui = new TerminalUI();
+
+  // If endpoint is cloud OpenAI default and no key is provided, check if local Ollama is alive
+  const explicitEndpoint = argv.includes("--endpoint");
+  const hasValidApiKey = Boolean(config.apiKey && config.apiKey.trim() !== "" && config.apiKey !== "none");
+  if (!explicitEndpoint && !hasValidApiKey && config.endpoint.includes("api.openai.com")) {
+    const local = await probeLocalOllama(400);
+    if (local) {
+      config.endpoint = local.endpoint;
+      if (!argv.includes("--model") && !process.env.OPENSAND_MODEL) {
+        config.model = local.model;
+      }
+      config.apiKey = "none";
+      ui.printInfo(`💡 Auto-detected local Ollama (${config.model}) at ${config.endpoint}`);
+    }
+  }
+
+  // Preflight validation for credentials
+  const validation = validateConfig(config);
+  if (!validation.valid && validation.warning) {
+    ui.printWarning(validation.warning);
+  }
 
   // 1. Initialize Local Execution Daemon & Native Tools
   const daemon = new LocalExecDaemon();
@@ -207,14 +228,42 @@ Examples:
 
   // 3. Execution mode: single query or interactive REPL
   if (config.query) {
+    const isCloudOpenAI =
+      config.endpoint.includes("api.openai.com") ||
+      (!config.endpoint.includes("127.0.0.1") &&
+        !config.endpoint.includes("localhost") &&
+        !config.endpoint.includes("192.168.") &&
+        !config.endpoint.includes("10."));
+    const hasApiKey = Boolean(config.apiKey && config.apiKey.trim() !== "" && config.apiKey !== "none");
+    if (isCloudOpenAI && !hasApiKey) {
+      ui.printError(
+        `Cannot execute query: No API key configured for ${config.endpoint}.\n` +
+        `  Fix: Set OPENAI_API_KEY="sk-..." or run with local Ollama: opensand --endpoint http://127.0.0.1:11434/v1 --model qwen3:8b`
+      );
+      process.exitCode = 1;
+      await daemon.stop();
+      return;
+    }
+
     ui.printUserTurn(config.query);
+    const queryAbort = new AbortController();
+    const onSigInt = () => {
+      queryAbort.abort();
+    };
+    process.on("SIGINT", onSigInt);
+
     try {
-      await coordinator.runTurn(config.query);
+      await coordinator.runTurn(config.query, queryAbort.signal);
       console.log("\n");
     } catch (err: any) {
-      ui.printError(`Execution failed: ${err.message}`);
+      if (queryAbort.signal.aborted || err?.name === "AbortError" || err?.code === "ABORT_ERR") {
+        ui.printInfo("\n[Execution cancelled by user]");
+      } else {
+        ui.printError(`Execution failed: ${err.message}`);
+      }
       process.exitCode = 1;
     } finally {
+      process.off("SIGINT", onSigInt);
       await daemon.stop();
     }
     return;
@@ -226,7 +275,17 @@ Examples:
   try {
     while (true) {
       const promptPrefix = activeAgent ? `\x1b[35m${activeAgent.name}>\x1b[0m ` : `\x1b[36mopensand>\x1b[0m `;
-      const line = await rl.question(`\n${promptPrefix}`);
+      let line: string;
+      try {
+        line = await rl.question(`\n${promptPrefix}`);
+      } catch (err: any) {
+        if (err?.code === "ABORT_ERR" || err?.name === "AbortError") {
+          console.log("\nExiting OpenSand.");
+          break;
+        }
+        throw err;
+      }
+
       const trimmed = line.trim();
 
       if (!trimmed) continue;
@@ -316,13 +375,41 @@ Available OpenSand REPL Commands:
         continue;
       }
 
-      // Normal turn execution
+      // Preflight check for unauthenticated cloud endpoint
+      const isCloudOpenAI =
+        config.endpoint.includes("api.openai.com") ||
+        (!config.endpoint.includes("127.0.0.1") &&
+          !config.endpoint.includes("localhost") &&
+          !config.endpoint.includes("192.168.") &&
+          !config.endpoint.includes("10."));
+      const hasApiKey = Boolean(config.apiKey && config.apiKey.trim() !== "" && config.apiKey !== "none");
+      if (isCloudOpenAI && !hasApiKey) {
+        ui.printError(
+          `Cannot execute turn: No API key configured for ${config.endpoint}.\n` +
+          `  Fix: Set OPENAI_API_KEY="sk-..." or run opensand --endpoint http://127.0.0.1:11434/v1 --model qwen3:8b`
+        );
+        continue;
+      }
+
+      // Normal turn execution with interrupt support
       ui.printUserTurn(trimmed);
+      const turnAbort = new AbortController();
+      const onSigInt = () => {
+        turnAbort.abort();
+      };
+      process.on("SIGINT", onSigInt);
+
       try {
-        await coordinator.runTurn(trimmed);
+        await coordinator.runTurn(trimmed, turnAbort.signal);
         console.log("\n");
       } catch (err: any) {
-        ui.printError(`Turn failed: ${err.message}`);
+        if (turnAbort.signal.aborted || err?.name === "AbortError" || err?.code === "ABORT_ERR") {
+          ui.printInfo("\n[Turn cancelled by user]");
+        } else {
+          ui.printError(`Turn failed: ${err.message}`);
+        }
+      } finally {
+        process.off("SIGINT", onSigInt);
       }
     }
   } finally {

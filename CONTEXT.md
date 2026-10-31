@@ -3,7 +3,7 @@
 **Date:** 2026-10-31  
 **Project:** OpenSand (`~/dev/opensand`)  
 **Target Reverse-Engineered:** Grok Bot macOS Desktop App (`/Applications/Grok Bot.app`, Bundle ID: `com.anysphere.sand`, Version: 0.78.1)  
-**Status:** Phases 1–5 Fully Implemented & Verified (68/68 unit & integration tests passing, 100% green)
+**Status:** Phases 1–5 Fully Implemented & Verified (75/75 unit & integration tests passing, 100% green)
 
 ---
 
@@ -124,11 +124,11 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 ## 4. Verification & Health Summary
 
 * **Monorepo Build**: `pnpm build` (`tsc -b` across all 5 packages) $\rightarrow$ 0 errors.
-* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **68 passed, 0 failed, 100% green**:
+* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **75 passed, 0 failed, 100% green**:
   * `@opensand/local-exec-daemon`: 27 passed
-  * `@opensand/coordinator`: 26 passed
+  * `@opensand/coordinator`: 30 passed
   * `@opensand/native-bridge`: 6 passed
-  * `@opensand/cli`: 4 passed
+  * `@opensand/cli`: 7 passed
   * `@opensand/desktop`: 5 passed
 * **Live Model Dogfooding**:
   * End-to-end verified on local Ollama `qwen3:8b`:

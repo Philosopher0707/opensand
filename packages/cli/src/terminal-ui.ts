@@ -30,6 +30,10 @@ export class TerminalUI {
     console.log(`${DIM}${text}${RESET}`);
   }
 
+  printWarning(text: string): void {
+    console.log(`${YELLOW}⚠️  ${text}${RESET}`);
+  }
+
   printError(text: string): void {
     console.log(`${RED}✖ ${text}${RESET}`);
   }
@@ -73,8 +77,16 @@ export class TerminalUI {
     try {
       console.log(`\n${BOLD}${YELLOW}⚠️  Tool '${toolName}' requires authorization:${RESET}`);
       console.log(`${DIM}${JSON.stringify(args, null, 2)}${RESET}`);
-      const answer = await rl.question(`${BOLD}Approve execution? [y/N]: ${RESET}`);
-      return answer.trim().toLowerCase() === "y" || answer.trim().toLowerCase() === "yes";
+      try {
+        const answer = await rl.question(`${BOLD}Approve execution? [y/N]: ${RESET}`);
+        return answer.trim().toLowerCase() === "y" || answer.trim().toLowerCase() === "yes";
+      } catch (err: any) {
+        if (err?.code === "ABORT_ERR" || err?.name === "AbortError") {
+          console.log(`\n${DIM}Approval rejected (interrupted).${RESET}`);
+          return false;
+        }
+        throw err;
+      }
     } finally {
       rl.close();
     }

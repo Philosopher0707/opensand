@@ -100,12 +100,19 @@ export class AgentCoordinator {
 
       // Stream delta tokens to UI/listener
       for await (const delta of stream) {
+        if (signal?.aborted) {
+          throw new DOMException("Turn was cancelled by user", "AbortError");
+        }
         if (delta.thinking) {
           this.emit({ type: "thought_delta", text: delta.thinking });
         }
         if (delta.content) {
           this.emit({ type: "text_delta", text: delta.content });
         }
+      }
+
+      if (signal?.aborted) {
+        throw new DOMException("Turn was cancelled by user", "AbortError");
       }
 
       const assistantMsg = getConsolidated();

@@ -1,3 +1,7 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
+
 export interface CliConfig {
   endpoint: string;
   model: string;
@@ -9,14 +13,94 @@ export interface CliConfig {
   listTools?: boolean;
   listBots?: boolean;
   listTasks?: boolean;
+  provider?: string;
 }
 
-export function parseCliArgs(args: string[]): CliConfig {
+export function loadUserConfig(customPath?: string): Partial<CliConfig> {
+  try {
+    const configPath = customPath ?? path.join(os.homedir(), ".opensand", "config.json");
+    if (fs.existsSync(configPath)) {
+      const parsed = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      return {
+        endpoint: parsed.endpoint,
+        model: parsed.model,
+        apiKey: parsed.apiKey,
+        autoApprove: parsed.autoApprove,
+        provider: parsed.provider,
+      };
+    }
+  } catch {
+    // Ignore unreadable or malformed config file
+  }
+  return {};
+}
+
+export async function probeLocalOllama(
+  timeoutMs = 400,
+  fetchFn: typeof fetch = globalThis.fetch
+): Promise<{ endpoint: string; model: string } | null> {
+  const hosts = ["http://127.0.0.1:11434", "http://localhost:11434"];
+  for (const host of hosts) {
+    try {
+      const res = await fetchFn(`${host}/api/tags`, {
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { models?: Array<{ name: string; model?: string }> };
+        const foundModel = data.models?.[0]?.name || data.models?.[0]?.model || "qwen3:8b";
+        return {
+          endpoint: `${host}/v1`,
+          model: foundModel,
+        };
+      }
+    } catch {
+      // Continue to next host
+    }
+  }
+  return null;
+}
+
+export function validateConfig(config: CliConfig): { valid: boolean; warning?: string } {
+  const isCloudOpenAI =
+    config.endpoint.includes("api.openai.com") ||
+    (!config.endpoint.includes("127.0.0.1") &&
+      !config.endpoint.includes("localhost") &&
+      !config.endpoint.includes("192.168.") &&
+      !config.endpoint.includes("10."));
+
+  const hasApiKey = Boolean(config.apiKey && config.apiKey.trim() !== "" && config.apiKey !== "none");
+
+  if (isCloudOpenAI && !hasApiKey) {
+    return {
+      valid: false,
+      warning:
+        `No API key configured for cloud endpoint ${config.endpoint}.\n` +
+        `  Fix options:\n` +
+        `  1. Set environment variable: export OPENAI_API_KEY="sk-..."\n` +
+        `  2. Pass key on launch: opensand --api-key "sk-..."\n` +
+        `  3. Use local Ollama: opensand --endpoint http://127.0.0.1:11434/v1 --model qwen3:8b`,
+    };
+  }
+
+  return { valid: true };
+}
+
+export function parseCliArgs(args: string[], customConfigFile?: string): CliConfig {
+  const userConfig = loadUserConfig(customConfigFile);
+
   const config: CliConfig = {
-    endpoint: process.env.OPENSAND_ENDPOINT || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
-    model: process.env.OPENSAND_MODEL || "gpt-4o",
-    apiKey: process.env.OPENSAND_API_KEY || process.env.OPENAI_API_KEY,
-    autoApprove: false,
+    endpoint:
+      process.env.OPENSAND_ENDPOINT ||
+      process.env.OPENAI_BASE_URL ||
+      userConfig.endpoint ||
+      "https://api.openai.com/v1",
+    model: process.env.OPENSAND_MODEL || userConfig.model || "gpt-4o",
+    apiKey:
+      process.env.OPENSAND_API_KEY ||
+      process.env.OPENAI_API_KEY ||
+      userConfig.apiKey,
+    autoApprove: userConfig.autoApprove ?? false,
+    provider: userConfig.provider,
   };
 
   const positional: string[] = [];

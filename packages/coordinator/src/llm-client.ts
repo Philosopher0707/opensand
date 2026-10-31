@@ -77,16 +77,83 @@ export class UniversalLLMClient {
       : this.buildOpenAIPayload(messages, tools);
 
     const fetchFn = this.config.fetch ?? globalThis.fetch;
-    const response = await fetchFn(endpoint, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal,
-    });
+    let response: Response;
+    try {
+      response = await fetchFn(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal,
+      });
+    } catch (networkErr: any) {
+      if (networkErr?.name === "AbortError" || signal?.aborted) {
+        throw networkErr;
+      }
+      const causeCode = networkErr?.cause?.code || networkErr?.code;
+      if (causeCode === "ECONNREFUSED" || networkErr.message?.includes("ECONNREFUSED")) {
+        throw new Error(
+          `Connection refused to ${endpoint}. If running locally, verify that your model server is active (e.g. 'ollama serve').`
+        );
+      }
+      if (causeCode === "ENOTFOUND" || networkErr.message?.includes("ENOTFOUND")) {
+        throw new Error(
+          `Host not found for ${endpoint}. Check your endpoint URL spelling and network connection.`
+        );
+      }
+      if (causeCode === "ETIMEDOUT" || networkErr.message?.includes("ETIMEDOUT")) {
+        throw new Error(
+          `Connection to ${endpoint} timed out. The server may be overloaded or unreachable.`
+        );
+      }
+      throw new Error(`Failed to connect to LLM at ${endpoint}: ${networkErr.message}`);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`LLM API request failed [${response.status} ${response.statusText}]: ${errorText}`);
+      let detail = errorText;
+      try {
+        const parsed = JSON.parse(errorText);
+        if (parsed.error?.message) {
+          detail = parsed.error.message;
+        } else if (parsed.message) {
+          detail = parsed.message;
+        }
+      } catch {
+        // Retain raw errorText
+      }
+
+      if (response.status === 401) {
+        throw new Error(
+          `Authentication failed (401 Unauthorized) at ${endpoint}.\n` +
+          `  Detail: ${detail}\n` +
+          `  Fix: Provide an API key via --api-key, export OPENAI_API_KEY, or use a local model (--endpoint http://127.0.0.1:11434/v1).`
+        );
+      }
+
+      if (response.status === 403) {
+        throw new Error(
+          `Access forbidden (403 Forbidden) at ${endpoint}.\n` +
+          `  Detail: ${detail}\n` +
+          `  Fix: Check your API key permissions and model access.`
+        );
+      }
+
+      if (response.status === 404) {
+        throw new Error(
+          `Model or endpoint not found (404 Not Found) at ${endpoint}.\n` +
+          `  Detail: ${detail}\n` +
+          `  Fix: Check available models (e.g. 'ollama list') and specify with --model <name>.`
+        );
+      }
+
+      if (response.status === 429) {
+        throw new Error(
+          `Rate limit or quota exceeded (429 Too Many Requests) at ${endpoint}.\n` +
+          `  Detail: ${detail}`
+        );
+      }
+
+      throw new Error(`LLM API request failed [${response.status} ${response.statusText}]: ${detail}`);
     }
 
     if (!response.body) {
@@ -137,6 +204,9 @@ export class UniversalLLMClient {
 
     async function* generator(): AsyncIterable<StreamDelta> {
       for await (const rawPayload of parseSSEStream(rawStream)) {
+        if (signal?.aborted) {
+          break;
+        }
         if (rawPayload === "[DONE]") {
           break;
         }

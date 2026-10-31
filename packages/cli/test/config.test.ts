@@ -1,6 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseCliArgs } from "../src/config.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
+import { parseCliArgs, validateConfig, loadUserConfig, probeLocalOllama } from "../src/config.js";
 
 describe("CliConfig", () => {
   it("parses custom flags and positional queries", () => {
@@ -46,5 +49,66 @@ describe("CliConfig", () => {
     assert.ok(config.model);
     assert.equal(config.autoApprove, false);
     assert.equal(config.query, undefined);
+  });
+
+  it("validates config and produces warnings when cloud API key is missing", () => {
+    const invalidConfig = {
+      endpoint: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      autoApprove: false,
+    };
+    const res = validateConfig(invalidConfig);
+    assert.equal(res.valid, false);
+    assert.ok(res.warning?.includes("No API key configured"));
+
+    const validLocalConfig = {
+      endpoint: "http://127.0.0.1:11434/v1",
+      model: "qwen3:8b",
+      autoApprove: false,
+    };
+    assert.equal(validateConfig(validLocalConfig).valid, true);
+
+    const validKeyConfig = {
+      endpoint: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      apiKey: "sk-actual-key",
+      autoApprove: false,
+    };
+    assert.equal(validateConfig(validKeyConfig).valid, true);
+  });
+
+  it("loads user config from custom json path", () => {
+    const tmpPath = path.join(os.tmpdir(), `opensand-cfg-${Date.now()}.json`);
+    fs.writeFileSync(
+      tmpPath,
+      JSON.stringify({
+        endpoint: "http://custom-host:8000/v1",
+        model: "deepseek-coder",
+        autoApprove: true,
+      })
+    );
+
+    try {
+      const loaded = loadUserConfig(tmpPath);
+      assert.equal(loaded.endpoint, "http://custom-host:8000/v1");
+      assert.equal(loaded.model, "deepseek-coder");
+      assert.equal(loaded.autoApprove, true);
+    } finally {
+      fs.unlinkSync(tmpPath);
+    }
+  });
+
+  it("probes local Ollama with mock fetch", async () => {
+    const mockFetch = async (url: any): Promise<Response> => {
+      if (String(url).includes("11434/api/tags")) {
+        return new Response(JSON.stringify({ models: [{ name: "qwen3:8b" }] }), { status: 200 });
+      }
+      throw new Error("connect ECONNREFUSED");
+    };
+
+    const res = await probeLocalOllama(200, mockFetch as any);
+    assert.ok(res);
+    assert.equal(res?.endpoint, "http://127.0.0.1:11434/v1");
+    assert.equal(res?.model, "qwen3:8b");
   });
 });
