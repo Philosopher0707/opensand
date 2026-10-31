@@ -1,8 +1,8 @@
 # OpenSand
 
-**OpenSand** is a high-performance, clean-room, open-source desktop and CLI coding agent derived from byte-level reverse engineering of the Grok Bot desktop application (`com.anysphere.sand`).
+**OpenSand** is a high-performance, clean-room, open-source desktop and CLI coding agent derived from byte-level reverse engineering of the Grok Bot desktop application (`com.anysphere.sand`, v0.78.1).
 
-It replaces proprietary cloud ConnectRPC backends with universal OpenAI-compatible streaming function calling (`/v1/chat/completions`), allowing seamless operation with local models (Ollama, vLLM, LM Studio) or cloud endpoints (OpenAI, DeepSeek, OpenRouter, Anthropic proxies).
+It replaces proprietary cloud ConnectRPC backends with universal OpenAI-compatible streaming function calling (`/v1/chat/completions`) and Anthropic (`/v1/messages`), allowing seamless operation with local models (Ollama, vLLM, LM Studio) or cloud endpoints (OpenAI, DeepSeek, OpenRouter, Anthropic proxies).
 
 ---
 
@@ -19,21 +19,29 @@ It replaces proprietary cloud ConnectRPC backends with universal OpenAI-compatib
  │ OpenAI-Compatible LLM  │ ◄─────────────────────────┤
  │ (Ollama/DeepSeek/etc.) │ ─── SSE (tokens/tools) ──►│
  └────────────────────────┘                           ▼
-                                          @opensand/coordinator
-                                    (State Machine & Transcript Log)
+                                           @opensand/coordinator
+                                     (State Machine & Transcript Log)
+                                     (Agent Store & Orchestrator Meta-Tools)
+                                     (Task Store & Habit Extractor)
                                                       │
                                                       │ Tool Dispatch & Approvals
                                                       ▼
-                                       @opensand/local-exec-daemon
-                                   (State Machine, Preflight & Runner)
-                                        │                      │
-                   ┌────────────────────┴─────────┐            │
-                   ▼                              ▼            ▼
-             Core Tools:                    Native Bridge:     Gate Policies:
-           - exec_command                 - sand-vision      - computer-use-gate
-           - read_file                    - sand-window-cap  - device-tools-gate
-           - write_file (atomic)          - op-launcher      - standing-allowlist
-           - list_directory
+                                        @opensand/local-exec-daemon
+                                    (State Machine, Preflight & Runner)
+                                         │                      │
+                    ┌────────────────────┴─────────┐            │
+                    ▼                              ▼            ▼
+              Core Tools:                    Native Bridge:     Gate Policies:
+            - exec_command                 - sand-vision      - computer-use-gate
+            - read_file                    - sand-window-cap  - device-tools-gate
+            - write_file (atomic)          - op-launcher      - standing-allowlist
+            - list_directory               - messages-reader
+            - create_agent                 - speech-bridge
+            - list_agents
+            - delegate_to_agent
+            - create_agent_task
+            - list_agent_tasks
+            - extract_user_habits
 ```
 
 ---
@@ -43,25 +51,24 @@ It replaces proprietary cloud ConnectRPC backends with universal OpenAI-compatib
 | Package | Description | Tests |
 |---|---|---|
 | [`@opensand/local-exec-daemon`](./packages/local-exec-daemon) | Local execution engine with preflight bash syntax & safety validation, atomic file I/O with SHA-256 digests, and crash-resilient JSON state files. | 27 passing |
-| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI `/v1/chat/completions` + Anthropic `/v1/messages` client with extended thinking, native Model Context Protocol (MCP) client, and Grok Bot transcript parity. | 16 passing |
-| [`@opensand/native-bridge`](./packages/native-bridge) | Native Apple Vision offline OCR (`sand-vision`), ScreenCaptureKit window capture (`sand-window-capture`), and 1Password Seatbelt hardened launcher. | 5 passing |
-| [`@opensand/cli`](./packages/cli) | Interactive terminal REPL and one-shot execution CLI with live token streaming and permission approval prompts. | 3 passing |
-| [`@opensand/desktop`](./packages/desktop) | Desktop GUI shell with macOS menubar tray, live streaming chat, interactive tool approval modals, and zero-dependency local webview server. | 5 passing |
+| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI `/v1/chat/completions` + Anthropic `/v1/messages` client, native MCP client, persistent Agent Store, Task Store, Habit Extractor, and Grok Bot transcript parity. | 25 passing |
+| [`@opensand/native-bridge`](./packages/native-bridge) | Native Apple Vision offline OCR (`sand-vision`), ScreenCaptureKit window capture (`sand-window-capture`), 1Password Seatbelt launcher, macOS Messages reader, and Speech Synthesis. | 6 passing |
+| [`@opensand/cli`](./packages/cli) | Interactive terminal REPL and one-shot execution CLI with live token streaming, bot persona switcher (`--bot`), and permission approval prompts. | 4 passing |
+| [`@opensand/desktop`](./packages/desktop) | Desktop GUI shell with macOS menubar tray, multi-bot switcher, live streaming chat, task management, learned guidelines modal, and local webview server. | 5 passing |
+
+**Total Test Coverage: 67/67 automated unit and integration tests passing (100% green).**
 
 ---
 
-## Packaging & Distribution
+## Autonomous Multi-Agent Orchestration
 
-```bash
-# Package Standalone CLI Binary (dist/bin/opensand)
-pnpm run package:cli
+OpenSand implements Grok Bot's dynamic agent orchestration model (`CreateGrokBotAgent`, `ListGrokBotAgents`, `OpenAgentTail`) as first-class meta-tools:
 
-# Package macOS Desktop Application (dist/bundle/OpenSand.app)
-pnpm run package:app
-
-# Package both
-pnpm run package
-```
+- **`create_agent`**: Autonomous agents can dynamically construct, configure, and persist specialized subagent personas with unique system prompts and model overrides into `~/.opensand/agents/`.
+- **`list_agents`**: Query all available registered bot personas.
+- **`delegate_to_agent`**: Delegate complex tasks to subagents. Spawns an isolated turn loop with that subagent's prompt, records distinct transcripts, and returns the result to the caller agent.
+- **`create_agent_task` / `list_agent_tasks` / `update_agent_task`**: Manage actionable work items and todos (`ListGrokBotAgentTasks` parity).
+- **`extract_user_habits`**: Continuous learning engine matching Grok Bot contract 8.1.B that analyzes past conversation transcripts (`~/.opensand/sessions/*.txt`), detects repeated user corrections and preferences, and maintains `~/.opensand/learned_rules.md`.
 
 ---
 
@@ -100,43 +107,21 @@ pnpm build
 pnpm test
 ```
 
-### 2. Run with Local Ollama (Zero Cloud Dependency)
+### 2. Run with Local Ollama (e.g. Qwen 2.5 / 3)
 ```bash
-# Pull model in Ollama
-ollama run llama3.1
+# One-shot query with auto-approval
+./dist/bin/opensand --endpoint http://127.0.0.1:11434/v1 --model qwen3:8b -y "Inspect this repo"
 
-# Launch OpenSand
-./packages/cli/dist/src/bin.js --endpoint http://localhost:11434/v1 --model llama3.1
+# Run as specific agent persona
+./dist/bin/opensand --endpoint http://127.0.0.1:11434/v1 --model qwen3:8b --bot cto "Audit architecture"
+
+# Interactive REPL
+./dist/bin/opensand --endpoint http://127.0.0.1:11434/v1 --model qwen3:8b
 ```
 
-### 3. Run with OpenAI or DeepSeek
+### 3. Launch Desktop GUI
 ```bash
-export OPENAI_API_KEY="sk-..."
-./packages/cli/dist/src/bin.js --model gpt-4o
-
-# Or DeepSeek
-export OPENSAND_ENDPOINT="https://api.deepseek.com/v1"
-export OPENSAND_API_KEY="sk-..."
-./packages/cli/dist/src/bin.js --model deepseek-chat
+# Start background web desktop server
+node packages/desktop/dist/src/desktop-server.js
+# Access at http://127.0.0.1:3456 in your browser
 ```
-
-### 4. One-Shot Command Execution
-```bash
-./packages/cli/dist/src/bin.js --auto-approve "List git branches and format status summary"
-```
-
----
-
-## Security & Permission Model
-
-OpenSand follows a strict dual-authorization gate model:
-1. **Standing Allowlists**: Benign commands (e.g. `ls`, `git status`, file reads in workspace) are auto-approved.
-2. **Approval Prompts**: Destructive commands (e.g. `rm`, overwriting system files, executing unknown scripts) trigger an interactive authorization prompt.
-3. **Safety Gate**: Pre-flight bash validator rejects dangerous patterns (`rm -rf /`, raw device rewrites, fork bombs) and unclosed syntax *before* the shell executes.
-4. **Hardened 1Password Runner**: Executes `op` CLI inside a macOS Seatbelt sandbox profile, preventing access to raw database containers.
-
----
-
-## License
-
-MIT
