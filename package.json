@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "test": "pnpm --recursive run test",
-    "build": "pnpm --recursive run build"
+    "build": "pnpm --recursive run build",
+    "package:cli": "bash scripts/package-cli.sh",
+    "package:app": "bash scripts/bundle-macos-app.sh",
+    "package": "bash scripts/package-cli.sh && bash scripts/bundle-macos-app.sh"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

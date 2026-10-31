@@ -103,20 +103,28 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 * **`bin.ts`**: Executable binary (`dist/src/bin.js`).
 * **Tests**: 3 unit tests (`test/*.test.ts`) covering flag parsing and configuration.
 
+### 3.5 [`packages/desktop`](file:///Users/philosopher/dev/opensand/packages/desktop) (Phase 5)
+* **`main.ts` & `tray.ts`**: Electron Main process lifecycle, menubar tray icon (`OpenSand: Ready/Thinking/Executing`), global hotkey (`Cmd+Shift+Space`), and secure IPC message router.
+* **`preload.ts`**: Hardened context bridge (`contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`) exposing `window.opensand`.
+* **`desktop-server.ts`**: Zero-dependency local HTTP/SSE UI server enabling the desktop app to run in browser windows or lightweight webviews without requiring Electron.
+* **`renderer/`**: Interactive dark mode chat UI with streaming Markdown, live tool execution status cards, interactive permission approval modals ("Approve Once", "Always Allow", "Reject"), and model settings panel.
+* **Tests**: 5 unit tests (`test/*.test.ts`) covering IPC bridge, standing allowlist additions, and REST endpoints.
+
 ---
 
 ## 4. Verification & Health Summary
 
-* **Monorepo Build**: `pnpm build` (`tsc -b` across all 4 packages) $\rightarrow$ 0 errors.
-* **Test Suite**: `pnpm test` (`node --test` across all 4 packages) $\rightarrow$ **44 passed, 0 failed, 100% green**:
+* **Monorepo Build**: `pnpm build` (`tsc -b` across all 5 packages) $\rightarrow$ 0 errors.
+* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **53 passed, 0 failed, 100% green**:
   * `@opensand/local-exec-daemon`: 27 passed
-  * `@opensand/coordinator`: 9 passed
+  * `@opensand/coordinator`: 13 passed (including Anthropic `/v1/messages` & extended thinking)
   * `@opensand/native-bridge`: 5 passed
   * `@opensand/cli`: 3 passed
-* **Git Repository**: Clean git working tree on `main` branch with 3 commits:
-  1. `810c9be`: OpenSand Phase 1 (local-exec-daemon) and Phase 2 (coordinator)
-  2. `15718c5`: OpenSand Phase 3 (native-bridge) and Phase 4 (cli runner)
-  3. `d0093ad`: Documentation and usage guide
+  * `@opensand/desktop`: 5 passed
+* **Packaging**:
+  * `dist/bin/opensand`: Standalone executable CLI binary.
+  * `dist/bundle/OpenSand.app`: macOS Application bundle with embedded Mach-O binaries (`sand-vision`, `sand-window-capture`), `Info.plist`, and launcher script.
+* **Git Repository**: Clean git working tree on `main` branch.
 
 ---
 

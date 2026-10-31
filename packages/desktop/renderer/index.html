@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenSand Agent</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-avatar" id="botStatusAvatar">⚡</div>
+          <div class="brand-info">
+            <span class="brand-title">OpenSand</span>
+            <span class="status-indicator" id="botStatusText">Ready</span>
+          </div>
+        </div>
+        <button id="btnNewSession" class="btn btn-secondary btn-sm" title="New Session">+ New</button>
+      </div>
+
+      <div class="sidebar-section-title">Sessions</div>
+      <div class="session-list" id="sessionList">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <div class="sidebar-section-title">Native Tools</div>
+      <div class="quick-tools">
+        <button id="btnQuickOcr" class="btn btn-tool btn-sm">👁 Recognize Text</button>
+        <button id="btnQuickWindow" class="btn btn-tool btn-sm">🪟 Capture Window</button>
+      </div>
+
+      <div class="sidebar-footer">
+        <button id="btnSettings" class="btn btn-secondary btn-block">⚙ Settings</button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-panel">
+      <!-- Top Bar -->
+      <header class="topbar">
+        <div class="active-session-title" id="activeSessionTitle">New Session</div>
+        <div class="topbar-meta">
+          <span class="badge" id="badgeModel">llama3.1</span>
+          <span class="badge badge-success" id="badgeAutoApprove">Safe Mode</span>
+        </div>
+      </header>
+
+      <!-- Chat Messages Container -->
+      <div class="chat-container" id="chatContainer">
+        <div class="welcome-banner" id="welcomeBanner">
+          <h2>Welcome to OpenSand</h2>
+          <p>Local-first, universal clean-room coding agent.</p>
+          <div class="quick-prompts">
+            <button class="prompt-chip" data-query="Inspect the files in the current repository and summarize the structure.">Inspect Repository</button>
+            <button class="prompt-chip" data-query="Run git status and show modified files.">Git Status</button>
+            <button class="prompt-chip" data-query="List all active on-screen windows.">List Active Windows</button>
+          </div>
+        </div>
+        <div class="message-feed" id="messageFeed"></div>
+      </div>
+
+      <!-- User Input Bar -->
+      <footer class="input-panel">
+        <div class="input-wrapper">
+          <textarea id="promptInput" placeholder="Ask OpenSand to code, inspect, or run commands..." rows="1"></textarea>
+          <button id="btnSend" class="btn btn-primary btn-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+          </button>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <!-- Tool Approval Modal Overlay -->
+  <div class="modal-overlay hidden" id="approvalModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span class="modal-alert-icon">⚠️</span>
+        <h3>Authorization Required</h3>
+      </div>
+      <div class="modal-body">
+        <p>The agent is requesting permission to execute an OS operation:</p>
+        <div class="approval-tool-info">
+          <div class="approval-row"><strong>Tool:</strong> <span id="approvalToolName">exec_command</span></div>
+          <div class="approval-row"><strong>Arguments:</strong></div>
+          <pre class="approval-args-box" id="approvalArgsBox"></pre>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnApproveOnce" class="btn btn-primary">Approve Once</button>
+        <button id="btnAlwaysAllow" class="btn btn-success">Always Allow</button>
+        <button id="btnRejectTool" class="btn btn-danger">Reject</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal Overlay -->
+  <div class="modal-overlay hidden" id="settingsModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Agent Preferences</h3>
+        <button id="btnCloseSettings" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="settingProvider">Model Provider</label>
+          <select id="settingProvider" class="form-control">
+            <option value="openai">OpenAI / Ollama / DeepSeek / vLLM (/v1/chat/completions)</option>
+            <option value="anthropic">Anthropic Claude (/v1/messages)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="settingEndpoint">API Endpoint</label>
+          <input type="text" id="settingEndpoint" class="form-control" placeholder="http://localhost:11434/v1/chat/completions">
+        </div>
+        <div class="form-group">
+          <label for="settingModel">Model Identifier</label>
+          <input type="text" id="settingModel" class="form-control" placeholder="llama3.1">
+        </div>
+        <div class="form-group">
+          <label for="settingApiKey">API Key (optional for local Ollama)</label>
+          <input type="password" id="settingApiKey" class="form-control" placeholder="sk-...">
+        </div>
+        <div class="form-group-checkbox">
+          <input type="checkbox" id="settingAutoApprove">
+          <label for="settingAutoApprove">Auto-Approve Tool Operations (Skip Prompts)</label>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnSaveSettings" class="btn btn-primary">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

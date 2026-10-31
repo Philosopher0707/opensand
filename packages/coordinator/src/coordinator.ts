@@ -93,6 +93,9 @@ export class AgentCoordinator {
 
       // Stream delta tokens to UI/listener
       for await (const delta of stream) {
+        if (delta.thinking) {
+          this.emit({ type: "thought_delta", text: delta.thinking });
+        }
         if (delta.content) {
           this.emit({ type: "text_delta", text: delta.content });
         }

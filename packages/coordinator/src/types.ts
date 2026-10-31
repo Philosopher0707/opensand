@@ -21,6 +21,7 @@ export interface ChatMessage {
 
 export interface StreamDelta {
   content?: string;
+  thinking?: string;
   tool_calls?: Array<{
     index: number;
     id?: string;
@@ -37,6 +38,8 @@ export interface LLMClientConfig {
   baseUrl: string;
   apiKey?: string;
   model: string;
+  provider?: "openai" | "anthropic";
+  thinkingBudgetTokens?: number;
   temperature?: number;
   maxTokens?: number;
   headers?: Record<string, string>;
@@ -57,6 +60,7 @@ export type TurnEventListener = (event: TurnEvent) => void;
 export type TurnEvent =
   | { type: "user_message"; content: string }
   | { type: "text_delta"; text: string }
+  | { type: "thought_delta"; text: string }
   | { type: "tool_call_started"; toolCall: ToolCall }
   | { type: "approval_requested"; request: ApprovalRequest }
   | { type: "tool_call_completed"; toolCall: ToolCall; result: ToolExecutionResult }

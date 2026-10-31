@@ -43,9 +43,25 @@ It replaces proprietary cloud ConnectRPC backends with universal OpenAI-compatib
 | Package | Description | Tests |
 |---|---|---|
 | [`@opensand/local-exec-daemon`](./packages/local-exec-daemon) | Local execution engine with preflight bash syntax & safety validation, atomic file I/O with SHA-256 digests, and crash-resilient JSON state files. | 27 passing |
-| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent turn loop, universal SSE parser, OpenAI `/v1/chat/completions` client, and Grok Bot human-readable transcript parity. | 9 passing |
+| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI `/v1/chat/completions` + Anthropic `/v1/messages` client with extended thinking, and Grok Bot transcript parity. | 13 passing |
 | [`@opensand/native-bridge`](./packages/native-bridge) | Native Apple Vision offline OCR (`sand-vision`), ScreenCaptureKit window capture (`sand-window-capture`), and 1Password Seatbelt hardened launcher. | 5 passing |
-| [`@opensand/cli`](./packages/cli) | Interactive terminal REPL and one-shot execution CLI with live token streaming and permission approval modals. | 3 passing |
+| [`@opensand/cli`](./packages/cli) | Interactive terminal REPL and one-shot execution CLI with live token streaming and permission approval prompts. | 3 passing |
+| [`@opensand/desktop`](./packages/desktop) | Desktop GUI shell with macOS menubar tray, live streaming chat, interactive tool approval modals, and zero-dependency local webview server. | 5 passing |
+
+---
+
+## Packaging & Distribution
+
+```bash
+# Package Standalone CLI Binary (dist/bin/opensand)
+pnpm run package:cli
+
+# Package macOS Desktop Application (dist/bundle/OpenSand.app)
+pnpm run package:app
+
+# Package both
+pnpm run package
+```
 
 ---
 
