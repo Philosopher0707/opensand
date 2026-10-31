@@ -6,6 +6,9 @@ export interface CliConfig {
   query?: string;
   systemPromptFile?: string;
   bot?: string;
+  listTools?: boolean;
+  listBots?: boolean;
+  listTasks?: boolean;
 }
 
 export function parseCliArgs(args: string[]): CliConfig {
@@ -33,6 +36,12 @@ export function parseCliArgs(args: string[]): CliConfig {
       config.bot = args[++i];
     } else if (arg === "--auto-approve" || arg === "-y") {
       config.autoApprove = true;
+    } else if (arg === "--list-tools") {
+      config.listTools = true;
+    } else if (arg === "--list-bots") {
+      config.listBots = true;
+    } else if (arg === "--list-tasks") {
+      config.listTasks = true;
     } else if (!arg.startsWith("-")) {
       positional.push(arg);
     }

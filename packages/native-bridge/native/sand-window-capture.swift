@@ -102,10 +102,11 @@ func main() {
         return
     }
 
+    let outIndex = args.firstIndex(of: "--out") ?? args.firstIndex(of: "--output")
     if let windowIndex = args.firstIndex(of: "--window"), windowIndex + 1 < args.count,
-       let outIndex = args.firstIndex(of: "--out"), outIndex + 1 < args.count {
+       let outIdx = outIndex, outIdx + 1 < args.count {
         let winIdStr = args[windowIndex + 1]
-        let outPath = NSString(string: args[outIndex + 1]).expandingTildeInPath
+        let outPath = NSString(string: args[outIdx + 1]).expandingTildeInPath
         if let winId = Int(winIdStr) {
             captureWindow(windowId: winId, outputPath: outPath)
             return
