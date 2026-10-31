@@ -1,0 +1,14 @@
+{
+  "name": "opensand",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Universal Open-Source Clean-Room Desktop Agent",
+  "type": "module",
+  "scripts": {
+    "test": "pnpm --recursive run test",
+    "build": "pnpm --recursive run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
