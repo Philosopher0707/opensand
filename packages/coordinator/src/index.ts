@@ -4,4 +4,6 @@ export * from "./llm-client.js";
 export * from "./system-prompt.js";
 export * from "./transcript-manager.js";
 export * from "./anthropic-adapter.js";
+export * from "./mcp-client.js";
+export * from "./mcp-manager.js";
 export * from "./coordinator.js";

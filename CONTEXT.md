@@ -115,9 +115,9 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 ## 4. Verification & Health Summary
 
 * **Monorepo Build**: `pnpm build` (`tsc -b` across all 5 packages) $\rightarrow$ 0 errors.
-* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **53 passed, 0 failed, 100% green**:
+* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **56 passed, 0 failed, 100% green**:
   * `@opensand/local-exec-daemon`: 27 passed
-  * `@opensand/coordinator`: 13 passed (including Anthropic `/v1/messages` & extended thinking)
+  * `@opensand/coordinator`: 16 passed (including Anthropic `/v1/messages`, extended thinking & native MCP client/manager)
   * `@opensand/native-bridge`: 5 passed
   * `@opensand/cli`: 3 passed
   * `@opensand/desktop`: 5 passed

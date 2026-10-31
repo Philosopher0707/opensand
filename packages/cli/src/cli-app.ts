@@ -3,7 +3,7 @@ import { stdin as input, stdout as output } from "node:process";
 import * as fs from "node:fs/promises";
 import { LocalExecDaemon } from "@opensand/local-exec-daemon";
 import { registerNativeTools } from "@opensand/native-bridge";
-import { UniversalLLMClient, AgentCoordinator } from "@opensand/coordinator";
+import { UniversalLLMClient, AgentCoordinator, McpManager } from "@opensand/coordinator";
 import { parseCliArgs, CliConfig } from "./config.js";
 import { TerminalUI } from "./terminal-ui.js";
 
@@ -43,6 +43,10 @@ Examples:
   const daemon = new LocalExecDaemon();
   registerNativeTools(daemon);
   await daemon.start();
+
+  // Initialize MCP Manager & load configured servers
+  const mcp = new McpManager({ daemon });
+  const mcpCount = await mcp.startAll();
 
   if (config.autoApprove) {
     await daemon.updateGates({
@@ -130,6 +134,9 @@ Examples:
 
     rl.close();
   } finally {
+    try {
+      await mcp.closeAll();
+    } catch {}
     await daemon.stop();
   }
 }

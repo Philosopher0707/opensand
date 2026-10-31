@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
-import { AgentCoordinator, UniversalLLMClient, TurnEvent, ApprovalRequest } from '@opensand/coordinator';
+import { AgentCoordinator, UniversalLLMClient, TurnEvent, ApprovalRequest, McpManager } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
 import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSummary, DesktopEvent } from './types.js';
@@ -19,6 +19,7 @@ export class DesktopIpcBridge extends EventEmitter {
   private settings: DesktopSettings;
   private daemon: LocalExecDaemon;
   private stateManager: StateManager;
+  private mcpManager: McpManager;
   private coordinator: AgentCoordinator | null = null;
   private activeApprovals: Map<string, {
     request: ToolApprovalRequest;
@@ -49,6 +50,13 @@ export class DesktopIpcBridge extends EventEmitter {
     this.daemon = new LocalExecDaemon({ stateDir });
     this.stateManager = new StateManager(stateDir);
     registerNativeTools(this.daemon);
+
+    // Initialize MCP Manager
+    this.mcpManager = new McpManager({
+      daemon: this.daemon,
+      configPath: path.join(this.baseDir, 'mcp.json'),
+    });
+    this.mcpManager.startAll().catch(() => {});
   }
 
   public getSettings(): DesktopSettings {

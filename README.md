@@ -43,7 +43,7 @@ It replaces proprietary cloud ConnectRPC backends with universal OpenAI-compatib
 | Package | Description | Tests |
 |---|---|---|
 | [`@opensand/local-exec-daemon`](./packages/local-exec-daemon) | Local execution engine with preflight bash syntax & safety validation, atomic file I/O with SHA-256 digests, and crash-resilient JSON state files. | 27 passing |
-| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI `/v1/chat/completions` + Anthropic `/v1/messages` client with extended thinking, and Grok Bot transcript parity. | 13 passing |
+| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI `/v1/chat/completions` + Anthropic `/v1/messages` client with extended thinking, native Model Context Protocol (MCP) client, and Grok Bot transcript parity. | 16 passing |
 | [`@opensand/native-bridge`](./packages/native-bridge) | Native Apple Vision offline OCR (`sand-vision`), ScreenCaptureKit window capture (`sand-window-capture`), and 1Password Seatbelt hardened launcher. | 5 passing |
 | [`@opensand/cli`](./packages/cli) | Interactive terminal REPL and one-shot execution CLI with live token streaming and permission approval prompts. | 3 passing |
 | [`@opensand/desktop`](./packages/desktop) | Desktop GUI shell with macOS menubar tray, live streaming chat, interactive tool approval modals, and zero-dependency local webview server. | 5 passing |
@@ -62,6 +62,32 @@ pnpm run package:app
 # Package both
 pnpm run package
 ```
+
+---
+
+## Model Context Protocol (MCP) Integration
+
+OpenSand includes a zero-dependency JSON-RPC 2.0 client that connects to standard community MCP servers over `stdio`. Configure external servers in `~/.opensand/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "uvx",
+      "args": ["mcp-server-sqlite", "--db-path", "./data.db"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_..."
+      }
+    }
+  }
+}
+```
+
+Discovered MCP tools are dynamically exposed to the model as `${serverName}__${toolName}` and pass through OpenSand's dual-authorization security gates.
 
 ---
 
