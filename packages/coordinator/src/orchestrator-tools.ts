@@ -163,6 +163,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         daemon,
         sessionId: subsessionId,
         sessionsBaseDir,
+        allowedTools: agent.allowedTools,
         systemPromptContext: {
           userInstructions: agent.systemPrompt,
         },

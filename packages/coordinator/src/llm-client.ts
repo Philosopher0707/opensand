@@ -129,6 +129,7 @@ export class UniversalLLMClient {
 
     // OpenAI-compatible streaming
     let fullContent = "";
+    let fullThinking = "";
     const toolCallAccumulator: Record<
       number,
       { id: string; name: string; arguments: string }
@@ -156,6 +157,12 @@ export class UniversalLLMClient {
         const streamDelta: StreamDelta = {
           finish_reason: choice.finish_reason ?? null,
         };
+
+        const reasoning = delta.reasoning_content || delta.thought;
+        if (reasoning) {
+          fullThinking += reasoning;
+          streamDelta.thinking = reasoning;
+        }
 
         if (delta.content) {
           fullContent += delta.content;
@@ -202,6 +209,7 @@ export class UniversalLLMClient {
       return {
         role: "assistant",
         content: fullContent.length > 0 ? fullContent : null,
+        thinking: fullThinking.length > 0 ? fullThinking : undefined,
         tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
       };
     };

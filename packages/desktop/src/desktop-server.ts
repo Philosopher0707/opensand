@@ -258,6 +258,12 @@ export class DesktopServer {
 
     // Serve static files from renderer/
     let filePath = path.join(this.rendererDir, pathname === '/' ? 'index.html' : pathname);
+    const resolvedPath = path.resolve(filePath);
+    if (!resolvedPath.startsWith(path.resolve(this.rendererDir))) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      res.end('Forbidden');
+      return;
+    }
     if (!fs.existsSync(filePath)) {
       filePath = path.join(this.rendererDir, 'index.html');
     }

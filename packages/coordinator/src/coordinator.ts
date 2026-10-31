@@ -16,6 +16,7 @@ export interface CoordinatorOptions {
   daemon: LocalExecDaemon;
   sessionId?: string;
   systemPromptContext?: SystemPromptContext;
+  allowedTools?: string[];
   onApprovalRequired?: ApprovalHandler;
   onEvent?: TurnEventListener;
   maxTurnIterations?: number;
@@ -27,6 +28,7 @@ export class AgentCoordinator {
   public readonly daemon: LocalExecDaemon;
   public readonly transcript: TranscriptManager;
   public readonly sessionId: string;
+  public readonly allowedTools?: string[];
 
   private messages: ChatMessage[] = [];
   private onApprovalRequired?: ApprovalHandler;
@@ -39,6 +41,7 @@ export class AgentCoordinator {
     this.daemon = options.daemon;
     this.sessionId = options.sessionId ?? `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     this.transcript = new TranscriptManager(this.sessionId, options.sessionsBaseDir);
+    this.allowedTools = options.allowedTools;
     this.onApprovalRequired = options.onApprovalRequired;
     this.onEvent = options.onEvent;
     this.maxTurnIterations = options.maxTurnIterations ?? 25;
@@ -84,7 +87,11 @@ export class AgentCoordinator {
     while (iterations < this.maxTurnIterations) {
       iterations++;
 
-      const toolDefs = this.daemon.getToolDefinitions();
+      let toolDefs = this.daemon.getToolDefinitions();
+      if (this.allowedTools && this.allowedTools.length > 0) {
+        toolDefs = toolDefs.filter((d) => this.allowedTools!.includes(d.function.name));
+      }
+
       const { stream, getConsolidated } = await this.llmClient.streamCompletion(
         this.messages,
         toolDefs,
@@ -120,6 +127,23 @@ export class AgentCoordinator {
       // If the model called tools, execute each one
       for (const tc of assistantMsg.tool_calls) {
         this.emit({ type: "tool_call_started", toolCall: tc });
+
+        // Enforce agent allowedTools whitelist policy
+        if (this.allowedTools && this.allowedTools.length > 0 && !this.allowedTools.includes(tc.function.name)) {
+          const unauthorizedResult: ToolExecutionResult = {
+            status: "error",
+            error: {
+              code: "UNAUTHORIZED_TOOL",
+              message: `Tool '${tc.function.name}' is not in this agent's authorized tools list: [${this.allowedTools.join(", ")}]`,
+            },
+          };
+          this.messages.push({
+            role: "tool",
+            tool_call_id: tc.id,
+            content: JSON.stringify(unauthorizedResult),
+          });
+          continue;
+        }
 
         let args: Record<string, any> = {};
         try {
