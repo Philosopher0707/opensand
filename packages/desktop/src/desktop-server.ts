@@ -98,7 +98,7 @@ export class DesktopServer {
 
     // CORS headers for local access
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
     if (req.method === 'OPTIONS') {
@@ -126,7 +126,7 @@ export class DesktopServer {
     // API: POST /api/query
     if (pathname === '/api/query' && req.method === 'POST') {
       const body = await this.readJsonBody(req);
-      const result = await this.bridge.sendQuery(body.query, body.sessionId);
+      const result = await this.bridge.sendQuery(body.query, body.sessionId, body.agentId);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
       return;
@@ -172,6 +172,87 @@ export class DesktopServer {
       const updated = this.bridge.updateSettings(body);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(updated));
+      return;
+    }
+
+    // API: GET /api/agents (List all registered bots)
+    if (pathname === '/api/agents' && req.method === 'GET') {
+      const agents = await this.bridge.getAgents();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(agents));
+      return;
+    }
+
+    // API: POST /api/agents (Create new bot)
+    if (pathname === '/api/agents' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      const created = await this.bridge.createAgent(body);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(created));
+      return;
+    }
+
+    // API: DELETE /api/agents/:id
+    if (pathname.startsWith('/api/agents/') && req.method === 'DELETE') {
+      const agentId = pathname.replace('/api/agents/', '');
+      const deleted = await this.bridge.deleteAgent(agentId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: deleted }));
+      return;
+    }
+
+    // API: GET /api/tasks (List tasks)
+    if (pathname === '/api/tasks' && req.method === 'GET') {
+      const status = url.searchParams.get('status') as any || undefined;
+      const agentId = url.searchParams.get('agentId') || undefined;
+      const tasks = await this.bridge.getTasks({ status, agentId });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(tasks));
+      return;
+    }
+
+    // API: POST /api/tasks (Create task)
+    if (pathname === '/api/tasks' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      const task = await this.bridge.createTask(body);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(task));
+      return;
+    }
+
+    // API: PUT /api/tasks/:id (Update task)
+    if (pathname.startsWith('/api/tasks/') && req.method === 'PUT') {
+      const taskId = pathname.replace('/api/tasks/', '');
+      const body = await this.readJsonBody(req);
+      const updated = await this.bridge.updateTask(taskId, body);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(updated));
+      return;
+    }
+
+    // API: DELETE /api/tasks/:id
+    if (pathname.startsWith('/api/tasks/') && req.method === 'DELETE') {
+      const taskId = pathname.replace('/api/tasks/', '');
+      const deleted = await this.bridge.deleteTask(taskId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: deleted }));
+      return;
+    }
+
+    // API: GET /api/learned-rules
+    if (pathname === '/api/learned-rules' && req.method === 'GET') {
+      const markdown = await this.bridge.getLearnedRules();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ markdown }));
+      return;
+    }
+
+    // API: POST /api/learned-rules/refresh
+    if (pathname === '/api/learned-rules/refresh' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      const report = await this.bridge.refreshLearnedRules(body.maxChats ?? 50);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(report));
       return;
     }
 

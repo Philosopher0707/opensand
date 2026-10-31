@@ -3,7 +3,22 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
-import { AgentCoordinator, UniversalLLMClient, TurnEvent, ApprovalRequest, McpManager } from '@opensand/coordinator';
+import {
+  AgentCoordinator,
+  UniversalLLMClient,
+  TurnEvent,
+  ApprovalRequest,
+  McpManager,
+  registerOrchestratorTools,
+  AgentStore,
+  AgentRecord,
+  CreateAgentInput,
+  TaskStore,
+  AgentTask,
+  CreateTaskInput,
+  TaskStatus,
+  HabitExtractor,
+} from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
 import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSummary, DesktopEvent } from './types.js';
@@ -20,6 +35,9 @@ export class DesktopIpcBridge extends EventEmitter {
   private daemon: LocalExecDaemon;
   private stateManager: StateManager;
   private mcpManager: McpManager;
+  private agentStore: AgentStore;
+  private taskStore: TaskStore;
+  private habitExtractor: HabitExtractor;
   private coordinator: AgentCoordinator | null = null;
   private activeApprovals: Map<string, {
     request: ToolApprovalRequest;
@@ -50,6 +68,26 @@ export class DesktopIpcBridge extends EventEmitter {
     this.daemon = new LocalExecDaemon({ stateDir });
     this.stateManager = new StateManager(stateDir);
     registerNativeTools(this.daemon);
+
+    // Initialize Agent Store & Task Store & Habit Extractor
+    this.agentStore = new AgentStore(path.join(this.baseDir, 'agents'));
+    this.taskStore = new TaskStore(path.join(this.baseDir, 'tasks'));
+    this.habitExtractor = new HabitExtractor({
+      sessionsDir: path.join(this.baseDir, 'sessions'),
+      memoryFilePath: path.join(this.baseDir, 'learned_rules.md'),
+    });
+
+    // Initialize Orchestrator Meta-Tools
+    registerOrchestratorTools({
+      daemon: this.daemon,
+      store: this.agentStore,
+      taskStore: this.taskStore,
+      habitExtractor: this.habitExtractor,
+      defaultEndpoint: this.settings.endpoint,
+      defaultModel: this.settings.model,
+      defaultApiKey: this.settings.apiKey,
+      sessionsBaseDir: path.join(this.baseDir, 'sessions'),
+    });
 
     // Initialize MCP Manager
     this.mcpManager = new McpManager({
@@ -100,15 +138,30 @@ export class DesktopIpcBridge extends EventEmitter {
     this.emit('event', event);
   }
 
-  public async sendQuery(query: string, sessionId?: string): Promise<{ success: boolean; sessionId: string }> {
+  public async sendQuery(query: string, sessionId?: string, agentId?: string): Promise<{ success: boolean; sessionId: string }> {
     const activeSessionId = sessionId || `session_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     this.currentSessionId = activeSessionId;
 
+    let targetModel = this.settings.model;
+    let targetEndpoint = this.settings.endpoint;
+    let customInstructions: string | undefined;
+
+    if (agentId) {
+      const agent = await this.agentStore.getAgent(agentId);
+      if (agent) {
+        if (agent.model) targetModel = agent.model;
+        if (agent.endpoint) targetEndpoint = agent.endpoint;
+        customInstructions = agent.systemPrompt;
+      }
+    }
+
     const llmClient = new UniversalLLMClient({
-      baseUrl: this.settings.endpoint,
-      model: this.settings.model,
+      baseUrl: targetEndpoint,
+      model: targetModel,
       apiKey: this.settings.apiKey,
     });
+
+    const learnedRules = await this.habitExtractor.getLearnedRulesMarkdown();
 
     // Create coordinator with interactive approval callback
     const coordinator = new AgentCoordinator({
@@ -116,6 +169,10 @@ export class DesktopIpcBridge extends EventEmitter {
       daemon: this.daemon,
       sessionId: activeSessionId,
       sessionsBaseDir: path.join(this.baseDir, 'sessions'),
+      systemPromptContext: {
+        userInstructions: customInstructions,
+        learnedRules,
+      },
       onApprovalRequired: async (req: ApprovalRequest) => {
         if (this.settings.autoApprove) {
           return true;
@@ -179,7 +236,6 @@ export class DesktopIpcBridge extends EventEmitter {
     this.activeApprovals.delete(approvalId);
 
     if (decision.action === 'always_allow') {
-      // Add command prefix to standing allowlist if exec_command
       if (pending.request.toolName === 'exec_command' && typeof pending.request.args.command === 'string') {
         const cmd = pending.request.args.command.trim();
         const prefix = cmd.split(/\s+/)[0];
@@ -204,6 +260,49 @@ export class DesktopIpcBridge extends EventEmitter {
     // Reject
     pending.resolve(false);
     return { success: true };
+  }
+
+  // Agent Store API
+  public async getAgents(): Promise<AgentRecord[]> {
+    return this.agentStore.listAgents();
+  }
+
+  public async getAgent(id: string): Promise<AgentRecord | null> {
+    return this.agentStore.getAgent(id);
+  }
+
+  public async createAgent(input: CreateAgentInput): Promise<AgentRecord> {
+    return this.agentStore.createAgent(input);
+  }
+
+  public async deleteAgent(id: string): Promise<boolean> {
+    return this.agentStore.deleteAgent(id);
+  }
+
+  // Task Store API
+  public async getTasks(filter?: { status?: TaskStatus; agentId?: string }): Promise<AgentTask[]> {
+    return this.taskStore.listTasks(filter);
+  }
+
+  public async createTask(input: CreateTaskInput): Promise<AgentTask> {
+    return this.taskStore.createTask(input);
+  }
+
+  public async updateTask(id: string, updates: Partial<Omit<AgentTask, 'id' | 'createdAt'>>): Promise<AgentTask> {
+    return this.taskStore.updateTask(id, updates);
+  }
+
+  public async deleteTask(id: string): Promise<boolean> {
+    return this.taskStore.deleteTask(id);
+  }
+
+  // Habit Extractor API
+  public async getLearnedRules(): Promise<string> {
+    return this.habitExtractor.getLearnedRulesMarkdown();
+  }
+
+  public async refreshLearnedRules(maxChats = 50): Promise<any> {
+    return this.habitExtractor.analyzeTranscripts(maxChats);
   }
 
   public async getSessions(): Promise<SessionSummary[]> {

@@ -30,6 +30,14 @@ export class TerminalUI {
     console.log(`${DIM}${text}${RESET}`);
   }
 
+  printError(text: string): void {
+    console.log(`${RED}✖ ${text}${RESET}`);
+  }
+
+  printUserTurn(query: string): void {
+    console.log(`\n${BOLD}${MAGENTA}User:${RESET} ${query}`);
+  }
+
   onTextDelta(text: string): void {
     if (!this.inStreamToken) {
       output.write(`\n${BOLD}${CYAN}Assistant:${RESET}\n`);

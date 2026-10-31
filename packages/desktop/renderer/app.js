@@ -1,5 +1,6 @@
 /**
  * OpenSand Desktop Renderer Application Controller
+ * Universal Multi-Agent & Orchestrator UI
  */
 
 // Dual-mode backend client: native Electron IPC or local HTTP/SSE
@@ -42,14 +43,14 @@ class OpenSandClient {
     return () => this.listeners.delete(cb);
   }
 
-  async sendQuery(query, sessionId) {
+  async sendQuery(query, sessionId, agentId) {
     if (this.isElectron) {
-      return window.opensand.sendQuery(query, sessionId);
+      return window.opensand.sendQuery(query, sessionId, agentId);
     }
     const res = await fetch('/api/query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, sessionId }),
+      body: JSON.stringify({ query, sessionId, agentId }),
     });
     return res.json();
   }
@@ -101,6 +102,57 @@ class OpenSandClient {
     });
     return res.json();
   }
+
+  async getAgents() {
+    const res = await fetch('/api/agents');
+    return res.json();
+  }
+
+  async createAgent(agent) {
+    const res = await fetch('/api/agents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(agent),
+    });
+    return res.json();
+  }
+
+  async getTasks() {
+    const res = await fetch('/api/tasks');
+    return res.json();
+  }
+
+  async createTask(task) {
+    const res = await fetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(task),
+    });
+    return res.json();
+  }
+
+  async updateTask(id, updates) {
+    const res = await fetch(`/api/tasks/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    return res.json();
+  }
+
+  async getLearnedRules() {
+    const res = await fetch('/api/learned-rules');
+    return res.json();
+  }
+
+  async refreshLearnedRules() {
+    const res = await fetch('/api/learned-rules/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    return res.json();
+  }
 }
 
 // UI Controller
@@ -115,7 +167,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnSend = document.getElementById('btnSend');
   const btnNewSession = document.getElementById('btnNewSession');
   const sessionList = document.getElementById('sessionList');
+  const botList = document.getElementById('botList');
+  const taskList = document.getElementById('taskList');
   const activeSessionTitle = document.getElementById('activeSessionTitle');
+  const badgeActiveBot = document.getElementById('badgeActiveBot');
   const badgeModel = document.getElementById('badgeModel');
   const badgeAutoApprove = document.getElementById('badgeAutoApprove');
   const botStatusAvatar = document.getElementById('botStatusAvatar');
@@ -128,6 +183,32 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnApproveOnce = document.getElementById('btnApproveOnce');
   const btnAlwaysAllow = document.getElementById('btnAlwaysAllow');
   const btnRejectTool = document.getElementById('btnRejectTool');
+
+  // Create Bot modal elements
+  const btnOpenCreateBot = document.getElementById('btnOpenCreateBot');
+  const createBotModal = document.getElementById('createBotModal');
+  const btnCloseCreateBot = document.getElementById('btnCloseCreateBot');
+  const btnSaveBot = document.getElementById('btnSaveBot');
+  const botName = document.getElementById('botName');
+  const botRole = document.getElementById('botRole');
+  const botSystemPrompt = document.getElementById('botSystemPrompt');
+  const botModel = document.getElementById('botModel');
+
+  // Create Task modal elements
+  const btnOpenCreateTask = document.getElementById('btnOpenCreateTask');
+  const createTaskModal = document.getElementById('createTaskModal');
+  const btnCloseCreateTask = document.getElementById('btnCloseCreateTask');
+  const btnSaveTask = document.getElementById('btnSaveTask');
+  const taskTitle = document.getElementById('taskTitle');
+  const taskPriority = document.getElementById('taskPriority');
+
+  // Learned Rules modal elements
+  const btnViewLearnedRules = document.getElementById('btnViewLearnedRules');
+  const learnedRulesModal = document.getElementById('learnedRulesModal');
+  const btnCloseLearnedRules = document.getElementById('btnCloseLearnedRules');
+  const btnCloseLearnedRulesAction = document.getElementById('btnCloseLearnedRulesAction');
+  const btnRefreshLearnedRules = document.getElementById('btnRefreshLearnedRules');
+  const learnedRulesContent = document.getElementById('learnedRulesContent');
 
   // Settings modal elements
   const btnSettings = document.getElementById('btnSettings');
@@ -146,6 +227,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // State
   let currentSessionId = null;
+  let activeAgentId = null;
+  let activeAgentName = 'Default Assistant';
   let activeAssistantBubble = null;
   let currentApprovalId = null;
 
@@ -155,7 +238,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     promptInput.style.height = Math.min(promptInput.scrollHeight, 140) + 'px';
   });
 
-  // Load Initial Settings & Sessions
+  // Load Initial Settings, Bots, Tasks, and Sessions
   async function refreshSettings() {
     try {
       const s = await client.getSettings();
@@ -164,6 +247,87 @@ document.addEventListener('DOMContentLoaded', async () => {
       badgeAutoApprove.className = s.autoApprove ? 'badge' : 'badge badge-success';
     } catch (e) {
       console.error('Failed to load settings:', e);
+    }
+  }
+
+  async function refreshBots() {
+    try {
+      const agents = await client.getAgents();
+      botList.innerHTML = '';
+
+      // Default Assistant Item
+      const defaultItem = document.createElement('div');
+      defaultItem.className = 'bot-item' + (activeAgentId === null ? ' active' : '');
+      defaultItem.innerHTML = `
+        <span class="bot-item-icon">⚡</span>
+        <div class="bot-item-info">
+          <span class="bot-item-name">Default Assistant</span>
+          <span class="bot-item-role">Universal Coding Agent</span>
+        </div>
+      `;
+      defaultItem.onclick = () => {
+        activeAgentId = null;
+        activeAgentName = 'Default Assistant';
+        badgeActiveBot.textContent = '⚡ Default Assistant';
+        refreshBots();
+      };
+      botList.appendChild(defaultItem);
+
+      // Registered Bots
+      for (const a of agents) {
+        const item = document.createElement('div');
+        item.className = 'bot-item' + (activeAgentId === a.id ? ' active' : '');
+        const icon = a.name.toLowerCase().includes('cto') ? '👨‍💼' :
+                     a.name.toLowerCase().includes('security') ? '🛡️' :
+                     a.name.toLowerCase().includes('review') ? '🔍' : '🤖';
+        item.innerHTML = `
+          <span class="bot-item-icon">${icon}</span>
+          <div class="bot-item-info">
+            <span class="bot-item-name">${a.name}</span>
+            <span class="bot-item-role">${a.role}</span>
+          </div>
+        `;
+        item.onclick = () => {
+          activeAgentId = a.id;
+          activeAgentName = a.name;
+          badgeActiveBot.textContent = `${icon} ${a.name}`;
+          refreshBots();
+        };
+        botList.appendChild(item);
+      }
+    } catch (e) {
+      console.error('Failed to load bots:', e);
+    }
+  }
+
+  async function refreshTasks() {
+    try {
+      const tasks = await client.getTasks();
+      taskList.innerHTML = '';
+      if (tasks.length === 0) {
+        taskList.innerHTML = '<div style="font-size: 11px; color: var(--text-muted); padding: 4px;">No active tasks</div>';
+        return;
+      }
+
+      for (const t of tasks) {
+        const item = document.createElement('div');
+        item.className = 'task-item' + (t.status === 'done' ? ' done' : '');
+        item.innerHTML = `
+          <input type="checkbox" class="task-checkbox" ${t.status === 'done' ? 'checked' : ''}>
+          <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t.title}</span>
+          <span class="badge" style="font-size: 9px; padding: 1px 4px;">${t.priority}</span>
+        `;
+
+        const checkbox = item.querySelector('.task-checkbox');
+        checkbox.onchange = async () => {
+          await client.updateTask(t.id, { status: checkbox.checked ? 'done' : 'todo' });
+          await refreshTasks();
+        };
+
+        taskList.appendChild(item);
+      }
+    } catch (e) {
+      console.error('Failed to load tasks:', e);
     }
   }
 
@@ -200,155 +364,177 @@ document.addEventListener('DOMContentLoaded', async () => {
         appendToolResultCard(evt.name, evt.content);
       }
     }
+    scrollToBottom();
     refreshSessions();
   }
 
   function startNewSession() {
     currentSessionId = null;
-    activeAssistantBubble = null;
     activeSessionTitle.textContent = 'New Session';
     messageFeed.innerHTML = '';
     welcomeBanner.style.display = 'block';
     refreshSessions();
   }
 
-  btnNewSession.onclick = startNewSession;
-
   function appendUserMessage(text) {
     welcomeBanner.style.display = 'none';
-    const bubble = document.createElement('div');
-    bubble.className = 'chat-bubble bubble-user';
-    bubble.textContent = text;
-    messageFeed.appendChild(bubble);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+    const msg = document.createElement('div');
+    msg.className = 'message message-user';
+    msg.innerHTML = `
+      <div class="message-bubble message-bubble-user">${escapeHtml(text)}</div>
+    `;
+    messageFeed.appendChild(msg);
+    scrollToBottom();
   }
 
-  function appendAssistantMessage(initialText = '') {
+  function appendAssistantMessage(text = '') {
     welcomeBanner.style.display = 'none';
+    const msg = document.createElement('div');
+    msg.className = 'message message-assistant';
     const bubble = document.createElement('div');
-    bubble.className = 'chat-bubble bubble-assistant';
-    bubble.textContent = initialText;
-    messageFeed.appendChild(bubble);
+    bubble.className = 'message-bubble message-bubble-assistant';
+    bubble.textContent = text;
+    msg.appendChild(bubble);
+    messageFeed.appendChild(msg);
     activeAssistantBubble = bubble;
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+    scrollToBottom();
     return bubble;
   }
 
-  function appendToolCallCard(name, args) {
+  function appendToolCard(name, args) {
     const card = document.createElement('div');
     card.className = 'tool-card';
-    card.id = `tool-${name}-${Date.now()}`;
     card.innerHTML = `
       <div class="tool-card-header">
-        <span>⚡ <strong>${name}</strong></span>
-        <span class="tool-badge tool-badge-running">EXECUTING</span>
+        <span class="tool-card-icon">⚡</span>
+        <span class="tool-card-title">${escapeHtml(name)}</span>
+        <span class="tool-badge">Running</span>
       </div>
-      <div class="tool-body">${JSON.stringify(args, null, 2)}</div>
+      <pre class="tool-card-body">${escapeHtml(JSON.stringify(args, null, 2))}</pre>
     `;
     messageFeed.appendChild(card);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+    scrollToBottom();
     return card;
   }
 
   function appendToolResultCard(name, result) {
     const card = document.createElement('div');
-    card.className = 'tool-card';
-    const formattedResult = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+    card.className = 'tool-card tool-card-result';
     card.innerHTML = `
       <div class="tool-card-header">
-        <span>✔ <strong>${name}</strong> Result</span>
-        <span class="tool-badge tool-badge-done">COMPLETED</span>
+        <span class="tool-card-icon">✔</span>
+        <span class="tool-card-title">${escapeHtml(name)} Result</span>
+        <span class="tool-badge badge-success">Success</span>
       </div>
-      <div class="tool-body">${formattedResult}</div>
+      <pre class="tool-card-body">${escapeHtml(typeof result === 'string' ? result : JSON.stringify(result, null, 2))}</pre>
     `;
     messageFeed.appendChild(card);
+    scrollToBottom();
+  }
+
+  function scrollToBottom() {
     chatContainer.scrollTop = chatContainer.scrollHeight;
   }
 
-  // Handle Event Stream
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // Handle Incoming Events (Tokens, Tools, Approvals)
   client.onEvent((event) => {
     if (event.type === 'token') {
-      botStatusAvatar.textContent = '◌';
-      botStatusText.textContent = 'Thinking...';
       if (!activeAssistantBubble) {
-        appendAssistantMessage();
+        appendAssistantMessage('');
       }
       activeAssistantBubble.textContent += event.data.token;
-      chatContainer.scrollTop = chatContainer.scrollHeight;
+      scrollToBottom();
     } else if (event.type === 'tool_call') {
-      botStatusAvatar.textContent = '⚡';
-      botStatusText.textContent = `Running ${event.data.name}...`;
-      appendToolCallCard(event.data.name, event.data.args);
-      activeAssistantBubble = null;
+      appendToolCard(event.data.name, event.data.args);
     } else if (event.type === 'tool_result') {
       appendToolResultCard(event.data.name, event.data.result);
+      // Refresh tasks and bots in case agent created them via tools
+      refreshBots();
+      refreshTasks();
+    } else if (event.type === 'turn_complete') {
+      activeAssistantBubble = null;
+      botStatusText.textContent = 'Ready';
+      botStatusAvatar.textContent = '⚡';
+      refreshSessions();
+    } else if (event.type === 'error') {
+      botStatusText.textContent = 'Error';
+      const errBox = document.createElement('div');
+      errBox.className = 'error-banner';
+      errBox.textContent = `Error: ${event.data.message}`;
+      messageFeed.appendChild(errBox);
+      scrollToBottom();
     } else if (event.type === 'approval_required') {
       currentApprovalId = event.data.approvalId;
       approvalToolName.textContent = event.data.toolName;
       approvalArgsBox.textContent = JSON.stringify(event.data.args, null, 2);
       approvalModal.classList.remove('hidden');
-    } else if (event.type === 'turn_complete') {
-      botStatusAvatar.textContent = '⚡';
-      botStatusText.textContent = 'Ready';
-      activeAssistantBubble = null;
-      refreshSessions();
-    } else if (event.type === 'error') {
-      botStatusAvatar.textContent = '⚠';
-      botStatusText.textContent = 'Error';
-      const bubble = document.createElement('div');
-      bubble.className = 'chat-bubble bubble-assistant';
-      bubble.style.borderColor = 'var(--danger)';
-      bubble.textContent = `Error: ${event.data.message}`;
-      messageFeed.appendChild(bubble);
-      activeAssistantBubble = null;
     }
   });
 
-  // Approvals
-  btnApproveOnce.onclick = async () => {
-    if (!currentApprovalId) return;
-    approvalModal.classList.add('hidden');
-    await client.approveTool(currentApprovalId, { action: 'approve_once' });
-    currentApprovalId = null;
-  };
-
-  btnAlwaysAllow.onclick = async () => {
-    if (!currentApprovalId) return;
-    approvalModal.classList.add('hidden');
-    await client.approveTool(currentApprovalId, { action: 'always_allow' });
-    currentApprovalId = null;
-  };
-
-  btnRejectTool.onclick = async () => {
-    if (!currentApprovalId) return;
-    approvalModal.classList.add('hidden');
-    await client.approveTool(currentApprovalId, { action: 'reject' });
-    currentApprovalId = null;
-  };
-
-  // Submit Query
+  // Query Submission
   async function submitQuery() {
     const text = promptInput.value.trim();
     if (!text) return;
 
     promptInput.value = '';
     promptInput.style.height = 'auto';
-    appendUserMessage(text);
 
-    const res = await client.sendQuery(text, currentSessionId);
-    if (res && res.sessionId) {
+    appendUserMessage(text);
+    activeAssistantBubble = null;
+
+    botStatusText.textContent = `${activeAgentName} Working...`;
+    botStatusAvatar.textContent = '⏳';
+
+    try {
+      const res = await client.sendQuery(text, currentSessionId, activeAgentId);
       currentSessionId = res.sessionId;
       activeSessionTitle.textContent = currentSessionId;
+    } catch (err) {
+      botStatusText.textContent = 'Failed';
+      console.error('sendQuery failed:', err);
     }
   }
 
   btnSend.onclick = submitQuery;
-  promptInput.addEventListener('keydown', (e) => {
+  promptInput.onkeydown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submitQuery();
     }
-  });
+  };
+
+  btnNewSession.onclick = startNewSession;
+
+  // Approvals
+  btnApproveOnce.onclick = async () => {
+    if (currentApprovalId) {
+      await client.approveTool(currentApprovalId, { action: 'approve_once' });
+      approvalModal.classList.add('hidden');
+      currentApprovalId = null;
+    }
+  };
+
+  btnAlwaysAllow.onclick = async () => {
+    if (currentApprovalId) {
+      await client.approveTool(currentApprovalId, { action: 'always_allow' });
+      approvalModal.classList.add('hidden');
+      currentApprovalId = null;
+    }
+  };
+
+  btnRejectTool.onclick = async () => {
+    if (currentApprovalId) {
+      await client.approveTool(currentApprovalId, { action: 'reject' });
+      approvalModal.classList.add('hidden');
+      currentApprovalId = null;
+    }
+  };
 
   // Prompt chips
   document.querySelectorAll('.prompt-chip').forEach((chip) => {
@@ -358,16 +544,79 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
   });
 
-  // Quick Tools & Personas
-  const btnPersonaCto = document.getElementById('btnPersonaCto');
-  if (btnPersonaCto) {
-    btnPersonaCto.onclick = () => {
-      startNewSession();
-      promptInput.value = 'Act as the CTO and conduct a comprehensive architectural and code health audit of this repository.';
-      submitQuery();
-    };
-  }
+  // Create Bot Modal
+  btnOpenCreateBot.onclick = () => {
+    botName.value = '';
+    botRole.value = '';
+    botSystemPrompt.value = '';
+    botModel.value = '';
+    createBotModal.classList.remove('hidden');
+  };
 
+  btnCloseCreateBot.onclick = () => {
+    createBotModal.classList.add('hidden');
+  };
+
+  btnSaveBot.onclick = async () => {
+    const name = botName.value.trim();
+    const role = botRole.value.trim();
+    const system_prompt = botSystemPrompt.value.trim();
+    const model = botModel.value.trim() || undefined;
+
+    if (!name || !role || !system_prompt) {
+      alert('Please fill out Name, Role, and System Prompt.');
+      return;
+    }
+
+    await client.createAgent({ name, role, systemPrompt: system_prompt, model });
+    createBotModal.classList.add('hidden');
+    await refreshBots();
+  };
+
+  // Create Task Modal
+  btnOpenCreateTask.onclick = () => {
+    taskTitle.value = '';
+    taskPriority.value = 'medium';
+    createTaskModal.classList.remove('hidden');
+  };
+
+  btnCloseCreateTask.onclick = () => {
+    createTaskModal.classList.add('hidden');
+  };
+
+  btnSaveTask.onclick = async () => {
+    const title = taskTitle.value.trim();
+    const priority = taskPriority.value;
+    if (!title) return;
+
+    await client.createTask({ title, priority, agentId: activeAgentId || undefined });
+    createTaskModal.classList.add('hidden');
+    await refreshTasks();
+  };
+
+  // Learned Rules Modal
+  btnViewLearnedRules.onclick = async () => {
+    learnedRulesContent.textContent = 'Loading learned user guidelines...';
+    learnedRulesModal.classList.remove('hidden');
+    const res = await client.getLearnedRules();
+    learnedRulesContent.textContent = res.markdown || 'No continuous guidelines recorded yet.';
+  };
+
+  btnCloseLearnedRules.onclick = () => {
+    learnedRulesModal.classList.add('hidden');
+  };
+
+  btnCloseLearnedRulesAction.onclick = () => {
+    learnedRulesModal.classList.add('hidden');
+  };
+
+  btnRefreshLearnedRules.onclick = async () => {
+    learnedRulesContent.textContent = 'Re-analyzing past conversation transcripts according to Grok Bot standards...';
+    const report = await client.refreshLearnedRules();
+    learnedRulesContent.textContent = report.markdownSummary || report.summary || 'Analysis complete.';
+  };
+
+  // Quick Tools
   btnQuickOcr.onclick = () => {
     promptInput.value = 'Call recognize_screen_text and extract text from the screen.';
     submitQuery();
@@ -406,7 +655,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     await refreshSettings();
   };
 
-  // Boot
+  // Boot Initial Load
   await refreshSettings();
+  await refreshBots();
+  await refreshTasks();
   await refreshSessions();
 });

@@ -2,6 +2,8 @@ import { LocalExecDaemon } from "@opensand/local-exec-daemon";
 import { recognizeScreenText } from "./vision-ocr.js";
 import { listWindows, captureWindow } from "./window-capture.js";
 import { runOpHardened } from "./op-launcher.js";
+import { readRecentMessages, draftMessage } from "./messages-reader.js";
+import { speakText } from "./speech-bridge.js";
 
 export function registerNativeTools(daemon: LocalExecDaemon): void {
   // 1. Apple Vision OCR
@@ -112,6 +114,91 @@ export function registerNativeTools(daemon: LocalExecDaemon): void {
         vault: args.vault,
         account: args.account,
       });
+    },
+  });
+
+  // 5. macOS Messages Sync (Grok Bot GrokBotUserComputerMessagesOp parity)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "read_recent_messages",
+        description: "Read recent iMessage/SMS conversations from the local macOS chat database (Grok Bot Messages parity).",
+        parameters: {
+          type: "object",
+          properties: {
+            limit: {
+              type: "number",
+              description: "Maximum number of recent messages to return (default: 20).",
+            },
+          },
+        },
+      },
+    },
+    requiresGate: "deviceTools",
+    handler: async (args) => {
+      const res = await readRecentMessages(args.limit ?? 20);
+      return JSON.stringify(res, null, 2);
+    },
+  });
+
+  // 6. Draft iMessage (Grok Bot draft_card parity)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "draft_imessage",
+        description: "Prepare a draft iMessage for user confirmation before sending.",
+        parameters: {
+          type: "object",
+          properties: {
+            recipient: {
+              type: "string",
+              description: "Phone number or email address of the recipient.",
+            },
+            body: {
+              type: "string",
+              description: "The text message content to send.",
+            },
+          },
+          required: ["recipient", "body"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const res = draftMessage(args.recipient, args.body);
+      return JSON.stringify(res, null, 2);
+    },
+  });
+
+  // 7. Native Speech Synthesis (Grok Bot AiService.TextToSpeech parity)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "speak_text",
+        description: "Synthesize and speak text aloud using native macOS speech synthesis.",
+        parameters: {
+          type: "object",
+          properties: {
+            text: {
+              type: "string",
+              description: "The text to speak aloud.",
+            },
+            voice: {
+              type: "string",
+              description: "Optional macOS voice identifier (e.g. 'Samantha', 'Daniel', 'Alex').",
+            },
+          },
+          required: ["text"],
+        },
+      },
+    },
+    requiresGate: "deviceTools",
+    handler: async (args) => {
+      const res = await speakText(args.text, args.voice);
+      return JSON.stringify(res, null, 2);
     },
   });
 }

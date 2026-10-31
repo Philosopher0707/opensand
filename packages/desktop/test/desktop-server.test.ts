@@ -86,6 +86,56 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     assert.strictEqual(res3.statusCode, 200);
     const sessions = JSON.parse(res3.body);
     assert.ok(Array.isArray(sessions));
+
+    // Test POST /api/agents & GET /api/agents
+    const reqCreateBot = new MockIncomingMessage('POST', '/api/agents');
+    const resCreateBot = new MockServerResponse();
+    const createBotPromise = (server as any).handleRequest(reqCreateBot, resCreateBot);
+    reqCreateBot.emit('data', Buffer.from(JSON.stringify({
+      name: 'Security Auditor',
+      role: 'AppSec Engineer',
+      systemPrompt: 'Audit code for security vulnerabilities',
+    })));
+    reqCreateBot.emit('end');
+    await createBotPromise;
+    assert.strictEqual(resCreateBot.statusCode, 201);
+    const bot = JSON.parse(resCreateBot.body);
+    assert.strictEqual(bot.name, 'Security Auditor');
+
+    const reqListBots = new MockIncomingMessage('GET', '/api/agents');
+    const resListBots = new MockServerResponse();
+    await (server as any).handleRequest(reqListBots, resListBots);
+    assert.strictEqual(resListBots.statusCode, 200);
+    const bots = JSON.parse(resListBots.body);
+    assert.strictEqual(bots.length, 1);
+    assert.strictEqual(bots[0].name, 'Security Auditor');
+
+    // Test POST /api/tasks & GET /api/tasks & PUT /api/tasks/:id
+    const reqCreateTask = new MockIncomingMessage('POST', '/api/tasks');
+    const resCreateTask = new MockServerResponse();
+    const createTaskPromise = (server as any).handleRequest(reqCreateTask, resCreateTask);
+    reqCreateTask.emit('data', Buffer.from(JSON.stringify({
+      title: 'Fix bash injection vulnerability',
+      priority: 'high',
+    })));
+    reqCreateTask.emit('end');
+    await createTaskPromise;
+    assert.strictEqual(resCreateTask.statusCode, 201);
+    const task = JSON.parse(resCreateTask.body);
+    assert.strictEqual(task.title, 'Fix bash injection vulnerability');
+
+    const reqListTasks = new MockIncomingMessage('GET', '/api/tasks');
+    const resListTasks = new MockServerResponse();
+    await (server as any).handleRequest(reqListTasks, resListTasks);
+    assert.strictEqual(resListTasks.statusCode, 200);
+    const tasks = JSON.parse(resListTasks.body);
+    assert.strictEqual(tasks.length, 1);
+
+    // Test GET /api/learned-rules
+    const reqRules = new MockIncomingMessage('GET', '/api/learned-rules');
+    const resRules = new MockServerResponse();
+    await (server as any).handleRequest(reqRules, resRules);
+    assert.strictEqual(resRules.statusCode, 200);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

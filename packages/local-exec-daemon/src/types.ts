@@ -43,6 +43,7 @@ export interface ToolDefinition {
         description?: string;
         default?: any;
         items?: any;
+        enum?: string[];
       }>;
       required?: string[];
     };

@@ -26,9 +26,22 @@
         <!-- Rendered dynamically -->
       </div>
 
-      <div class="sidebar-section-title">Personas</div>
-      <div class="quick-tools">
-        <button id="btnPersonaCto" class="btn btn-tool btn-sm" style="flex: 1;">👨‍💼 CTO Bot</button>
+      <!-- Autonomous Bots & Personas -->
+      <div class="sidebar-section-header">
+        <span class="sidebar-section-title">Bots & Personas</span>
+        <button id="btnOpenCreateBot" class="btn btn-ghost btn-xs" title="Create New Bot Persona">+ New Bot</button>
+      </div>
+      <div class="bot-list" id="botList">
+        <!-- Rendered dynamically from /api/agents -->
+      </div>
+
+      <!-- Agent Tasks & Todos -->
+      <div class="sidebar-section-header">
+        <span class="sidebar-section-title">Tasks & Todos</span>
+        <button id="btnOpenCreateTask" class="btn btn-ghost btn-xs" title="Add Task">+ Add</button>
+      </div>
+      <div class="task-list" id="taskList">
+        <!-- Rendered dynamically from /api/tasks -->
       </div>
 
       <div class="sidebar-section-title">Native Tools</div>
@@ -46,9 +59,13 @@
     <main class="main-panel">
       <!-- Top Bar -->
       <header class="topbar">
-        <div class="active-session-title" id="activeSessionTitle">New Session</div>
+        <div class="topbar-left">
+          <div class="active-session-title" id="activeSessionTitle">New Session</div>
+          <span class="badge badge-bot" id="badgeActiveBot">🤖 Default Assistant</span>
+        </div>
         <div class="topbar-meta">
-          <span class="badge" id="badgeModel">llama3.1</span>
+          <button id="btnViewLearnedRules" class="btn btn-secondary btn-xs" title="View learned rules">🧠 Learned Habits</button>
+          <span class="badge" id="badgeModel">qwen3:8b</span>
           <span class="badge badge-success" id="badgeAutoApprove">Safe Mode</span>
         </div>
       </header>
@@ -59,7 +76,7 @@
           <h2>Welcome to OpenSand</h2>
           <p>Local-first, universal clean-room coding agent.</p>
           <div class="quick-prompts">
-            <button class="prompt-chip" data-query="Act as the CTO and conduct a comprehensive architectural and code health audit of this repository.">👨‍💼 CTO Audit</button>
+            <button class="prompt-chip" data-query="Conduct a comprehensive architectural and code health audit of this repository.">🏗️ Code Health Audit</button>
             <button class="prompt-chip" data-query="Inspect the files in the current repository and summarize the structure.">Inspect Repository</button>
             <button class="prompt-chip" data-query="Run git status and show modified files.">Git Status</button>
             <button class="prompt-chip" data-query="List all active on-screen windows.">List Active Windows</button>
@@ -101,6 +118,85 @@
         <button id="btnApproveOnce" class="btn btn-primary">Approve Once</button>
         <button id="btnAlwaysAllow" class="btn btn-success">Always Allow</button>
         <button id="btnRejectTool" class="btn btn-danger">Reject</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Bot Modal Overlay -->
+  <div class="modal-overlay hidden" id="createBotModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Create Autonomous Bot</h3>
+        <button id="btnCloseCreateBot" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="botName">Bot Name</label>
+          <input type="text" id="botName" class="form-control" placeholder="e.g. CTO Bot, Security Auditor">
+        </div>
+        <div class="form-group">
+          <label for="botRole">Role / Title</label>
+          <input type="text" id="botRole" class="form-control" placeholder="e.g. Chief Technology Officer">
+        </div>
+        <div class="form-group">
+          <label for="botSystemPrompt">System Prompt & Instructions</label>
+          <textarea id="botSystemPrompt" class="form-control" rows="4" placeholder="You are the CTO bot. Provide high-level architectural oversight..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="botModel">Model Override (optional)</label>
+          <input type="text" id="botModel" class="form-control" placeholder="e.g. qwen3:8b, claude-3-7-sonnet">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnSaveBot" class="btn btn-primary">Register Bot</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Task Modal Overlay -->
+  <div class="modal-overlay hidden" id="createTaskModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Add Agent Task</h3>
+        <button id="btnCloseCreateTask" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="taskTitle">Task Title</label>
+          <input type="text" id="taskTitle" class="form-control" placeholder="e.g. Refactor command runner">
+        </div>
+        <div class="form-group">
+          <label for="taskPriority">Priority</label>
+          <select id="taskPriority" class="form-control">
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnSaveTask" class="btn btn-primary">Save Task</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Learned Rules Modal Overlay -->
+  <div class="modal-overlay hidden" id="learnedRulesModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>🧠 Continuous Learned User Guidelines</h3>
+        <button id="btnCloseLearnedRules" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+          Automatically extracted from your conversation transcripts according to Grok Bot Continuous Learning standards:
+        </p>
+        <pre class="markdown-viewer" id="learnedRulesContent">Loading rules...</pre>
+      </div>
+      <div class="modal-actions">
+        <button id="btnRefreshLearnedRules" class="btn btn-secondary">Re-Analyze Transcripts</button>
+        <button id="btnCloseLearnedRulesAction" class="btn btn-primary">Done</button>
       </div>
     </div>
   </div>

@@ -3,6 +3,7 @@ import * as os from "node:os";
 export interface SystemPromptContext {
   workspaceDir?: string;
   userInstructions?: string;
+  learnedRules?: string;
   platform?: string;
   shell?: string;
 }
@@ -29,8 +30,8 @@ You operate directly on the user's local machine with high rigor, precision, and
 4. Rigorous Verification: Reproduce bugs before fixing them, run tests, and check diffs before concluding work.
 
 ## Tools Available
-You have access to tools for terminal execution, file inspection, and file editing.
+You have access to tools for terminal execution, file inspection, file editing, and subagent orchestration.
 Use tools proactively when information from the environment is needed.
-${context.userInstructions ? `\n## User Custom Instructions\n${context.userInstructions}` : ""}
+${context.learnedRules ? `\n## Continuous Learned User Guidelines\n${context.learnedRules}\n` : ""}${context.userInstructions ? `\n## User Custom Instructions\n${context.userInstructions}` : ""}
 `.trim();
 }

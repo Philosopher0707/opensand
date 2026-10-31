@@ -1,34 +1,34 @@
-import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import * as readline from "node:readline/promises";
 import * as fs from "node:fs/promises";
 import { LocalExecDaemon } from "@opensand/local-exec-daemon";
 import { registerNativeTools } from "@opensand/native-bridge";
-import { UniversalLLMClient, AgentCoordinator, McpManager } from "@opensand/coordinator";
+import { UniversalLLMClient, AgentCoordinator, McpManager, registerOrchestratorTools } from "@opensand/coordinator";
 import { parseCliArgs, CliConfig } from "./config.js";
 import { TerminalUI } from "./terminal-ui.js";
 
 export async function runCli(argv: string[]): Promise<void> {
   if (argv.includes("--help") || argv.includes("-h")) {
-    console.log(`OpenSand - Universal Open-Source Desktop Agent CLI
+    console.log(`
+OpenSand - Universal Autonomous Coding Agent (Grok Bot Parity)
 
 Usage:
   opensand [options] [query]
 
 Options:
-  --model <model>           Model name (default: $OPENSAND_MODEL or gpt-4o)
-  --endpoint <url>          Endpoint URL (default: $OPENSAND_ENDPOINT or https://api.openai.com/v1)
-  --api-key <key>           API Key (default: $OPENSAND_API_KEY or $OPENAI_API_KEY)
-  --bot <name>              Load bot persona from ~/.opensand/bots/<name>.md (e.g. cto)
-  --auto-approve, -y        Auto-approve all tool operations without prompting
-  --system-prompt <file>    Custom system prompt file path
-  --help, -h                Show help
-  --version, -v             Show version
+  --endpoint <url>         LLM API base URL (default: $OPENSAND_ENDPOINT or OpenAI)
+  --model <name>           Model identifier (default: $OPENSAND_MODEL or gpt-4o)
+  --api-key <key>          API key (default: $OPENSAND_API_KEY)
+  --bot <id_or_name>       Activate a registered bot persona from Agent Store (e.g. 'cto')
+  --system-prompt <file>   Path to custom instructions markdown/text file
+  --auto-approve, -y       Auto-approve tool execution (non-interactive mode)
+  --help, -h               Show this help message
+  --version, -v            Show version
 
 Examples:
-  opensand --bot cto "Audit architecture and review technical debt"
-  opensand "List all git branches and check status"
-  opensand --model llama3 --endpoint http://localhost:11434/v1
-  opensand --auto-approve
+  opensand "List on-screen windows and summarize open apps"
+  opensand --bot cto "Audit packages/local-exec-daemon for security vulnerabilities"
+  opensand --model qwen3:8b --endpoint http://127.0.0.1:11434/v1 "Inspect the repository"
 `);
     return;
   }
@@ -46,6 +46,14 @@ Examples:
   registerNativeTools(daemon);
   await daemon.start();
 
+  // Initialize Orchestrator Meta-Tools (create_agent, list_agents, delegate_to_agent)
+  const { store: agentStore, habitExtractor } = registerOrchestratorTools({
+    daemon,
+    defaultEndpoint: config.endpoint,
+    defaultModel: config.model,
+    defaultApiKey: config.apiKey,
+  });
+
   // Initialize MCP Manager & load configured servers
   const mcp = new McpManager({ daemon });
   const mcpCount = await mcp.startAll();
@@ -60,14 +68,14 @@ Examples:
   // 2. Custom system prompt or bot persona if supplied
   let userInstructions: string | undefined;
   if (config.bot) {
-    const osMod = await import("node:os");
-    const pathMod = await import("node:path");
-    const botPath = pathMod.join(osMod.homedir(), ".opensand", "bots", config.bot.endsWith(".md") ? config.bot : `${config.bot}.md`);
-    try {
-      userInstructions = await fs.readFile(botPath, "utf-8");
-      ui.printInfo(`🤖 Loaded Bot Persona: ${config.bot}`);
-    } catch {
-      console.error(`Warning: Bot persona '${config.bot}' not found at ${botPath}`);
+    const agent = await agentStore.getAgent(config.bot);
+    if (agent) {
+      userInstructions = agent.systemPrompt;
+      if (agent.model) config.model = agent.model;
+      if (agent.endpoint) config.endpoint = agent.endpoint;
+      ui.printInfo(`🤖 Activated Bot Persona from Agent Store: ${agent.name} (${agent.role})`);
+    } else {
+      console.error(`Warning: Bot persona '${config.bot}' not found in Agent Store. Run 'opensand' and ask it to create_agent.`);
     }
   } else if (config.systemPromptFile) {
     try {
@@ -76,6 +84,8 @@ Examples:
       console.error(`Warning: failed to read system prompt file: ${err.message}`);
     }
   }
+
+  const learnedRules = await habitExtractor.getLearnedRulesMarkdown();
 
   // 3. Initialize Universal LLM Client
   const llmClient = new UniversalLLMClient({
@@ -90,6 +100,7 @@ Examples:
     daemon,
     systemPromptContext: {
       userInstructions,
+      learnedRules,
     },
     onApprovalRequired: async (req) => {
       if (config.autoApprove) return true;
@@ -106,49 +117,56 @@ Examples:
         case "tool_call_completed":
           ui.onToolCallCompleted(event.toolCall, event.result);
           break;
-        case "turn_completed":
-          ui.onTurnCompleted();
+        case "error":
+          ui.printError(event.error.message);
           break;
       }
     },
   });
 
-  try {
-    // One-shot mode
-    if (config.query) {
-      ui.printBanner(config.model, config.endpoint);
-      console.log(`Query: ${config.query}\n`);
+  ui.printBanner(config.model, config.endpoint);
+  if (mcpCount > 0) {
+    ui.printInfo(`Loaded ${mcpCount} external MCP server(s)`);
+  }
+
+  // 5. Execution mode: single query or interactive REPL
+  if (config.query) {
+    ui.printUserTurn(config.query);
+    try {
       await coordinator.runTurn(config.query);
-      return;
+      console.log("\n");
+    } catch (err: any) {
+      ui.printError(`Execution failed: ${err.message}`);
+      process.exitCode = 1;
+    } finally {
+      await daemon.stop();
     }
+    return;
+  }
 
-    // Interactive REPL Mode
-    ui.printBanner(config.model, config.endpoint);
-    const rl = readline.createInterface({ input, output });
+  // Interactive REPL loop
+  const rl = readline.createInterface({ input, output });
 
+  try {
     while (true) {
-      ui.printPromptPrefix();
-      const line = await rl.question("");
+      const line = await rl.question("\n\x1b[36mopensand>\x1b[0m ");
       const trimmed = line.trim();
 
       if (!trimmed) continue;
       if (trimmed === "exit" || trimmed === "quit" || trimmed === "/exit") {
-        console.log("Goodbye!");
         break;
       }
 
+      ui.printUserTurn(trimmed);
       try {
         await coordinator.runTurn(trimmed);
+        console.log("\n");
       } catch (err: any) {
-        console.error(`\nTurn error: ${err.message}\n`);
+        ui.printError(`Turn failed: ${err.message}`);
       }
     }
-
-    rl.close();
   } finally {
-    try {
-      await mcp.closeAll();
-    } catch {}
+    rl.close();
     await daemon.stop();
   }
 }
