@@ -87,3 +87,56 @@
   3. If explicit one-time `approvalGranted` is passed $\rightarrow$ Execute.
   4. Otherwise $\rightarrow$ Return `status: "permission_pending"` with an `approvalId` and notify the UI/user.
 * **Golden Rule:** Never silently execute non-allowlisted shell commands without user confirmation.
+
+---
+
+## 6. CLI & Interactive Terminal Engineering
+
+### 6.1 Node.js `readline/promises` Ctrl+C `AbortError` Trap
+* **Trap:** Using `await rl.question(...)` from `node:readline/promises` without catching `AbortError` causes Node to throw `AbortError: Aborted with Ctrl+C (code: ABORT_ERR)` when the user presses `Ctrl+C` while awaiting input, dumping an unhandled rejection stack trace.
+* **Root Cause:** In Node 18+, `readline/promises` triggers an internal abort controller on `SIGINT` when a question is pending.
+* **Fix:** Always wrap the REPL input prompt in a try/catch block:
+  ```ts
+  try {
+    const input = await rl.question(prompt);
+  } catch (err: any) {
+    if (err.name === "AbortError" || err.code === "ABORT_ERR") {
+      terminalUI.printInfo("\nExiting OpenSand.");
+      break;
+    }
+    throw err;
+  }
+  ```
+
+---
+
+## 7. LLM Provider Hierarchy & Zero-Config Local Defaults
+
+### 7.1 Unauthenticated Cloud Endpoint Trap
+* **Trap:** Defaulting to `https://api.openai.com/v1` and `gpt-4o` when no `$OPENAI_API_KEY` is present causes immediate `401 Unauthorized` errors when running the CLI without arguments (`opensand`).
+* **Root Cause:** Hardcoding cloud defaults without checking credential presence creates a broken out-of-the-box experience.
+* **Rule:** Resolve provider configurations hierarchically:
+  1. Explicit CLI flags (`--endpoint`, `--model`, `--api-key`).
+  2. Environment variables (`$OPENSAND_ENDPOINT`, `$OPENAI_API_KEY`, etc.).
+  3. Persistent user settings (`~/.opensand/config.json`).
+  4. Local inference probe (test `http://127.0.0.1:11434` with a 300ms timeout). If alive, default to local Ollama with zero required keys.
+  5. If neither local nor cloud keys exist, guide the user on how to run Ollama or configure their API key before attempting network calls.
+
+---
+
+## 8. Multi-Agent Delegation & Context Isolation
+
+### 8.1 Subagent Transcript Hygiene & Grok Bot Parity
+* **Trap:** Sharing the coordinator's message history directly with subagents pollutes context windows and leads to persona leakage.
+* **Pattern:** OpenSand replicates Grok Bot's `CreateGrokBotAgent` and `OpenAgentTail` architecture:
+  - Subagents run in isolated turn loops with dedicated session IDs (`sub_<agentId>_<timestamp>`).
+  - System prompts and tool whitelists (`allowedTools`) are enforced at the subagent level.
+  - The parent coordinator only receives the synthesized final output from `delegate_to_agent`, maintaining minimal token overhead.
+
+---
+
+## 9. macOS Native Bridges & Graceful Permission Degradation
+
+### 9.1 Apple TCC Permissions (Screen Recording, Full Disk Access)
+* **Trap:** Hard crashing when reading `~/Library/Messages/chat.db` or invoking ScreenCaptureKit if permissions have not been granted in macOS System Settings.
+* **Rule:** System bridges must never crash the coordinator. Detect `EPERM` / `ENOENT` or TCC denials, format a structured diagnostic message instructing the user which toggle to enable in System Settings $\rightarrow$ Privacy & Security, and allow the model to report this gracefully to the user.

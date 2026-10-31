@@ -51,12 +51,12 @@ It replaces proprietary cloud ConnectRPC backends with universal OpenAI-compatib
 | Package | Description | Tests |
 |---|---|---|
 | [`@opensand/local-exec-daemon`](./packages/local-exec-daemon) | Local execution engine with preflight bash syntax & safety validation, atomic file I/O with SHA-256 digests, and crash-resilient JSON state files. | 27 passing |
-| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI `/v1/chat/completions` + Anthropic `/v1/messages` client, native MCP client, persistent Agent Store, Task Store, Habit Extractor, and Grok Bot transcript parity. | 25 passing |
+| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI `/v1/chat/completions` + Anthropic `/v1/messages` client, native MCP client, persistent Agent Store, Task Store, Habit Extractor, and Grok Bot transcript parity. | 26 passing |
 | [`@opensand/native-bridge`](./packages/native-bridge) | Native Apple Vision offline OCR (`sand-vision`), ScreenCaptureKit window capture (`sand-window-capture`), 1Password Seatbelt launcher, macOS Messages reader, and Speech Synthesis. | 6 passing |
 | [`@opensand/cli`](./packages/cli) | Interactive terminal REPL and one-shot execution CLI with live token streaming, bot persona switcher (`--bot`), and permission approval prompts. | 4 passing |
 | [`@opensand/desktop`](./packages/desktop) | Desktop GUI shell with macOS menubar tray, multi-bot switcher, live streaming chat, task management, learned guidelines modal, and local webview server. | 5 passing |
 
-**Total Test Coverage: 67/67 automated unit and integration tests passing (100% green).**
+**Total Test Coverage: 68/68 automated unit and integration tests passing (100% green).**
 
 ---
 
@@ -98,6 +98,68 @@ Discovered MCP tools are dynamically exposed to the model as `${serverName}__${t
 
 ---
 
+## Native macOS System Capabilities
+
+OpenSand includes native macOS bridges providing deep system integration without third-party cloud APIs:
+
+- **Apple Vision Offline OCR (`sand-vision`)**: Uses Apple's Neural Engine (`Vision.framework`) for offline text extraction with bounding boxes and confidence scores (`recognize_screen_text`).
+- **ScreenCaptureKit Window Capture (`sand-window-capture`)**: Discovers running application windows and captures individual window frames to disk (`list_windows`, `capture_window`).
+- **macOS Messages Reader (`messages-reader`)**: Read-only SQLite inspector for local iMessage database (`messages_get_recent`, `messages_search`).
+- **Native Speech Synthesis (`speech-bridge`)**: Speaks text aloud using macOS Apple Speech (`speak_text`).
+- **Seatbelt 1Password Launcher (`op-launcher`)**: Runs 1Password CLI within a macOS Seatbelt sandbox profile denying raw database access while supporting biometric unlock (`op_exec`).
+
+---
+
+## Configuration Resolution Hierarchy
+
+When launching OpenSand, endpoints and API keys are automatically resolved through a fail-safe hierarchy:
+
+1. **CLI Flags**: `--endpoint <url>`, `--model <name>`, `--api-key <key>`, `--bot <id>`
+2. **Environment Variables**: `$OPENSAND_ENDPOINT`, `$OPENSAND_MODEL`, `$OPENSAND_API_KEY`, `$OPENAI_API_KEY`
+3. **Persistent Config**: `~/.opensand/config.json` (saved via Desktop UI or CLI settings)
+4. **Local Ollama Auto-Detect**: If no cloud key is provided, OpenSand checks `http://127.0.0.1:11434/v1`. If available, it connects automatically with zero configuration.
+5. **Cloud Default**: `https://api.openai.com/v1` (reports actionable setup instructions if no API key is set).
+
+---
+
+## CLI & Global REPL Usage
+
+OpenSand installs standalone executables on your system PATH (`~/bin/opensand` and `~/bin/opensand-cto`):
+
+### Interactive REPL
+```bash
+# Launch default agent REPL
+opensand
+
+# Launch directly into the CTO Bot persona
+opensand-cto
+
+# Launch with explicit local endpoint
+opensand --endpoint http://127.0.0.1:11434/v1 --model qwen3:8b
+```
+
+### REPL Slash Commands
+Inside the interactive prompt (`opensand> `), use built-in slash commands:
+- `/help` - Show available REPL slash commands
+- `/tools` - Inspect all registered Core, Native, and MCP tools
+- `/bots` - List registered subagents and active persona
+- `/bot <name>` - Switch active bot persona on the fly (e.g. `/bot cto`)
+- `/tasks` - Display registered agent tasks and status
+- `/rules` - View learned user habits and behavior rules
+- `/clear` - Clear terminal screen
+- `exit` or `Ctrl+C` - Cleanly exit the session
+
+### One-Shot Execution
+```bash
+# Execute prompt with automatic tool approval
+opensand -y "List all open windows on this machine"
+
+# Delegate to CTO persona
+opensand --bot cto -y "Review repo architecture and outline our technical debt"
+```
+
+---
+
 ## Quick Start
 
 ### 1. Build and Test
@@ -107,16 +169,10 @@ pnpm build
 pnpm test
 ```
 
-### 2. Run with Local Ollama (e.g. Qwen 2.5 / 3)
+### 2. Package Standalone Binaries
 ```bash
-# One-shot query with auto-approval
-./dist/bin/opensand --endpoint http://127.0.0.1:11434/v1 --model qwen3:8b -y "Inspect this repo"
-
-# Run as specific agent persona
-./dist/bin/opensand --endpoint http://127.0.0.1:11434/v1 --model qwen3:8b --bot cto "Audit architecture"
-
-# Interactive REPL
-./dist/bin/opensand --endpoint http://127.0.0.1:11434/v1 --model qwen3:8b
+./scripts/package-cli.sh
+# Creates ~/bin/opensand, ~/bin/opensand-cto, and dist/bundle/OpenSand.app
 ```
 
 ### 3. Launch Desktop GUI
