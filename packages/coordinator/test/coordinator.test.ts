@@ -1,6 +1,5 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import * as http from "node:http";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -9,8 +8,6 @@ import { UniversalLLMClient } from "../src/llm-client.js";
 import { AgentCoordinator } from "../src/coordinator.js";
 
 describe("AgentCoordinator Integration", () => {
-  let server: http.Server;
-  let serverUrl: string;
   let tempDir: string;
   let daemon: LocalExecDaemon;
 
@@ -21,95 +18,36 @@ describe("AgentCoordinator Integration", () => {
       heartbeatIntervalMs: 200,
     });
     await daemon.start();
-
-    // Multi-turn mock server
-    server = http.createServer((req, res) => {
-      let bodyStr = "";
-      req.on("data", (chunk) => {
-        bodyStr += chunk;
-      });
-
-      req.on("end", () => {
-        const payload = JSON.parse(bodyStr);
-        const messages = payload.messages;
-        const lastMsg = messages[messages.length - 1];
-
-        res.writeHead(200, {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        });
-
-        if (lastMsg.role === "tool") {
-          // Model sees tool output and answers in natural language
-          res.write(
-            `data: ${JSON.stringify({
-              choices: [{ delta: { content: "Action completed successfully." } }],
-            })}\n\n`
-          );
-          res.write("data: [DONE]\n\n");
-          res.end();
-        } else if (lastMsg.content.includes("call-tool")) {
-          // Model issues tool call
-          res.write(
-            `data: ${JSON.stringify({
-              choices: [
-                {
-                  delta: {
-                    content: "Let me execute that.",
-                    tool_calls: [
-                      {
-                        index: 0,
-                        id: "call_mock_1",
-                        type: "function",
-                        function: {
-                          name: "write_file",
-                          arguments: JSON.stringify({
-                            path: path.join(tempDir, "output.txt"),
-                            content: "OpenSand Turn Loop Works!",
-                          }),
-                        },
-                      },
-                    ],
-                  },
-                },
-              ],
-            })}\n\n`
-          );
-          res.write("data: [DONE]\n\n");
-          res.end();
-        } else {
-          // Direct text response
-          res.write(
-            `data: ${JSON.stringify({
-              choices: [{ delta: { content: "Direct response from model." } }],
-            })}\n\n`
-          );
-          res.write("data: [DONE]\n\n");
-          res.end();
-        }
-      });
-    });
-
-    await new Promise<void>((resolve) => {
-      server.listen(0, "127.0.0.1", () => {
-        const addr = server.address() as { port: number };
-        serverUrl = `http://127.0.0.1:${addr.port}`;
-        resolve();
-      });
-    });
   });
 
   after(async () => {
     await daemon.stop();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
   it("completes a single-turn natural language conversation", async () => {
+    const mockFetch = async (_url: any, init: any): Promise<Response> => {
+      const encoder = new TextEncoder();
+      const chunks = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "Direct response from model." } }] })}\n\n`,
+        "data: [DONE]\n\n",
+      ];
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const c of chunks) controller.enqueue(encoder.encode(c));
+          controller.close();
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    };
+
     const client = new UniversalLLMClient({
-      baseUrl: serverUrl,
+      baseUrl: "https://api.openai.com/v1",
       model: "gpt-4o",
+      fetch: mockFetch as any,
     });
 
     const coordinator = new AgentCoordinator({
@@ -124,9 +62,69 @@ describe("AgentCoordinator Integration", () => {
   });
 
   it("executes multi-turn tool loops autonomously", async () => {
+    const outputPath = path.join(tempDir, "output.txt");
+
+    const mockFetch = async (_url: any, init: any): Promise<Response> => {
+      const payload = JSON.parse(init.body as string);
+      const messages = payload.messages;
+      const lastMsg = messages[messages.length - 1];
+      const encoder = new TextEncoder();
+
+      let chunks: string[] = [];
+
+      if (lastMsg.role === "tool") {
+        // Model sees tool output and answers in natural language
+        chunks = [
+          `data: ${JSON.stringify({ choices: [{ delta: { content: "Action completed successfully." } }] })}\n\n`,
+          "data: [DONE]\n\n",
+        ];
+      } else {
+        // Model issues tool call
+        chunks = [
+          `data: ${JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  content: "Let me execute that.",
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call_mock_1",
+                      type: "function",
+                      function: {
+                        name: "write_file",
+                        arguments: JSON.stringify({
+                          path: outputPath,
+                          content: "OpenSand Turn Loop Works!",
+                        }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          })}\n\n`,
+          "data: [DONE]\n\n",
+        ];
+      }
+
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const c of chunks) controller.enqueue(encoder.encode(c));
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    };
+
     const client = new UniversalLLMClient({
-      baseUrl: serverUrl,
+      baseUrl: "https://api.openai.com/v1",
       model: "gpt-4o",
+      fetch: mockFetch as any,
     });
 
     const coordinator = new AgentCoordinator({
@@ -135,19 +133,14 @@ describe("AgentCoordinator Integration", () => {
       sessionsBaseDir: path.join(tempDir, "sessions"),
     });
 
-    const finalAnswer = await coordinator.runTurn("Please call-tool to write file");
+    const finalAnswer = await coordinator.runTurn("Please write output file");
     assert.equal(finalAnswer, "Action completed successfully.");
 
-    // Check that file was written to disk
-    const fileContent = await fs.readFile(path.join(tempDir, "output.txt"), "utf-8");
+    // Check that file was written to disk by daemon
+    const fileContent = await fs.readFile(outputPath, "utf-8");
     assert.equal(fileContent, "OpenSand Turn Loop Works!");
 
-    // Verify history contains all steps:
-    // 0: system
-    // 1: user
-    // 2: assistant (with tool_calls)
-    // 3: tool (result)
-    // 4: assistant (final natural language response)
+    // Verify history contains all 5 steps
     assert.equal(coordinator.history.length, 5);
     assert.equal(coordinator.history[2].role, "assistant");
     assert.ok(coordinator.history[2].tool_calls);

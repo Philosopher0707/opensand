@@ -40,6 +40,7 @@ export interface LLMClientConfig {
   temperature?: number;
   maxTokens?: number;
   headers?: Record<string, string>;
+  fetch?: typeof globalThis.fetch;
 }
 
 export interface ApprovalRequest {

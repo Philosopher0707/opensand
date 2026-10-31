@@ -1,0 +1,30 @@
+{
+  "name": "@opensand/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "opensand": "dist/src/bin.js"
+  },
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "node --test dist/test/**/*.test.js"
+  },
+  "dependencies": {
+    "@opensand/coordinator": "workspace:*",
+    "@opensand/local-exec-daemon": "workspace:*",
+    "@opensand/native-bridge": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

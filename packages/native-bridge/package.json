@@ -1,0 +1,26 @@
+{
+  "name": "@opensand/native-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "scripts": {
+    "build:native": "mkdir -p bin && swiftc -O native/sand-vision.swift -o bin/sand-vision -framework Vision -framework Cocoa && swiftc -O native/sand-window-capture.swift -o bin/sand-window-capture -framework Cocoa -framework CoreGraphics",
+    "build": "tsc -b",
+    "test": "node --test dist/test/**/*.test.js"
+  },
+  "dependencies": {
+    "@opensand/local-exec-daemon": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

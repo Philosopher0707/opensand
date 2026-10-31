@@ -1,73 +1,42 @@
-import { describe, it, before, after } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import * as http from "node:http";
 import { UniversalLLMClient } from "../src/llm-client.js";
 import { ChatMessage } from "../src/types.js";
 
 describe("UniversalLLMClient", () => {
-  let server: http.Server;
-  let serverUrl: string;
-  let lastRequestBody: any = null;
-
-  before(async () => {
-    server = http.createServer((req, res) => {
-      let bodyStr = "";
-      req.on("data", (chunk) => {
-        bodyStr += chunk;
-      });
-
-      req.on("end", () => {
-        try {
-          lastRequestBody = JSON.parse(bodyStr);
-        } catch {
-          lastRequestBody = null;
-        }
-
-        if (req.url?.includes("/v1/chat/completions")) {
-          res.writeHead(200, {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            Connection: "keep-alive",
-          });
-
-          // Send mock streaming chunks
-          res.write(
-            `data: ${JSON.stringify({
-              choices: [{ delta: { content: "Hello " } }],
-            })}\n\n`
-          );
-          res.write(
-            `data: ${JSON.stringify({
-              choices: [{ delta: { content: "world!" } }],
-            })}\n\n`
-          );
-          res.write("data: [DONE]\n\n");
-          res.end();
-        } else {
-          res.writeHead(404);
-          res.end("Not Found");
-        }
-      });
-    });
-
-    await new Promise<void>((resolve) => {
-      server.listen(0, "127.0.0.1", () => {
-        const addr = server.address() as { port: number };
-        serverUrl = `http://127.0.0.1:${addr.port}`;
-        resolve();
-      });
-    });
-  });
-
-  after(async () => {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  });
-
   it("streams chat completions from OpenAI-compatible endpoint", async () => {
+    let capturedBody: any = null;
+
+    const mockFetch = async (_url: any, init: any): Promise<Response> => {
+      capturedBody = JSON.parse(init.body as string);
+      const encoder = new TextEncoder();
+
+      const chunks = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "Hello " } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "world!" } }] })}\n\n`,
+        "data: [DONE]\n\n",
+      ];
+
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const c of chunks) {
+            controller.enqueue(encoder.encode(c));
+          }
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    };
+
     const client = new UniversalLLMClient({
-      baseUrl: serverUrl,
+      baseUrl: "https://api.openai.com/v1",
       model: "gpt-4o",
       apiKey: "sk-test",
+      fetch: mockFetch as any,
     });
 
     const messages: ChatMessage[] = [{ role: "user", content: "hi" }];
@@ -82,7 +51,7 @@ describe("UniversalLLMClient", () => {
     const consolidated = getConsolidated();
     assert.equal(consolidated.role, "assistant");
     assert.equal(consolidated.content, "Hello world!");
-    assert.equal(lastRequestBody.model, "gpt-4o");
-    assert.equal(lastRequestBody.stream, true);
+    assert.equal(capturedBody.model, "gpt-4o");
+    assert.equal(capturedBody.stream, true);
   });
 });

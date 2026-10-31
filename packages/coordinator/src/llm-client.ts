@@ -70,7 +70,8 @@ export class UniversalLLMClient {
       body.tool_choice = "auto";
     }
 
-    const response = await fetch(endpoint, {
+    const fetchFn = this.config.fetch ?? globalThis.fetch;
+    const response = await fetchFn(endpoint, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
