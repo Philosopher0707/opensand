@@ -18,12 +18,14 @@ Options:
   --model <model>           Model name (default: $OPENSAND_MODEL or gpt-4o)
   --endpoint <url>          Endpoint URL (default: $OPENSAND_ENDPOINT or https://api.openai.com/v1)
   --api-key <key>           API Key (default: $OPENSAND_API_KEY or $OPENAI_API_KEY)
+  --bot <name>              Load bot persona from ~/.opensand/bots/<name>.md (e.g. cto)
   --auto-approve, -y        Auto-approve all tool operations without prompting
   --system-prompt <file>    Custom system prompt file path
   --help, -h                Show help
   --version, -v             Show version
 
 Examples:
+  opensand --bot cto "Audit architecture and review technical debt"
   opensand "List all git branches and check status"
   opensand --model llama3 --endpoint http://localhost:11434/v1
   opensand --auto-approve
@@ -55,9 +57,19 @@ Examples:
     });
   }
 
-  // 2. Custom system prompt if supplied
+  // 2. Custom system prompt or bot persona if supplied
   let userInstructions: string | undefined;
-  if (config.systemPromptFile) {
+  if (config.bot) {
+    const osMod = await import("node:os");
+    const pathMod = await import("node:path");
+    const botPath = pathMod.join(osMod.homedir(), ".opensand", "bots", config.bot.endsWith(".md") ? config.bot : `${config.bot}.md`);
+    try {
+      userInstructions = await fs.readFile(botPath, "utf-8");
+      ui.printInfo(`🤖 Loaded Bot Persona: ${config.bot}`);
+    } catch {
+      console.error(`Warning: Bot persona '${config.bot}' not found at ${botPath}`);
+    }
+  } else if (config.systemPromptFile) {
     try {
       userInstructions = await fs.readFile(config.systemPromptFile, "utf-8");
     } catch (err: any) {

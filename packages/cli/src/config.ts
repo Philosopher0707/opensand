@@ -5,6 +5,7 @@ export interface CliConfig {
   autoApprove: boolean;
   query?: string;
   systemPromptFile?: string;
+  bot?: string;
 }
 
 export function parseCliArgs(args: string[]): CliConfig {
@@ -28,6 +29,8 @@ export function parseCliArgs(args: string[]): CliConfig {
       config.apiKey = args[++i];
     } else if (arg === "--system-prompt" && i + 1 < args.length) {
       config.systemPromptFile = args[++i];
+    } else if (arg === "--bot" && i + 1 < args.length) {
+      config.bot = args[++i];
     } else if (arg === "--auto-approve" || arg === "-y") {
       config.autoApprove = true;
     } else if (!arg.startsWith("-")) {

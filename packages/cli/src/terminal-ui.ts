@@ -26,6 +26,10 @@ export class TerminalUI {
     output.write(`${BOLD}${MAGENTA}opensand>${RESET} `);
   }
 
+  printInfo(text: string): void {
+    console.log(`${DIM}${text}${RESET}`);
+  }
+
   onTextDelta(text: string): void {
     if (!this.inStreamToken) {
       output.write(`\n${BOLD}${CYAN}Assistant:${RESET}\n`);

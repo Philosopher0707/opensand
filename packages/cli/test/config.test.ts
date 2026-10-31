@@ -32,6 +32,13 @@ describe("CliConfig", () => {
     assert.equal(config.query, "git status");
   });
 
+  it("parses --bot persona flag", () => {
+    const config = parseCliArgs(["--bot", "cto", "run", "audit"]);
+
+    assert.equal(config.bot, "cto");
+    assert.equal(config.query, "run audit");
+  });
+
   it("defaults to standard environment", () => {
     const config = parseCliArgs([]);
 

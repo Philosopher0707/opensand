@@ -358,7 +358,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
   });
 
-  // Quick Tools
+  // Quick Tools & Personas
+  const btnPersonaCto = document.getElementById('btnPersonaCto');
+  if (btnPersonaCto) {
+    btnPersonaCto.onclick = () => {
+      startNewSession();
+      promptInput.value = 'Act as the CTO and conduct a comprehensive architectural and code health audit of this repository.';
+      submitQuery();
+    };
+  }
+
   btnQuickOcr.onclick = () => {
     promptInput.value = 'Call recognize_screen_text and extract text from the screen.';
     submitQuery();
