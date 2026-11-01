@@ -19,7 +19,7 @@ describe("NativeBridge", () => {
     assert.match(profile, /2BUA8C4S2C\.com\.1password/);
   });
 
-  it("registers 7 native tools into LocalExecDaemon", () => {
+  it("registers native tools into LocalExecDaemon", () => {
     const daemon = new LocalExecDaemon();
     registerNativeTools(daemon);
 
@@ -33,7 +33,10 @@ describe("NativeBridge", () => {
     assert.ok(names.includes("read_recent_messages"));
     assert.ok(names.includes("draft_imessage"));
     assert.ok(names.includes("speak_text"));
-    assert.equal(defs.length, 11); // 4 core + 7 native
+    assert.ok(names.includes("web_search"));
+    assert.ok(names.includes("fetch_web_page"));
+    assert.ok(names.includes("safari_inspect_active_tab"));
+    assert.equal(defs.length, 14); // 4 core + 10 native
   });
 
   it("enforces deviceTools gate on recognize_screen_text", async () => {
