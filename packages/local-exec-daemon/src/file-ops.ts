@@ -13,7 +13,26 @@ export async function readFileOperation(input: ReadFileInput): Promise<ReadFileO
       `File size (${(stat.size / (1024 * 1024)).toFixed(1)}MB) exceeds maximum safe read limit (25MB): ${resolvedPath}`
     );
   }
+  const BINARY_EXTENSIONS = new Set([
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf",
+    ".zip", ".tar", ".gz", ".7z", ".dmg", ".pkg", ".bin",
+    ".dylib", ".so", ".node", ".exe"
+  ]);
+  const ext = path.extname(resolvedPath).toLowerCase();
+  if (BINARY_EXTENSIONS.has(ext)) {
+    throw new Error(
+      `Cannot read binary file (${ext}) as text: ${resolvedPath}. For images, use 'recognize_screen_text' or inspect via shell.`
+    );
+  }
+
   const rawBytes = await fs.readFile(resolvedPath);
+  // Null-byte check on first 1KB
+  const checkSlice = rawBytes.subarray(0, Math.min(1024, rawBytes.byteLength));
+  if (checkSlice.includes(0)) {
+    throw new Error(
+      `Cannot read binary file (detected null bytes) as text: ${resolvedPath}.`
+    );
+  }
   const sha256 = crypto.createHash("sha256").update(rawBytes).digest("hex");
   const fullText = rawBytes.toString("utf-8");
   const lines = fullText.split("\n");

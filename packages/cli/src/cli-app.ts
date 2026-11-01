@@ -211,6 +211,9 @@ Examples:
           case "tool_call_completed":
             ui.onToolCallCompleted(event.toolCall, event.result);
             break;
+          case "turn_completed":
+            ui.onTurnCompleted(event.finalContent);
+            break;
           case "error":
             ui.printError(event.error.message);
             break;

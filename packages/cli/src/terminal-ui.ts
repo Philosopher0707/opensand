@@ -67,9 +67,13 @@ export class TerminalUI {
     }
   }
 
-  onTurnCompleted(): void {
+  onTurnCompleted(finalContent?: string): void {
     this.inStreamToken = false;
-    output.write("\n\n");
+    if (finalContent && finalContent.includes("Execution limit reached")) {
+      console.log(`\n${BOLD}${YELLOW}⚠️  [${finalContent}]${RESET}\n`);
+    } else {
+      output.write("\n\n");
+    }
   }
 
   async promptApproval(toolName: string, args: Record<string, any>): Promise<boolean> {

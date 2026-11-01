@@ -44,7 +44,7 @@ export class AgentCoordinator {
     this.allowedTools = options.allowedTools;
     this.onApprovalRequired = options.onApprovalRequired;
     this.onEvent = options.onEvent;
-    this.maxTurnIterations = options.maxTurnIterations ?? 25;
+    this.maxTurnIterations = options.maxTurnIterations ?? 50;
 
     // Initialize system message
     const systemPrompt = buildSystemPrompt(options.systemPromptContext);
@@ -252,7 +252,7 @@ export class AgentCoordinator {
     }
 
     // Safety circuit breaker hit
-    const fallbackMessage = "Execution limit reached: max turn iterations exceeded.";
+    const fallbackMessage = `Execution limit reached: max turn iterations (${this.maxTurnIterations}) reached. Type 'continue' to proceed.`;
     this.emit({ type: "turn_completed", finalContent: fallbackMessage });
     await this.transcript.writeHumanReadableTranscript(this.messages);
     return fallbackMessage;
