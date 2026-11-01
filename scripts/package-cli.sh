@@ -20,7 +20,16 @@ cat << 'EOF' > "$STANDALONE_BIN"
  * OpenSand Universal Coding Agent CLI
  * Standalone entrypoint
  */
-import { runCli } from '../../packages/cli/dist/src/cli-app.js';
+import { existsSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const relativeCandidate = resolve(__dirname, '../../packages/cli/dist/src/cli-app.js');
+const homeCandidate = resolve(process.env.HOME || '', 'dev/opensand/packages/cli/dist/src/cli-app.js');
+
+const target = existsSync(relativeCandidate) ? relativeCandidate : homeCandidate;
+const { runCli } = await import(target);
 
 runCli(process.argv.slice(2)).catch((err) => {
   console.error('\nOpenSand Fatal Error:', err.message);
