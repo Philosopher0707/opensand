@@ -12,6 +12,8 @@ import {
 } from "@opensand/coordinator";
 import { parseCliArgs, CliConfig, probeLocalOllama, validateConfig } from "./config.js";
 import { TerminalUI } from "./terminal-ui.js";
+import { runDoctorProbes } from "./doctor.js";
+import { getFleetStatus } from "./status.js";
 
 export async function runCli(argv: string[]): Promise<void> {
   if (argv.includes("--help") || argv.includes("-h")) {
@@ -59,6 +61,41 @@ Examples:
 
   const config = parseCliArgs(argv);
   const ui = new TerminalUI();
+
+  if (argv[0] === "doctor" || argv.includes("--doctor")) {
+    console.log(`\n\x1b[1m=== OpenSand System Doctor & Environment Preflight ===\x1b[0m\n`);
+    const { probes, allCriticalPassed } = await runDoctorProbes({
+      endpoint: config.endpoint,
+      apiKey: config.apiKey,
+      model: config.model,
+    });
+    for (const p of probes) {
+      const mark = p.status === "ok" ? "\x1b[32m✔\x1b[0m" : p.status === "warn" ? "\x1b[33m▲\x1b[0m" : "\x1b[31m✖\x1b[0m";
+      console.log(`  ${mark} \x1b[1m[${p.category}]\x1b[0m \x1b[36m${p.name}\x1b[0m: ${p.message}`);
+    }
+    console.log("");
+    if (allCriticalPassed) {
+      console.log("\x1b[32m✔ All critical preflight probes passed! OpenSand is ready for autonomous execution.\x1b[0m\n");
+    } else {
+      console.log("\x1b[31m✖ One or more critical probes failed. Please check the logs above.\x1b[0m\n");
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (argv[0] === "status" || argv.includes("--status")) {
+    const fleet = await getFleetStatus();
+    console.log(`\n\x1b[1m=== OpenSand Universal Agent Fleet Status ===\x1b[0m`);
+    console.log(`  🤖 Registered Agents:      ${fleet.agents.length}`);
+    console.log(`  👥 Collaborative Rooms:    ${fleet.rooms.length}`);
+    console.log(`  ⏱ Scheduled Routines:     ${fleet.routines.length}`);
+    console.log(`  🧩 Recipe Skills:          ${fleet.skills.length}`);
+    console.log(`  🔐 Encrypted Vault:        ${fleet.secrets.length} secrets, ${fleet.creds.length} credentials`);
+    console.log(`  📎 Staged Attachments:     ${fleet.attachments.length} files`);
+    console.log(`  📋 Active Tasks & Todos:   ${fleet.tasks.length} items`);
+    console.log(`  🧠 Cognitive Memory Facts: ${fleet.memories.length} facts\n`);
+    return;
+  }
 
   // If endpoint is cloud OpenAI default and no key is provided, check if local Ollama is alive
   const explicitEndpoint = argv.includes("--endpoint");
@@ -310,11 +347,14 @@ Examples:
       if (trimmed === "/help") {
         console.log(`
 Available OpenSand REPL Commands:
-  /tools              List all 60 active OS, orchestrator, and native tools
+  /tools              List all 61 active OS, orchestrator, and native tools
   /bots, /agents      List all registered bot personas in Agent Store
   /bot <name>         Switch active bot persona (e.g. '/bot cto' or '/bot default')
   /btw <question>     Ask ephemeral side-question using current work context (BTW parity)
   /rollback [turns]   Roll back conversation history by N turns (RollBack parity)
+  /compact [keep]     Compact older conversation turns into a dense summary
+  /doctor             Run preflight diagnostics across host runtime, models, and tools
+  /status             Show fleet status (agents, rooms, routines, skills, vault)
   /attach <file>      Stage a file or image attachment into session store
   /attachments        List all staged attachments
   /template export    Export bot persona into portable template JSON
@@ -338,6 +378,30 @@ Available OpenSand REPL Commands:
 
       if (trimmed === "/clear") {
         console.clear();
+        continue;
+      }
+
+      if (trimmed === "/doctor") {
+        console.log(`\n\x1b[1m=== OpenSand System Doctor & Environment Preflight ===\x1b[0m\n`);
+        const { probes } = await runDoctorProbes({
+          endpoint: config.endpoint,
+          apiKey: config.apiKey,
+          model: config.model,
+        });
+        for (const p of probes) {
+          const mark = p.status === "ok" ? "\x1b[32m✔\x1b[0m" : p.status === "warn" ? "\x1b[33m▲\x1b[0m" : "\x1b[31m✖\x1b[0m";
+          console.log(`  ${mark} \x1b[1m[${p.category}]\x1b[0m \x1b[36m${p.name}\x1b[0m: ${p.message}`);
+        }
+        console.log("");
+        continue;
+      }
+
+      if (trimmed === "/compact" || trimmed.startsWith("/compact ")) {
+        const parts = trimmed.split(" ");
+        const keepTurns = parts[1] ? parseInt(parts[1], 10) || 2 : 2;
+        ui.printInfo(`Compacting dialogue history (keeping ${keepTurns} most recent turns)...`);
+        const res = await coordinator.compactHistory({ keepRecentTurns: keepTurns });
+        console.log(`\x1b[32m✔ Compaction complete:\x1b[0m Compacted ${res.compactedTurnCount} turns. Estimated tokens reduced from ${res.originalTokens} to ${res.compactedTokens}.`);
         continue;
       }
 

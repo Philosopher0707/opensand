@@ -316,4 +316,59 @@ describe("AgentCoordinator Integration", () => {
     assert.equal(rb2.removedMessages, 2);
     assert.equal(coordinator.history.length, 1); // system only
   });
+
+  it("compacts older conversational history while preserving system instructions and recent turns", async () => {
+    const mockFetch = async (_url: any, init: any): Promise<Response> => {
+      const payload = JSON.parse(init.body as string);
+      const userMsg = payload.messages.filter((m: any) => m.role === "user").pop();
+      const encoder = new TextEncoder();
+      const chunks = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: `Response for ${userMsg.content}` } }] })}\n\n`,
+        "data: [DONE]\n\n",
+      ];
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const c of chunks) controller.enqueue(encoder.encode(c));
+          controller.close();
+        },
+      });
+      return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    };
+
+    const client = new UniversalLLMClient({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      fetch: mockFetch as any,
+    });
+
+    const coordinator = new AgentCoordinator({
+      llmClient: client,
+      daemon,
+      sessionsBaseDir: path.join(tempDir, "sessions"),
+    });
+
+    await coordinator.runTurn("Turn 1: Setup project structure and configure TypeScript, linting, packaging configs, and git hooks with continuous integration scripts.");
+    await coordinator.runTurn("Turn 2: Install dependencies, configure dependencies resolution, lockfiles, and peer dependency overrides for the workspace monorepo.");
+    await coordinator.runTurn("Turn 3: Write primary feature");
+    await coordinator.runTurn("Turn 4: Run unit test suite");
+
+    const tokensBefore = coordinator.estimateTokens();
+    assert.ok(tokensBefore > 0);
+    assert.equal(coordinator.history.length, 9); // 1 system + 4*(user+assistant) = 9
+
+    // Compact history keeping the 2 most recent turns (Turn 3 and 4)
+    const compactRes = await coordinator.compactHistory({ keepRecentTurns: 2 });
+    // console.log("Tokens before:", compactRes.originalTokens, "after:", compactRes.compactedTokens);
+    assert.equal(compactRes.compactedTurnCount, 2);
+
+    // History now has: system (original), system (summary), Turn 3 (user, asst), Turn 4 (user, asst) = 6
+    assert.equal(coordinator.history.length, 6);
+    assert.equal(coordinator.history[0].role, "system");
+    assert.equal(coordinator.history[1].role, "system");
+    assert.ok(coordinator.history[1].content?.includes("<historical_context_summary>"));
+    assert.ok(coordinator.history[1].content?.includes("Turn 1"));
+
+    // Most recent turn is preserved
+    assert.equal(coordinator.history[coordinator.history.length - 2].content, "Turn 4: Run unit test suite");
+  });
 });

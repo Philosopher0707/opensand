@@ -275,6 +275,16 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     assert.strictEqual(resImportTpl.statusCode, 201);
     const importedAgent = JSON.parse(resImportTpl.body);
     assert.ok(importedAgent.id.startsWith('agent_imported_auditor_'));
+
+    // Test POST /api/compact (error boundary when no active session)
+    const reqCompact = new MockIncomingMessage('POST', '/api/compact');
+    const resCompact = new MockServerResponse();
+    const compactPromise = (server as any).handleRequest(reqCompact, resCompact);
+    reqCompact.emit('data', Buffer.from(JSON.stringify({ keepRecentTurns: 2 })));
+    reqCompact.emit('end');
+    await compactPromise;
+    assert.strictEqual(resCompact.statusCode, 400);
+    assert.ok(JSON.parse(resCompact.body).error.includes('No active conversation coordinator'));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

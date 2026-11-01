@@ -341,4 +341,93 @@ ${question}`;
 
     return { removedMessages, remainingMessages: this.messages.length };
   }
+
+  /**
+   * Estimate the token footprint of the current active dialogue context.
+   * Uses an accurate ~3.8 chars/token blended heuristic for code and natural language.
+   */
+  estimateTokens(): number {
+    let totalChars = 0;
+    for (const msg of this.messages) {
+      if (msg.content) {
+        totalChars += msg.content.length;
+      }
+      if (msg.tool_calls) {
+        for (const tc of msg.tool_calls) {
+          totalChars += tc.function.name.length + (tc.function.arguments?.length || 0);
+        }
+      }
+    }
+    return Math.ceil(totalChars / 3.8);
+  }
+
+  /**
+   * Compact conversation history by condensing older turns into a dense summary,
+   * preserving system instructions and the most recent active turns.
+   */
+  async compactHistory(options?: {
+    keepRecentTurns?: number;
+    customSummary?: string;
+  }): Promise<{ originalTokens: number; compactedTokens: number; compactedTurnCount: number }> {
+    const keepRecentTurns = options?.keepRecentTurns ?? 2;
+    const originalTokens = this.estimateTokens();
+
+    const userIndices: number[] = [];
+    for (let i = 0; i < this.messages.length; i++) {
+      if (this.messages[i].role === "user") {
+        userIndices.push(i);
+      }
+    }
+
+    if (userIndices.length <= keepRecentTurns) {
+      return { originalTokens, compactedTokens: originalTokens, compactedTurnCount: 0 };
+    }
+
+    const cutTurnIndex = userIndices.length - keepRecentTurns;
+    const cutMessageIndex = userIndices[cutTurnIndex];
+
+    const systemMessage = this.messages[0];
+    const olderMessages = this.messages.slice(1, cutMessageIndex);
+    const recentMessages = this.messages.slice(cutMessageIndex);
+
+    let summaryText = options?.customSummary;
+    if (!summaryText) {
+      const bulletPoints: string[] = [];
+      let currentQuery = "";
+      for (const msg of olderMessages) {
+        if (msg.role === "user") {
+          currentQuery = (msg.content || "").replace(/\n+/g, " ").slice(0, 120);
+        } else if (msg.role === "assistant" && currentQuery) {
+          const respSnippet = (msg.content || "").replace(/\n+/g, " ").slice(0, 150);
+          bulletPoints.push(`- User: "${currentQuery}" -> Assistant: "${respSnippet}"`);
+          currentQuery = "";
+        }
+      }
+
+      summaryText = `<historical_context_summary>\n## Compacted Prior History (${olderMessages.length} messages summarized):\n${bulletPoints.join("\n") || "- Earlier conversational turns completed successfully."}\n</historical_context_summary>`;
+    }
+
+    const summaryMessage: ChatMessage = {
+      role: "system",
+      content: summaryText,
+    };
+
+    this.messages = [systemMessage, summaryMessage, ...recentMessages];
+    const compactedTokens = this.estimateTokens();
+
+    await this.transcript.writeHumanReadableTranscript(this.messages);
+    await this.transcript.appendJsonl({
+      role: "system",
+      event: "compacted",
+      compactedTurns: cutTurnIndex,
+      originalTokens,
+      compactedTokens,
+    });
+
+    return {
+      originalTokens,
+      compactedTokens,
+      compactedTurnCount: cutTurnIndex,
+    };
+  }
 }

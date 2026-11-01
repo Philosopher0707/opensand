@@ -767,6 +767,21 @@ export class DesktopServer {
       return;
     }
 
+    // API: POST /api/compact (Context Window Auto-Compaction)
+    if (pathname === '/api/compact' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      const keep = typeof body.keepRecentTurns === 'number' ? body.keepRecentTurns : 2;
+      try {
+        const result = await this.bridge.compactHistory(keep);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err: any) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
     // Serve static files from renderer/
     let filePath = path.join(this.rendererDir, pathname === '/' ? 'index.html' : pathname);
     const resolvedPath = path.resolve(filePath);

@@ -3,7 +3,7 @@
 **Date:** 2026-11-01  
 **Project:** OpenSand (`~/dev/opensand`)  
 **Target Reverse-Engineered:** Grok Bot macOS Desktop App (`/Applications/Grok Bot.app`, Bundle ID: `com.anysphere.sand`, Version: 0.78.1)  
-**Status:** Phases 1–11 Fully Implemented & Hardened (119/119 unit & integration tests passing, 100% green, 60 active registered tools)
+**Status:** Phases 1–12 Fully Implemented & Hardened (122/122 unit & integration tests passing, 100% green, 61 active registered tools)
 
 ---
 
@@ -142,13 +142,13 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 ## 4. Verification & Health Summary
 
 * **Monorepo Build**: `pnpm build` (`tsc -b` across all 5 packages) $\rightarrow$ 0 errors.
-* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **119 passed, 0 failed, 100% green**:
+* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **122 passed, 0 failed, 100% green**:
   * `@opensand/local-exec-daemon`: 29 passed
-  * `@opensand/coordinator`: 66 passed
+  * `@opensand/coordinator`: 67 passed
   * `@opensand/native-bridge`: 11 passed
-  * `@opensand/cli`: 7 passed
+  * `@opensand/cli`: 9 passed
   * `@opensand/desktop`: 6 passed
-* **Active Tool Catalog**: **60 fully registered tools** spanning core bash/file ops, native macOS vision/windows/audio, web browser automation, multi-agent orchestration, cognitive memories, encrypted vault, modular skills, scheduled routines, group rooms, git lifecycle, workspace sentinel, attachment staging, and agent templates.
+* **Active Tool Catalog**: **61 fully registered tools** spanning core bash/file ops, native macOS vision/windows/audio, web browser automation, multi-agent orchestration, cognitive memories, encrypted vault, modular skills, scheduled routines, group rooms, git lifecycle, workspace sentinel, attachment staging, agent templates, and context auto-compaction.
 * **Backend Audit & Resilience Hardening**:
   * All 14 audit findings remediated across security, storage, resilience, networking, and deploy vectors.
   * DNS rebinding / host header check, strict origin verification, and HTTP keep-alive timeouts.

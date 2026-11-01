@@ -29,6 +29,7 @@ export interface RegisterOrchestratorToolsOptions {
   gitManager?: GitManager;
   workspaceSentinel?: WorkspaceSentinel;
   attachmentManager?: AttachmentManager;
+  coordinator?: AgentCoordinator;
   defaultEndpoint?: string;
   defaultModel?: string;
   defaultApiKey?: string;
@@ -1772,6 +1773,43 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           message: err.message,
         });
       }
+    },
+  });
+
+  // 47. Tool: compact_conversation
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "compact_conversation",
+        description: "Compact the current conversation history by summarizing older turns into a dense historical context block, freeing up context tokens.",
+        parameters: {
+          type: "object",
+          properties: {
+            keep_recent_turns: {
+              type: "number",
+              description: "Number of most recent complete user turns to keep uncompacted (default: 2).",
+            },
+          },
+        },
+      },
+    },
+    handler: async (args) => {
+      if (!options.coordinator) {
+        return JSON.stringify({
+          status: "info",
+          message: "No active session coordinator attached for in-flight compaction.",
+        });
+      }
+      const res = await options.coordinator.compactHistory({
+        keepRecentTurns: typeof args.keep_recent_turns === "number" ? args.keep_recent_turns : 2,
+      });
+      return JSON.stringify({
+        status: "success",
+        originalTokens: res.originalTokens,
+        compactedTokens: res.compactedTokens,
+        compactedTurns: res.compactedTurnCount,
+      }, null, 2);
     },
   });
 

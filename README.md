@@ -51,12 +51,12 @@ It replaces proprietary cloud ConnectRPC backends with universal OpenAI-compatib
 | Package | Description | Tests |
 |---|---|---|
 | [`@opensand/local-exec-daemon`](./packages/local-exec-daemon) | Local execution engine with preflight bash syntax & safety validation, atomic file I/O with SHA-256 digests, and crash-resilient JSON state files. | 29 passing |
-| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI & Anthropic clients, native MCP client, persistent Agent Store, Task Store, Habit Extractor, 7-Layer Memory System, Local Encrypted Vault, Recipe Skills Engine, Routine Engine, Multi-Agent Rooms, Git Manager, Workspace Sentinel, Attachment Staging, and Side-Question/Rollback engines. | 66 passing |
+| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI & Anthropic clients, native MCP client, persistent Agent Store, Task Store, Habit Extractor, 7-Layer Memory System, Local Encrypted Vault, Recipe Skills Engine, Routine Engine, Multi-Agent Rooms, Git Manager, Workspace Sentinel, Attachment Staging, and Side-Question/Rollback/Compaction engines. | 67 passing |
 | [`@opensand/native-bridge`](./packages/native-bridge) | Native Apple Vision offline OCR (`sand-vision`), ScreenCaptureKit window capture (`sand-window-capture`), 1Password Seatbelt launcher, macOS Messages reader, Speech Synthesis, and Browser Automation (`web_search`, `fetch_web_page`, Safari tab inspector). | 11 passing |
-| [`@opensand/cli`](./packages/cli) | Interactive terminal REPL with live token streaming, bot persona switcher (`--bot`), first-class slash commands for rooms/routines/skills/vault/git/reviews/btw/rollback/attachments/templates, and permission approval prompts. | 7 passing |
+| [`@opensand/cli`](./packages/cli) | Interactive terminal REPL with live token streaming, bot persona switcher (`--bot`), system doctor (`opensand doctor`), fleet status (`opensand status`), first-class slash commands, and permission approval prompts. | 9 passing |
 | [`@opensand/desktop`](./packages/desktop) | Multi-tab Desktop GUI & REST server (`http://127.0.0.1:3456`) with Chat, Rooms, Routines, Skills, Vault, Memory Review Queue, Task Management, Attachments, and local webview shell. | 6 passing |
 
-**Total Test Coverage: 119/119 automated unit and integration tests passing (100% green).**
+**Total Test Coverage: 122/122 automated unit and integration tests passing (100% green).**
 
 ---
 
@@ -246,6 +246,15 @@ When launching OpenSand, endpoints and API keys are automatically resolved throu
 
 OpenSand installs standalone executables on your system PATH (`~/bin/opensand` and `~/bin/opensand-cto`):
 
+### System Health & Fleet Preflight
+```bash
+# Run comprehensive environment, model connectivity, and tool integrity doctor
+opensand doctor
+
+# Inspect overall fleet statistics across agents, rooms, routines, and vault
+opensand status
+```
+
 ### Interactive REPL
 ```bash
 # Launch default agent REPL
@@ -261,9 +270,18 @@ opensand --endpoint http://127.0.0.1:11434/v1 --model qwen3:8b
 ### REPL Slash Commands
 Inside the interactive prompt (`opensand> `), use built-in slash commands:
 - `/help` - Show available REPL slash commands
-- `/tools` - Inspect all 56 active Core, Native, Orchestrator, and MCP tools
+- `/tools` - Inspect all 61 active Core, Native, Orchestrator, and MCP tools
 - `/bots`, `/agents` - List registered subagents and active persona
 - `/bot <name>` - Switch active bot persona on the fly (e.g. `/bot cto` or `/bot default`)
+- `/btw <question>` - Ask ephemeral side-question using current work context (BTW prompt parity)
+- `/rollback [turns]` - Roll back conversation history by N turns (RollBack parity)
+- `/compact [keep]` - Compact dialogue history by condensing older turns into a dense summary
+- `/doctor` - Run system preflight diagnostics across host runtime, models, and tools
+- `/status` - Display fleet summary (agents, rooms, routines, skills, vault)
+- `/attach <file>` - Stage a file or image attachment into session store
+- `/attachments` - List all staged attachments
+- `/template export` - Export bot persona into portable template JSON
+- `/template import` - Import bot persona from template JSON
 - `/rooms` - List all multi-agent collaborative rooms
 - `/room <id> <topic>` - Convene a multi-agent round-table deliberation and consensus draft
 - `/routines` - List all scheduled background automations
@@ -271,7 +289,7 @@ Inside the interactive prompt (`opensand> `), use built-in slash commands:
 - `/skills` - List all modular recipe skills
 - `/skill <name>` - Inspect the full markdown recipe and instructions of a skill
 - `/vault` - Inspect encrypted secrets & credentials with masked previews
-- `/git`, `/status` - Inspect git branch, staged, modified, and untracked files
+- `/git` - Inspect git branch, staged, modified, and untracked files
 - `/review [ref]` - Run autonomous PR review bot on pull request or commit diff
 - `/tasks` - Display registered agent tasks and status
 - `/rules` - View continuous learned user habits and behavior rules

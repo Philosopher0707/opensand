@@ -638,4 +638,11 @@ export class DesktopIpcBridge extends EventEmitter {
     }
     return this.coordinator.rollbackTurns(turns);
   }
+
+  public async compactHistory(keepRecentTurns = 2): Promise<{ originalTokens: number; compactedTokens: number; compactedTurnCount: number }> {
+    if (!this.coordinator) {
+      throw new Error('No active conversation coordinator available to compact');
+    }
+    return this.coordinator.compactHistory({ keepRecentTurns });
+  }
 }
