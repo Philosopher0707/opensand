@@ -10,6 +10,7 @@ import { VaultStore, VaultItemKind } from "./vault-store.js";
 import { SkillStore } from "./skill-store.js";
 import { RoutineEngine } from "./routine-engine.js";
 import { RoomManager } from "./room-manager.js";
+import { GitManager } from "./git-manager.js";
 import { UniversalLLMClient } from "./llm-client.js";
 import { AgentCoordinator } from "./coordinator.js";
 
@@ -23,6 +24,7 @@ export interface RegisterOrchestratorToolsOptions {
   skillStore?: SkillStore;
   routineEngine?: RoutineEngine;
   roomManager?: RoomManager;
+  gitManager?: GitManager;
   defaultEndpoint?: string;
   defaultModel?: string;
   defaultApiKey?: string;
@@ -38,6 +40,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   skillStore: SkillStore;
   routineEngine: RoutineEngine;
   roomManager: RoomManager;
+  gitManager: GitManager;
 } {
   const { daemon } = options;
   const store = options.store ?? new AgentStore();
@@ -47,6 +50,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   const skillStore = options.skillStore ?? new SkillStore({ agentStore: store });
   const routineEngine = options.routineEngine ?? new RoutineEngine(undefined, vaultStore);
   const roomManager = options.roomManager ?? new RoomManager(undefined, store, vaultStore);
+  const gitManager = options.gitManager ?? new GitManager();
   const sessionsBaseDir = options.sessionsBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
   const habitExtractor = options.habitExtractor ?? new HabitExtractor({ sessionsDir: sessionsBaseDir });
 
@@ -1337,5 +1341,171 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
     },
   });
 
-  return { store, taskStore, habitExtractor, memoryStore, vaultStore, skillStore, routineEngine, roomManager };
+  // 34. Tool: git_status
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "git_status",
+        description: "Inspect the current git branch, clean status, and lists of modified, staged, and untracked files.",
+        parameters: {
+          type: "object",
+          properties: {
+            repo_dir: {
+              type: "string",
+              description: "Optional repository path (defaults to current working directory).",
+            },
+          },
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const status = await gitManager.getStatus(args.repo_dir);
+      return JSON.stringify({
+        status: "success",
+        ...status,
+      }, null, 2);
+    },
+  });
+
+  // 35. Tool: git_diff_summary
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "git_diff_summary",
+        description: "Get git diff statistics (insertions, deletions, files changed) and raw diff patch.",
+        parameters: {
+          type: "object",
+          properties: {
+            staged: {
+              type: "boolean",
+              description: "True to inspect staged (--cached) diff, false for working tree diff.",
+            },
+            repo_dir: {
+              type: "string",
+              description: "Optional repository path.",
+            },
+          },
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const diffSummary = await gitManager.getDiff(args.staged, args.repo_dir);
+      return JSON.stringify({
+        status: "success",
+        filesChanged: diffSummary.filesChanged,
+        insertions: diffSummary.insertions,
+        deletions: diffSummary.deletions,
+        diff: diffSummary.diff.slice(0, 15000), // Protect context window
+      }, null, 2);
+    },
+  });
+
+  // 36. Tool: git_worktree_create
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "git_worktree_create",
+        description: "Create an isolated git worktree directory for autonomous parallel work on a feature branch without disrupting the main workspace.",
+        parameters: {
+          type: "object",
+          properties: {
+            branch_name: {
+              type: "string",
+              description: "The name of the branch to create and checkout in the worktree.",
+            },
+            repo_dir: {
+              type: "string",
+              description: "Optional repository root path.",
+            },
+          },
+          required: ["branch_name"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const wt = await gitManager.createWorktree(args.branch_name, undefined, args.repo_dir);
+      return JSON.stringify({
+        status: "success",
+        message: `Created isolated git worktree at ${wt.worktreePath} on branch ${wt.branch}.`,
+        worktree: wt,
+      }, null, 2);
+    },
+  });
+
+  // 37. Tool: git_auto_commit
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "git_auto_commit",
+        description: "Stage all modified files and commit with a concise conventional commit message.",
+        parameters: {
+          type: "object",
+          properties: {
+            message: {
+              type: "string",
+              description: "Optional custom commit message (e.g. 'feat(auth): add vault integration'). If omitted, automatically inferred from staged files.",
+            },
+            repo_dir: {
+              type: "string",
+              description: "Optional repository path.",
+            },
+          },
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const commit = await gitManager.autoCommit(args.message, args.repo_dir);
+      return JSON.stringify({
+        status: "success",
+        message: `Committed ${commit.commitHash} on ${commit.branch}: "${commit.message}"`,
+        commit,
+      }, null, 2);
+    },
+  });
+
+  // 38. Tool: gh_pr_review
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "gh_pr_review",
+        description: "Autonomous PR review agent: inspects pull request diffs, checks for hardcoded credentials, anti-patterns, and rule violations, and outputs a structured review verdict.",
+        parameters: {
+          type: "object",
+          properties: {
+            pr_reference: {
+              type: "string",
+              description: "Pull request number, URL, or branch name (e.g. '12', 'HEAD', 'feature-auth').",
+            },
+            repo_dir: {
+              type: "string",
+              description: "Optional repository path.",
+            },
+          },
+          required: ["pr_reference"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const review = await gitManager.reviewPullRequest(args.pr_reference, args.repo_dir);
+      return JSON.stringify({
+        status: "success",
+        verdict: review.verdict,
+        summary: review.summary,
+        issuesCount: review.issues.length,
+        issues: review.issues,
+      }, null, 2);
+    },
+  });
+
+  return { store, taskStore, habitExtractor, memoryStore, vaultStore, skillStore, routineEngine, roomManager, gitManager };
 }
