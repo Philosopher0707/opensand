@@ -11,6 +11,7 @@ import { SkillStore } from "./skill-store.js";
 import { RoutineEngine } from "./routine-engine.js";
 import { RoomManager } from "./room-manager.js";
 import { GitManager } from "./git-manager.js";
+import { WorkspaceSentinel } from "./workspace-sentinel.js";
 import { UniversalLLMClient } from "./llm-client.js";
 import { AgentCoordinator } from "./coordinator.js";
 
@@ -25,6 +26,7 @@ export interface RegisterOrchestratorToolsOptions {
   routineEngine?: RoutineEngine;
   roomManager?: RoomManager;
   gitManager?: GitManager;
+  workspaceSentinel?: WorkspaceSentinel;
   defaultEndpoint?: string;
   defaultModel?: string;
   defaultApiKey?: string;
@@ -41,6 +43,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   routineEngine: RoutineEngine;
   roomManager: RoomManager;
   gitManager: GitManager;
+  workspaceSentinel: WorkspaceSentinel;
 } {
   const { daemon } = options;
   const store = options.store ?? new AgentStore();
@@ -51,6 +54,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   const routineEngine = options.routineEngine ?? new RoutineEngine(undefined, vaultStore);
   const roomManager = options.roomManager ?? new RoomManager(undefined, store, vaultStore);
   const gitManager = options.gitManager ?? new GitManager();
+  const workspaceSentinel = options.workspaceSentinel ?? new WorkspaceSentinel();
   const sessionsBaseDir = options.sessionsBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
   const habitExtractor = options.habitExtractor ?? new HabitExtractor({ sessionsDir: sessionsBaseDir });
 
@@ -1507,5 +1511,134 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
     },
   });
 
-  return { store, taskStore, habitExtractor, memoryStore, vaultStore, skillStore, routineEngine, roomManager, gitManager };
+  // 39. Tool: start_workspace_watcher
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "start_workspace_watcher",
+        description: "Launch background file sentinel to monitor workspace changes and run automated debounced test/build verification checks.",
+        parameters: {
+          type: "object",
+          properties: {
+            target_dir: {
+              type: "string",
+              description: "The directory to watch (e.g. './src' or repository root).",
+            },
+            check_command: {
+              type: "string",
+              description: "Optional command to run on file change (e.g. 'pnpm test' or 'tsc -b').",
+            },
+            auto_heal: {
+              type: "boolean",
+              description: "Whether the sentinel should automatically attempt to diagnose and heal detected failures.",
+            },
+            debounce_ms: {
+              type: "number",
+              description: "Debounce delay in milliseconds before triggering health checks (default: 500).",
+            },
+          },
+          required: ["target_dir"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const watcher = await workspaceSentinel.startWatcher({
+        targetDir: args.target_dir,
+        checkCommand: args.check_command,
+        autoHeal: args.auto_heal,
+        debounceMs: args.debounce_ms,
+      });
+      return JSON.stringify({
+        status: "success",
+        message: `Workspace sentinel active on ${watcher.targetDir} (${watcher.id}).`,
+        watcher,
+      }, null, 2);
+    },
+  });
+
+  // 40. Tool: list_workspace_watchers
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "list_workspace_watchers",
+        description: "List all active workspace sentinels and their target directories.",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async () => {
+      const watchers = workspaceSentinel.getWatchers();
+      return JSON.stringify({
+        status: "success",
+        count: watchers.length,
+        watchers,
+      }, null, 2);
+    },
+  });
+
+  // 41. Tool: stop_workspace_watcher
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "stop_workspace_watcher",
+        description: "Stop an active workspace sentinel watcher.",
+        parameters: {
+          type: "object",
+          properties: {
+            watcher_id: {
+              type: "string",
+              description: "The unique ID of the watcher to stop.",
+            },
+          },
+          required: ["watcher_id"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const stopped = workspaceSentinel.stopWatcher(args.watcher_id);
+      return JSON.stringify({
+        status: stopped ? "success" : "not_found",
+        message: stopped ? `Stopped watcher '${args.watcher_id}'.` : `Watcher '${args.watcher_id}' not found.`,
+      }, null, 2);
+    },
+  });
+
+  // 42. Tool: get_sentinel_diagnostic_logs
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "get_sentinel_diagnostic_logs",
+        description: "Retrieve recent health check, build error, and self-healing diagnostic events from workspace sentinels.",
+        parameters: {
+          type: "object",
+          properties: {
+            watcher_id: {
+              type: "string",
+              description: "Optional watcher ID to filter logs.",
+            },
+          },
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const logs = workspaceSentinel.getLogs(args.watcher_id);
+      return JSON.stringify({
+        status: "success",
+        count: logs.length,
+        logs: logs.slice(-20),
+      }, null, 2);
+    },
+  });
+
+  return { store, taskStore, habitExtractor, memoryStore, vaultStore, skillStore, routineEngine, roomManager, gitManager, workspaceSentinel };
 }

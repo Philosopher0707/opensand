@@ -15,5 +15,6 @@ export * from "./skill-store.js";
 export * from "./routine-engine.js";
 export * from "./room-manager.js";
 export * from "./git-manager.js";
+export * from "./workspace-sentinel.js";
 export * from "./orchestrator-tools.js";
 export * from "./coordinator.js";
