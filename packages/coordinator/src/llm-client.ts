@@ -76,6 +76,10 @@ export class UniversalLLMClient {
       ? buildAnthropicPayload(messages, tools, this.config)
       : this.buildOpenAIPayload(messages, tools);
 
+    const timeoutMs = this.config.timeoutMs ?? 120000;
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+
     const fetchFn = this.config.fetch ?? globalThis.fetch;
     let response: Response;
     try {
@@ -83,9 +87,12 @@ export class UniversalLLMClient {
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal,
+        signal: combinedSignal,
       });
     } catch (networkErr: any) {
+      if (timeoutSignal.aborted && !signal?.aborted) {
+        throw new Error(`LLM API request timed out after ${timeoutMs}ms waiting for response from ${endpoint}`);
+      }
       if (networkErr?.name === "AbortError" || signal?.aborted) {
         throw networkErr;
       }

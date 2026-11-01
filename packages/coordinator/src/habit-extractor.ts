@@ -124,10 +124,18 @@ export class HabitExtractor {
         });
       }
 
-      // Generate Markdown Summary
+      // Generate Markdown Summary atomically via temp file
       const markdown = this.formatMarkdown(rules, totalTranscriptsAnalyzed, extractedQueriesCount, correctionsCount);
-      await fs.mkdir(path.dirname(this.memoryFilePath), { recursive: true, mode: 0o700 });
-      await fs.writeFile(this.memoryFilePath, markdown, { encoding: "utf-8", mode: 0o600 });
+      const parentDir = path.dirname(this.memoryFilePath);
+      await fs.mkdir(parentDir, { recursive: true, mode: 0o700 });
+      const tempPath = path.join(parentDir, `.${path.basename(this.memoryFilePath)}.${Date.now()}.tmp`);
+      try {
+        await fs.writeFile(tempPath, markdown, { encoding: "utf-8", mode: 0o600 });
+        await fs.rename(tempPath, this.memoryFilePath);
+      } catch (err) {
+        await fs.unlink(tempPath).catch(() => {});
+        throw err;
+      }
 
       return {
         totalTranscriptsAnalyzed,

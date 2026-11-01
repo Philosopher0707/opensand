@@ -283,8 +283,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         item.innerHTML = `
           <span class="bot-item-icon">${icon}</span>
           <div class="bot-item-info">
-            <span class="bot-item-name">${a.name}</span>
-            <span class="bot-item-role">${a.role}</span>
+            <span class="bot-item-name">${escapeHtml(a.name)}</span>
+            <span class="bot-item-role">${escapeHtml(a.role)}</span>
           </div>
         `;
         item.onclick = () => {
@@ -314,8 +314,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         item.className = 'task-item' + (t.status === 'done' ? ' done' : '');
         item.innerHTML = `
           <input type="checkbox" class="task-checkbox" ${t.status === 'done' ? 'checked' : ''}>
-          <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t.title}</span>
-          <span class="badge" style="font-size: 9px; padding: 1px 4px;">${t.priority}</span>
+          <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(t.title)}</span>
+          <span class="badge" style="font-size: 9px; padding: 1px 4px;">${escapeHtml(t.priority)}</span>
         `;
 
         const checkbox = item.querySelector('.task-checkbox');

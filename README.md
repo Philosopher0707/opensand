@@ -50,13 +50,30 @@ It replaces proprietary cloud ConnectRPC backends with universal OpenAI-compatib
 
 | Package | Description | Tests |
 |---|---|---|
-| [`@opensand/local-exec-daemon`](./packages/local-exec-daemon) | Local execution engine with preflight bash syntax & safety validation, atomic file I/O with SHA-256 digests, and crash-resilient JSON state files. | 27 passing |
+| [`@opensand/local-exec-daemon`](./packages/local-exec-daemon) | Local execution engine with preflight bash syntax & safety validation, atomic file I/O with SHA-256 digests, and crash-resilient JSON state files. | 29 passing |
 | [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI `/v1/chat/completions` + Anthropic `/v1/messages` client, native MCP client, persistent Agent Store, Task Store, Habit Extractor, and Grok Bot transcript parity. | 30 passing |
 | [`@opensand/native-bridge`](./packages/native-bridge) | Native Apple Vision offline OCR (`sand-vision`), ScreenCaptureKit window capture (`sand-window-capture`), 1Password Seatbelt launcher, macOS Messages reader, and Speech Synthesis. | 6 passing |
 | [`@opensand/cli`](./packages/cli) | Interactive terminal REPL and one-shot execution CLI with live token streaming, bot persona switcher (`--bot`), and permission approval prompts. | 7 passing |
 | [`@opensand/desktop`](./packages/desktop) | Desktop GUI shell with macOS menubar tray, multi-bot switcher, live streaming chat, task management, learned guidelines modal, and local webview server. | 5 passing |
 
-**Total Test Coverage: 75/75 automated unit and integration tests passing (100% green).**
+**Total Test Coverage: 77/77 automated unit and integration tests passing (100% green).**
+
+---
+
+## Security & Resilience Hardening (Backend Audit)
+
+OpenSand was audited against the Backend Playbook (7 batches: Security, Storage, Resilience, Caching/Messaging, Networking/APIs, Reliability/Observability, Build/Deploy) with 14 hardening fixes:
+
+- **DNS Rebinding & Host Validation**: Desktop server strictly verifies `Host` header (`127.0.0.1`, `localhost`) to prevent rebinding attacks.
+- **Strict Origin Check**: Replaced wildcard CORS with strict validation rejecting any external origin with `403 Forbidden`.
+- **Path Traversal Guards**: Strict regex (`/^[a-zA-Z0-9_-]+$/`) and `path.resolve` boundary verification across session and task filesystem loaders.
+- **Anti-Chaining Tool Allowlist**: Auto-approvals strictly reject shell chaining operators (`;`, `&&`, `|`, `` ` ``, `$()`) to prevent command piggybacking.
+- **Generic Binary Restriction**: Prevents blanket allowlisting of generic interpreters (`node`, `python`, `bash`, `cat`, `curl`); requires exact command matching.
+- **DoS Body Bounds & Read Caps**: Desktop HTTP requests bounded to 2MB ceiling with stream destruction and 413 rejection; `read_file` bounded to 25MB safety ceiling.
+- **HTTP & Subprocess Watchdogs**: LLM API calls enforce configurable 120s timeouts with `AbortSignal.any()`; native Swift/macOS bridges bounded by 15-20s SIGKILL watchdogs.
+- **HTML Sanitization & CSP**: Desktop UI renders user-controlled bot and task metadata via `escapeHtml()`; server enforces strict CSP (`default-src 'self'`).
+- **Child Process Env Sanitization**: Subprocesses spawned by `exec_command` purge sensitive host API tokens (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_PERSONAL_ACCESS_TOKEN`, `AWS_SECRET_ACCESS_KEY`) from environment inheritance.
+- **Atomic File Operations**: Habit rules and state files use atomic `.tmp` + rename pattern with 0600 file modes.
 
 ---
 

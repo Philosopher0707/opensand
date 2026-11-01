@@ -1,9 +1,9 @@
 # CONTEXT.md: Grok Bot Reverse-Engineering & OpenSand Clean-Room Implementation
 
-**Date:** 2026-10-31  
+**Date:** 2026-11-01  
 **Project:** OpenSand (`~/dev/opensand`)  
 **Target Reverse-Engineered:** Grok Bot macOS Desktop App (`/Applications/Grok Bot.app`, Bundle ID: `com.anysphere.sand`, Version: 0.78.1)  
-**Status:** Phases 1–5 Fully Implemented & Verified (75/75 unit & integration tests passing, 100% green)
+**Status:** Phases 1–5 Fully Implemented & Hardened (77/77 unit & integration tests passing, 100% green)
 
 ---
 
@@ -80,7 +80,7 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 * **`command-runner.ts`**: Spawns bash processes with execution timeouts, SIGTERM $\rightarrow$ SIGKILL termination ladders, and output buffering.
 * **`tool-registry.ts`**: Maps tools to OpenAI function schemas (`exec_command`, `read_file`, `write_file`, `list_directory`). Enforces dual-authorization gates (standing allowlist match vs. explicit approval ID).
 * **`daemon.ts`**: Coordinates lifecycle, pulses background supervisor heartbeats, and dispatches tool execution.
-* **Tests**: 27 unit tests (`test/*.test.ts`) covering all modules with 100% pass rate.
+* **Tests**: 29 unit tests (`test/*.test.ts`) covering all modules with 100% pass rate.
 
 ### 3.2 [`packages/coordinator`](file:///Users/philosopher/dev/opensand/packages/coordinator) (Phase 2 & Orchestration)
 * **`sse-parser.ts`**: Universal stream parser converting raw `Uint8Array` chunks into parsed SSE events, handling fragmented TCP packets, CRLF/LF line splits, and keep-alive comments.
@@ -124,12 +124,18 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 ## 4. Verification & Health Summary
 
 * **Monorepo Build**: `pnpm build` (`tsc -b` across all 5 packages) $\rightarrow$ 0 errors.
-* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **75 passed, 0 failed, 100% green**:
-  * `@opensand/local-exec-daemon`: 27 passed
+* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **77 passed, 0 failed, 100% green**:
+  * `@opensand/local-exec-daemon`: 29 passed
   * `@opensand/coordinator`: 30 passed
   * `@opensand/native-bridge`: 6 passed
   * `@opensand/cli`: 7 passed
   * `@opensand/desktop`: 5 passed
+* **Backend Audit & Resilience Hardening**:
+  * All 14 audit findings remediated across security, storage, resilience, networking, and deploy vectors.
+  * DNS rebinding / host header check, strict origin verification, and HTTP keep-alive timeouts.
+  * Anti-chaining tool allowlist and path traversal boundary checks.
+  * 2MB HTTP body and 25MB file size safety ceilings.
+  * Subprocess and HTTP request abort watchdogs with env credential purging.
 * **Live Model Dogfooding**:
   * End-to-end verified on local Ollama `qwen3:8b`:
     - Discovered registered agents via `list_agents`.

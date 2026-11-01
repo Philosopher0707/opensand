@@ -82,4 +82,18 @@ describe("FileOps", () => {
     assert.ok(names.includes("file1.txt"));
     assert.ok(names.some((n) => n.includes("child")));
   });
+
+  it("rejects reading files that exceed 25MB safety ceiling", async () => {
+    const hugeFilePath = path.join(testDir, "huge.bin");
+    const handle = await fs.open(hugeFilePath, "w");
+    await handle.truncate(26 * 1024 * 1024);
+    await handle.close();
+
+    await assert.rejects(
+      async () => {
+        await readFileOperation({ path: hugeFilePath });
+      },
+      /File size .* exceeds maximum safe read limit/
+    );
+  });
 });

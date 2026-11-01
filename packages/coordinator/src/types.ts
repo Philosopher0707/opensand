@@ -42,6 +42,7 @@ export interface LLMClientConfig {
   thinkingBudgetTokens?: number;
   temperature?: number;
   maxTokens?: number;
+  timeoutMs?: number;
   headers?: Record<string, string>;
   fetch?: typeof globalThis.fetch;
 }

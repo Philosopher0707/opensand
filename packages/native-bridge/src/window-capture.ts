@@ -32,10 +32,22 @@ export async function listWindows(binDir?: string): Promise<WindowListResult> {
   return new Promise((resolve) => {
     let stdoutBuffer = "";
     let stderrBuffer = "";
+    let isSettled = false;
 
     const child = spawn(runExec, args, {
       stdio: ["ignore", "pipe", "pipe"],
     });
+
+    const timer = setTimeout(() => {
+      if (!isSettled) {
+        isSettled = true;
+        child.kill("SIGKILL");
+        resolve({
+          status: "error",
+          message: "sand-window-capture timed out after 15000ms",
+        });
+      }
+    }, 15000);
 
     child.stdout.on("data", (chunk: Buffer) => {
       stdoutBuffer += chunk.toString("utf-8");
@@ -46,6 +58,10 @@ export async function listWindows(binDir?: string): Promise<WindowListResult> {
     });
 
     child.on("close", (code) => {
+      if (isSettled) return;
+      isSettled = true;
+      clearTimeout(timer);
+
       if (code !== 0) {
         resolve({
           status: "error",
@@ -66,6 +82,9 @@ export async function listWindows(binDir?: string): Promise<WindowListResult> {
     });
 
     child.on("error", (err) => {
+      if (isSettled) return;
+      isSettled = true;
+      clearTimeout(timer);
       resolve({
         status: "error",
         message: `Failed to spawn sand-window-capture: ${err.message}`,
@@ -83,17 +102,34 @@ export async function captureWindow(
 
   return new Promise((resolve) => {
     let stderrBuffer = "";
+    let isSettled = false;
 
     // Direct native screencapture execution
     const child = spawn("/usr/sbin/screencapture", [`-l${windowId}`, "-o", resolvedOut], {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
+    const timer = setTimeout(() => {
+      if (!isSettled) {
+        isSettled = true;
+        child.kill("SIGKILL");
+        resolve({
+          status: "error",
+          windowId,
+          message: "screencapture timed out after 15000ms",
+        });
+      }
+    }, 15000);
+
     child.stderr.on("data", (chunk: Buffer) => {
       stderrBuffer += chunk.toString("utf-8");
     });
 
     child.on("close", (code) => {
+      if (isSettled) return;
+      isSettled = true;
+      clearTimeout(timer);
+
       if (code !== 0) {
         resolve({
           status: "error",
@@ -111,6 +147,9 @@ export async function captureWindow(
     });
 
     child.on("error", (err) => {
+      if (isSettled) return;
+      isSettled = true;
+      clearTimeout(timer);
       resolve({
         status: "error",
         windowId,

@@ -3,8 +3,16 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { ReadFileInput, ReadFileOutput, WriteFileInput, WriteFileOutput, ListDirectoryInput, ListDirectoryOutput, DirectoryEntry } from "./types.js";
 
+const MAX_READ_FILE_BYTES = 25 * 1024 * 1024; // 25MB safety boundary
+
 export async function readFileOperation(input: ReadFileInput): Promise<ReadFileOutput> {
   const resolvedPath = path.resolve(input.path);
+  const stat = await fs.stat(resolvedPath);
+  if (stat.size > MAX_READ_FILE_BYTES) {
+    throw new Error(
+      `File size (${(stat.size / (1024 * 1024)).toFixed(1)}MB) exceeds maximum safe read limit (25MB): ${resolvedPath}`
+    );
+  }
   const rawBytes = await fs.readFile(resolvedPath);
   const sha256 = crypto.createHash("sha256").update(rawBytes).digest("hex");
   const fullText = rawBytes.toString("utf-8");

@@ -54,10 +54,22 @@ export async function recognizeScreenText(
   return new Promise((resolve) => {
     let stdoutBuffer = "";
     let stderrBuffer = "";
+    let isSettled = false;
 
     const child = spawn(executable, args, {
       stdio: ["ignore", "pipe", "pipe"],
     });
+
+    const timer = setTimeout(() => {
+      if (!isSettled) {
+        isSettled = true;
+        child.kill("SIGKILL");
+        resolve({
+          status: "error",
+          message: "sand-vision OCR timed out after 20000ms",
+        });
+      }
+    }, 20000);
 
     child.stdout.on("data", (chunk: Buffer) => {
       stdoutBuffer += chunk.toString("utf-8");
@@ -68,6 +80,10 @@ export async function recognizeScreenText(
     });
 
     child.on("close", (code) => {
+      if (isSettled) return;
+      isSettled = true;
+      clearTimeout(timer);
+
       if (code !== 0) {
         resolve({
           status: "error",
@@ -88,6 +104,9 @@ export async function recognizeScreenText(
     });
 
     child.on("error", (err) => {
+      if (isSettled) return;
+      isSettled = true;
+      clearTimeout(timer);
       resolve({
         status: "error",
         message: `Failed to spawn sand-vision: ${err.message}`,

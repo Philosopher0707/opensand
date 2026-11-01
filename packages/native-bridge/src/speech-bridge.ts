@@ -27,7 +27,7 @@ export async function speakText(text: string, voice?: string, rate?: number): Pr
   args.push(text.slice(0, 1000)); // Cap length
 
   try {
-    await execFileAsync("say", args);
+    await execFileAsync("say", args, { timeout: 15000 });
     return {
       status: "success",
       voiceUsed: voice || "default",

@@ -72,8 +72,15 @@ export class TaskStore {
   }
 
   async getTask(id: string): Promise<AgentTask | null> {
+    if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+      return null;
+    }
     await this.ensureDirectory();
     const filePath = path.join(this.baseDir, `${id}.json`);
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(this.baseDir))) {
+      return null;
+    }
     try {
       const raw = await fs.readFile(filePath, "utf-8");
       return JSON.parse(raw) as AgentTask;
@@ -135,7 +142,14 @@ export class TaskStore {
   }
 
   async deleteTask(id: string): Promise<boolean> {
+    if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+      return false;
+    }
     const filePath = path.join(this.baseDir, `${id}.json`);
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(this.baseDir))) {
+      return false;
+    }
     try {
       await fs.unlink(filePath);
       return true;

@@ -49,6 +49,11 @@ export class DesktopServer {
         }
       });
 
+      // HTTP timeouts to mitigate slowloris & hanging sockets
+      server.requestTimeout = 30000;
+      server.headersTimeout = 35000;
+      server.keepAliveTimeout = 5000;
+
       server.on('error', (err) => reject(err));
 
       server.listen(this.port, this.host, () => {
@@ -93,19 +98,63 @@ export class DesktopServer {
   }
 
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    const url = new URL(req.url || '/', `http://${this.host}:${this.port}`);
+    try {
+      const url = new URL(req.url || '/', `http://${this.host}:${this.port}`);
     const pathname = url.pathname;
 
-    // CORS headers for local access
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    const hostHeader = (req.headers['host'] || '').toLowerCase();
+    const originHeader = req.headers['origin'];
+
+    // Security headers (nosniff, framing, referrer, and CSP)
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:* http://localhost:*; img-src 'self' data:;"
+    );
+
+    // Host header validation to prevent DNS rebinding
+    if (hostHeader) {
+      const hostname = hostHeader.split(':')[0];
+      if (hostname !== '127.0.0.1' && hostname !== 'localhost') {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Access forbidden: invalid Host header' }));
+        return;
+      }
+    }
+
+    // Origin header validation to prevent cross-origin drive-by attacks from arbitrary websites
+    if (originHeader) {
+      try {
+        const originUrl = new URL(originHeader);
+        if (originUrl.hostname === '127.0.0.1' || originUrl.hostname === 'localhost') {
+          res.setHeader('Access-Control-Allow-Origin', originHeader);
+        } else {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Cross-origin request denied' }));
+          return;
+        }
+      } catch {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Malformed Origin header' }));
+        return;
+      }
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', `http://${this.host}:${this.port}`);
+    }
+
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Vary', 'Origin');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
       res.end();
       return;
     }
+
+    const isValidId = (id: string) => /^[a-zA-Z0-9_-]+$/.test(id);
 
     // SSE event stream: /api/events
     if (pathname === '/api/events' && req.method === 'GET') {
@@ -152,6 +201,11 @@ export class DesktopServer {
     // API: GET /api/sessions/:id
     if (pathname.startsWith('/api/sessions/') && req.method === 'GET') {
       const sessionId = pathname.replace('/api/sessions/', '');
+      if (!isValidId(sessionId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid sessionId format' }));
+        return;
+      }
       const data = await this.bridge.loadSession(sessionId);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(data));
@@ -195,6 +249,11 @@ export class DesktopServer {
     // API: DELETE /api/agents/:id
     if (pathname.startsWith('/api/agents/') && req.method === 'DELETE') {
       const agentId = pathname.replace('/api/agents/', '');
+      if (!isValidId(agentId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid agentId format' }));
+        return;
+      }
       const deleted = await this.bridge.deleteAgent(agentId);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: deleted }));
@@ -223,6 +282,11 @@ export class DesktopServer {
     // API: PUT /api/tasks/:id (Update task)
     if (pathname.startsWith('/api/tasks/') && req.method === 'PUT') {
       const taskId = pathname.replace('/api/tasks/', '');
+      if (!isValidId(taskId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid taskId format' }));
+        return;
+      }
       const body = await this.readJsonBody(req);
       const updated = await this.bridge.updateTask(taskId, body);
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -233,6 +297,11 @@ export class DesktopServer {
     // API: DELETE /api/tasks/:id
     if (pathname.startsWith('/api/tasks/') && req.method === 'DELETE') {
       const taskId = pathname.replace('/api/tasks/', '');
+      if (!isValidId(taskId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid taskId format' }));
+        return;
+      }
       const deleted = await this.bridge.deleteTask(taskId);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: deleted }));
@@ -285,22 +354,50 @@ export class DesktopServer {
 
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not Found');
+  } catch (err: any) {
+    if (!res.headersSent) {
+      if (err.message && err.message.includes('exceeds size limit')) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      } else if (err.message && err.message.includes('Invalid JSON')) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      } else {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err?.message || 'Internal Server Error' }));
+      }
+    }
   }
+}
 
-  private async readJsonBody(req: http.IncomingMessage): Promise<any> {
+private async readJsonBody(req: http.IncomingMessage, maxBytes = 2 * 1024 * 1024): Promise<any> {
     return new Promise((resolve, reject) => {
       let data = '';
-      req.on('data', (chunk) => {
-        data += chunk;
+      let bytesRead = 0;
+      let rejected = false;
+
+      req.on('data', (chunk: Buffer) => {
+        if (rejected) return;
+        bytesRead += chunk.length;
+        if (bytesRead > maxBytes) {
+          rejected = true;
+          req.destroy();
+          reject(new Error('Request payload exceeds size limit (2MB)'));
+          return;
+        }
+        data += chunk.toString('utf-8');
       });
       req.on('end', () => {
+        if (rejected) return;
         try {
           resolve(data ? JSON.parse(data) : {});
-        } catch (err) {
+        } catch {
           reject(new Error('Invalid JSON payload'));
         }
       });
-      req.on('error', reject);
+      req.on('error', (err) => {
+        if (!rejected) reject(err);
+      });
     });
   }
 }

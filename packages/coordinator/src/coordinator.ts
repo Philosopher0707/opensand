@@ -177,11 +177,17 @@ export class AgentCoordinator {
 
         // Check if this requires manual approval
         const isExecCommand = tc.function.name === "exec_command";
+        const cmd = typeof args.command === "string" ? args.command.trim() : "";
+        const hasChaining = /[;&|`]|\$\(|\n/.test(cmd);
         const isAllowlisted =
           isExecCommand &&
+          !hasChaining &&
           gates.standingAllowlist.some((pat) => {
-            const cmd = (args.command || "").trim();
-            return pat.endsWith("*") ? cmd.startsWith(pat.slice(0, -1)) : cmd === pat;
+            if (pat.endsWith("*")) {
+              const prefix = pat.slice(0, -1).trim();
+              return cmd === prefix || cmd.startsWith(`${prefix} `);
+            }
+            return cmd === pat || cmd.startsWith(`${pat} `);
           });
 
         const needsApproval =

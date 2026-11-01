@@ -238,14 +238,26 @@ export class DesktopIpcBridge extends EventEmitter {
     if (decision.action === 'always_allow') {
       if (pending.request.toolName === 'exec_command' && typeof pending.request.args.command === 'string') {
         const cmd = pending.request.args.command.trim();
-        const prefix = cmd.split(/\s+/)[0];
-        if (prefix) {
-          const gates = await this.stateManager.readPermissionGates();
-          const allowlist = gates.standingAllowlist || [];
-          if (!allowlist.includes(prefix)) {
-            allowlist.push(prefix);
-            await this.stateManager.writePermissionGates({ standingAllowlist: allowlist });
-          }
+        // Disallow blanket allowlisting of dangerous shell interpreters or high-privilege binaries
+        const DANGEROUS_GENERIC_BINARIES = new Set([
+          'sh', 'bash', 'zsh', 'node', 'python', 'python3', 'perl', 'ruby',
+          'sudo', 'su', 'rm', 'mv', 'chmod', 'chown', 'curl', 'wget', 'cat', 'dd'
+        ]);
+
+        const parts = cmd.split(/\s+/);
+        const binary = parts[0];
+
+        // If it's a generic interpreter, require exact command match; otherwise allow prefix
+        let patternToAllow = cmd;
+        if (!DANGEROUS_GENERIC_BINARIES.has(binary)) {
+          patternToAllow = binary;
+        }
+
+        const gates = await this.stateManager.readPermissionGates();
+        const allowlist = gates.standingAllowlist || [];
+        if (!allowlist.includes(patternToAllow)) {
+          allowlist.push(patternToAllow);
+          await this.stateManager.writePermissionGates({ standingAllowlist: allowlist });
         }
       }
       pending.resolve(true);
@@ -351,7 +363,16 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async loadSession(sessionId: string): Promise<{ events: unknown[]; transcript: string }> {
+    if (!sessionId || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
+      throw new Error(`Invalid sessionId: ${sessionId}`);
+    }
     const sessionDir = path.join(this.baseDir, 'sessions', sessionId);
+    const resolvedSessionDir = path.resolve(sessionDir);
+    const expectedBase = path.resolve(path.join(this.baseDir, 'sessions'));
+    if (!resolvedSessionDir.startsWith(expectedBase)) {
+      throw new Error('Path traversal detected');
+    }
+
     const jsonlPath = path.join(sessionDir, 'transcript.jsonl');
     const txtPath = path.join(sessionDir, 'transcript.txt');
 

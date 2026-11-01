@@ -96,6 +96,34 @@ describe("ToolRegistry", () => {
     assert.equal(res.output.stdout.trim(), "approved");
   });
 
+  it("rejects auto-approval when command uses shell chaining even if prefix is allowlisted", async () => {
+    const registry = new ToolRegistry();
+    const chainedCommands = [
+      "echo permitted; rm -rf /",
+      "echo permitted && cat /etc/passwd",
+      "echo permitted | bash",
+      "echo `id`",
+      "echo $(whoami)",
+    ];
+
+    for (const cmd of chainedCommands) {
+      const res = await registry.dispatch(
+        "exec_command",
+        { command: cmd },
+        {
+          permissionGates: {
+            computerUseAllowed: false,
+            deviceToolsAllowed: false,
+            standingAllowlist: ["echo *"],
+          },
+        }
+      );
+
+      assert.equal(res.status, "permission_pending", `Command "${cmd}" should have required approval`);
+      assert.equal(res.error?.code, "PERMISSION_REQUIRED");
+    }
+  });
+
   it("allows registering and executing custom tools", async () => {
     const registry = new ToolRegistry();
     registry.registerCustomTool({

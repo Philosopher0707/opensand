@@ -18,6 +18,11 @@ class MockIncomingMessage extends EventEmitter {
     this.url = url;
     this.headers = headers;
   }
+
+  public destroy(): this {
+    this.emit('close');
+    return this;
+  }
 }
 
 // Hermetic mock for ServerResponse
@@ -136,6 +141,33 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     const resRules = new MockServerResponse();
     await (server as any).handleRequest(reqRules, resRules);
     assert.strictEqual(resRules.statusCode, 200);
+
+    // Test Security: External Origin rejected with 403
+    const reqUntrustedOrigin = new MockIncomingMessage('GET', '/api/settings', { origin: 'http://malicious-website.com' });
+    const resUntrustedOrigin = new MockServerResponse();
+    await (server as any).handleRequest(reqUntrustedOrigin, resUntrustedOrigin);
+    assert.strictEqual(resUntrustedOrigin.statusCode, 403);
+
+    // Test Security: Untrusted Host header rejected with 403 (DNS rebinding defense)
+    const reqUntrustedHost = new MockIncomingMessage('GET', '/api/settings', { host: 'attacker-controlled.com' });
+    const resUntrustedHost = new MockServerResponse();
+    await (server as any).handleRequest(reqUntrustedHost, resUntrustedHost);
+    assert.strictEqual(resUntrustedHost.statusCode, 403);
+
+    // Test Security: Path traversal rejected on /api/sessions/:id
+    const reqTraversal = new MockIncomingMessage('GET', '/api/sessions/..%2F..%2Fetc%2Fpasswd');
+    const resTraversal = new MockServerResponse();
+    await (server as any).handleRequest(reqTraversal, resTraversal);
+    assert.strictEqual(resTraversal.statusCode, 400);
+
+    // Test Security: Payload too large rejected with 413
+    const reqOversized = new MockIncomingMessage('POST', '/api/settings');
+    const resOversized = new MockServerResponse();
+    const oversizedPromise = (server as any).handleRequest(reqOversized, resOversized);
+    const hugeChunk = Buffer.alloc(2.5 * 1024 * 1024, 65); // 2.5MB
+    reqOversized.emit('data', hugeChunk);
+    await oversizedPromise;
+    assert.strictEqual(resOversized.statusCode, 413);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
