@@ -31,6 +31,7 @@ export interface RegisterOrchestratorToolsOptions {
   defaultModel?: string;
   defaultApiKey?: string;
   sessionsBaseDir?: string;
+  repoRoot?: string;
 }
 
 export function registerOrchestratorTools(options: RegisterOrchestratorToolsOptions): {
@@ -53,7 +54,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   const skillStore = options.skillStore ?? new SkillStore({ agentStore: store });
   const routineEngine = options.routineEngine ?? new RoutineEngine(undefined, vaultStore);
   const roomManager = options.roomManager ?? new RoomManager(undefined, store, vaultStore);
-  const gitManager = options.gitManager ?? new GitManager();
+  const gitManager = options.gitManager ?? new GitManager(options.repoRoot);
   const workspaceSentinel = options.workspaceSentinel ?? new WorkspaceSentinel();
   const sessionsBaseDir = options.sessionsBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
   const habitExtractor = options.habitExtractor ?? new HabitExtractor({ sessionsDir: sessionsBaseDir });
