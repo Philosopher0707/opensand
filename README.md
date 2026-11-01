@@ -51,12 +51,12 @@ It replaces proprietary cloud ConnectRPC backends with universal OpenAI-compatib
 | Package | Description | Tests |
 |---|---|---|
 | [`@opensand/local-exec-daemon`](./packages/local-exec-daemon) | Local execution engine with preflight bash syntax & safety validation, atomic file I/O with SHA-256 digests, and crash-resilient JSON state files. | 29 passing |
-| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI & Anthropic clients, native MCP client, persistent Agent Store, Task Store, Habit Extractor, 7-Layer Memory System, Local Encrypted Vault, Recipe Skills Engine, Background Routine Engine, Multi-Agent Collaborative Rooms, Git Lifecycle Manager, and Workspace Sentinel. | 61 passing |
+| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI & Anthropic clients, native MCP client, persistent Agent Store, Task Store, Habit Extractor, 7-Layer Memory System, Local Encrypted Vault, Recipe Skills Engine, Routine Engine, Multi-Agent Rooms, Git Manager, Workspace Sentinel, Attachment Staging, and Side-Question/Rollback engines. | 66 passing |
 | [`@opensand/native-bridge`](./packages/native-bridge) | Native Apple Vision offline OCR (`sand-vision`), ScreenCaptureKit window capture (`sand-window-capture`), 1Password Seatbelt launcher, macOS Messages reader, Speech Synthesis, and Browser Automation (`web_search`, `fetch_web_page`, Safari tab inspector). | 11 passing |
-| [`@opensand/cli`](./packages/cli) | Interactive terminal REPL with live token streaming, bot persona switcher (`--bot`), first-class slash commands for rooms/routines/skills/vault/git/reviews, and permission approval prompts. | 7 passing |
-| [`@opensand/desktop`](./packages/desktop) | Multi-tab Desktop GUI & REST server (`http://127.0.0.1:3456`) with Chat, Rooms, Routines, Skills, Vault, Memory Review Queue, Task Management, and local webview shell. | 6 passing |
+| [`@opensand/cli`](./packages/cli) | Interactive terminal REPL with live token streaming, bot persona switcher (`--bot`), first-class slash commands for rooms/routines/skills/vault/git/reviews/btw/rollback/attachments/templates, and permission approval prompts. | 7 passing |
+| [`@opensand/desktop`](./packages/desktop) | Multi-tab Desktop GUI & REST server (`http://127.0.0.1:3456`) with Chat, Rooms, Routines, Skills, Vault, Memory Review Queue, Task Management, Attachments, and local webview shell. | 6 passing |
 
-**Total Test Coverage: 114/114 automated unit and integration tests passing (100% green).**
+**Total Test Coverage: 119/119 automated unit and integration tests passing (100% green).**
 
 ---
 
@@ -167,6 +167,28 @@ OpenSand implements a 1:1 clean-room replica of Grok Bot's multi-tier cognitive 
 - **Health Verification**: Automatically triggers fast test or build verification commands upon code changes.
 - **Diagnostic Logging**: Collects build failures and test regressions for autonomous self-healing loops.
 - **Tools**: `start_workspace_watcher`, `list_workspace_watchers`, `stop_workspace_watcher`, `get_sentinel_diagnostic_logs`.
+
+### 8. Ephemeral Side-Question ("BTW") Engine
+- **Grok Bot Contract 8.1.A Parity**: Implements `glass_btw_side_question_prompt_config`.
+- **Zero History Pollution**: Answers immediate side inquiries using full session context without altering the conversation history or appending tool invocations to the persistent transcript.
+- **REPL & REST Access**: Available via `/btw <question>` in the CLI REPL and `POST /api/btw`.
+
+### 9. Conversation Rollback & Rewind Engine
+- **Grok Bot Rollback Parity**: Implements `RollBackGrokBotConversation`.
+- **Atomic History Rewind**: Rewinds in-memory message history by N user turns and synchronizes on-disk `transcript.txt` and `transcript.jsonl`.
+- **REPL & REST Access**: Available via `/rollback [turns]` in the CLI REPL and `POST /api/rollback`.
+
+### 10. Attachment Staging & File Hashing Store (`AttachmentManager`)
+- **Grok Bot Attachment Parity**: Matches Grok Bot's `stageAttachmentFile` and `stageAttachmentBytes`.
+- **SHA-256 Content Addressing**: Stages files and binary buffers into `~/.opensand/attachments/<hash>/` with MIME type detection and metadata persistence.
+- **Tools**: `stage_attachment`, `list_attachments`.
+- **REPL & REST Access**: `/attach <file_path>`, `/attachments`, and `GET` / `POST` / `DELETE` `/api/attachments`.
+
+### 11. Portable Agent Templates (`AgentStore`)
+- **Grok Bot Template Parity**: Matches Grok Bot's `GrokBotTemplate` export and import architecture (`CreateGrokBotTemplate`, `CreateGrokBotAgentFromTemplate`).
+- **Shareable Artifacts**: Exports bot personas into standalone `.template.json` files and creates bots from templates with system instructions, allowed tools, and metadata preserved.
+- **Tools**: `export_agent_template`, `import_agent_template`.
+- **REPL & REST Access**: `/template export <name>`, `/template import <file>`, and `GET /api/templates/:id` / `POST /api/templates/import`.
 
 ---
 

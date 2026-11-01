@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as crypto from "node:crypto";
+import { AgentTemplate } from "./types.js";
 
 export interface AgentRecord {
   id: string;
@@ -150,6 +151,57 @@ export class AgentStore {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Export an agent definition into a portable Grok Bot template (GrokBotTemplate parity).
+   */
+  async exportTemplate(idOrName: string): Promise<AgentTemplate> {
+    const agent = await this.getAgent(idOrName);
+    if (!agent) {
+      throw new Error(`Agent [${idOrName}] not found in store`);
+    }
+
+    return {
+      templateVersion: "1.0.0",
+      name: agent.name,
+      role: agent.role,
+      description: typeof agent.metadata?.description === "string" ? agent.metadata.description : undefined,
+      systemPrompt: agent.systemPrompt,
+      kind: agent.kind,
+      model: agent.model,
+      endpoint: agent.endpoint,
+      allowedTools: agent.allowedTools,
+      metadata: agent.metadata,
+      exportedAtMs: Date.now(),
+    };
+  }
+
+  /**
+   * Import a portable agent template into a registered bot persona (GrokBotTemplate parity).
+   */
+  async importTemplate(templateInput: AgentTemplate | string): Promise<AgentRecord> {
+    const template: AgentTemplate =
+      typeof templateInput === "string" ? JSON.parse(templateInput) : templateInput;
+
+    if (!template.name || !template.role || !template.systemPrompt) {
+      throw new Error("Invalid agent template: missing 'name', 'role', or 'systemPrompt'");
+    }
+
+    return this.createAgent({
+      name: template.name,
+      role: template.role,
+      systemPrompt: template.systemPrompt,
+      kind: template.kind ?? "AGENT",
+      model: template.model,
+      endpoint: template.endpoint,
+      allowedTools: template.allowedTools,
+      metadata: {
+        ...(template.metadata ?? {}),
+        importedFromTemplate: true,
+        templateVersion: template.templateVersion || "1.0.0",
+      },
+    });
   }
 
   private async saveRecordAtomic(record: AgentRecord): Promise<void> {

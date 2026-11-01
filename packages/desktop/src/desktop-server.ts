@@ -669,6 +669,104 @@ export class DesktopServer {
       return;
     }
 
+    // API: GET /api/attachments (Grok Bot Parity: List attachments)
+    if (pathname === '/api/attachments' && req.method === 'GET') {
+      const list = await this.bridge.listAttachments();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(list));
+      return;
+    }
+
+    // API: POST /api/attachments (Grok Bot Parity: Stage attachment)
+    if (pathname === '/api/attachments' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      if (!body.filePath) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing filePath' }));
+        return;
+      }
+      try {
+        const att = await this.bridge.stageAttachment(body.filePath);
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(att));
+      } catch (err: any) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
+    // API: DELETE /api/attachments/:id
+    if (pathname.startsWith('/api/attachments/') && req.method === 'DELETE') {
+      const id = pathname.replace('/api/attachments/', '');
+      const deleted = await this.bridge.deleteAttachment(id);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: deleted }));
+      return;
+    }
+
+    // API: GET /api/templates/:agentId (Grok Bot Parity: Export template)
+    if (pathname.startsWith('/api/templates/') && req.method === 'GET') {
+      const agentId = pathname.replace('/api/templates/', '');
+      try {
+        const tpl = await this.bridge.exportAgentTemplate(agentId);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(tpl));
+      } catch (err: any) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
+    // API: POST /api/templates/import (Grok Bot Parity: Import template)
+    if (pathname === '/api/templates/import' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      try {
+        const agent = await this.bridge.importAgentTemplate(body);
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(agent));
+      } catch (err: any) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
+    // API: POST /api/btw (Grok Bot Parity: Glass BTW side question)
+    if (pathname === '/api/btw' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      if (!body.question) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing question' }));
+        return;
+      }
+      try {
+        const answer = await this.bridge.askSideQuestion(body.question);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ answer }));
+      } catch (err: any) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
+    // API: POST /api/rollback (Grok Bot Parity: RollBackGrokBotConversation)
+    if (pathname === '/api/rollback' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      const turns = typeof body.turns === 'number' ? body.turns : 1;
+      try {
+        const result = await this.bridge.rollbackTurns(turns);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err: any) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
     // Serve static files from renderer/
     let filePath = path.join(this.rendererDir, pathname === '/' ? 'index.html' : pathname);
     const resolvedPath = path.resolve(filePath);

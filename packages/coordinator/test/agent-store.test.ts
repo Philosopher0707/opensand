@@ -57,6 +57,38 @@ test("AgentStore - creates, lists, updates, and deletes agent personas", async (
   }
 });
 
+test("AgentStore - exports and imports agent templates (GrokBotTemplate parity)", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-template-test-"));
+
+  try {
+    const store = new AgentStore(tmpDir);
+
+    const qaAgent = await store.createAgent({
+      name: "QA Lead",
+      role: "Lead QA Automation Engineer",
+      systemPrompt: "Design edge-case reproduction tests and ensure zero regressions.",
+      allowedTools: ["exec_command", "read_file"],
+      metadata: { description: "QA Lead template", tier: "lead" },
+    });
+
+    // Export template
+    const template = await store.exportTemplate(qaAgent.id);
+    assert.strictEqual(template.templateVersion, "1.0.0");
+    assert.strictEqual(template.name, "QA Lead");
+    assert.strictEqual(template.role, "Lead QA Automation Engineer");
+    assert.strictEqual(template.description, "QA Lead template");
+    assert.deepStrictEqual(template.allowedTools, ["exec_command", "read_file"]);
+
+    // Import template into another instance or as new agent
+    const imported = await store.importTemplate(template);
+    assert.ok(imported.id.startsWith("agent_qa_lead_"));
+    assert.strictEqual(imported.name, "QA Lead");
+    assert.strictEqual(imported.metadata?.importedFromTemplate, true);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test("OrchestratorTools - registers meta-tools into daemon and executes create_agent & list_agents", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-orch-tools-"));
 

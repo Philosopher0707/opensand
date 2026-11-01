@@ -34,6 +34,9 @@ import {
   AgentRoom,
   CreateRoomInput,
   RoomDiscussionResult,
+  AttachmentManager,
+  AttachmentRecord,
+  AgentTemplate,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -59,6 +62,7 @@ export class DesktopIpcBridge extends EventEmitter {
   public skillStore: SkillStore;
   public routineEngine: RoutineEngine;
   public roomManager: RoomManager;
+  public attachmentManager: AttachmentManager;
   private coordinator: AgentCoordinator | null = null;
   private activeApprovals: Map<string, {
     request: ToolApprovalRequest;
@@ -114,6 +118,7 @@ export class DesktopIpcBridge extends EventEmitter {
       sessionsDir: path.join(this.baseDir, 'sessions'),
       memoryFilePath: path.join(this.baseDir, 'learned_rules.md'),
     });
+    this.attachmentManager = new AttachmentManager(path.join(this.baseDir, 'attachments'));
 
     // Initialize Orchestrator Meta-Tools
     registerOrchestratorTools({
@@ -126,6 +131,7 @@ export class DesktopIpcBridge extends EventEmitter {
       skillStore: this.skillStore,
       routineEngine: this.routineEngine,
       roomManager: this.roomManager,
+      attachmentManager: this.attachmentManager,
       defaultEndpoint: this.settings.endpoint,
       defaultModel: this.settings.model,
       defaultApiKey: this.settings.apiKey,
@@ -594,5 +600,42 @@ export class DesktopIpcBridge extends EventEmitter {
 
   public async deleteRoom(roomId: string): Promise<boolean> {
     return this.roomManager.deleteRoom(roomId);
+  }
+
+  // Attachments API (Grok Bot Parity: stageAttachmentFile / stageAttachmentBytes)
+  public async listAttachments(): Promise<AttachmentRecord[]> {
+    return this.attachmentManager.listAttachments();
+  }
+
+  public async stageAttachment(filePath: string): Promise<AttachmentRecord> {
+    return this.attachmentManager.stageFile(filePath);
+  }
+
+  public async deleteAttachment(id: string): Promise<boolean> {
+    return this.attachmentManager.deleteAttachment(id);
+  }
+
+  // Templates API (Grok Bot Parity: CreateGrokBotTemplate / export / import)
+  public async exportAgentTemplate(idOrName: string): Promise<AgentTemplate> {
+    return this.agentStore.exportTemplate(idOrName);
+  }
+
+  public async importAgentTemplate(template: AgentTemplate | string): Promise<AgentRecord> {
+    return this.agentStore.importTemplate(template);
+  }
+
+  // Side Question & Rollback API
+  public async askSideQuestion(question: string): Promise<string> {
+    if (!this.coordinator) {
+      throw new Error('No active conversation coordinator available to answer side question');
+    }
+    return this.coordinator.askSideQuestion(question);
+  }
+
+  public async rollbackTurns(turns = 1): Promise<{ removedMessages: number; remainingMessages: number }> {
+    if (!this.coordinator) {
+      throw new Error('No active conversation coordinator available to rollback');
+    }
+    return this.coordinator.rollbackTurns(turns);
   }
 }

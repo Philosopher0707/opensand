@@ -54,6 +54,30 @@ export interface ApprovalRequest {
   reason: string;
 }
 
+export interface AttachmentRecord {
+  id: string;
+  filename: string;
+  localPath: string;
+  sizeBytes: number;
+  mimeType: string;
+  sha256: string;
+  stagedAtMs: number;
+}
+
+export interface AgentTemplate {
+  templateVersion: string;
+  name: string;
+  role: string;
+  description?: string;
+  systemPrompt: string;
+  kind?: "AGENT" | "ROOM";
+  model?: string;
+  endpoint?: string;
+  allowedTools?: string[];
+  metadata?: Record<string, unknown>;
+  exportedAtMs: number;
+}
+
 export type ApprovalHandler = (request: ApprovalRequest) => Promise<boolean>;
 
 export type TurnEventListener = (event: TurnEvent) => void;

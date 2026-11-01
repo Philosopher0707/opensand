@@ -222,6 +222,59 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     assert.strictEqual(resTeamRev.statusCode, 200);
     const reviewItems = JSON.parse(resTeamRev.body);
     assert.ok(Array.isArray(reviewItems));
+
+    // Test Attachments API: POST /api/attachments
+    const sampleFilePath = path.join(tmpDir, 'test-doc.txt');
+    fs.writeFileSync(sampleFilePath, 'OpenSand Desktop Attachment Content');
+    const reqStageAtt = new MockIncomingMessage('POST', '/api/attachments');
+    const resStageAtt = new MockServerResponse();
+    const stagePromise = (server as any).handleRequest(reqStageAtt, resStageAtt);
+    reqStageAtt.emit('data', Buffer.from(JSON.stringify({ filePath: sampleFilePath })));
+    reqStageAtt.emit('end');
+    await stagePromise;
+    assert.strictEqual(resStageAtt.statusCode, 201);
+    const stagedAtt = JSON.parse(resStageAtt.body);
+    assert.ok(stagedAtt.id.startsWith('att_'));
+    assert.strictEqual(stagedAtt.filename, 'test-doc.txt');
+
+    // Test GET /api/attachments
+    const reqListAtt = new MockIncomingMessage('GET', '/api/attachments');
+    const resListAtt = new MockServerResponse();
+    await (server as any).handleRequest(reqListAtt, resListAtt);
+    assert.strictEqual(resListAtt.statusCode, 200);
+    const attList = JSON.parse(resListAtt.body);
+    assert.strictEqual(attList.length, 1);
+    assert.strictEqual(attList[0].id, stagedAtt.id);
+
+    // Test DELETE /api/attachments/:id
+    const reqDelAtt = new MockIncomingMessage('DELETE', `/api/attachments/${stagedAtt.id}`);
+    const resDelAtt = new MockServerResponse();
+    await (server as any).handleRequest(reqDelAtt, resDelAtt);
+    assert.strictEqual(resDelAtt.statusCode, 200);
+    assert.strictEqual(JSON.parse(resDelAtt.body).success, true);
+
+    // Test Templates API: GET /api/templates/:agentId
+    const reqExportTpl = new MockIncomingMessage('GET', `/api/templates/${bot.id}`);
+    const resExportTpl = new MockServerResponse();
+    await (server as any).handleRequest(reqExportTpl, resExportTpl);
+    assert.strictEqual(resExportTpl.statusCode, 200);
+    const exportedTpl = JSON.parse(resExportTpl.body);
+    assert.strictEqual(exportedTpl.templateVersion, '1.0.0');
+    assert.strictEqual(exportedTpl.name, 'Security Auditor');
+
+    // Test POST /api/templates/import
+    const reqImportTpl = new MockIncomingMessage('POST', '/api/templates/import');
+    const resImportTpl = new MockServerResponse();
+    const importPromise = (server as any).handleRequest(reqImportTpl, resImportTpl);
+    reqImportTpl.emit('data', Buffer.from(JSON.stringify({
+      ...exportedTpl,
+      name: 'Imported Auditor',
+    })));
+    reqImportTpl.emit('end');
+    await importPromise;
+    assert.strictEqual(resImportTpl.statusCode, 201);
+    const importedAgent = JSON.parse(resImportTpl.body);
+    assert.ok(importedAgent.id.startsWith('agent_imported_auditor_'));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

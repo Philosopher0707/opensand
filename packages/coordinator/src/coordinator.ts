@@ -264,4 +264,81 @@ export class AgentCoordinator {
     await this.transcript.writeHumanReadableTranscript(this.messages);
     return fallbackMessage;
   }
+
+  /**
+   * Ask an ephemeral side-question (Grok Bot "BTW" prompt parity, Section 8.1.A).
+   * Evaluates the query against active conversation context without modifying
+   * session history or appending to the persistent transcript.
+   */
+  async askSideQuestion(question: string, signal?: AbortSignal): Promise<string> {
+    const BTW_PROMPT_TEMPLATE = `You are answering a single ephemeral question about the user's current work. Use the provided conversation as context and respond directly in one answer. Do not ask follow-up questions, do not request mode switches, and do not mention tool limitations unless absolutely necessary.
+If the conversation does not contain enough to answer, say so briefly.
+
+${question}`;
+
+    const ephemeralMessages: ChatMessage[] = [
+      ...this.messages,
+      {
+        role: "user",
+        content: BTW_PROMPT_TEMPLATE,
+      },
+    ];
+
+    const { stream, getConsolidated } = await this.llmClient.streamCompletion(
+      ephemeralMessages,
+      [], // No tools in side-questions
+      signal
+    );
+
+    for await (const delta of stream) {
+      if (delta.content) {
+        this.emit({ type: "text_delta", text: delta.content });
+      }
+    }
+
+    const res = getConsolidated();
+    return res.content ?? "";
+  }
+
+  /**
+   * Roll back the conversation by N user turns (Grok Bot RollBackGrokBotConversation parity).
+   * Rewinds the in-memory message history and rewrites the on-disk transcript.
+   */
+  async rollbackTurns(turnCount = 1): Promise<{ removedMessages: number; remainingMessages: number }> {
+    if (turnCount <= 0) {
+      return { removedMessages: 0, remainingMessages: this.messages.length };
+    }
+
+    // Find user message boundaries
+    const userIndices: number[] = [];
+    for (let i = 0; i < this.messages.length; i++) {
+      if (this.messages[i].role === "user") {
+        userIndices.push(i);
+      }
+    }
+
+    if (userIndices.length === 0) {
+      return { removedMessages: 0, remainingMessages: this.messages.length };
+    }
+
+    // Target the index to cut from
+    const targetTurnIndex = Math.max(0, userIndices.length - turnCount);
+    const cutIndex = userIndices[targetTurnIndex];
+
+    const originalLength = this.messages.length;
+    this.messages = this.messages.slice(0, cutIndex);
+    const removedMessages = originalLength - this.messages.length;
+
+    // Rewrite human readable transcript
+    await this.transcript.writeHumanReadableTranscript(this.messages);
+    await this.transcript.appendJsonl({
+      role: "system",
+      event: "rollback",
+      turnsRolledBack: turnCount,
+      removedMessages,
+      remainingMessages: this.messages.length,
+    });
+
+    return { removedMessages, remainingMessages: this.messages.length };
+  }
 }

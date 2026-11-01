@@ -96,6 +96,7 @@ Examples:
     routineEngine,
     roomManager,
     gitManager,
+    attachmentManager,
   } = registerOrchestratorTools({
     daemon,
     defaultEndpoint: config.endpoint,
@@ -309,9 +310,15 @@ Examples:
       if (trimmed === "/help") {
         console.log(`
 Available OpenSand REPL Commands:
-  /tools              List all 56 active OS, orchestrator, and native tools
+  /tools              List all 60 active OS, orchestrator, and native tools
   /bots, /agents      List all registered bot personas in Agent Store
   /bot <name>         Switch active bot persona (e.g. '/bot cto' or '/bot default')
+  /btw <question>     Ask ephemeral side-question using current work context (BTW parity)
+  /rollback [turns]   Roll back conversation history by N turns (RollBack parity)
+  /attach <file>      Stage a file or image attachment into session store
+  /attachments        List all staged attachments
+  /template export    Export bot persona into portable template JSON
+  /template import    Import bot persona from template JSON
   /rooms              List all multi-agent collaborative rooms
   /room <id> <topic>  Convene a round-table deliberation and render consensus verdict
   /routines           List all scheduled automated background routines
@@ -543,6 +550,84 @@ Available OpenSand REPL Commands:
       if (trimmed === "/rules") {
         const rules = await habitExtractor.getLearnedRulesMarkdown();
         console.log(`\n\x1b[1m=== Continuous Learned User Guidelines ===\x1b[0m\n${rules || "No rules extracted yet."}`);
+        continue;
+      }
+
+      if (trimmed.startsWith("/btw ")) {
+        const question = trimmed.slice(5).trim();
+        if (!question) {
+          console.log("Usage: /btw <ephemeral question about current work>");
+          continue;
+        }
+        ui.printInfo(`Answering ephemeral question: "${question}"...`);
+        try {
+          const ans = await coordinator.askSideQuestion(question);
+          console.log(`\n\x1b[35m💬 [BTW Answer]:\x1b[0m\n${ans}\n`);
+        } catch (err: any) {
+          ui.printError(`Side-question error: ${err.message}`);
+        }
+        continue;
+      }
+
+      if (trimmed === "/rollback" || trimmed.startsWith("/rollback ") || trimmed === "/rewind") {
+        const parts = trimmed.split(" ");
+        const turns = parts[1] ? parseInt(parts[1], 10) || 1 : 1;
+        ui.printInfo(`Rolling back conversation by ${turns} turn(s)...`);
+        const res = await coordinator.rollbackTurns(turns);
+        console.log(`\x1b[32m✔ Rolled back ${res.removedMessages} messages (${res.remainingMessages} messages remaining in history).\x1b[0m`);
+        continue;
+      }
+
+      if (trimmed.startsWith("/attach ")) {
+        const filePath = trimmed.slice(8).trim();
+        ui.printInfo(`Staging attachment '${filePath}'...`);
+        try {
+          const att = await attachmentManager.stageFile(filePath);
+          console.log(`\x1b[32m✔ Attachment staged:\x1b[0m`);
+          console.log(`  ID: ${att.id} | File: ${att.filename} | Size: ${att.sizeBytes} B | SHA: ${att.sha256.slice(0, 16)}...`);
+          console.log(`  Local Path: ${att.localPath}`);
+        } catch (err: any) {
+          ui.printError(`Failed to stage attachment: ${err.message}`);
+        }
+        continue;
+      }
+
+      if (trimmed === "/attachments") {
+        const list = await attachmentManager.listAttachments();
+        console.log(`\n\x1b[1m=== Staged Attachments (${list.length}) ===\x1b[0m`);
+        if (list.length === 0) {
+          console.log("  No attachments staged. Use /attach <path> to stage one.");
+        } else {
+          list.forEach((a) => {
+            console.log(`  📎 \x1b[36m${a.filename}\x1b[0m [ID: ${a.id}] (${a.sizeBytes} bytes, ${a.mimeType})`);
+            console.log(`     \x1b[2mPath: ${a.localPath}\x1b[0m`);
+          });
+        }
+        continue;
+      }
+
+      if (trimmed.startsWith("/template export ")) {
+        const agentName = trimmed.slice(17).trim();
+        try {
+          const tpl = await agentStore.exportTemplate(agentName);
+          const outPath = `./${tpl.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}.template.json`;
+          await fs.writeFile(outPath, JSON.stringify(tpl, null, 2), "utf-8");
+          console.log(`\x1b[32m✔ Exported template for '${tpl.name}' to ${outPath}\x1b[0m`);
+        } catch (err: any) {
+          ui.printError(`Export template failed: ${err.message}`);
+        }
+        continue;
+      }
+
+      if (trimmed.startsWith("/template import ")) {
+        const tplPath = trimmed.slice(17).trim();
+        try {
+          const raw = await fs.readFile(tplPath, "utf-8");
+          const agent = await agentStore.importTemplate(raw);
+          console.log(`\x1b[32m✔ Imported template as new bot persona: '${agent.name}' (ID: ${agent.id})\x1b[0m`);
+        } catch (err: any) {
+          ui.printError(`Import template failed: ${err.message}`);
+        }
         continue;
       }
 

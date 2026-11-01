@@ -12,6 +12,7 @@ import { RoutineEngine } from "./routine-engine.js";
 import { RoomManager } from "./room-manager.js";
 import { GitManager } from "./git-manager.js";
 import { WorkspaceSentinel } from "./workspace-sentinel.js";
+import { AttachmentManager } from "./attachment-manager.js";
 import { UniversalLLMClient } from "./llm-client.js";
 import { AgentCoordinator } from "./coordinator.js";
 
@@ -27,6 +28,7 @@ export interface RegisterOrchestratorToolsOptions {
   roomManager?: RoomManager;
   gitManager?: GitManager;
   workspaceSentinel?: WorkspaceSentinel;
+  attachmentManager?: AttachmentManager;
   defaultEndpoint?: string;
   defaultModel?: string;
   defaultApiKey?: string;
@@ -45,6 +47,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   roomManager: RoomManager;
   gitManager: GitManager;
   workspaceSentinel: WorkspaceSentinel;
+  attachmentManager: AttachmentManager;
 } {
   const { daemon } = options;
   const store = options.store ?? new AgentStore();
@@ -56,6 +59,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   const roomManager = options.roomManager ?? new RoomManager(undefined, store, vaultStore);
   const gitManager = options.gitManager ?? new GitManager(options.repoRoot);
   const workspaceSentinel = options.workspaceSentinel ?? new WorkspaceSentinel();
+  const attachmentManager = options.attachmentManager ?? new AttachmentManager();
   const sessionsBaseDir = options.sessionsBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
   const habitExtractor = options.habitExtractor ?? new HabitExtractor({ sessionsDir: sessionsBaseDir });
 
@@ -1641,5 +1645,135 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
     },
   });
 
-  return { store, taskStore, habitExtractor, memoryStore, vaultStore, skillStore, routineEngine, roomManager, gitManager, workspaceSentinel };
+  // 43. Tool: stage_attachment (Parity with Grok Bot stageAttachmentFile / stageAttachmentBytes)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "stage_attachment",
+        description: "Stage a local file or artifact into the agent attachments store, generating SHA-256 and metadata for session context.",
+        parameters: {
+          type: "object",
+          properties: {
+            file_path: {
+              type: "string",
+              description: "Absolute or relative file path to stage as an attachment.",
+            },
+          },
+          required: ["file_path"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      try {
+        const record = await attachmentManager.stageFile(args.file_path);
+        return JSON.stringify({
+          status: "success",
+          attachment: record,
+        }, null, 2);
+      } catch (err: any) {
+        return JSON.stringify({
+          status: "error",
+          message: err.message,
+        });
+      }
+    },
+  });
+
+  // 44. Tool: list_attachments
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "list_attachments",
+        description: "List all staged file attachments and their local file paths.",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+    },
+    handler: async () => {
+      const list = await attachmentManager.listAttachments();
+      return JSON.stringify({
+        status: "success",
+        count: list.length,
+        attachments: list,
+      }, null, 2);
+    },
+  });
+
+  // 45. Tool: export_agent_template (Parity with Grok Bot CreateGrokBotTemplate / export)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "export_agent_template",
+        description: "Export a registered bot persona into a portable reusable agent template JSON.",
+        parameters: {
+          type: "object",
+          properties: {
+            agent_id_or_name: {
+              type: "string",
+              description: "Agent ID or unique name to export as a template.",
+            },
+          },
+          required: ["agent_id_or_name"],
+        },
+      },
+    },
+    handler: async (args) => {
+      try {
+        const template = await store.exportTemplate(args.agent_id_or_name);
+        return JSON.stringify({
+          status: "success",
+          template,
+        }, null, 2);
+      } catch (err: any) {
+        return JSON.stringify({
+          status: "error",
+          message: err.message,
+        });
+      }
+    },
+  });
+
+  // 46. Tool: import_agent_template (Parity with Grok Bot CreateGrokBotAgentFromTemplate)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "import_agent_template",
+        description: "Import a reusable agent template JSON and register it as a new bot persona.",
+        parameters: {
+          type: "object",
+          properties: {
+            template_json: {
+              type: "string",
+              description: "Serialized JSON string of the agent template.",
+            },
+          },
+          required: ["template_json"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      try {
+        const agent = await store.importTemplate(args.template_json);
+        return JSON.stringify({
+          status: "success",
+          agent,
+        }, null, 2);
+      } catch (err: any) {
+        return JSON.stringify({
+          status: "error",
+          message: err.message,
+        });
+      }
+    },
+  });
+
+  return { store, taskStore, habitExtractor, memoryStore, vaultStore, skillStore, routineEngine, roomManager, gitManager, workspaceSentinel, attachmentManager };
 }

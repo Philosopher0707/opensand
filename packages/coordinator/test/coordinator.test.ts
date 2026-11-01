@@ -224,4 +224,96 @@ describe("AgentCoordinator Integration", () => {
     assert.ok(toolMsg);
     assert.match(toolMsg.content || "", /UNAUTHORIZED_TOOL/);
   });
+
+  it("answers ephemeral side-questions via askSideQuestion without mutating session history (BTW prompt parity)", async () => {
+    let callCount = 0;
+    const mockFetch = async (_url: any, init: any): Promise<Response> => {
+      callCount++;
+      const encoder = new TextEncoder();
+      const content = callCount === 1 ? "We are working on Project Sand." : "You are discussing Project Sand.";
+      const chunks = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`,
+        "data: [DONE]\n\n",
+      ];
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const c of chunks) controller.enqueue(encoder.encode(c));
+          controller.close();
+        },
+      });
+      return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    };
+
+    const client = new UniversalLLMClient({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      fetch: mockFetch as any,
+    });
+
+    const coordinator = new AgentCoordinator({
+      llmClient: client,
+      daemon,
+      sessionsBaseDir: path.join(tempDir, "sessions"),
+    });
+
+    // 1. Initial turn
+    const turnRes = await coordinator.runTurn("Hello, let us start Project Sand.");
+    assert.equal(turnRes, "We are working on Project Sand.");
+    const historyLengthBefore = coordinator.history.length;
+    assert.equal(historyLengthBefore, 3); // system, user, assistant
+
+    // 2. Ask ephemeral side question
+    const btwAnswer = await coordinator.askSideQuestion("What project did I mention?");
+    assert.equal(btwAnswer, "You are discussing Project Sand.");
+
+    // 3. Verify history is untouched
+    assert.equal(coordinator.history.length, historyLengthBefore);
+    assert.equal(coordinator.history[coordinator.history.length - 1].content, "We are working on Project Sand.");
+  });
+
+  it("rolls back conversation turns cleanly via rollbackTurns (RollBackGrokBotConversation parity)", async () => {
+    const mockFetch = async (_url: any, init: any): Promise<Response> => {
+      const payload = JSON.parse(init.body as string);
+      const userMsg = payload.messages.filter((m: any) => m.role === "user").pop();
+      const encoder = new TextEncoder();
+      const chunks = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: `Answer for ${userMsg.content}` } }] })}\n\n`,
+        "data: [DONE]\n\n",
+      ];
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const c of chunks) controller.enqueue(encoder.encode(c));
+          controller.close();
+        },
+      });
+      return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    };
+
+    const client = new UniversalLLMClient({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      fetch: mockFetch as any,
+    });
+
+    const coordinator = new AgentCoordinator({
+      llmClient: client,
+      daemon,
+      sessionsBaseDir: path.join(tempDir, "sessions"),
+    });
+
+    await coordinator.runTurn("Turn 1");
+    await coordinator.runTurn("Turn 2");
+    assert.equal(coordinator.history.length, 5); // system, u1, a1, u2, a2
+
+    // Rollback 1 turn (undo Turn 2)
+    const rb1 = await coordinator.rollbackTurns(1);
+    assert.equal(rb1.removedMessages, 2);
+    assert.equal(coordinator.history.length, 3); // system, u1, a1
+    assert.equal(coordinator.history[coordinator.history.length - 1].content, "Answer for Turn 1");
+
+    // Rollback 1 more turn (undo Turn 1)
+    const rb2 = await coordinator.rollbackTurns(1);
+    assert.equal(rb2.removedMessages, 2);
+    assert.equal(coordinator.history.length, 1); // system only
+  });
 });
