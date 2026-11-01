@@ -3,7 +3,7 @@
 **Date:** 2026-11-01  
 **Project:** OpenSand (`~/dev/opensand`)  
 **Target Reverse-Engineered:** Grok Bot macOS Desktop App (`/Applications/Grok Bot.app`, Bundle ID: `com.anysphere.sand`, Version: 0.78.1)  
-**Status:** Phases 1–6 Fully Implemented & Hardened (85/85 unit & integration tests passing, 100% green)
+**Status:** Phases 1–10 Fully Implemented & Hardened (114/114 unit & integration tests passing, 100% green, 56 active registered tools)
 
 ---
 
@@ -102,45 +102,53 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 * **`habit-extractor.ts`**: Continuous learning engine matching Grok Bot contract 8.1.B. Scans past session transcripts (`~/.opensand/sessions/*.txt`), identifies recurring user feedback/preferences, and updates `~/.opensand/learned_rules.md`.
 * **`memory-store.ts`**: Clean-room implementation of Grok Bot 7-layer memory architecture. Manages discrete fact storage (`MemoryFact`), scope isolation (`user`, `agent`, `team`), tier classification (`profile` vs `log`), team consensus queue (`TeamReviewItem`), user-to-team promotion (`promoteMemoriesToTeam`), natural language prose summary generator (`getTeamContextSummary`), and `<imported_memory>` parser with credential redaction.
 * **`orchestrator-tools.ts`**: Registers memory meta-tools into `LocalExecDaemon` (`update_memory`, `recall_memories`, `import_memory`, `list_team_review_items`, `resolve_team_review_item`) alongside agent lifecycle and task tools.
+* **`vault-store.ts`**: Pure native AES-256-GCM encrypted secrets and credentials vault (`~/.opensand/vault/`) with PBKDF2 (100k rounds) key derivation and hardware-bound salt (`.vault.salt`). Automatically scrubs secrets from all tool outputs and logs.
+* **`skill-store.ts`**: Modular recipe skills engine matching Grok Bot contracts. Parses YAML frontmatter `---`, enforces 256KB max size bound (`k = 256e3`) and 250 max skills cap (`MAX_BOT_SKILLS = 250`), with dynamic prompt mounting (`~/.opensand/skills/`).
+* **`routine-engine.ts`**: Scheduled background automations engine supporting 5-part cron syntax (`minute hour dom month dow`, ranges, steps `*/n`, lists) and interval frequencies (`every 30m`), executing tasks via autonomous subagents (`~/.opensand/routines/`).
+* **`room-manager.ts`**: Multi-agent collaborative rooms (`kind: "ROOM"`) enabling round-table deliberations across teams of specialized bot personas with synthesized consensus drafts (`~/.opensand/rooms/`).
+* **`git-manager.ts`**: Autonomous git and PR manager: repository status, diff analysis, isolated git worktree spawning, conventional commit drafting, and autonomous PR review bot scanning diffs for security and quality regressions.
+* **`workspace-sentinel.ts`**: Debounced `fs.watch` file monitor, automated test/build health verification, and self-healing diagnostic logging.
 * **`transcript-manager.ts`**: Manages `~/.opensand/sessions/<sessionId>/`. Appends structured JSONL events to `transcript.jsonl` and formats human-readable `transcript.txt` with `<user_query>` Grok Bot parity tags.
-* **`system-prompt.ts`**: Dynamically builds agent instructions including date, host OS, architecture, working directory, user rules, and active profile/team memory facts.
+* **`system-prompt.ts`**: Dynamically builds agent instructions including date, host OS, architecture, working directory, user rules, active profile/team memory facts, and mounted skill recipes.
 * **`coordinator.ts`**: Autonomous multi-turn turn loop. Dispatches queries to LLM, streams tokens to UI, intercepts tool calls, verifies gates/prompts user approval, delegates execution to daemon, appends results, and loops back to LLM until completion.
-* **Tests**: 38 unit and integration tests (`test/*.test.ts`) covering SSE, prompt generation, transcripts, Anthropic client, MCP manager, agent store, task store, habit extractor, memory store, and autonomous tool loops.
+* **Tests**: 61 unit and integration tests (`test/*.test.ts`) covering SSE, prompt generation, transcripts, Anthropic client, MCP manager, agent store, task store, habit extractor, memory store, vault store, skill store, routine engine, room manager, git manager, sentinel, and autonomous tool loops.
 
-### 3.3 [`packages/native-bridge`](file:///Users/philosopher/dev/opensand/packages/native-bridge) (Phase 3)
+### 3.3 [`packages/native-bridge`](file:///Users/philosopher/dev/opensand/packages/native-bridge) (Phase 3 & Browser Automation)
 * **`native/sand-vision.swift`**: Swift 6.2 source utilizing Apple `Vision.framework` (`VNRecognizeTextRequest`). Compiled to standalone ARM64 Mach-O binary `bin/sand-vision`. Extracts text, confidence scores, and bounding boxes completely offline via Apple Neural Engine (`recognize_screen_text`).
 * **`native/sand-window-capture.swift`**: Swift source utilizing CoreGraphics / ScreenCaptureKit. Compiled to standalone ARM64 Mach-O binary `bin/sand-window-capture`. Lists open on-screen windows (`list_windows`) and captures individual window frames (`capture_window`).
+* **`browser-bridge.ts`**: Pure native Node 22 fetch + HTML-to-Markdown parser (`fetch_web_page`), live multi-engine search (`web_search`), and native AppleScript Safari inspector (`safari_inspect_active_tab`).
 * **`messages-reader.ts`**: Read-only SQLite inspector for local macOS Messages database (`messages_get_recent`, `messages_search`).
 * **`speech-bridge.ts`**: Native macOS speech synthesizer utilizing Apple Speech (`speak_text`).
 * **`op-launcher.ts`**: 1Password hardened runner. Generates and executes macOS Seatbelt sandbox profiles (`sandbox-exec -p ...`) that deny access to raw credential databases while enabling biometric CLI unlock (`op_exec`).
 * **`native-tools.ts`**: Registers native tools into the daemon tool registry under `deviceTools` and `computerUse` permission gates.
-* **Tests**: 6 unit tests (`test/*.test.ts`) covering OCR, window listing, Messages, speech synthesis, and Seatbelt policy generation.
+* **Tests**: 11 unit tests (`test/*.test.ts`) covering OCR, window listing, Messages, speech synthesis, Seatbelt policy generation, and browser automation.
 
-### 3.4 [`packages/cli`](file:///Users/philosopher/dev/opensand/packages/cli) (Phase 4)
+### 3.4 [`packages/cli`](file:///Users/philosopher/dev/opensand/packages/cli) (Phase 4 & REPL Commands)
 * **`config.ts`**: Multi-tiered CLI argument and configuration resolver (`--endpoint`, `--model`, `--api-key`, `--bot`, `--auto-approve` / `-y`). Loads persistent settings from `~/.opensand/config.json`, env vars, or auto-probes local Ollama.
 * **`terminal-ui.ts`**: ANSI styling engine with live streaming text, tool execution cards (`⚡ [Tool]`, `✔ [Result]`), and interactive readline approval prompts (`[y/N]`).
-* **`cli-app.ts`**: Main entrypoint supporting both one-shot commands (`opensand "query"`) and interactive REPL sessions (`opensand`) with built-in slash commands (`/help`, `/tools`, `/bots`, `/bot <name>`, `/tasks`, `/rules`, `/clear`). Handles `SIGINT` / `Ctrl+C` gracefully without unhandled abort crashes.
+* **`cli-app.ts`**: Main entrypoint supporting both one-shot commands (`opensand "query"`) and interactive REPL sessions (`opensand`) with first-class slash commands (`/help`, `/tools`, `/bots`, `/bot <name>`, `/rooms`, `/room <id> <topic>`, `/routines`, `/routine run <id>`, `/skills`, `/skill <name>`, `/vault`, `/git`, `/review [ref]`, `/tasks`, `/rules`, `/clear`). Handles `SIGINT` / `Ctrl+C` gracefully without unhandled abort crashes.
 * **`bin.ts`**: Executable binary wrapper distributed to `dist/src/bin.js` and global `~/bin/opensand`.
-* **Tests**: 4 unit tests (`test/*.test.ts`) covering flag parsing, configuration hierarchy, and REPL slash commands.
+* **Tests**: 7 unit tests (`test/*.test.ts`) covering flag parsing, configuration hierarchy, and REPL slash commands.
 
-### 3.5 [`packages/desktop`](file:///Users/philosopher/dev/opensand/packages/desktop) (Phase 5)
+### 3.5 [`packages/desktop`](file:///Users/philosopher/dev/opensand/packages/desktop) (Phase 5 & Multi-Tab Dashboard)
 * **`main.ts` & `tray.ts`**: Electron Main process lifecycle, menubar tray icon (`OpenSand: Ready/Thinking/Executing`), global hotkey (`Cmd+Shift+Space`), and secure IPC message router.
 * **`preload.ts`**: Hardened context bridge (`contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`) exposing `window.opensand`.
-* **`desktop-server.ts`**: Zero-dependency local HTTP/SSE UI server running at `http://127.0.0.1:3456`, serving REST endpoints (`/api/agents`, `/api/tasks`, `/api/learned-rules`), path traversal containment checks, dynamic Bot switcher sidebar, "+ New Bot" creation modal, "+ Add Task" modal, and learned guidelines viewer.
+* **`desktop-server.ts`**: Zero-dependency local HTTP/SSE UI server running at `http://127.0.0.1:3456`, serving REST endpoints (`/api/agents`, `/api/tasks`, `/api/learned-rules`, `/api/routines`, `/api/rooms`, `/api/skills`, `/api/vault`), path traversal containment checks, dynamic Bot switcher sidebar, "+ New Bot" creation modal, "+ Add Task" modal, and multi-tab dashboard (Chat, Rooms, Routines, Skills, Vault, Memories, Tasks).
 * **`renderer/`**: Interactive dark mode chat UI with streaming Markdown, live tool execution status cards, interactive permission approval modals ("Approve Once", "Always Allow", "Reject"), and model settings panel.
-* **Tests**: 5 unit tests (`test/*.test.ts`) covering IPC bridge, standing allowlist additions, and REST endpoints.
+* **Tests**: 6 unit tests (`test/*.test.ts`) covering IPC bridge, standing allowlist additions, and REST endpoints.
 
 ---
 
 ## 4. Verification & Health Summary
 
 * **Monorepo Build**: `pnpm build` (`tsc -b` across all 5 packages) $\rightarrow$ 0 errors.
-* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **85 passed, 0 failed, 100% green**:
+* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **114 passed, 0 failed, 100% green**:
   * `@opensand/local-exec-daemon`: 29 passed
-  * `@opensand/coordinator`: 38 passed
-  * `@opensand/native-bridge`: 6 passed
+  * `@opensand/coordinator`: 61 passed
+  * `@opensand/native-bridge`: 11 passed
   * `@opensand/cli`: 7 passed
-  * `@opensand/desktop`: 5 passed
+  * `@opensand/desktop`: 6 passed
+* **Active Tool Catalog**: **56 fully registered tools** spanning core bash/file ops, native macOS vision/windows/audio, web browser automation, multi-agent orchestration, cognitive memories, encrypted vault, modular skills, scheduled routines, group rooms, git lifecycle, and workspace sentinel.
 * **Backend Audit & Resilience Hardening**:
   * All 14 audit findings remediated across security, storage, resilience, networking, and deploy vectors.
   * DNS rebinding / host header check, strict origin verification, and HTTP keep-alive timeouts.

@@ -51,12 +51,12 @@ It replaces proprietary cloud ConnectRPC backends with universal OpenAI-compatib
 | Package | Description | Tests |
 |---|---|---|
 | [`@opensand/local-exec-daemon`](./packages/local-exec-daemon) | Local execution engine with preflight bash syntax & safety validation, atomic file I/O with SHA-256 digests, and crash-resilient JSON state files. | 29 passing |
-| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI `/v1/chat/completions` + Anthropic `/v1/messages` client, native MCP client, persistent Agent Store, Task Store, Habit Extractor, 7-Layer Memory System (discrete facts, team consensus, import protocol), and Grok Bot transcript parity. | 38 passing |
-| [`@opensand/native-bridge`](./packages/native-bridge) | Native Apple Vision offline OCR (`sand-vision`), ScreenCaptureKit window capture (`sand-window-capture`), 1Password Seatbelt launcher, macOS Messages reader, and Speech Synthesis. | 6 passing |
-| [`@opensand/cli`](./packages/cli) | Interactive terminal REPL and one-shot execution CLI with live token streaming, bot persona switcher (`--bot`), and permission approval prompts. | 7 passing |
-| [`@opensand/desktop`](./packages/desktop) | Desktop GUI shell with macOS menubar tray, multi-bot switcher, live streaming chat, task management, learned guidelines modal, memory & team consensus REST endpoints, and local webview server. | 5 passing |
+| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI & Anthropic clients, native MCP client, persistent Agent Store, Task Store, Habit Extractor, 7-Layer Memory System, Local Encrypted Vault, Recipe Skills Engine, Background Routine Engine, Multi-Agent Collaborative Rooms, Git Lifecycle Manager, and Workspace Sentinel. | 61 passing |
+| [`@opensand/native-bridge`](./packages/native-bridge) | Native Apple Vision offline OCR (`sand-vision`), ScreenCaptureKit window capture (`sand-window-capture`), 1Password Seatbelt launcher, macOS Messages reader, Speech Synthesis, and Browser Automation (`web_search`, `fetch_web_page`, Safari tab inspector). | 11 passing |
+| [`@opensand/cli`](./packages/cli) | Interactive terminal REPL with live token streaming, bot persona switcher (`--bot`), first-class slash commands for rooms/routines/skills/vault/git/reviews, and permission approval prompts. | 7 passing |
+| [`@opensand/desktop`](./packages/desktop) | Multi-tab Desktop GUI & REST server (`http://127.0.0.1:3456`) with Chat, Rooms, Routines, Skills, Vault, Memory Review Queue, Task Management, and local webview shell. | 6 passing |
 
-**Total Test Coverage: 85/85 automated unit and integration tests passing (100% green).**
+**Total Test Coverage: 114/114 automated unit and integration tests passing (100% green).**
 
 ---
 
@@ -119,6 +119,54 @@ OpenSand implements a 1:1 clean-room replica of Grok Bot's multi-tier cognitive 
 5. **Layer 5: Team Consensus Review Queue (`PromoteGrokBotMemoriesToTeam`)**: When an agent attempts to write to `scope: "team"`, facts are placed in a human-in-the-loop review queue (`TeamReviewItem`: `PENDING`, `APPROVED`, `REJECTED`). Once approved, facts are synthesized into a cohesive natural-language narrative (`GrokBotTeamContextSummary`).
 6. **Layer 6: Capability Injections & Import Protocol (`<imported_memory>`)**: Implements Grok Bot's capability injection protocol. Imports memory blocks from other assistants (`Instructions`, `Identity`, `Career`, `Projects`, `Preferences`) with built-in credential redaction (`sk-`, `AKIA`, `password=`).
 7. **Layer 7: Resilient Local Persistence**: Atomic writes with `.tmp` staging, SHA-256 verification, and strict file security modes (`0600`).
+
+---
+
+## Subsystems & Parity Extensions
+
+### 1. Local Encrypted Secrets Vault (`VaultStore`)
+- **Zero-Dependency Cryptography**: Uses Node 22 native `node:crypto` with AES-256-GCM authenticated encryption and PBKDF2 (100,000 rounds) key derivation.
+- **Hardware Salt Binding**: Salt file generated per host at `~/.opensand/vault/.vault.salt` with `0600` permissions.
+- **Automatic Tool Output Redaction**: All secrets registered in the vault are actively monitored; any appearance of secret values in tool execution output or console logs is automatically scrubbed into `[REDACTED_VAULT_SECRET:<NAME>]`.
+- **Meta-Tools**: `vault_store_secret`, `vault_list_secrets`, `vault_delete_secret`, `vault_store_credential`, `vault_list_credentials`.
+
+### 2. Modular Recipe Skills Engine (`SkillStore`)
+- **Grok Bot Clean-Room Parity**: Matches Grok Bot's internal `.cursor/skills-cursor/<name>/SKILL.md` format and contract constraints.
+- **YAML Frontmatter Parser**: Parses standard frontmatter (`name`, `description`, `category`, `disableModelPruning`) with Markdown heading 1 fallbacks.
+- **Safety Bounds**: Strict `256KB` file limit check (`k = 256e3`) and `250` maximum skills cap (`MAX_BOT_SKILLS = 250`).
+- **Dynamic Persona Mounting**: Mount skills to specific bot personas (`mount_skill`) so their recipes are dynamically injected into the system prompt.
+- **Meta-Tools**: `add_skill`, `list_skills`, `mount_skill`, `unmount_skill`.
+
+### 3. Scheduled Background Routines & Automations (`RoutineEngine`)
+- **5-Field Cron Parser**: Pure native cron engine supporting `minute hour dom month dow`, step notation (`*/n`), lists (`1,15,30`), ranges (`1-5`), and wildcard matches.
+- **Interval Tickers**: Configurable frequency triggers (e.g. `every 30m`, `every 2h`).
+- **Autonomous Subagent Runner**: Executes scheduled routines in the background, delegating tasks to designated bot personas, persisting logs, and tracking next execution times.
+- **Meta-Tools**: `create_routine`, `list_routines`, `set_routine_enabled`, `trigger_routine`, `delete_routine`.
+
+### 4. Multi-Agent Group Rooms (`RoomManager`)
+- **Collaborative Deliberation**: Group rooms (`kind: "ROOM"`) coordinate multiple bot personas (e.g. CTO Bot, QA Engineer, Security Auditor) in a round-table format.
+- **Sequential Context Propagation**: Each persona observes the conversation prompt and prior members' turns, responding in order.
+- **Synthesized Consensus Draft**: OpenSand aggregates all turns into an actionable consensus resolution, noting agreements and dissents.
+- **Meta-Tools**: `create_room`, `list_rooms`, `set_room_members`, `run_room_discussion`, `delete_room`.
+
+### 5. Autonomous Web Browser & Safari Automation (`BrowserBridge`)
+- **Fast Lightweight Extraction**: Native Node 22 `fetch` + semantic HTML-to-Markdown parser strips navigation, ads, and scripts into clean Markdown in <50ms.
+- **Live Search**: Instant multi-engine query synthesis (DuckDuckGo Instant Answers + Wikipedia API).
+- **Safari Active Tab Inspector**: Native AppleScript bridge queries current active Safari URL and page title without requiring browser extensions.
+- **Tools**: `web_search`, `fetch_web_page`, `safari_inspect_active_tab`.
+
+### 6. Autonomous Git & GitHub PR Lifecycle Manager (`GitManager`)
+- **Structured Git Status & Diff**: Direct repository inspection returning parsed branch, staged/modified/untracked files, insertion/deletion stats, and commit logs.
+- **Parallel Worktree Spawner**: Creates isolated git worktrees (`git worktree add`) for safe parallel development without modifying the main tree.
+- **Auto-Commit Generator**: Generates concise conventional commit messages based on staged diff analysis.
+- **Autonomous PR Reviewer**: Scans git diffs against security and code quality rules, checking for exposed API keys (`sk-[a-zA-Z0-9]{20,}`), raw `console.log` debug statements, and type-safety escapes (`@ts-ignore`, `: any`).
+- **Tools**: `git_status`, `git_diff_summary`, `git_worktree_create`, `git_auto_commit`, `gh_pr_review`.
+
+### 7. Workspace Sentinel & Self-Healing Watcher (`WorkspaceSentinel`)
+- **Debounced Filesystem Sentinel**: Watches workspace directories with configurable debounce (`500ms`) and file ignore rules (`node_modules`, `.git`, `dist`).
+- **Health Verification**: Automatically triggers fast test or build verification commands upon code changes.
+- **Diagnostic Logging**: Collects build failures and test regressions for autonomous self-healing loops.
+- **Tools**: `start_workspace_watcher`, `list_workspace_watchers`, `stop_workspace_watcher`, `get_sentinel_diagnostic_logs`.
 
 ---
 
@@ -191,11 +239,20 @@ opensand --endpoint http://127.0.0.1:11434/v1 --model qwen3:8b
 ### REPL Slash Commands
 Inside the interactive prompt (`opensand> `), use built-in slash commands:
 - `/help` - Show available REPL slash commands
-- `/tools` - Inspect all registered Core, Native, and MCP tools
-- `/bots` - List registered subagents and active persona
-- `/bot <name>` - Switch active bot persona on the fly (e.g. `/bot cto`)
+- `/tools` - Inspect all 56 active Core, Native, Orchestrator, and MCP tools
+- `/bots`, `/agents` - List registered subagents and active persona
+- `/bot <name>` - Switch active bot persona on the fly (e.g. `/bot cto` or `/bot default`)
+- `/rooms` - List all multi-agent collaborative rooms
+- `/room <id> <topic>` - Convene a multi-agent round-table deliberation and consensus draft
+- `/routines` - List all scheduled background automations
+- `/routine run <id>` - Trigger immediate execution of a scheduled routine
+- `/skills` - List all modular recipe skills
+- `/skill <name>` - Inspect the full markdown recipe and instructions of a skill
+- `/vault` - Inspect encrypted secrets & credentials with masked previews
+- `/git`, `/status` - Inspect git branch, staged, modified, and untracked files
+- `/review [ref]` - Run autonomous PR review bot on pull request or commit diff
 - `/tasks` - Display registered agent tasks and status
-- `/rules` - View learned user habits and behavior rules
+- `/rules` - View continuous learned user habits and behavior rules
 - `/clear` - Clear terminal screen
 - `exit` or `Ctrl+C` - Cleanly exit the session
 
