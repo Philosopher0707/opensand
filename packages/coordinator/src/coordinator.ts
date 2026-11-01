@@ -10,6 +10,7 @@ import {
 } from "./types.js";
 import { TranscriptManager } from "./transcript-manager.js";
 import { buildSystemPrompt, SystemPromptContext } from "./system-prompt.js";
+import { VaultStore } from "./vault-store.js";
 
 export interface CoordinatorOptions {
   llmClient: UniversalLLMClient;
@@ -17,6 +18,7 @@ export interface CoordinatorOptions {
   sessionId?: string;
   systemPromptContext?: SystemPromptContext;
   allowedTools?: string[];
+  vaultStore?: VaultStore;
   onApprovalRequired?: ApprovalHandler;
   onEvent?: TurnEventListener;
   maxTurnIterations?: number;
@@ -29,6 +31,7 @@ export class AgentCoordinator {
   public readonly transcript: TranscriptManager;
   public readonly sessionId: string;
   public readonly allowedTools?: string[];
+  public readonly vaultStore?: VaultStore;
 
   private messages: ChatMessage[] = [];
   private onApprovalRequired?: ApprovalHandler;
@@ -42,6 +45,7 @@ export class AgentCoordinator {
     this.sessionId = options.sessionId ?? `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     this.transcript = new TranscriptManager(this.sessionId, options.sessionsBaseDir);
     this.allowedTools = options.allowedTools;
+    this.vaultStore = options.vaultStore;
     this.onApprovalRequired = options.onApprovalRequired;
     this.onEvent = options.onEvent;
     this.maxTurnIterations = options.maxTurnIterations ?? 50;
@@ -234,11 +238,14 @@ export class AgentCoordinator {
           permissionGates: gates,
         });
 
+        const rawContent = JSON.stringify(execResult.output ?? execResult.error);
+        const safeContent = this.vaultStore ? this.vaultStore.redactText(rawContent) : rawContent;
+
         this.emit({ type: "tool_call_completed", toolCall: tc, result: execResult });
         this.messages.push({
           role: "tool",
           tool_call_id: tc.id,
-          content: JSON.stringify(execResult.output ?? execResult.error),
+          content: safeContent,
         });
 
         await this.transcript.appendJsonl({

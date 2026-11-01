@@ -411,6 +411,69 @@ export class DesktopServer {
       return;
     }
 
+    // API: GET /api/vault/secrets
+    if (pathname === '/api/vault/secrets' && req.method === 'GET') {
+      const secrets = await this.bridge.listSecrets();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(secrets));
+      return;
+    }
+
+    // API: POST /api/vault/secrets
+    if (pathname === '/api/vault/secrets' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      if (!body.name || !body.value) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing secret name or value' }));
+        return;
+      }
+      const secret = await this.bridge.putSecret(body);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(secret));
+      return;
+    }
+
+    // API: DELETE /api/vault/secrets/:id
+    if (pathname.startsWith('/api/vault/secrets/') && req.method === 'DELETE') {
+      const idOrName = pathname.replace('/api/vault/secrets/', '');
+      const deleted = await this.bridge.deleteSecret(idOrName);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: deleted }));
+      return;
+    }
+
+    // API: GET /api/vault/credentials
+    if (pathname === '/api/vault/credentials' && req.method === 'GET') {
+      const kind = url.searchParams.get('kind') || undefined;
+      const creds = await this.bridge.listCredentials({ kind });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(creds));
+      return;
+    }
+
+    // API: POST /api/vault/credentials
+    if (pathname === '/api/vault/credentials' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      if (!body.title || !body.username) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing credential title or username' }));
+        return;
+      }
+      const cred = await this.bridge.putCredential(body);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(cred));
+      return;
+    }
+
+    // API: DELETE /api/vault/credentials/:id
+    if (pathname.startsWith('/api/vault/credentials/') && req.method === 'DELETE') {
+      const idOrTitle = pathname.replace('/api/vault/credentials/', '');
+      const deleted = await this.bridge.deleteCredential(idOrTitle);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: deleted }));
+      return;
+    }
+
     // Serve static files from renderer/
     let filePath = path.join(this.rendererDir, pathname === '/' ? 'index.html' : pathname);
     const resolvedPath = path.resolve(filePath);

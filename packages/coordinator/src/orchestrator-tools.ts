@@ -6,6 +6,7 @@ import { AgentStore, AgentRecord } from "./agent-store.js";
 import { TaskStore, AgentTask, TaskStatus, TaskPriority } from "./agent-tasks.js";
 import { HabitExtractor } from "./habit-extractor.js";
 import { MemoryStore, MemoryScope, MemoryTier } from "./memory-store.js";
+import { VaultStore, VaultItemKind } from "./vault-store.js";
 import { UniversalLLMClient } from "./llm-client.js";
 import { AgentCoordinator } from "./coordinator.js";
 
@@ -15,6 +16,7 @@ export interface RegisterOrchestratorToolsOptions {
   taskStore?: TaskStore;
   habitExtractor?: HabitExtractor;
   memoryStore?: MemoryStore;
+  vaultStore?: VaultStore;
   defaultEndpoint?: string;
   defaultModel?: string;
   defaultApiKey?: string;
@@ -26,11 +28,13 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   taskStore: TaskStore;
   habitExtractor: HabitExtractor;
   memoryStore: MemoryStore;
+  vaultStore: VaultStore;
 } {
   const { daemon } = options;
   const store = options.store ?? new AgentStore();
   const taskStore = options.taskStore ?? new TaskStore();
   const memoryStore = options.memoryStore ?? new MemoryStore();
+  const vaultStore = options.vaultStore ?? new VaultStore();
   const sessionsBaseDir = options.sessionsBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
   const habitExtractor = options.habitExtractor ?? new HabitExtractor({ sessionsDir: sessionsBaseDir });
 
@@ -652,5 +656,191 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
     },
   });
 
-  return { store, taskStore, habitExtractor, memoryStore };
+  // 15. Tool: vault_store_secret (Parity with PutGrokBotSecret)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "vault_store_secret",
+        description: "Securely encrypt and store a secret (API token, private key, password) in the local encrypted vault.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "The name/identifier of the secret (e.g. 'OPENAI_API_KEY', 'NVIDIA_API_KEY').",
+            },
+            value: {
+              type: "string",
+              description: "The plaintext secret value to encrypt.",
+            },
+            description: {
+              type: "string",
+              description: "Optional human-readable description of what this secret is used for.",
+            },
+          },
+          required: ["name", "value"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const stored = await vaultStore.putSecret({
+        name: args.name,
+        value: args.value,
+        description: args.description,
+      });
+      return JSON.stringify({
+        status: "success",
+        message: `Secret '${stored.name}' securely stored in local encrypted vault (ID: ${stored.id}).`,
+        secret: {
+          id: stored.id,
+          name: stored.name,
+          description: stored.description,
+          preview: `${stored.value.slice(0, 3)}...${stored.value.slice(-3)}`,
+        },
+      }, null, 2);
+    },
+  });
+
+  // 16. Tool: vault_list_secrets (Parity with ListGrokBotSecrets)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "vault_list_secrets",
+        description: "List all secrets stored in the local encrypted vault. Returns metadata and truncated previews only, never raw secrets.",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+    },
+    handler: async () => {
+      const secrets = await vaultStore.listSecrets();
+      return JSON.stringify(secrets, null, 2);
+    },
+  });
+
+  // 17. Tool: vault_delete_secret (Parity with DeleteGrokBotSecret)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "vault_delete_secret",
+        description: "Delete a secret from the local encrypted vault by name or ID.",
+        parameters: {
+          type: "object",
+          properties: {
+            name_or_id: {
+              type: "string",
+              description: "The name or ID of the secret to delete.",
+            },
+          },
+          required: ["name_or_id"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const deleted = await vaultStore.deleteSecret(args.name_or_id);
+      return JSON.stringify({
+        status: deleted ? "success" : "not_found",
+        deleted,
+        nameOrId: args.name_or_id,
+      }, null, 2);
+    },
+  });
+
+  // 18. Tool: vault_store_credential (Parity with PutGrokBotVaultCredential)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "vault_store_credential",
+        description: "Store a full structured account credential (title, username, password, websites) in the encrypted vault.",
+        parameters: {
+          type: "object",
+          properties: {
+            title: {
+              type: "string",
+              description: "Title/label for this credential (e.g. 'AWS Production', 'GitHub Work').",
+            },
+            username: {
+              type: "string",
+              description: "Account username, email, or client ID.",
+            },
+            password: {
+              type: "string",
+              description: "Account password, secret key, or token.",
+            },
+            notes: {
+              type: "string",
+              description: "Optional private notes.",
+            },
+            sites: {
+              type: "array",
+              items: { type: "string" },
+              description: "Optional list of domains or URLs this credential applies to.",
+            },
+            kind: {
+              type: "string",
+              enum: ["API_KEY", "PASSWORD", "TOKEN", "SSH_KEY", "CERTIFICATE", "OTHER"],
+              description: "Type of credential (default: 'API_KEY').",
+            },
+          },
+          required: ["title", "username"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const cred = await vaultStore.putCredential({
+        title: args.title,
+        username: args.username,
+        password: args.password,
+        notes: args.notes,
+        sites: args.sites,
+        kind: args.kind as VaultItemKind,
+      });
+      return JSON.stringify({
+        status: "success",
+        message: `Credential '${cred.title}' securely stored in vault (ID: ${cred.id}).`,
+        credential: {
+          id: cred.id,
+          title: cred.title,
+          username: cred.username,
+          kind: cred.kind,
+          hasPassword: Boolean(cred.password),
+        },
+      }, null, 2);
+    },
+  });
+
+  // 19. Tool: vault_list_credentials (Parity with ListGrokBotVaultCredentials)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "vault_list_credentials",
+        description: "List all credentials stored in the local encrypted vault with metadata (no plaintext passwords).",
+        parameters: {
+          type: "object",
+          properties: {
+            kind: {
+              type: "string",
+              enum: ["API_KEY", "PASSWORD", "TOKEN", "SSH_KEY", "CERTIFICATE", "OTHER"],
+              description: "Optional filter by credential kind.",
+            },
+          },
+        },
+      },
+    },
+    handler: async (args) => {
+      const creds = await vaultStore.listCredentials({ kind: args.kind as VaultItemKind });
+      return JSON.stringify(creds, null, 2);
+    },
+  });
+
+  return { store, taskStore, habitExtractor, memoryStore, vaultStore };
 }

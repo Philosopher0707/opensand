@@ -21,6 +21,9 @@ import {
   MemoryStore,
   MemoryFact,
   TeamReviewItem,
+  VaultStore,
+  VaultSecret,
+  VaultCredential,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -42,6 +45,7 @@ export class DesktopIpcBridge extends EventEmitter {
   private taskStore: TaskStore;
   private habitExtractor: HabitExtractor;
   public memoryStore: MemoryStore;
+  public vaultStore: VaultStore;
   private coordinator: AgentCoordinator | null = null;
   private activeApprovals: Map<string, {
     request: ToolApprovalRequest;
@@ -77,6 +81,7 @@ export class DesktopIpcBridge extends EventEmitter {
     this.agentStore = new AgentStore(path.join(this.baseDir, 'agents'));
     this.taskStore = new TaskStore(path.join(this.baseDir, 'tasks'));
     this.memoryStore = new MemoryStore({ baseDir: path.join(this.baseDir, 'memories') });
+    this.vaultStore = new VaultStore({ baseDir: path.join(this.baseDir, 'vault') });
     this.habitExtractor = new HabitExtractor({
       sessionsDir: path.join(this.baseDir, 'sessions'),
       memoryFilePath: path.join(this.baseDir, 'learned_rules.md'),
@@ -89,6 +94,7 @@ export class DesktopIpcBridge extends EventEmitter {
       taskStore: this.taskStore,
       habitExtractor: this.habitExtractor,
       memoryStore: this.memoryStore,
+      vaultStore: this.vaultStore,
       defaultEndpoint: this.settings.endpoint,
       defaultModel: this.settings.model,
       defaultApiKey: this.settings.apiKey,
@@ -175,6 +181,7 @@ export class DesktopIpcBridge extends EventEmitter {
       llmClient,
       daemon: this.daemon,
       sessionId: activeSessionId,
+      vaultStore: this.vaultStore,
       sessionsBaseDir: path.join(this.baseDir, 'sessions'),
       systemPromptContext: {
         userInstructions: customInstructions,
@@ -454,5 +461,30 @@ export class DesktopIpcBridge extends EventEmitter {
     reviewerId?: string
   ): Promise<TeamReviewItem> {
     return this.memoryStore.resolveReviewItem(itemId, decision, reviewerId);
+  }
+
+  // Vault API (Grok Bot Parity)
+  public async putSecret(input: { name: string; value: string; description?: string }): Promise<VaultSecret> {
+    return this.vaultStore.putSecret(input);
+  }
+
+  public async listSecrets(): Promise<Array<Omit<VaultSecret, 'value'> & { hasValue: boolean; preview: string }>> {
+    return this.vaultStore.listSecrets();
+  }
+
+  public async deleteSecret(nameOrId: string): Promise<boolean> {
+    return this.vaultStore.deleteSecret(nameOrId);
+  }
+
+  public async putCredential(input: any): Promise<VaultCredential> {
+    return this.vaultStore.putCredential(input);
+  }
+
+  public async listCredentials(filter?: any): Promise<any> {
+    return this.vaultStore.listCredentials(filter);
+  }
+
+  public async deleteCredential(idOrTitle: string): Promise<boolean> {
+    return this.vaultStore.deleteCredential(idOrTitle);
   }
 }
