@@ -153,13 +153,204 @@ class OpenSandClient {
     });
     return res.json();
   }
+
+  // --- Rooms API ---
+  async getRooms() {
+    const res = await fetch('/api/rooms');
+    return res.json();
+  }
+
+  async createRoom(room) {
+    const res = await fetch('/api/rooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(room),
+    });
+    return res.json();
+  }
+
+  async runRoomDiscussion(roomId, topic) {
+    const res = await fetch(`/api/rooms/${roomId}/discuss`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic }),
+    });
+    return res.json();
+  }
+
+  async deleteRoom(roomId) {
+    const res = await fetch(`/api/rooms/${roomId}`, { method: 'DELETE' });
+    return res.json();
+  }
+
+  // --- Routines API ---
+  async getRoutines() {
+    const res = await fetch('/api/routines');
+    return res.json();
+  }
+
+  async createRoutine(routine) {
+    const res = await fetch('/api/routines', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(routine),
+    });
+    return res.json();
+  }
+
+  async setRoutineEnabled(routineId, isEnabled) {
+    const res = await fetch(`/api/routines/${routineId}/enabled`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isEnabled }),
+    });
+    return res.json();
+  }
+
+  async triggerRoutine(routineId) {
+    const res = await fetch(`/api/routines/${routineId}/trigger`, { method: 'POST' });
+    return res.json();
+  }
+
+  async deleteRoutine(routineId) {
+    const res = await fetch(`/api/routines/${routineId}`, { method: 'DELETE' });
+    return res.json();
+  }
+
+  // --- Skills API ---
+  async getSkills(category) {
+    const url = category ? `/api/skills?category=${encodeURIComponent(category)}` : '/api/skills';
+    const res = await fetch(url);
+    return res.json();
+  }
+
+  async createSkill(skill) {
+    const res = await fetch('/api/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(skill),
+    });
+    return res.json();
+  }
+
+  async deleteSkill(skillId) {
+    const res = await fetch(`/api/skills/${skillId}`, { method: 'DELETE' });
+    return res.json();
+  }
+
+  // --- Vault API ---
+  async getSecrets() {
+    const res = await fetch('/api/vault/secrets');
+    return res.json();
+  }
+
+  async storeSecret(secret) {
+    const res = await fetch('/api/vault/secrets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(secret),
+    });
+    return res.json();
+  }
+
+  async deleteSecret(idOrName) {
+    const res = await fetch(`/api/vault/secrets/${encodeURIComponent(idOrName)}`, { method: 'DELETE' });
+    return res.json();
+  }
+
+  async getCredentials() {
+    const res = await fetch('/api/vault/credentials');
+    return res.json();
+  }
+
+  async storeCredential(cred) {
+    const res = await fetch('/api/vault/credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cred),
+    });
+    return res.json();
+  }
+
+  async deleteCredential(idOrTitle) {
+    const res = await fetch(`/api/vault/credentials/${encodeURIComponent(idOrTitle)}`, { method: 'DELETE' });
+    return res.json();
+  }
+
+  // --- Memories API ---
+  async getMemories(tier) {
+    const url = tier ? `/api/memories?tier=${encodeURIComponent(tier)}` : '/api/memories';
+    const res = await fetch(url);
+    return res.json();
+  }
+
+  async addMemory(memory) {
+    const res = await fetch('/api/memories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(memory),
+    });
+    return res.json();
+  }
+
+  async getTeamReviewItems() {
+    const res = await fetch('/api/team-review');
+    return res.json();
+  }
+
+  async resolveReviewItem(itemId, decision) {
+    const res = await fetch(`/api/team-review/${itemId}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision }),
+    });
+    return res.json();
+  }
 }
 
 // UI Controller
 document.addEventListener('DOMContentLoaded', async () => {
   const client = new OpenSandClient();
 
-  // Elements
+  // Navigation Tabs & Views
+  const navTabs = document.querySelectorAll('.nav-tab');
+  const viewPanels = {
+    chat: document.getElementById('viewChat'),
+    rooms: document.getElementById('viewRooms'),
+    routines: document.getElementById('viewRoutines'),
+    skills: document.getElementById('viewSkills'),
+    vault: document.getElementById('viewVault'),
+    memories: document.getElementById('viewMemories'),
+  };
+
+  let currentView = 'chat';
+
+  function switchView(viewName) {
+    currentView = viewName;
+    navTabs.forEach((tab) => {
+      tab.classList.toggle('active', tab.dataset.view === viewName);
+    });
+
+    Object.keys(viewPanels).forEach((key) => {
+      const panel = viewPanels[key];
+      if (panel) {
+        panel.classList.toggle('hidden', key !== viewName);
+      }
+    });
+
+    // Auto-refresh data on tab switch
+    if (viewName === 'rooms') refreshRooms();
+    if (viewName === 'routines') refreshRoutines();
+    if (viewName === 'skills') refreshSkills();
+    if (viewName === 'vault') refreshVault();
+    if (viewName === 'memories') refreshMemories();
+  }
+
+  navTabs.forEach((tab) => {
+    tab.onclick = () => switchView(tab.dataset.view);
+  });
+
+  // Chat Elements
   const chatContainer = document.getElementById('chatContainer');
   const messageFeed = document.getElementById('messageFeed');
   const welcomeBanner = document.getElementById('welcomeBanner');
@@ -184,7 +375,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnAlwaysAllow = document.getElementById('btnAlwaysAllow');
   const btnRejectTool = document.getElementById('btnRejectTool');
 
-  // Create Bot modal elements
+  // Bot Modal Elements
   const btnOpenCreateBot = document.getElementById('btnOpenCreateBot');
   const createBotModal = document.getElementById('createBotModal');
   const btnCloseCreateBot = document.getElementById('btnCloseCreateBot');
@@ -194,7 +385,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const botSystemPrompt = document.getElementById('botSystemPrompt');
   const botModel = document.getElementById('botModel');
 
-  // Create Task modal elements
+  // Task Modal Elements
   const btnOpenCreateTask = document.getElementById('btnOpenCreateTask');
   const createTaskModal = document.getElementById('createTaskModal');
   const btnCloseCreateTask = document.getElementById('btnCloseCreateTask');
@@ -202,7 +393,87 @@ document.addEventListener('DOMContentLoaded', async () => {
   const taskTitle = document.getElementById('taskTitle');
   const taskPriority = document.getElementById('taskPriority');
 
-  // Learned Rules modal elements
+  // Room Modal Elements
+  const btnOpenCreateRoom = document.getElementById('btnOpenCreateRoom');
+  const createRoomModal = document.getElementById('createRoomModal');
+  const btnCloseCreateRoom = document.getElementById('btnCloseCreateRoom');
+  const btnSaveRoom = document.getElementById('btnSaveRoom');
+  const roomName = document.getElementById('roomName');
+  const roomDesc = document.getElementById('roomDesc');
+  const roomMemberCheckboxes = document.getElementById('roomMemberCheckboxes');
+
+  // Convene Modal Elements
+  const conveneDiscussionModal = document.getElementById('conveneDiscussionModal');
+  const btnCloseConvene = document.getElementById('btnCloseConvene');
+  const conveneModalTitle = document.getElementById('conveneModalTitle');
+  const discussionTopic = document.getElementById('discussionTopic');
+  const btnStartDiscussion = document.getElementById('btnStartDiscussion');
+  const discussionLiveResults = document.getElementById('discussionLiveResults');
+  const discussionFeedBox = document.getElementById('discussionFeedBox');
+  const consensusBox = document.getElementById('consensusBox');
+  const btnCloseDiscussionDone = document.getElementById('btnCloseDiscussionDone');
+  let activeConveneRoomId = null;
+
+  // Routine Modal Elements
+  const btnOpenCreateRoutine = document.getElementById('btnOpenCreateRoutine');
+  const createRoutineModal = document.getElementById('createRoutineModal');
+  const btnCloseCreateRoutine = document.getElementById('btnCloseCreateRoutine');
+  const btnSaveRoutine = document.getElementById('btnSaveRoutine');
+  const routineName = document.getElementById('routineName');
+  const routinePrompt = document.getElementById('routinePrompt');
+  const routineScheduleType = document.getElementById('routineScheduleType');
+  const groupInterval = document.getElementById('groupInterval');
+  const groupCron = document.getElementById('groupCron');
+  const routineIntervalMinutes = document.getElementById('routineIntervalMinutes');
+  const routineCron = document.getElementById('routineCron');
+
+  routineScheduleType.onchange = () => {
+    if (routineScheduleType.value === 'cron') {
+      groupInterval.classList.add('hidden');
+      groupCron.classList.remove('hidden');
+    } else {
+      groupInterval.classList.remove('hidden');
+      groupCron.classList.add('hidden');
+    }
+  };
+
+  // Skill Modal Elements
+  const btnOpenCreateSkill = document.getElementById('btnOpenCreateSkill');
+  const createSkillModal = document.getElementById('createSkillModal');
+  const btnCloseCreateSkill = document.getElementById('btnCloseCreateSkill');
+  const btnSaveSkill = document.getElementById('btnSaveSkill');
+  const skillName = document.getElementById('skillName');
+  const skillDescription = document.getElementById('skillDescription');
+  const skillContent = document.getElementById('skillContent');
+
+  // Vault Modal Elements
+  const btnOpenAddSecret = document.getElementById('btnOpenAddSecret');
+  const addSecretModal = document.getElementById('addSecretModal');
+  const btnCloseAddSecret = document.getElementById('btnCloseAddSecret');
+  const btnSaveSecret = document.getElementById('btnSaveSecret');
+  const secretName = document.getElementById('secretName');
+  const secretValue = document.getElementById('secretValue');
+  const secretDesc = document.getElementById('secretDesc');
+
+  const btnOpenAddCredential = document.getElementById('btnOpenAddCredential');
+  const addCredentialModal = document.getElementById('addCredentialModal');
+  const btnCloseAddCredential = document.getElementById('btnCloseAddCredential');
+  const btnSaveCredential = document.getElementById('btnSaveCredential');
+  const credTitle = document.getElementById('credTitle');
+  const credUsername = document.getElementById('credUsername');
+  const credPassword = document.getElementById('credPassword');
+  const credSites = document.getElementById('credSites');
+
+  // Memory Modal Elements
+  const btnOpenAddMemory = document.getElementById('btnOpenAddMemory');
+  const addMemoryModal = document.getElementById('addMemoryModal');
+  const btnCloseAddMemory = document.getElementById('btnCloseAddMemory');
+  const btnSaveMemory = document.getElementById('btnSaveMemory');
+  const memText = document.getElementById('memText');
+  const memScope = document.getElementById('memScope');
+  const memTier = document.getElementById('memTier');
+
+  // Learned Rules Elements
   const btnViewLearnedRules = document.getElementById('btnViewLearnedRules');
   const learnedRulesModal = document.getElementById('learnedRulesModal');
   const btnCloseLearnedRules = document.getElementById('btnCloseLearnedRules');
@@ -210,7 +481,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnRefreshLearnedRules = document.getElementById('btnRefreshLearnedRules');
   const learnedRulesContent = document.getElementById('learnedRulesContent');
 
-  // Settings modal elements
+  // Native Quick Tools
+  const btnQuickOcr = document.getElementById('btnQuickOcr');
+  const btnQuickWindow = document.getElementById('btnQuickWindow');
+
+  // Settings Modal Elements
   const btnSettings = document.getElementById('btnSettings');
   const settingsModal = document.getElementById('settingsModal');
   const btnCloseSettings = document.getElementById('btnCloseSettings');
@@ -221,283 +496,667 @@ document.addEventListener('DOMContentLoaded', async () => {
   const settingApiKey = document.getElementById('settingApiKey');
   const settingAutoApprove = document.getElementById('settingAutoApprove');
 
-  // Quick Tools
-  const btnQuickOcr = document.getElementById('btnQuickOcr');
-  const btnQuickWindow = document.getElementById('btnQuickWindow');
-
   // State
   let currentSessionId = null;
   let activeAgentId = null;
-  let activeAgentName = 'Default Assistant';
-  let activeAssistantBubble = null;
-  let currentApprovalId = null;
+  let activeApprovalId = null;
+  let currentAssistantBubble = null;
+  let currentAssistantText = '';
 
-  // Auto-resize textarea
-  promptInput.addEventListener('input', () => {
-    promptInput.style.height = 'auto';
-    promptInput.style.height = Math.min(promptInput.scrollHeight, 140) + 'px';
-  });
+  // --- REFRESH FUNCTIONS ---
 
-  // Load Initial Settings, Bots, Tasks, and Sessions
   async function refreshSettings() {
-    try {
-      const s = await client.getSettings();
-      badgeModel.textContent = s.model || 'default';
-      badgeAutoApprove.textContent = s.autoApprove ? '⚡ Auto-Approve' : '🛡 Safe Mode';
-      badgeAutoApprove.className = s.autoApprove ? 'badge' : 'badge badge-success';
-    } catch (e) {
-      console.error('Failed to load settings:', e);
-    }
+    const s = await client.getSettings();
+    badgeModel.textContent = s.model || 'Default';
+    badgeAutoApprove.textContent = s.autoApprove ? '⚡ Auto-Approve' : '🛡 Safe Mode';
+    badgeAutoApprove.className = s.autoApprove ? 'badge badge-warning' : 'badge badge-success';
   }
 
   async function refreshBots() {
-    try {
-      const agents = await client.getAgents();
-      botList.innerHTML = '';
+    const agents = await client.getAgents();
+    botList.innerHTML = '';
 
-      // Default Assistant Item
-      const defaultItem = document.createElement('div');
-      defaultItem.className = 'bot-item' + (activeAgentId === null ? ' active' : '');
-      defaultItem.innerHTML = `
-        <span class="bot-item-icon">⚡</span>
-        <div class="bot-item-info">
-          <span class="bot-item-name">Default Assistant</span>
-          <span class="bot-item-role">Universal Coding Agent</span>
-        </div>
-      `;
-      defaultItem.onclick = () => {
-        activeAgentId = null;
-        activeAgentName = 'Default Assistant';
-        badgeActiveBot.textContent = '⚡ Default Assistant';
+    const defaultItem = document.createElement('div');
+    defaultItem.className = `bot-item ${activeAgentId === null ? 'active' : ''}`;
+    defaultItem.innerHTML = `<span class="bot-icon">🤖</span><span class="bot-name">Default Assistant</span>`;
+    defaultItem.onclick = () => {
+      activeAgentId = null;
+      badgeActiveBot.textContent = '🤖 Default Assistant';
+      refreshBots();
+    };
+    botList.appendChild(defaultItem);
+
+    for (const a of agents) {
+      const item = document.createElement('div');
+      item.className = `bot-item ${activeAgentId === a.id ? 'active' : ''}`;
+      const icon = a.kind === 'ROOM' ? '👥' : '⚡';
+      item.innerHTML = `<span class="bot-icon">${icon}</span><span class="bot-name">${escapeHtml(a.name)}</span>`;
+      item.title = a.role || a.name;
+      item.onclick = () => {
+        activeAgentId = a.id;
+        badgeActiveBot.textContent = `${icon} ${a.name}`;
         refreshBots();
       };
-      botList.appendChild(defaultItem);
-
-      // Registered Bots
-      for (const a of agents) {
-        const item = document.createElement('div');
-        item.className = 'bot-item' + (activeAgentId === a.id ? ' active' : '');
-        const icon = a.name.toLowerCase().includes('cto') ? '👨‍💼' :
-                     a.name.toLowerCase().includes('security') ? '🛡️' :
-                     a.name.toLowerCase().includes('review') ? '🔍' : '🤖';
-        item.innerHTML = `
-          <span class="bot-item-icon">${icon}</span>
-          <div class="bot-item-info">
-            <span class="bot-item-name">${escapeHtml(a.name)}</span>
-            <span class="bot-item-role">${escapeHtml(a.role)}</span>
-          </div>
-        `;
-        item.onclick = () => {
-          activeAgentId = a.id;
-          activeAgentName = a.name;
-          badgeActiveBot.textContent = `${icon} ${a.name}`;
-          refreshBots();
-        };
-        botList.appendChild(item);
-      }
-    } catch (e) {
-      console.error('Failed to load bots:', e);
+      botList.appendChild(item);
     }
   }
 
   async function refreshTasks() {
-    try {
-      const tasks = await client.getTasks();
-      taskList.innerHTML = '';
-      if (tasks.length === 0) {
-        taskList.innerHTML = '<div style="font-size: 11px; color: var(--text-muted); padding: 4px;">No active tasks</div>';
-        return;
-      }
+    const tasks = await client.getTasks();
+    taskList.innerHTML = '';
 
-      for (const t of tasks) {
-        const item = document.createElement('div');
-        item.className = 'task-item' + (t.status === 'done' ? ' done' : '');
-        item.innerHTML = `
-          <input type="checkbox" class="task-checkbox" ${t.status === 'done' ? 'checked' : ''}>
-          <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(t.title)}</span>
-          <span class="badge" style="font-size: 9px; padding: 1px 4px;">${escapeHtml(t.priority)}</span>
-        `;
-
-        const checkbox = item.querySelector('.task-checkbox');
-        checkbox.onchange = async () => {
-          await client.updateTask(t.id, { status: checkbox.checked ? 'done' : 'todo' });
-          await refreshTasks();
-        };
-
-        taskList.appendChild(item);
-      }
-    } catch (e) {
-      console.error('Failed to load tasks:', e);
+    for (const t of tasks) {
+      const isDone = t.status === 'done';
+      const item = document.createElement('div');
+      item.className = 'task-item';
+      item.innerHTML = `
+        <input type="checkbox" class="task-checkbox" ${isDone ? 'checked' : ''}>
+        <span class="task-text ${isDone ? 'completed' : ''}">${escapeHtml(t.title)}</span>
+      `;
+      const checkbox = item.querySelector('.task-checkbox');
+      checkbox.onchange = async () => {
+        await client.updateTask(t.id, { status: checkbox.checked ? 'done' : 'todo' });
+        refreshTasks();
+      };
+      taskList.appendChild(item);
     }
   }
 
   async function refreshSessions() {
-    try {
-      const sessions = await client.getSessions();
-      sessionList.innerHTML = '';
-      for (const sess of sessions) {
-        const item = document.createElement('div');
-        item.className = 'session-item' + (sess.id === currentSessionId ? ' active' : '');
-        item.textContent = sess.title || sess.id;
-        item.title = sess.title;
-        item.onclick = () => selectSession(sess.id);
-        sessionList.appendChild(item);
-      }
-    } catch (e) {
-      console.error('Failed to load sessions:', e);
+    const sessions = await client.getSessions();
+    sessionList.innerHTML = '';
+
+    for (const s of sessions) {
+      const item = document.createElement('div');
+      item.className = `session-item ${s.id === currentSessionId ? 'active' : ''}`;
+      item.textContent = s.title || s.id;
+      item.onclick = () => selectSession(s.id);
+      sessionList.appendChild(item);
     }
   }
+
+  // --- ROOMS VIEW CONTROLLER ---
+  async function refreshRooms() {
+    const grid = document.getElementById('roomsCardGrid');
+    const rooms = await client.getRooms();
+    grid.innerHTML = '';
+
+    if (rooms.length === 0) {
+      grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px;">No multi-agent rooms created yet. Click "+ Create Room" to convene a team.</div>`;
+      return;
+    }
+
+    for (const r of rooms) {
+      const card = document.createElement('div');
+      card.className = 'dashboard-card';
+      card.innerHTML = `
+        <div class="card-top">
+          <div class="card-title">👥 ${escapeHtml(r.name)}</div>
+          <span class="badge badge-bot">${r.memberAgentIds.length} Agents</span>
+        </div>
+        <div class="card-desc">${escapeHtml(r.description || 'No description.')}</div>
+        <div class="card-meta">
+          <span class="badge">Discussions: ${r.discussionCount || 0}</span>
+          ${r.activeTopic ? `<span class="badge" title="${escapeHtml(r.activeTopic)}">Active Topic: ${escapeHtml(r.activeTopic.slice(0, 28))}...</span>` : ''}
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-primary btn-xs btn-convene">Convene Meeting</button>
+          <button class="btn btn-ghost btn-xs btn-del-room" style="color: var(--danger);">Delete</button>
+        </div>
+      `;
+
+      card.querySelector('.btn-convene').onclick = () => {
+        activeConveneRoomId = r.roomId;
+        conveneModalTitle.textContent = `Convene Deliberation: ${r.name}`;
+        discussionTopic.value = r.activeTopic || '';
+        discussionLiveResults.classList.add('hidden');
+        btnStartDiscussion.classList.remove('hidden');
+        btnStartDiscussion.disabled = false;
+        btnStartDiscussion.textContent = 'Start Deliberation';
+        btnCloseDiscussionDone.classList.add('hidden');
+        conveneDiscussionModal.classList.remove('hidden');
+      };
+
+      card.querySelector('.btn-del-room').onclick = async () => {
+        if (confirm(`Delete room "${r.name}"?`)) {
+          await client.deleteRoom(r.roomId);
+          refreshRooms();
+          refreshBots();
+        }
+      };
+
+      grid.appendChild(card);
+    }
+  }
+
+  // --- ROUTINES VIEW CONTROLLER ---
+  async function refreshRoutines() {
+    const grid = document.getElementById('routinesCardGrid');
+    const routines = await client.getRoutines();
+    grid.innerHTML = '';
+
+    if (routines.length === 0) {
+      grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px;">No background routines configured. Click "+ New Routine" to schedule one.</div>`;
+      return;
+    }
+
+    for (const r of routines) {
+      const card = document.createElement('div');
+      card.className = 'dashboard-card';
+      const statusBadge = r.lastRunStatus === 'success'
+        ? '<span class="badge badge-success">✓ Success</span>'
+        : r.lastRunStatus === 'error'
+        ? '<span class="badge badge-danger">✗ Error</span>'
+        : r.lastRunStatus === 'running'
+        ? '<span class="badge badge-warning">⚡ Running</span>'
+        : '<span class="badge">Idle</span>';
+
+      const nextRunStr = r.nextRunAtMs ? new Date(r.nextRunAtMs).toLocaleTimeString() : 'Disabled';
+
+      card.innerHTML = `
+        <div class="card-top">
+          <div class="card-title">⏱ ${escapeHtml(r.name)}</div>
+          ${statusBadge}
+        </div>
+        <div class="card-desc"><strong>Action:</strong> ${escapeHtml(JSON.parse(r.recordJson || '{}').prompt || r.name)}</div>
+        <div class="card-meta">
+          <span class="badge">${escapeHtml(r.triggerDescription)}</span>
+          <span class="badge">Next: ${nextRunStr}</span>
+          <span class="badge">Runs: ${r.runCount}</span>
+        </div>
+        <div class="card-footer">
+          <div style="display: flex; gap: 6px;">
+            <button class="btn btn-secondary btn-xs btn-trigger">Run Now</button>
+            <button class="btn btn-ghost btn-xs btn-toggle">${r.isEnabled ? 'Pause' : 'Enable'}</button>
+          </div>
+          <button class="btn btn-ghost btn-xs btn-del-routine" style="color: var(--danger);">Delete</button>
+        </div>
+      `;
+
+      card.querySelector('.btn-trigger').onclick = async (e) => {
+        const btn = e.target;
+        btn.disabled = true;
+        btn.textContent = 'Running...';
+        await client.triggerRoutine(r.routineId);
+        btn.disabled = false;
+        btn.textContent = 'Run Now';
+        refreshRoutines();
+      };
+
+      card.querySelector('.btn-toggle').onclick = async () => {
+        await client.setRoutineEnabled(r.routineId, !r.isEnabled);
+        refreshRoutines();
+      };
+
+      card.querySelector('.btn-del-routine').onclick = async () => {
+        if (confirm(`Delete routine "${r.name}"?`)) {
+          await client.deleteRoutine(r.routineId);
+          refreshRoutines();
+        }
+      };
+
+      grid.appendChild(card);
+    }
+  }
+
+  // --- SKILLS VIEW CONTROLLER ---
+  async function refreshSkills() {
+    const grid = document.getElementById('skillsCardGrid');
+    const skills = await client.getSkills();
+    grid.innerHTML = '';
+
+    if (skills.length === 0) {
+      grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px;">No modular recipe skills in library. Click "+ New Skill" to add one.</div>`;
+      return;
+    }
+
+    for (const s of skills) {
+      const card = document.createElement('div');
+      card.className = 'dashboard-card';
+      card.innerHTML = `
+        <div class="card-top">
+          <div class="card-title">🧩 ${escapeHtml(s.name)}</div>
+          <span class="badge">${escapeHtml(s.category || 'general')}</span>
+        </div>
+        <div class="card-desc">${escapeHtml(s.description || 'No description.')}</div>
+        <div class="card-meta">
+          <span class="badge">Origin: ${escapeHtml(s.origin || 'custom')}</span>
+          <span class="badge">${(s.content || '').length} bytes</span>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-secondary btn-xs btn-preview-skill">View Recipe</button>
+          <button class="btn btn-ghost btn-xs btn-del-skill" style="color: var(--danger);">Delete</button>
+        </div>
+      `;
+
+      card.querySelector('.btn-preview-skill').onclick = () => {
+        alert(`=== Skill: ${s.name} ===\n\n${s.content}`);
+      };
+
+      card.querySelector('.btn-del-skill').onclick = async () => {
+        if (confirm(`Delete skill "${s.name}"?`)) {
+          await client.deleteSkill(s.id);
+          refreshSkills();
+        }
+      };
+
+      grid.appendChild(card);
+    }
+  }
+
+  // --- VAULT VIEW CONTROLLER ---
+  async function refreshVault() {
+    const secGrid = document.getElementById('vaultSecretsGrid');
+    const credGrid = document.getElementById('vaultCredentialsGrid');
+    secGrid.innerHTML = '';
+    credGrid.innerHTML = '';
+
+    const secrets = await client.getSecrets();
+    const credentials = await client.getCredentials();
+
+    if (secrets.length === 0) {
+      secGrid.innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 13px;">No encrypted secrets stored.</div>`;
+    } else {
+      for (const s of secrets) {
+        const card = document.createElement('div');
+        card.className = 'dashboard-card';
+        card.innerHTML = `
+          <div class="card-top">
+            <div class="card-title">🔑 ${escapeHtml(s.name)}</div>
+            <span class="badge badge-success">Encrypted</span>
+          </div>
+          <div class="card-desc">${escapeHtml(s.description || 'Environment secret token')}</div>
+          <div class="card-meta">
+            <span class="vault-value-mask" title="Click to reveal">${s.preview || '••••••••'}</span>
+          </div>
+          <div class="card-footer">
+            <button class="btn btn-ghost btn-xs btn-del-sec" style="color: var(--danger);">Delete</button>
+          </div>
+        `;
+        card.querySelector('.btn-del-sec').onclick = async () => {
+          if (confirm(`Delete secret "${s.name}"?`)) {
+            await client.deleteSecret(s.name);
+            refreshVault();
+          }
+        };
+        secGrid.appendChild(card);
+      }
+    }
+
+    if (credentials.length === 0) {
+      credGrid.innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 13px;">No account credentials stored.</div>`;
+    } else {
+      for (const c of credentials) {
+        const card = document.createElement('div');
+        card.className = 'dashboard-card';
+        card.innerHTML = `
+          <div class="card-top">
+            <div class="card-title">👤 ${escapeHtml(c.title)}</div>
+            <span class="badge">${escapeHtml(c.username || 'user')}</span>
+          </div>
+          <div class="card-desc"><strong>Sites:</strong> ${escapeHtml((c.sites || []).join(', ') || 'Any')}</div>
+          <div class="card-meta">
+            <span class="vault-value-mask">••••••••••••</span>
+          </div>
+          <div class="card-footer">
+            <button class="btn btn-ghost btn-xs btn-del-cred" style="color: var(--danger);">Delete</button>
+          </div>
+        `;
+        card.querySelector('.btn-del-cred').onclick = async () => {
+          if (confirm(`Delete credential "${c.title}"?`)) {
+            await client.deleteCredential(c.id);
+            refreshVault();
+          }
+        };
+        credGrid.appendChild(card);
+      }
+    }
+  }
+
+  // --- MEMORIES VIEW CONTROLLER ---
+  async function refreshMemories() {
+    const revGrid = document.getElementById('teamReviewGrid');
+    const memGrid = document.getElementById('memoriesGrid');
+    revGrid.innerHTML = '';
+    memGrid.innerHTML = '';
+
+    const reviewItems = await client.getTeamReviewItems();
+    const memories = await client.getMemories();
+
+    if (reviewItems.length === 0) {
+      revGrid.innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 13px;">No pending team memory review proposals.</div>`;
+    } else {
+      for (const item of reviewItems) {
+        const card = document.createElement('div');
+        card.className = 'dashboard-card';
+        card.innerHTML = `
+          <div class="card-top">
+            <div class="card-title">📝 ${escapeHtml(item.action)}: ${escapeHtml(item.proposedFact.text.slice(0, 40))}...</div>
+            <span class="badge badge-warning">${item.status}</span>
+          </div>
+          <div class="card-desc">${escapeHtml(item.proposedFact.text)}</div>
+          <div class="card-meta">
+            <span class="badge">Proposed by: ${escapeHtml(item.proposedByAgentId)}</span>
+            <span class="badge">Tier: ${escapeHtml(item.proposedFact.tier)}</span>
+          </div>
+          <div class="card-footer">
+            <div style="display: flex; gap: 6px;">
+              <button class="btn btn-primary btn-xs btn-approve-rev">Approve</button>
+              <button class="btn btn-ghost btn-xs btn-reject-rev" style="color: var(--danger);">Reject</button>
+            </div>
+          </div>
+        `;
+        card.querySelector('.btn-approve-rev').onclick = async () => {
+          await client.resolveReviewItem(item.id, 'approve');
+          refreshMemories();
+        };
+        card.querySelector('.btn-reject-rev').onclick = async () => {
+          await client.resolveReviewItem(item.id, 'reject');
+          refreshMemories();
+        };
+        revGrid.appendChild(card);
+      }
+    }
+
+    if (memories.length === 0) {
+      memGrid.innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 13px;">No memory facts recorded yet.</div>`;
+    } else {
+      for (const m of memories) {
+        const card = document.createElement('div');
+        card.className = 'dashboard-card';
+        card.innerHTML = `
+          <div class="card-top">
+            <div class="card-title">🧠 ${escapeHtml(m.tier || 'fact').toUpperCase()}</div>
+            <span class="badge badge-bot">${escapeHtml(m.scope || 'user')}</span>
+          </div>
+          <div class="card-desc">${escapeHtml(m.text)}</div>
+          <div class="card-meta">
+            <span class="badge">Confidence: ${Math.round((m.confidence || 1) * 100)}%</span>
+            <span class="badge">${new Date(m.updatedAtMs || m.createdAtMs || Date.now()).toLocaleDateString()}</span>
+          </div>
+        `;
+        memGrid.appendChild(card);
+      }
+    }
+  }
+
+  // --- MODAL DIALOG CONTROLLERS ---
+
+  // Room creation
+  btnOpenCreateRoom.onclick = async () => {
+    roomName.value = '';
+    roomDesc.value = '';
+    roomMemberCheckboxes.innerHTML = '';
+    const agents = await client.getAgents();
+
+    for (const a of agents) {
+      if (a.kind === 'ROOM') continue; // Don't nest rooms
+      const lbl = document.createElement('label');
+      lbl.style.cssText = 'display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;';
+      lbl.innerHTML = `<input type="checkbox" value="${a.id}" checked> <span>${escapeHtml(a.name)} (${escapeHtml(a.role)})</span>`;
+      roomMemberCheckboxes.appendChild(lbl);
+    }
+
+    createRoomModal.classList.remove('hidden');
+  };
+
+  btnCloseCreateRoom.onclick = () => createRoomModal.classList.add('hidden');
+
+  btnSaveRoom.onclick = async () => {
+    const checked = Array.from(roomMemberCheckboxes.querySelectorAll('input:checked')).map((i) => i.value);
+    if (!roomName.value.trim() || checked.length === 0) {
+      alert('Please provide a room name and select at least one member agent.');
+      return;
+    }
+    await client.createRoom({
+      name: roomName.value.trim(),
+      description: roomDesc.value.trim(),
+      memberAgentIds: checked,
+    });
+    createRoomModal.classList.add('hidden');
+    refreshRooms();
+    refreshBots();
+  };
+
+  // Discussion Convening
+  btnCloseConvene.onclick = () => conveneDiscussionModal.classList.add('hidden');
+  btnCloseDiscussionDone.onclick = () => conveneDiscussionModal.classList.add('hidden');
+
+  btnStartDiscussion.onclick = async () => {
+    const topic = discussionTopic.value.trim();
+    if (!topic || !activeConveneRoomId) return;
+
+    btnStartDiscussion.disabled = true;
+    btnStartDiscussion.textContent = 'Deliberating...';
+
+    const res = await client.runRoomDiscussion(activeConveneRoomId, topic);
+
+    discussionFeedBox.innerHTML = '';
+    for (const turn of res.turns || []) {
+      const turnDiv = document.createElement('div');
+      turnDiv.className = 'discussion-turn';
+      turnDiv.innerHTML = `
+        <div class="turn-author">Turn ${turn.turnIndex}: ${escapeHtml(turn.memberName)} (${escapeHtml(turn.memberRole)})</div>
+        <div>${escapeHtml(turn.content)}</div>
+      `;
+      discussionFeedBox.appendChild(turnDiv);
+    }
+
+    consensusBox.textContent = res.consensus || 'No consensus rendered.';
+    discussionLiveResults.classList.remove('hidden');
+
+    btnStartDiscussion.classList.add('hidden');
+    btnCloseDiscussionDone.classList.remove('hidden');
+    refreshRooms();
+  };
+
+  // Routine creation
+  btnOpenCreateRoutine.onclick = () => {
+    routineName.value = '';
+    routinePrompt.value = '';
+    routineScheduleType.value = 'interval';
+    routineIntervalMinutes.value = 60;
+    routineCron.value = '';
+    groupInterval.classList.remove('hidden');
+    groupCron.classList.add('hidden');
+    createRoutineModal.classList.remove('hidden');
+  };
+
+  btnCloseCreateRoutine.onclick = () => createRoutineModal.classList.add('hidden');
+
+  btnSaveRoutine.onclick = async () => {
+    if (!routineName.value.trim() || !routinePrompt.value.trim()) {
+      alert('Please provide routine name and prompt instructions.');
+      return;
+    }
+    await client.createRoutine({
+      name: routineName.value.trim(),
+      prompt: routinePrompt.value.trim(),
+      scheduleType: routineScheduleType.value,
+      intervalMinutes: parseInt(routineIntervalMinutes.value, 10) || 60,
+      cron: routineCron.value.trim() || undefined,
+    });
+    createRoutineModal.classList.add('hidden');
+    refreshRoutines();
+  };
+
+  // Skill creation
+  btnOpenCreateSkill.onclick = () => {
+    skillName.value = '';
+    skillDescription.value = '';
+    skillContent.value = '';
+    createSkillModal.classList.remove('hidden');
+  };
+
+  btnCloseCreateSkill.onclick = () => createSkillModal.classList.add('hidden');
+
+  btnSaveSkill.onclick = async () => {
+    if (!skillContent.value.trim()) {
+      alert('Please provide skill recipe markdown content.');
+      return;
+    }
+    await client.createSkill({
+      name: skillName.value.trim(),
+      description: skillDescription.value.trim(),
+      content: skillContent.value.trim(),
+    });
+    createSkillModal.classList.add('hidden');
+    refreshSkills();
+  };
+
+  // Vault creation
+  btnOpenAddSecret.onclick = () => {
+    secretName.value = '';
+    secretValue.value = '';
+    secretDesc.value = '';
+    addSecretModal.classList.remove('hidden');
+  };
+  btnCloseAddSecret.onclick = () => addSecretModal.classList.add('hidden');
+  btnSaveSecret.onclick = async () => {
+    if (!secretName.value.trim() || !secretValue.value.trim()) {
+      alert('Please provide secret name and value.');
+      return;
+    }
+    await client.storeSecret({
+      name: secretName.value.trim(),
+      value: secretValue.value.trim(),
+      description: secretDesc.value.trim(),
+    });
+    addSecretModal.classList.add('hidden');
+    refreshVault();
+  };
+
+  btnOpenAddCredential.onclick = () => {
+    credTitle.value = '';
+    credUsername.value = '';
+    credPassword.value = '';
+    credSites.value = '';
+    addCredentialModal.classList.remove('hidden');
+  };
+  btnCloseAddCredential.onclick = () => addCredentialModal.classList.add('hidden');
+  btnSaveCredential.onclick = async () => {
+    if (!credTitle.value.trim()) {
+      alert('Please provide account title.');
+      return;
+    }
+    await client.storeCredential({
+      title: credTitle.value.trim(),
+      username: credUsername.value.trim(),
+      password: credPassword.value.trim(),
+      sites: credSites.value.split(',').map((s) => s.trim()).filter(Boolean),
+    });
+    addCredentialModal.classList.add('hidden');
+    refreshVault();
+  };
+
+  // Memory creation
+  btnOpenAddMemory.onclick = () => {
+    memText.value = '';
+    addMemoryModal.classList.remove('hidden');
+  };
+  btnCloseAddMemory.onclick = () => addMemoryModal.classList.add('hidden');
+  btnSaveMemory.onclick = async () => {
+    if (!memText.value.trim()) {
+      alert('Please provide memory text.');
+      return;
+    }
+    await client.addMemory({
+      text: memText.value.trim(),
+      scope: memScope.value,
+      tier: memTier.value,
+    });
+    addMemoryModal.classList.add('hidden');
+    refreshMemories();
+  };
+
+  // --- CHAT INTERACTION CONTROLLER ---
 
   async function selectSession(sessionId) {
     currentSessionId = sessionId;
-    activeSessionTitle.textContent = sessionId;
-    welcomeBanner.style.display = 'none';
+    activeSessionTitle.textContent = `Session: ${sessionId}`;
     messageFeed.innerHTML = '';
+    welcomeBanner.classList.add('hidden');
 
-    const data = await client.loadSession(sessionId);
-    for (const evt of data.events) {
-      if (evt.role === 'user') {
-        appendUserMessage(evt.content);
-      } else if (evt.role === 'assistant') {
-        appendAssistantMessage(evt.content);
-      } else if (evt.role === 'tool') {
-        appendToolResultCard(evt.name, evt.content);
-      }
+    const history = await client.loadSession(sessionId);
+    for (const msg of history) {
+      appendMessage(msg.role, msg.content, msg.toolCalls);
     }
-    scrollToBottom();
     refreshSessions();
   }
 
-  function startNewSession() {
+  btnNewSession.onclick = () => {
     currentSessionId = null;
     activeSessionTitle.textContent = 'New Session';
     messageFeed.innerHTML = '';
-    welcomeBanner.style.display = 'block';
+    welcomeBanner.classList.remove('hidden');
     refreshSessions();
-  }
+  };
 
-  function appendUserMessage(text) {
-    welcomeBanner.style.display = 'none';
-    const msg = document.createElement('div');
-    msg.className = 'message message-user';
-    msg.innerHTML = `
-      <div class="message-bubble message-bubble-user">${escapeHtml(text)}</div>
-    `;
-    messageFeed.appendChild(msg);
-    scrollToBottom();
-  }
+  function appendMessage(role, content, toolCalls = []) {
+    welcomeBanner.classList.add('hidden');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `message message-${role}`;
 
-  function appendAssistantMessage(text = '') {
-    welcomeBanner.style.display = 'none';
-    const msg = document.createElement('div');
-    msg.className = 'message message-assistant';
-    const bubble = document.createElement('div');
-    bubble.className = 'message-bubble message-bubble-assistant';
-    bubble.textContent = text;
-    msg.appendChild(bubble);
-    messageFeed.appendChild(msg);
-    activeAssistantBubble = bubble;
-    scrollToBottom();
-    return bubble;
-  }
+    const avatar = document.createElement('div');
+    avatar.className = 'message-avatar';
+    avatar.textContent = role === 'user' ? '👤' : '🤖';
 
-  function appendToolCard(name, args) {
-    const card = document.createElement('div');
-    card.className = 'tool-card';
-    card.innerHTML = `
-      <div class="tool-card-header">
-        <span class="tool-card-icon">⚡</span>
-        <span class="tool-card-title">${escapeHtml(name)}</span>
-        <span class="tool-badge">Running</span>
-      </div>
-      <pre class="tool-card-body">${escapeHtml(JSON.stringify(args, null, 2))}</pre>
-    `;
-    messageFeed.appendChild(card);
-    scrollToBottom();
-    return card;
-  }
+    const body = document.createElement('div');
+    body.className = 'message-body';
 
-  function appendToolResultCard(name, result) {
-    const card = document.createElement('div');
-    card.className = 'tool-card tool-card-result';
-    card.innerHTML = `
-      <div class="tool-card-header">
-        <span class="tool-card-icon">✔</span>
-        <span class="tool-card-title">${escapeHtml(name)} Result</span>
-        <span class="tool-badge badge-success">Success</span>
-      </div>
-      <pre class="tool-card-body">${escapeHtml(typeof result === 'string' ? result : JSON.stringify(result, null, 2))}</pre>
-    `;
-    messageFeed.appendChild(card);
-    scrollToBottom();
-  }
-
-  function scrollToBottom() {
-    chatContainer.scrollTop = chatContainer.scrollHeight;
-  }
-
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  // Handle Incoming Events (Tokens, Tools, Approvals)
-  client.onEvent((event) => {
-    if (event.type === 'token') {
-      if (!activeAssistantBubble) {
-        appendAssistantMessage('');
-      }
-      activeAssistantBubble.textContent += event.data.token;
-      scrollToBottom();
-    } else if (event.type === 'tool_call') {
-      appendToolCard(event.data.name, event.data.args);
-    } else if (event.type === 'tool_result') {
-      appendToolResultCard(event.data.name, event.data.result);
-      // Refresh tasks and bots in case agent created them via tools
-      refreshBots();
-      refreshTasks();
-    } else if (event.type === 'turn_complete') {
-      activeAssistantBubble = null;
-      botStatusText.textContent = 'Ready';
-      botStatusAvatar.textContent = '⚡';
-      refreshSessions();
-    } else if (event.type === 'error') {
-      botStatusText.textContent = 'Error';
-      const errBox = document.createElement('div');
-      errBox.className = 'error-banner';
-      errBox.textContent = `Error: ${event.data.message}`;
-      messageFeed.appendChild(errBox);
-      scrollToBottom();
-    } else if (event.type === 'approval_required') {
-      currentApprovalId = event.data.approvalId;
-      approvalToolName.textContent = event.data.toolName;
-      approvalArgsBox.textContent = JSON.stringify(event.data.args, null, 2);
-      approvalModal.classList.remove('hidden');
+    if (content) {
+      const textDiv = document.createElement('div');
+      textDiv.className = 'message-text';
+      textDiv.textContent = content;
+      body.appendChild(textDiv);
     }
-  });
 
-  // Query Submission
+    if (toolCalls && toolCalls.length > 0) {
+      for (const tc of toolCalls) {
+        const toolDiv = document.createElement('div');
+        toolDiv.className = 'tool-call-block';
+        toolDiv.innerHTML = `
+          <div class="tool-call-header">⚡ Tool: <strong>${escapeHtml(tc.function.name)}</strong></div>
+          <pre class="tool-call-args">${escapeHtml(JSON.stringify(JSON.parse(tc.function.arguments || '{}'), null, 2))}</pre>
+        `;
+        body.appendChild(toolDiv);
+      }
+    }
+
+    msgDiv.appendChild(avatar);
+    msgDiv.appendChild(body);
+    messageFeed.appendChild(msgDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+    return body;
+  }
+
   async function submitQuery() {
-    const text = promptInput.value.trim();
-    if (!text) return;
+    const q = promptInput.value.trim();
+    if (!q) return;
 
     promptInput.value = '';
-    promptInput.style.height = 'auto';
-
-    appendUserMessage(text);
-    activeAssistantBubble = null;
-
-    botStatusText.textContent = `${activeAgentName} Working...`;
+    promptInput.disabled = true;
+    btnSend.disabled = true;
     botStatusAvatar.textContent = '⏳';
+    botStatusText.textContent = 'Thinking...';
+
+    appendMessage('user', q);
+
+    currentAssistantBubble = appendMessage('assistant', '');
+    currentAssistantText = '';
 
     try {
-      const res = await client.sendQuery(text, currentSessionId, activeAgentId);
-      currentSessionId = res.sessionId;
-      activeSessionTitle.textContent = currentSessionId;
+      await client.sendQuery(q, currentSessionId, activeAgentId);
     } catch (err) {
-      botStatusText.textContent = 'Failed';
-      console.error('sendQuery failed:', err);
+      if (currentAssistantBubble) {
+        currentAssistantBubble.innerHTML += `<div style="color: var(--danger);">Error: ${escapeHtml(err.message)}</div>`;
+      }
+    } finally {
+      promptInput.disabled = false;
+      btnSend.disabled = false;
+      promptInput.focus();
+      botStatusAvatar.textContent = '⚡';
+      botStatusText.textContent = 'Ready';
     }
   }
 
@@ -509,34 +1168,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   };
 
-  btnNewSession.onclick = startNewSession;
-
-  // Approvals
-  btnApproveOnce.onclick = async () => {
-    if (currentApprovalId) {
-      await client.approveTool(currentApprovalId, { action: 'approve_once' });
-      approvalModal.classList.add('hidden');
-      currentApprovalId = null;
-    }
-  };
-
-  btnAlwaysAllow.onclick = async () => {
-    if (currentApprovalId) {
-      await client.approveTool(currentApprovalId, { action: 'always_allow' });
-      approvalModal.classList.add('hidden');
-      currentApprovalId = null;
-    }
-  };
-
-  btnRejectTool.onclick = async () => {
-    if (currentApprovalId) {
-      await client.approveTool(currentApprovalId, { action: 'reject' });
-      approvalModal.classList.add('hidden');
-      currentApprovalId = null;
-    }
-  };
-
-  // Prompt chips
+  // Quick Prompt Chips
   document.querySelectorAll('.prompt-chip').forEach((chip) => {
     chip.onclick = () => {
       promptInput.value = chip.dataset.query;
@@ -544,7 +1176,66 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
   });
 
-  // Create Bot Modal
+  // Real-time Event Stream Handling
+  client.onEvent((event) => {
+    if (event.type === 'session_started') {
+      currentSessionId = event.sessionId;
+      activeSessionTitle.textContent = `Session: ${currentSessionId}`;
+      refreshSessions();
+    }
+
+    if (event.type === 'text_delta') {
+      if (currentAssistantBubble) {
+        currentAssistantText += event.text;
+        currentAssistantBubble.textContent = currentAssistantText;
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
+    }
+
+    if (event.type === 'tool_call') {
+      if (currentAssistantBubble) {
+        const toolDiv = document.createElement('div');
+        toolDiv.className = 'tool-call-block';
+        toolDiv.innerHTML = `
+          <div class="tool-call-header">⚡ Tool: <strong>${escapeHtml(event.toolCall.function.name)}</strong></div>
+          <pre class="tool-call-args">${escapeHtml(JSON.stringify(JSON.parse(event.toolCall.function.arguments || '{}'), null, 2))}</pre>
+        `;
+        currentAssistantBubble.appendChild(toolDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
+    }
+
+    if (event.type === 'approval_required') {
+      activeApprovalId = event.approvalId;
+      approvalToolName.textContent = event.request.tool;
+      approvalArgsBox.textContent = JSON.stringify(event.request.params, null, 2);
+      approvalModal.classList.remove('hidden');
+    }
+  });
+
+  // Approvals
+  btnApproveOnce.onclick = async () => {
+    if (!activeApprovalId) return;
+    approvalModal.classList.add('hidden');
+    await client.approveTool(activeApprovalId, 'approve_once');
+    activeApprovalId = null;
+  };
+
+  btnAlwaysAllow.onclick = async () => {
+    if (!activeApprovalId) return;
+    approvalModal.classList.add('hidden');
+    await client.approveTool(activeApprovalId, 'always_allow');
+    activeApprovalId = null;
+  };
+
+  btnRejectTool.onclick = async () => {
+    if (!activeApprovalId) return;
+    approvalModal.classList.add('hidden');
+    await client.approveTool(activeApprovalId, 'reject');
+    activeApprovalId = null;
+  };
+
+  // Bot creation modal
   btnOpenCreateBot.onclick = () => {
     botName.value = '';
     botRole.value = '';
@@ -552,64 +1243,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     botModel.value = '';
     createBotModal.classList.remove('hidden');
   };
-
-  btnCloseCreateBot.onclick = () => {
-    createBotModal.classList.add('hidden');
-  };
-
+  btnCloseCreateBot.onclick = () => createBotModal.classList.add('hidden');
   btnSaveBot.onclick = async () => {
-    const name = botName.value.trim();
-    const role = botRole.value.trim();
-    const system_prompt = botSystemPrompt.value.trim();
-    const model = botModel.value.trim() || undefined;
-
-    if (!name || !role || !system_prompt) {
-      alert('Please fill out Name, Role, and System Prompt.');
+    if (!botName.value.trim() || !botRole.value.trim()) {
+      alert('Please provide bot name and role.');
       return;
     }
-
-    await client.createAgent({ name, role, systemPrompt: system_prompt, model });
+    await client.createAgent({
+      name: botName.value.trim(),
+      role: botRole.value.trim(),
+      systemPrompt: botSystemPrompt.value.trim() || `You are ${botName.value}. Assist the user with ${botRole.value}.`,
+      model: botModel.value.trim() || undefined,
+    });
     createBotModal.classList.add('hidden');
-    await refreshBots();
+    refreshBots();
   };
 
-  // Create Task Modal
+  // Task creation modal
   btnOpenCreateTask.onclick = () => {
     taskTitle.value = '';
     taskPriority.value = 'medium';
     createTaskModal.classList.remove('hidden');
   };
-
-  btnCloseCreateTask.onclick = () => {
-    createTaskModal.classList.add('hidden');
-  };
-
+  btnCloseCreateTask.onclick = () => createTaskModal.classList.add('hidden');
   btnSaveTask.onclick = async () => {
-    const title = taskTitle.value.trim();
-    const priority = taskPriority.value;
-    if (!title) return;
-
-    await client.createTask({ title, priority, agentId: activeAgentId || undefined });
+    if (!taskTitle.value.trim()) return;
+    await client.createTask({
+      title: taskTitle.value.trim(),
+      priority: taskPriority.value,
+    });
     createTaskModal.classList.add('hidden');
-    await refreshTasks();
+    refreshTasks();
   };
 
-  // Learned Rules Modal
+  // Learned Rules
   btnViewLearnedRules.onclick = async () => {
-    learnedRulesContent.textContent = 'Loading learned user guidelines...';
     learnedRulesModal.classList.remove('hidden');
-    const res = await client.getLearnedRules();
-    learnedRulesContent.textContent = res.markdown || 'No continuous guidelines recorded yet.';
+    learnedRulesContent.textContent = 'Loading learned rules...';
+    const rules = await client.getLearnedRules();
+    learnedRulesContent.textContent = rules.content || 'No learned rules yet.';
   };
-
-  btnCloseLearnedRules.onclick = () => {
-    learnedRulesModal.classList.add('hidden');
-  };
-
-  btnCloseLearnedRulesAction.onclick = () => {
-    learnedRulesModal.classList.add('hidden');
-  };
-
+  btnCloseLearnedRules.onclick = () => learnedRulesModal.classList.add('hidden');
+  btnCloseLearnedRulesAction.onclick = () => learnedRulesModal.classList.add('hidden');
   btnRefreshLearnedRules.onclick = async () => {
     learnedRulesContent.textContent = 'Re-analyzing past conversation transcripts according to Grok Bot standards...';
     const report = await client.refreshLearnedRules();
@@ -621,13 +1296,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     promptInput.value = 'Call recognize_screen_text and extract text from the screen.';
     submitQuery();
   };
-
   btnQuickWindow.onclick = () => {
     promptInput.value = 'Call list_windows and show all open on-screen windows.';
     submitQuery();
   };
 
-  // Settings Modal
+  // Settings
   btnSettings.onclick = async () => {
     const s = await client.getSettings();
     settingProvider.value = s.provider || 'openai';
@@ -637,23 +1311,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     settingAutoApprove.checked = !!s.autoApprove;
     settingsModal.classList.remove('hidden');
   };
-
-  btnCloseSettings.onclick = () => {
-    settingsModal.classList.add('hidden');
-  };
-
+  btnCloseSettings.onclick = () => settingsModal.classList.add('hidden');
   btnSaveSettings.onclick = async () => {
-    const updated = {
+    await client.updateSettings({
       provider: settingProvider.value,
       endpoint: settingEndpoint.value,
       model: settingModel.value,
       apiKey: settingApiKey.value,
       autoApprove: settingAutoApprove.checked,
-    };
-    await client.updateSettings(updated);
+    });
     settingsModal.classList.add('hidden');
     await refreshSettings();
   };
+
+  // Escape HTML helper
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
 
   // Boot Initial Load
   await refreshSettings();
