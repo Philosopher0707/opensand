@@ -8,6 +8,8 @@ import { HabitExtractor } from "./habit-extractor.js";
 import { MemoryStore, MemoryScope, MemoryTier } from "./memory-store.js";
 import { VaultStore, VaultItemKind } from "./vault-store.js";
 import { SkillStore } from "./skill-store.js";
+import { RoutineEngine } from "./routine-engine.js";
+import { RoomManager } from "./room-manager.js";
 import { UniversalLLMClient } from "./llm-client.js";
 import { AgentCoordinator } from "./coordinator.js";
 
@@ -19,6 +21,8 @@ export interface RegisterOrchestratorToolsOptions {
   memoryStore?: MemoryStore;
   vaultStore?: VaultStore;
   skillStore?: SkillStore;
+  routineEngine?: RoutineEngine;
+  roomManager?: RoomManager;
   defaultEndpoint?: string;
   defaultModel?: string;
   defaultApiKey?: string;
@@ -32,6 +36,8 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   memoryStore: MemoryStore;
   vaultStore: VaultStore;
   skillStore: SkillStore;
+  routineEngine: RoutineEngine;
+  roomManager: RoomManager;
 } {
   const { daemon } = options;
   const store = options.store ?? new AgentStore();
@@ -39,6 +45,8 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   const memoryStore = options.memoryStore ?? new MemoryStore();
   const vaultStore = options.vaultStore ?? new VaultStore();
   const skillStore = options.skillStore ?? new SkillStore({ agentStore: store });
+  const routineEngine = options.routineEngine ?? new RoutineEngine(undefined, vaultStore);
+  const roomManager = options.roomManager ?? new RoomManager(undefined, store, vaultStore);
   const sessionsBaseDir = options.sessionsBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
   const habitExtractor = options.habitExtractor ?? new HabitExtractor({ sessionsDir: sessionsBaseDir });
 
@@ -985,5 +993,349 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
     },
   });
 
-  return { store, taskStore, habitExtractor, memoryStore, vaultStore, skillStore };
+  // 24. Tool: create_routine (Parity with GrokBotAgentRoutine)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "create_routine",
+        description: "Create a scheduled recurring routine or background automation for an agent (e.g. hourly health checks, nightly security audits).",
+        parameters: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "The descriptive title of the routine.",
+            },
+            prompt: {
+              type: "string",
+              description: "The action prompt/instructions to execute whenever the routine triggers.",
+            },
+            schedule_type: {
+              type: "string",
+              enum: ["interval", "cron"],
+              description: "Schedule trigger type: 'interval' (every N minutes) or 'cron' (5-field cron expression).",
+            },
+            interval_minutes: {
+              type: "number",
+              description: "For interval schedules: interval frequency in minutes (e.g. 15, 60, 1440).",
+            },
+            cron: {
+              type: "string",
+              description: "For cron schedules: standard 5-part cron syntax (e.g. '0 9 * * *' for 9 AM daily).",
+            },
+            agent_id: {
+              type: "string",
+              description: "Optional agent persona assigned to execute the routine (defaults to 'default').",
+            },
+          },
+          required: ["name", "prompt", "schedule_type"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const routine = await routineEngine.createRoutine({
+        name: args.name,
+        prompt: args.prompt,
+        scheduleType: args.schedule_type,
+        intervalMinutes: args.interval_minutes,
+        cron: args.cron,
+        agentId: args.agent_id,
+      });
+      return JSON.stringify({
+        status: "success",
+        message: `Created scheduled routine '${routine.name}' (${routine.routineId}). Next run at: ${routine.nextRunAtMs ? new Date(routine.nextRunAtMs).toISOString() : "Disabled"}.`,
+        routine,
+      }, null, 2);
+    },
+  });
+
+  // 25. Tool: list_routines (Parity with ListGrokBotAgentRoutines)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "list_routines",
+        description: "List all background automated routines and their next scheduled execution times.",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async () => {
+      const routines = await routineEngine.listRoutines();
+      return JSON.stringify({
+        status: "success",
+        count: routines.length,
+        routines,
+      }, null, 2);
+    },
+  });
+
+  // 26. Tool: set_routine_enabled (Parity with SetGrokBotAgentRoutineEnabled)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "set_routine_enabled",
+        description: "Enable or disable a background scheduled routine.",
+        parameters: {
+          type: "object",
+          properties: {
+            routine_id: {
+              type: "string",
+              description: "The unique ID of the routine.",
+            },
+            is_enabled: {
+              type: "boolean",
+              description: "True to enable and schedule, false to pause.",
+            },
+          },
+          required: ["routine_id", "is_enabled"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const routine = await routineEngine.setRoutineEnabled(args.routine_id, args.is_enabled);
+      return JSON.stringify({
+        status: "success",
+        message: `Routine '${routine.name}' is now ${routine.isEnabled ? "enabled" : "disabled"}.`,
+        routine,
+      }, null, 2);
+    },
+  });
+
+  // 27. Tool: trigger_routine
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "trigger_routine",
+        description: "Immediately execute a scheduled routine out of sequence and record execution logs.",
+        parameters: {
+          type: "object",
+          properties: {
+            routine_id: {
+              type: "string",
+              description: "The unique ID of the routine to trigger.",
+            },
+          },
+          required: ["routine_id"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const res = await routineEngine.triggerRoutine(args.routine_id);
+      return JSON.stringify({
+        status: res.status,
+        message: `Routine '${res.routine.name}' executed.`,
+        result: res.result,
+        routine: res.routine,
+      }, null, 2);
+    },
+  });
+
+  // 28. Tool: delete_routine (Parity with DeleteGrokBotAgentAutomation)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "delete_routine",
+        description: "Permanently delete a scheduled background routine.",
+        parameters: {
+          type: "object",
+          properties: {
+            routine_id: {
+              type: "string",
+              description: "The unique ID of the routine to delete.",
+            },
+          },
+          required: ["routine_id"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const deleted = await routineEngine.deleteRoutine(args.routine_id);
+      return JSON.stringify({
+        status: deleted ? "success" : "not_found",
+        message: deleted ? `Routine '${args.routine_id}' deleted successfully.` : `Routine '${args.routine_id}' not found.`,
+      }, null, 2);
+    },
+  });
+
+  // 29. Tool: create_room (Parity with CreateGrokBotRoom)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "create_room",
+        description: "Create a collaborative multi-agent group room (kind: 'ROOM') where multiple specialist agent personas deliberate and solve problems together.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "The title of the room (e.g. 'Security Architecture Board', 'Product Release Team').",
+            },
+            description: {
+              type: "string",
+              description: "The mission or purpose of this multi-agent collaborative room.",
+            },
+            member_agent_ids: {
+              type: "array",
+              items: { type: "string" },
+              description: "List of agent persona IDs that belong to this room.",
+            },
+          },
+          required: ["name", "description", "member_agent_ids"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const room = await roomManager.createRoom({
+        name: args.name,
+        description: args.description,
+        memberAgentIds: args.member_agent_ids,
+      });
+      return JSON.stringify({
+        status: "success",
+        message: `Created room '${room.name}' (${room.roomId}) with ${room.memberAgentIds.length} member agents.`,
+        room,
+      }, null, 2);
+    },
+  });
+
+  // 30. Tool: list_rooms
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "list_rooms",
+        description: "List all multi-agent rooms and their member agent rosters.",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async () => {
+      const rooms = await roomManager.listRooms();
+      return JSON.stringify({
+        status: "success",
+        count: rooms.length,
+        rooms,
+      }, null, 2);
+    },
+  });
+
+  // 31. Tool: set_room_members (Parity with SetGrokBotRoomMembers)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "set_room_members",
+        description: "Update the member agent roster of a multi-agent room.",
+        parameters: {
+          type: "object",
+          properties: {
+            room_id: {
+              type: "string",
+              description: "The unique ID of the room.",
+            },
+            member_agent_ids: {
+              type: "array",
+              items: { type: "string" },
+              description: "The new array of member agent IDs.",
+            },
+          },
+          required: ["room_id", "member_agent_ids"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const room = await roomManager.setRoomMembers(args.room_id, args.member_agent_ids);
+      return JSON.stringify({
+        status: "success",
+        message: `Room '${room.name}' members updated to [${room.memberAgentIds.join(", ")}].`,
+        room,
+      }, null, 2);
+    },
+  });
+
+  // 32. Tool: run_room_discussion (Parity with RequestGrokBotRoomMemberTurn / DeliverGrokBotRoomMemberTurnResult)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "run_room_discussion",
+        description: "Convene a multi-agent round-table meeting in a room on a given topic, collecting contributions from each specialist agent and synthesizing a consensus agreement.",
+        parameters: {
+          type: "object",
+          properties: {
+            room_id: {
+              type: "string",
+              description: "The ID of the room.",
+            },
+            topic: {
+              type: "string",
+              description: "The question, proposal, or problem to evaluate in the round-table discussion.",
+            },
+          },
+          required: ["room_id", "topic"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const res = await roomManager.runRoomDiscussion(args.room_id, args.topic);
+      return JSON.stringify({
+        status: "success",
+        discussionId: res.discussionId,
+        roomName: res.roomName,
+        topic: res.topic,
+        turnsCount: res.turns.length,
+        consensus: res.consensus,
+      }, null, 2);
+    },
+  });
+
+  // 33. Tool: delete_room
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "delete_room",
+        description: "Delete a multi-agent group room.",
+        parameters: {
+          type: "object",
+          properties: {
+            room_id: {
+              type: "string",
+              description: "The ID of the room to delete.",
+            },
+          },
+          required: ["room_id"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const deleted = await roomManager.deleteRoom(args.room_id);
+      return JSON.stringify({
+        status: deleted ? "success" : "not_found",
+        message: deleted ? `Room '${args.room_id}' deleted successfully.` : `Room '${args.room_id}' not found.`,
+      }, null, 2);
+    },
+  });
+
+  return { store, taskStore, habitExtractor, memoryStore, vaultStore, skillStore, routineEngine, roomManager };
 }

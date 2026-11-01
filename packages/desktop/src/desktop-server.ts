@@ -534,6 +534,141 @@ export class DesktopServer {
       return;
     }
 
+    // API: GET /api/routines
+    if (pathname === '/api/routines' && req.method === 'GET') {
+      const routines = await this.bridge.listRoutines();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(routines));
+      return;
+    }
+
+    // API: POST /api/routines
+    if (pathname === '/api/routines' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      if (!body.name || !body.prompt || !body.scheduleType) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing name, prompt, or scheduleType' }));
+        return;
+      }
+      const routine = await this.bridge.createRoutine(body);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(routine));
+      return;
+    }
+
+    // API: PATCH /api/routines/:id/enabled
+    if (pathname.startsWith('/api/routines/') && pathname.endsWith('/enabled') && req.method === 'PATCH') {
+      const routineId = pathname.replace('/api/routines/', '').replace('/enabled', '');
+      const body = await this.readJsonBody(req);
+      const isEnabled = Boolean(body.isEnabled);
+      const routine = await this.bridge.setRoutineEnabled(routineId, isEnabled);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(routine));
+      return;
+    }
+
+    // API: POST /api/routines/:id/trigger
+    if (pathname.startsWith('/api/routines/') && pathname.endsWith('/trigger') && req.method === 'POST') {
+      const routineId = pathname.replace('/api/routines/', '').replace('/trigger', '');
+      const resData = await this.bridge.triggerRoutine(routineId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(resData));
+      return;
+    }
+
+    // API: GET /api/routines/:id/logs
+    if (pathname.startsWith('/api/routines/') && pathname.endsWith('/logs') && req.method === 'GET') {
+      const routineId = pathname.replace('/api/routines/', '').replace('/logs', '');
+      const logs = await this.bridge.getRoutineLogs(routineId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(logs));
+      return;
+    }
+
+    // API: DELETE /api/routines/:id
+    if (pathname.startsWith('/api/routines/') && req.method === 'DELETE') {
+      const routineId = pathname.replace('/api/routines/', '');
+      const deleted = await this.bridge.deleteRoutine(routineId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: deleted }));
+      return;
+    }
+
+    // API: GET /api/rooms
+    if (pathname === '/api/rooms' && req.method === 'GET') {
+      const rooms = await this.bridge.listRooms();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(rooms));
+      return;
+    }
+
+    // API: POST /api/rooms
+    if (pathname === '/api/rooms' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      if (!body.name || !body.description || !Array.isArray(body.memberAgentIds)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing name, description, or memberAgentIds array' }));
+        return;
+      }
+      const room = await this.bridge.createRoom(body);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(room));
+      return;
+    }
+
+    // API: GET /api/rooms/:id
+    if (pathname.startsWith('/api/rooms/') && !pathname.includes('/members') && !pathname.includes('/discuss') && req.method === 'GET') {
+      const roomId = pathname.replace('/api/rooms/', '');
+      const room = await this.bridge.getRoom(roomId);
+      if (!room) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Room not found' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(room));
+      return;
+    }
+
+    // API: PUT /api/rooms/:id/members
+    if (pathname.startsWith('/api/rooms/') && pathname.endsWith('/members') && req.method === 'PUT') {
+      const roomId = pathname.replace('/api/rooms/', '').replace('/members', '');
+      const body = await this.readJsonBody(req);
+      if (!Array.isArray(body.memberAgentIds)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing memberAgentIds array' }));
+        return;
+      }
+      const room = await this.bridge.setRoomMembers(roomId, body.memberAgentIds);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(room));
+      return;
+    }
+
+    // API: POST /api/rooms/:id/discuss
+    if (pathname.startsWith('/api/rooms/') && pathname.endsWith('/discuss') && req.method === 'POST') {
+      const roomId = pathname.replace('/api/rooms/', '').replace('/discuss', '');
+      const body = await this.readJsonBody(req);
+      if (!body.topic) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing topic' }));
+        return;
+      }
+      const discResult = await this.bridge.runRoomDiscussion(roomId, body.topic);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(discResult));
+      return;
+    }
+
+    // API: DELETE /api/rooms/:id
+    if (pathname.startsWith('/api/rooms/') && req.method === 'DELETE') {
+      const roomId = pathname.replace('/api/rooms/', '');
+      const deleted = await this.bridge.deleteRoom(roomId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: deleted }));
+      return;
+    }
+
     // Serve static files from renderer/
     let filePath = path.join(this.rendererDir, pathname === '/' ? 'index.html' : pathname);
     const resolvedPath = path.resolve(filePath);

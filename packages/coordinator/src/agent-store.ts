@@ -8,6 +8,7 @@ export interface AgentRecord {
   name: string;
   role: string;
   systemPrompt: string;
+  kind?: "AGENT" | "ROOM";
   model?: string;
   endpoint?: string;
   allowedTools?: string[];
@@ -20,6 +21,7 @@ export interface CreateAgentInput {
   name: string;
   role: string;
   systemPrompt: string;
+  kind?: "AGENT" | "ROOM";
   model?: string;
   endpoint?: string;
   allowedTools?: string[];
@@ -62,6 +64,7 @@ export class AgentStore {
       name: input.name,
       role: input.role,
       systemPrompt: input.systemPrompt,
+      kind: input.kind ?? "AGENT",
       model: input.model,
       endpoint: input.endpoint,
       allowedTools: input.allowedTools,

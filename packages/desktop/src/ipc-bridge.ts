@@ -26,6 +26,14 @@ import {
   VaultCredential,
   SkillStore,
   SkillRecord,
+  RoutineEngine,
+  AgentRoutine,
+  CreateRoutineInput,
+  RoutineExecutionLog,
+  RoomManager,
+  AgentRoom,
+  CreateRoomInput,
+  RoomDiscussionResult,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -49,6 +57,8 @@ export class DesktopIpcBridge extends EventEmitter {
   public memoryStore: MemoryStore;
   public vaultStore: VaultStore;
   public skillStore: SkillStore;
+  public routineEngine: RoutineEngine;
+  public roomManager: RoomManager;
   private coordinator: AgentCoordinator | null = null;
   private activeApprovals: Map<string, {
     request: ToolApprovalRequest;
@@ -89,6 +99,17 @@ export class DesktopIpcBridge extends EventEmitter {
       baseDir: path.join(this.baseDir, 'skills'),
       agentStore: this.agentStore,
     });
+    this.routineEngine = new RoutineEngine(
+      path.join(this.baseDir, 'routines'),
+      this.vaultStore
+    );
+    this.routineEngine.start();
+
+    this.roomManager = new RoomManager(
+      path.join(this.baseDir, 'rooms'),
+      this.agentStore,
+      this.vaultStore
+    );
     this.habitExtractor = new HabitExtractor({
       sessionsDir: path.join(this.baseDir, 'sessions'),
       memoryFilePath: path.join(this.baseDir, 'learned_rules.md'),
@@ -103,6 +124,8 @@ export class DesktopIpcBridge extends EventEmitter {
       memoryStore: this.memoryStore,
       vaultStore: this.vaultStore,
       skillStore: this.skillStore,
+      routineEngine: this.routineEngine,
+      roomManager: this.roomManager,
       defaultEndpoint: this.settings.endpoint,
       defaultModel: this.settings.model,
       defaultApiKey: this.settings.apiKey,
@@ -517,5 +540,59 @@ export class DesktopIpcBridge extends EventEmitter {
 
   public async deleteSkill(skillId: string): Promise<boolean> {
     return this.skillStore.deleteSkill(skillId);
+  }
+
+  // Routines API (Grok Bot Parity: ListGrokBotAgentRoutines / SetGrokBotAgentRoutineEnabled / DeleteGrokBotAgentAutomation)
+  public async createRoutine(input: CreateRoutineInput): Promise<AgentRoutine> {
+    return this.routineEngine.createRoutine(input);
+  }
+
+  public async listRoutines(): Promise<AgentRoutine[]> {
+    return this.routineEngine.listRoutines();
+  }
+
+  public async getRoutine(routineId: string): Promise<AgentRoutine | null> {
+    return this.routineEngine.getRoutine(routineId);
+  }
+
+  public async setRoutineEnabled(routineId: string, isEnabled: boolean): Promise<AgentRoutine> {
+    return this.routineEngine.setRoutineEnabled(routineId, isEnabled);
+  }
+
+  public async triggerRoutine(routineId: string): Promise<{ routine: AgentRoutine; result: string; status: 'success' | 'error' }> {
+    return this.routineEngine.triggerRoutine(routineId);
+  }
+
+  public async deleteRoutine(routineId: string): Promise<boolean> {
+    return this.routineEngine.deleteRoutine(routineId);
+  }
+
+  public async getRoutineLogs(routineId: string): Promise<RoutineExecutionLog[]> {
+    return this.routineEngine.getRoutineLogs(routineId);
+  }
+
+  // Rooms API (Grok Bot Parity: CreateGrokBotRoom / SetGrokBotRoomMembers / RequestGrokBotRoomMemberTurn / DeliverGrokBotRoomMemberTurnResult)
+  public async createRoom(input: CreateRoomInput): Promise<AgentRoom> {
+    return this.roomManager.createRoom(input);
+  }
+
+  public async listRooms(): Promise<AgentRoom[]> {
+    return this.roomManager.listRooms();
+  }
+
+  public async getRoom(roomId: string): Promise<AgentRoom | null> {
+    return this.roomManager.getRoom(roomId);
+  }
+
+  public async setRoomMembers(roomId: string, memberAgentIds: string[]): Promise<AgentRoom> {
+    return this.roomManager.setRoomMembers(roomId, memberAgentIds);
+  }
+
+  public async runRoomDiscussion(roomId: string, topic: string): Promise<RoomDiscussionResult> {
+    return this.roomManager.runRoomDiscussion(roomId, topic);
+  }
+
+  public async deleteRoom(roomId: string): Promise<boolean> {
+    return this.roomManager.deleteRoom(roomId);
   }
 }

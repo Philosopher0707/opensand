@@ -12,5 +12,7 @@ export * from "./habit-extractor.js";
 export * from "./memory-store.js";
 export * from "./vault-store.js";
 export * from "./skill-store.js";
+export * from "./routine-engine.js";
+export * from "./room-manager.js";
 export * from "./orchestrator-tools.js";
 export * from "./coordinator.js";
