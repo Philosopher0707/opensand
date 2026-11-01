@@ -51,12 +51,12 @@ It replaces proprietary cloud ConnectRPC backends with universal OpenAI-compatib
 | Package | Description | Tests |
 |---|---|---|
 | [`@opensand/local-exec-daemon`](./packages/local-exec-daemon) | Local execution engine with preflight bash syntax & safety validation, atomic file I/O with SHA-256 digests, and crash-resilient JSON state files. | 29 passing |
-| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI `/v1/chat/completions` + Anthropic `/v1/messages` client, native MCP client, persistent Agent Store, Task Store, Habit Extractor, and Grok Bot transcript parity. | 30 passing |
+| [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI `/v1/chat/completions` + Anthropic `/v1/messages` client, native MCP client, persistent Agent Store, Task Store, Habit Extractor, 7-Layer Memory System (discrete facts, team consensus, import protocol), and Grok Bot transcript parity. | 38 passing |
 | [`@opensand/native-bridge`](./packages/native-bridge) | Native Apple Vision offline OCR (`sand-vision`), ScreenCaptureKit window capture (`sand-window-capture`), 1Password Seatbelt launcher, macOS Messages reader, and Speech Synthesis. | 6 passing |
 | [`@opensand/cli`](./packages/cli) | Interactive terminal REPL and one-shot execution CLI with live token streaming, bot persona switcher (`--bot`), and permission approval prompts. | 7 passing |
-| [`@opensand/desktop`](./packages/desktop) | Desktop GUI shell with macOS menubar tray, multi-bot switcher, live streaming chat, task management, learned guidelines modal, and local webview server. | 5 passing |
+| [`@opensand/desktop`](./packages/desktop) | Desktop GUI shell with macOS menubar tray, multi-bot switcher, live streaming chat, task management, learned guidelines modal, memory & team consensus REST endpoints, and local webview server. | 5 passing |
 
-**Total Test Coverage: 77/77 automated unit and integration tests passing (100% green).**
+**Total Test Coverage: 85/85 automated unit and integration tests passing (100% green).**
 
 ---
 
@@ -86,6 +86,39 @@ OpenSand implements Grok Bot's dynamic agent orchestration model (`CreateGrokBot
 - **`delegate_to_agent`**: Delegate complex tasks to subagents. Spawns an isolated turn loop with that subagent's prompt, records distinct transcripts, and returns the result to the caller agent.
 - **`create_agent_task` / `list_agent_tasks` / `update_agent_task`**: Manage actionable work items and todos (`ListGrokBotAgentTasks` parity).
 - **`extract_user_habits`**: Continuous learning engine matching Grok Bot contract 8.1.B that analyzes past conversation transcripts (`~/.opensand/sessions/*.txt`), detects repeated user corrections and preferences, and maintains `~/.opensand/learned_rules.md`.
+
+---
+
+## 7-Layer Memory System (Grok Bot 1:1 Clean-Room Parity)
+
+OpenSand implements a 1:1 clean-room replica of Grok Bot's multi-tier cognitive memory architecture across seven distinct operational layers:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ Layer 7: Encrypted Client Persistence (~/.opensand/memory/*.json)     │
+│          Atomic file transactions with 0600 modes & flush deadlines    │
+├────────────────────────────────────────────────────────────────────────┤
+│ Layer 6: Capability Injections (<imported_memory>, credential filter)  │
+├────────────────────────────────────────────────────────────────────────┤
+│ Layer 5: Team Consensus Review Queue (HITL approval / reject workflow)  │
+├────────────────────────────────────────────────────────────────────────┤
+│ Layer 4: Habit & Intent Extractor (4-conversation citation threshold)  │
+├────────────────────────────────────────────────────────────────────────┤
+│ Layer 3: Agent Shards & Folders (Profile tier vs Episodic Log tier)   │
+├────────────────────────────────────────────────────────────────────────┤
+│ Layer 2: Discrete Fact Memory (UpdateMemory write/forget tool)         │
+├────────────────────────────────────────────────────────────────────────┤
+│ Layer 1: Episodic Transcript Recaller (Context tailing & crawling)    │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Layer 1: Episodic Recall (`recall_memories`)**: Crawls recent session transcripts and semantic memory stores. Provides context-tailing across collaborating subagents.
+2. **Layer 2: Discrete Fact Store (`update_memory`)**: Structured fact storage (`GrokBotMemoryFact` parity: `fact_id`, `text`, `learned_at_ms`). Handles discrete atomic facts tagged by `tier` (`profile` for enduring identity/rules vs `log` for episodic historical records).
+3. **Layer 3: Agent Definition Shards & Folders**: Distinct isolated memory scopes (`user`, `agent`, `team`) persisted in `~/.opensand/memory/`. Agents can maintain private scratchpads or inherit shared organizational profiles.
+4. **Layer 4: Continuous Habit & Intent Engine (`extract_user_habits`)**: Analyzes `<user_query>` dialogue segments across session transcripts. Enforces Grok Bot's strict **4-citation evidence rule** before promoting repeated patterns to enduring behavior guidelines in `~/.opensand/learned_rules.md`.
+5. **Layer 5: Team Consensus Review Queue (`PromoteGrokBotMemoriesToTeam`)**: When an agent attempts to write to `scope: "team"`, facts are placed in a human-in-the-loop review queue (`TeamReviewItem`: `PENDING`, `APPROVED`, `REJECTED`). Once approved, facts are synthesized into a cohesive natural-language narrative (`GrokBotTeamContextSummary`).
+6. **Layer 6: Capability Injections & Import Protocol (`<imported_memory>`)**: Implements Grok Bot's capability injection protocol. Imports memory blocks from other assistants (`Instructions`, `Identity`, `Career`, `Projects`, `Preferences`) with built-in credential redaction (`sk-`, `AKIA`, `password=`).
+7. **Layer 7: Resilient Local Persistence**: Atomic writes with `.tmp` staging, SHA-256 verification, and strict file security modes (`0600`).
 
 ---
 

@@ -9,5 +9,6 @@ export * from "./mcp-manager.js";
 export * from "./agent-store.js";
 export * from "./agent-tasks.js";
 export * from "./habit-extractor.js";
+export * from "./memory-store.js";
 export * from "./orchestrator-tools.js";
 export * from "./coordinator.js";

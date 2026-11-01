@@ -325,6 +325,92 @@ export class DesktopServer {
       return;
     }
 
+    // API: GET /api/memories (List discrete memory facts)
+    if (pathname === '/api/memories' && req.method === 'GET') {
+      const scope = url.searchParams.get('scope') as any || undefined;
+      const tier = url.searchParams.get('tier') as any || undefined;
+      const agentId = url.searchParams.get('agentId') || undefined;
+      const query = url.searchParams.get('query') || undefined;
+      const memories = await this.bridge.listMemories({ scope, tier, agentId, query });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(memories));
+      return;
+    }
+
+    // API: POST /api/memories (Add memory or import memory batch)
+    if (pathname === '/api/memories' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      if (typeof body.importText === 'string') {
+        const importRes = await this.bridge.importMemoryText(body.importText, body.scope, body.agentId);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(importRes));
+        return;
+      }
+      const fact = await this.bridge.addMemory(body);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(fact));
+      return;
+    }
+
+    // API: DELETE /api/memories/:id (Forget memory fact)
+    if (pathname.startsWith('/api/memories/') && req.method === 'DELETE') {
+      const factId = pathname.replace('/api/memories/', '');
+      if (!isValidId(factId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid factId format' }));
+        return;
+      }
+      const scope = url.searchParams.get('scope') as any || undefined;
+      const agentId = url.searchParams.get('agentId') || undefined;
+      const forgotten = await this.bridge.forgetMemory(factId, scope, agentId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: forgotten }));
+      return;
+    }
+
+    // API: POST /api/memories/promote (Promote user memories to team)
+    if (pathname === '/api/memories/promote' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      const promoteRes = await this.bridge.promoteMemoriesToTeam(body.agentId || 'default', body.factIds || []);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(promoteRes));
+      return;
+    }
+
+    // API: GET /api/team-summary (Get team context summary & prose)
+    if (pathname === '/api/team-summary' && req.method === 'GET') {
+      const agentId = url.searchParams.get('agentId') || undefined;
+      const summary = await this.bridge.getTeamContextSummary(agentId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(summary));
+      return;
+    }
+
+    // API: GET /api/team-review (List review items)
+    if (pathname === '/api/team-review' && req.method === 'GET') {
+      const status = url.searchParams.get('status') as any || undefined;
+      const limitStr = url.searchParams.get('limit');
+      const limit = limitStr ? parseInt(limitStr, 10) : undefined;
+      const items = await this.bridge.listReviewItems({ status, limit });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(items));
+      return;
+    }
+
+    // API: POST /api/team-review/resolve (Approve or reject review item)
+    if (pathname === '/api/team-review/resolve' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      if (!body.itemId || !body.decision) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing itemId or decision' }));
+        return;
+      }
+      const item = await this.bridge.resolveReviewItem(body.itemId, body.decision, body.reviewerId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(item));
+      return;
+    }
+
     // Serve static files from renderer/
     let filePath = path.join(this.rendererDir, pathname === '/' ? 'index.html' : pathname);
     const resolvedPath = path.resolve(filePath);

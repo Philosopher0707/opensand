@@ -168,6 +168,60 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     reqOversized.emit('data', hugeChunk);
     await oversizedPromise;
     assert.strictEqual(resOversized.statusCode, 413);
+
+    // Test Memory System Endpoints: POST /api/memories & GET /api/memories
+    const reqAddMem = new MockIncomingMessage('POST', '/api/memories');
+    const resAddMem = new MockServerResponse();
+    const addMemPromise = (server as any).handleRequest(reqAddMem, resAddMem);
+    reqAddMem.emit('data', Buffer.from(JSON.stringify({
+      text: 'User prefers dark mode and zero telemetry',
+      scope: 'user',
+      tier: 'profile',
+    })));
+    reqAddMem.emit('end');
+    await addMemPromise;
+    assert.strictEqual(resAddMem.statusCode, 201);
+    const addedMem = JSON.parse(resAddMem.body);
+    assert.ok(addedMem.factId);
+    assert.strictEqual(addedMem.tier, 'profile');
+
+    const reqGetMem = new MockIncomingMessage('GET', '/api/memories?tier=profile');
+    const resGetMem = new MockServerResponse();
+    await (server as any).handleRequest(reqGetMem, resGetMem);
+    assert.strictEqual(resGetMem.statusCode, 200);
+    const memList = JSON.parse(resGetMem.body);
+    assert.strictEqual(memList.length, 1);
+    assert.strictEqual(memList[0].text, 'User prefers dark mode and zero telemetry');
+
+    // Test Promote Memories to Team: POST /api/memories/promote
+    const reqPromote = new MockIncomingMessage('POST', '/api/memories/promote');
+    const resPromote = new MockServerResponse();
+    const promotePromise = (server as any).handleRequest(reqPromote, resPromote);
+    reqPromote.emit('data', Buffer.from(JSON.stringify({
+      agentId: 'default',
+      factIds: [addedMem.factId],
+    })));
+    reqPromote.emit('end');
+    await promotePromise;
+    assert.strictEqual(resPromote.statusCode, 200);
+    const promoteResult = JSON.parse(resPromote.body);
+    assert.strictEqual(promoteResult.created.length, 1);
+
+    // Test GET /api/team-summary
+    const reqSummary = new MockIncomingMessage('GET', '/api/team-summary');
+    const resSummary = new MockServerResponse();
+    await (server as any).handleRequest(reqSummary, resSummary);
+    assert.strictEqual(resSummary.statusCode, 200);
+    const teamSummary = JSON.parse(resSummary.body);
+    assert.ok(teamSummary.memoryCount >= 1);
+
+    // Test Team Review Queue: GET /api/team-review
+    const reqTeamRev = new MockIncomingMessage('GET', '/api/team-review');
+    const resTeamRev = new MockServerResponse();
+    await (server as any).handleRequest(reqTeamRev, resTeamRev);
+    assert.strictEqual(resTeamRev.statusCode, 200);
+    const reviewItems = JSON.parse(resTeamRev.body);
+    assert.ok(Array.isArray(reviewItems));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

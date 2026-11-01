@@ -3,7 +3,7 @@
 **Date:** 2026-11-01  
 **Project:** OpenSand (`~/dev/opensand`)  
 **Target Reverse-Engineered:** Grok Bot macOS Desktop App (`/Applications/Grok Bot.app`, Bundle ID: `com.anysphere.sand`, Version: 0.78.1)  
-**Status:** Phases 1–5 Fully Implemented & Hardened (77/77 unit & integration tests passing, 100% green)
+**Status:** Phases 1–6 Fully Implemented & Hardened (85/85 unit & integration tests passing, 100% green)
 
 ---
 
@@ -67,6 +67,16 @@ Arguments: {...}
 tool output payload
 ```
 
+### 2.5 Cognitive Memory System (Grok Bot 7-Layer Architecture)
+Decompiled and extracted from `main-app.cjs`, `main-core.cjs`, and ConnectRPC services:
+* **Layer 1: Episodic Recall (`VH.recall`)**: Backwards sequence crawling (`beforeSeq`, `nextBeforeSeq`, 256 msgs/chunk, 16-page max depth = 4096 messages) with inter-agent context tailing (`getAgentTranscriptTail`, `hasOverheard`).
+* **Layer 2: Discrete Fact Store (`GrokBotMemoryFact`)**: Atomic facts (`fact_id`, `text`, `learned_at_ms`) manipulated via `UpdateMemory(action, scope, tier, text)`. Tiers separate enduring instructions (`profile`) from historical context (`log`).
+* **Layer 3: Agent Shards & Folders (`GrokBotAgentDefinitionMemoryShard`)**: Isolated scopes (`user`, `agent`, `team`) with hierarchical subfolders (`profile/`, `logs/`).
+* **Layer 4: Continuous Habit & Intent Engine (`user_intent_config`)**: Background pipeline parsing `<user_query>` tags in transcripts. Requires a strict **4-conversation citation threshold** before promoting behavioral habits into rules.
+* **Layer 5: Team Consensus Review Queue (`PromoteGrokBotMemoriesToTeam`)**: Writes to team memory require peer/human approval via `GrokBotTeamReviewItem` (`PENDING`, `APPROVED`, `REJECTED`). Approved facts are compiled into natural prose (`GrokBotTeamContextSummary`).
+* **Layer 6: Capability Injections & Memory Import (`<imported_memory>`)**: Universal import container with category tags (`Instructions`, `Identity`, `Career`, `Projects`, `Preferences`) and credential scrubbing (`sk-`, `AKIA`, `password=`).
+* **Layer 7: Encrypted Client Persistence**: Account-scoped local storage with atomic writes and flush deadlines on exit.
+
 ---
 
 ## 3. OpenSand Implementation Topology (`~/dev/opensand`)
@@ -90,11 +100,12 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 * **`agent-store.ts`**: Persistent multi-agent store in `~/.opensand/agents/`. Manages subagent definitions with persona names, custom system instructions, model overrides, and `allowedTools` whitelisting.
 * **`task-store.ts`**: Actionable agent task store matching Grok Bot contracts (`ListGrokBotAgentTasks`, `CreateGrokBotAgentTask`, `UpdateGrokBotAgentTask`) persisted in `~/.opensand/tasks/`.
 * **`habit-extractor.ts`**: Continuous learning engine matching Grok Bot contract 8.1.B. Scans past session transcripts (`~/.opensand/sessions/*.txt`), identifies recurring user feedback/preferences, and updates `~/.opensand/learned_rules.md`.
-* **`agent-meta-tools.ts`**: Registers meta-tools enabling autonomous agents to construct subagents (`create_agent`, `list_agents`), delegate work (`delegate_to_agent`), track work items, and extract learned habits.
+* **`memory-store.ts`**: Clean-room implementation of Grok Bot 7-layer memory architecture. Manages discrete fact storage (`MemoryFact`), scope isolation (`user`, `agent`, `team`), tier classification (`profile` vs `log`), team consensus queue (`TeamReviewItem`), user-to-team promotion (`promoteMemoriesToTeam`), natural language prose summary generator (`getTeamContextSummary`), and `<imported_memory>` parser with credential redaction.
+* **`orchestrator-tools.ts`**: Registers memory meta-tools into `LocalExecDaemon` (`update_memory`, `recall_memories`, `import_memory`, `list_team_review_items`, `resolve_team_review_item`) alongside agent lifecycle and task tools.
 * **`transcript-manager.ts`**: Manages `~/.opensand/sessions/<sessionId>/`. Appends structured JSONL events to `transcript.jsonl` and formats human-readable `transcript.txt` with `<user_query>` Grok Bot parity tags.
-* **`system-prompt.ts`**: Dynamically builds agent instructions including date, host OS, architecture, working directory, and user rules.
+* **`system-prompt.ts`**: Dynamically builds agent instructions including date, host OS, architecture, working directory, user rules, and active profile/team memory facts.
 * **`coordinator.ts`**: Autonomous multi-turn turn loop. Dispatches queries to LLM, streams tokens to UI, intercepts tool calls, verifies gates/prompts user approval, delegates execution to daemon, appends results, and loops back to LLM until completion.
-* **Tests**: 26 unit and integration tests (`test/*.test.ts`) covering SSE, prompt generation, transcripts, Anthropic client, MCP manager, agent store, task store, habit extractor, and autonomous tool loops.
+* **Tests**: 38 unit and integration tests (`test/*.test.ts`) covering SSE, prompt generation, transcripts, Anthropic client, MCP manager, agent store, task store, habit extractor, memory store, and autonomous tool loops.
 
 ### 3.3 [`packages/native-bridge`](file:///Users/philosopher/dev/opensand/packages/native-bridge) (Phase 3)
 * **`native/sand-vision.swift`**: Swift 6.2 source utilizing Apple `Vision.framework` (`VNRecognizeTextRequest`). Compiled to standalone ARM64 Mach-O binary `bin/sand-vision`. Extracts text, confidence scores, and bounding boxes completely offline via Apple Neural Engine (`recognize_screen_text`).
@@ -124,9 +135,9 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 ## 4. Verification & Health Summary
 
 * **Monorepo Build**: `pnpm build` (`tsc -b` across all 5 packages) $\rightarrow$ 0 errors.
-* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **77 passed, 0 failed, 100% green**:
+* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **85 passed, 0 failed, 100% green**:
   * `@opensand/local-exec-daemon`: 29 passed
-  * `@opensand/coordinator`: 30 passed
+  * `@opensand/coordinator`: 38 passed
   * `@opensand/native-bridge`: 6 passed
   * `@opensand/cli`: 7 passed
   * `@opensand/desktop`: 5 passed

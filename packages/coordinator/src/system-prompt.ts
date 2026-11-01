@@ -4,6 +4,7 @@ export interface SystemPromptContext {
   workspaceDir?: string;
   userInstructions?: string;
   learnedRules?: string;
+  memoryContext?: string;
   platform?: string;
   shell?: string;
 }
@@ -32,6 +33,6 @@ You operate directly on the user's local machine with high rigor, precision, and
 ## Tools Available
 You have access to tools for terminal execution, file inspection, file editing, and subagent orchestration.
 Use tools proactively when information from the environment is needed.
-${context.learnedRules ? `\n## Continuous Learned User Guidelines\n${context.learnedRules}\n` : ""}${context.userInstructions ? `\n## User Custom Instructions\n${context.userInstructions}` : ""}
+${context.memoryContext ? `\n## Stored User & Team Memories\n${context.memoryContext}\n` : ""}${context.learnedRules ? `\n## Continuous Learned User Guidelines\n${context.learnedRules}\n` : ""}${context.userInstructions ? `\n## User Custom Instructions\n${context.userInstructions}` : ""}
 `.trim();
 }

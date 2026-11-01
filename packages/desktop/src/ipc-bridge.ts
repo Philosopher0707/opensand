@@ -18,6 +18,9 @@ import {
   CreateTaskInput,
   TaskStatus,
   HabitExtractor,
+  MemoryStore,
+  MemoryFact,
+  TeamReviewItem,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -38,6 +41,7 @@ export class DesktopIpcBridge extends EventEmitter {
   private agentStore: AgentStore;
   private taskStore: TaskStore;
   private habitExtractor: HabitExtractor;
+  public memoryStore: MemoryStore;
   private coordinator: AgentCoordinator | null = null;
   private activeApprovals: Map<string, {
     request: ToolApprovalRequest;
@@ -69,9 +73,10 @@ export class DesktopIpcBridge extends EventEmitter {
     this.stateManager = new StateManager(stateDir);
     registerNativeTools(this.daemon);
 
-    // Initialize Agent Store & Task Store & Habit Extractor
+    // Initialize Agent Store, Task Store, Habit Extractor & Memory Store
     this.agentStore = new AgentStore(path.join(this.baseDir, 'agents'));
     this.taskStore = new TaskStore(path.join(this.baseDir, 'tasks'));
+    this.memoryStore = new MemoryStore({ baseDir: path.join(this.baseDir, 'memories') });
     this.habitExtractor = new HabitExtractor({
       sessionsDir: path.join(this.baseDir, 'sessions'),
       memoryFilePath: path.join(this.baseDir, 'learned_rules.md'),
@@ -83,6 +88,7 @@ export class DesktopIpcBridge extends EventEmitter {
       store: this.agentStore,
       taskStore: this.taskStore,
       habitExtractor: this.habitExtractor,
+      memoryStore: this.memoryStore,
       defaultEndpoint: this.settings.endpoint,
       defaultModel: this.settings.model,
       defaultApiKey: this.settings.apiKey,
@@ -162,6 +168,7 @@ export class DesktopIpcBridge extends EventEmitter {
     });
 
     const learnedRules = await this.habitExtractor.getLearnedRulesMarkdown();
+    const memoryContext = await this.memoryStore.getPromptMemoryContext(agentId);
 
     // Create coordinator with interactive approval callback
     const coordinator = new AgentCoordinator({
@@ -172,6 +179,7 @@ export class DesktopIpcBridge extends EventEmitter {
       systemPromptContext: {
         userInstructions: customInstructions,
         learnedRules,
+        memoryContext,
       },
       onApprovalRequired: async (req: ApprovalRequest) => {
         if (this.settings.autoApprove) {
@@ -395,5 +403,56 @@ export class DesktopIpcBridge extends EventEmitter {
     }
 
     return { events, transcript };
+  }
+
+  // Memory Store API (Grok Bot Parity)
+  public async listMemories(filter?: {
+    scope?: any;
+    tier?: any;
+    agentId?: string;
+    query?: string;
+  }): Promise<MemoryFact[]> {
+    return this.memoryStore.listMemories(filter);
+  }
+
+  public async addMemory(fact: {
+    text: string;
+    scope?: any;
+    tier?: any;
+    agentId?: string;
+  }): Promise<MemoryFact> {
+    return this.memoryStore.addMemory(fact);
+  }
+
+  public async forgetMemory(factId: string, scope?: any, agentId?: string): Promise<boolean> {
+    return this.memoryStore.forgetMemory(factId, scope, agentId);
+  }
+
+  public async promoteMemoriesToTeam(agentId: string, factIds: string[]): Promise<any> {
+    return this.memoryStore.promoteMemoriesToTeam(agentId, factIds);
+  }
+
+  public async importMemoryText(
+    exportedText: string,
+    targetScope?: any,
+    agentId?: string
+  ): Promise<any> {
+    return this.memoryStore.importMemoryText(exportedText, targetScope, agentId);
+  }
+
+  public async getTeamContextSummary(agentId?: string): Promise<any> {
+    return this.memoryStore.getTeamContextSummary(agentId);
+  }
+
+  public async listReviewItems(filter?: { status?: any; limit?: number }): Promise<TeamReviewItem[]> {
+    return this.memoryStore.listReviewItems(filter);
+  }
+
+  public async resolveReviewItem(
+    itemId: string,
+    decision: 'approve' | 'reject',
+    reviewerId?: string
+  ): Promise<TeamReviewItem> {
+    return this.memoryStore.resolveReviewItem(itemId, decision, reviewerId);
   }
 }
