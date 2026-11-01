@@ -3,7 +3,12 @@ import * as assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { SkillStore } from '../src/skill-store.js';
+import {
+  SkillStore,
+  parseSkillContent,
+  MAX_SKILL_SIZE_BYTES,
+  MAX_BOT_SKILLS,
+} from '../src/skill-store.js';
 import { AgentStore } from '../src/agent-store.js';
 
 test('SkillStore - creates, lists, mounts, and formats skills for agents', async () => {
@@ -71,6 +76,69 @@ test('SkillStore - creates, lists, mounts, and formats skills for agents', async
     const remaining = await skillStore.listSkills();
     assert.strictEqual(remaining.length, 1);
     assert.strictEqual(remaining[0].name, 'appsec-hardening');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('SkillStore - Grok Bot YAML frontmatter parsing, file import, and size limits', async () => {
+  const tmpDir = path.join(os.tmpdir(), `opensand-skill-invariants-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+  const agentDir = path.join(tmpDir, 'agents');
+  const skillDir = path.join(tmpDir, 'skills');
+
+  try {
+    const agentStore = new AgentStore(agentDir);
+    const skillStore = new SkillStore({ baseDir: skillDir, agentStore });
+
+    // 1. Test pure YAML frontmatter parsing (1:1 Grok Bot nq regex)
+    const rawMarkdown = `---
+name: env-debug
+description: Debug runtime environment and container issues
+---
+# Environment Debugging
+Run \`docker ps\` and verify networking connectivity.`;
+
+    const parsed = parseSkillContent(rawMarkdown);
+    assert.strictEqual(parsed.hasFrontmatter, true);
+    assert.strictEqual(parsed.name, 'env-debug');
+    assert.strictEqual(parsed.description, 'Debug runtime environment and container issues');
+    assert.ok(parsed.body.includes('# Environment Debugging'));
+
+    // 2. Test auto-extraction when creating skill from raw markdown
+    const autoSkill = await skillStore.createSkill({
+      name: '',
+      description: '',
+      content: rawMarkdown,
+    });
+    assert.strictEqual(autoSkill.name, 'env-debug');
+    assert.strictEqual(autoSkill.description, 'Debug runtime environment and container issues');
+
+    // 3. Test import from SKILL.md file on disk
+    const skillFolder = path.join(tmpDir, 'skills-cursor', 'deploy-prod');
+    fs.mkdirSync(skillFolder, { recursive: true });
+    const skillFilePath = path.join(skillFolder, 'SKILL.md');
+    fs.writeFileSync(skillFilePath, `---
+name: deploy-prod
+description: Safe blue-green deployment protocol
+---
+Always verify health checks before traffic migration.`);
+
+    const imported = await skillStore.importSkillFromFile(skillFilePath);
+    assert.strictEqual(imported.name, 'deploy-prod');
+    assert.strictEqual(imported.description, 'Safe blue-green deployment protocol');
+
+    // 4. Test 256 KB size limit
+    const oversizedContent = 'A'.repeat(MAX_SKILL_SIZE_BYTES + 100);
+    await assert.rejects(
+      async () => {
+        await skillStore.createSkill({
+          name: 'oversized',
+          description: 'too big',
+          content: oversizedContent,
+        });
+      },
+      /exceeds maximum allowed size of 256 KB/
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

@@ -4,12 +4,24 @@ import * as os from "node:os";
 import * as crypto from "node:crypto";
 import { AgentStore } from "./agent-store.js";
 
+/**
+ * Clean-room parity with Grok Bot's Skill Architecture:
+ * - SKILL.md file structure with YAML frontmatter (name, description, origin, upload-name)
+ * - Size limit: 256 KB per skill (256e3)
+ * - Bot limit: 250 skills max per agent (MAX_BOT_SKILLS = 250)
+ * - Dynamic prompt injection and mounting
+ */
+
+export const MAX_SKILL_SIZE_BYTES = 256 * 1024; // 256 KB
+export const MAX_BOT_SKILLS = 250;
+
 export interface SkillRecord {
   id: string;
   name: string;
   description: string;
   content: string;
   category?: string;
+  origin?: string;
   createdAtMs: number;
   updatedAtMs: number;
 }
@@ -19,6 +31,55 @@ export interface CreateSkillInput {
   description: string;
   content: string;
   category?: string;
+  origin?: string;
+}
+
+export interface ParsedSkillFrontmatter {
+  name?: string;
+  description?: string;
+  body: string;
+  hasFrontmatter: boolean;
+}
+
+/**
+ * Pure standard YAML frontmatter parser (1:1 parity with Grok Bot's nq and OOt parser)
+ */
+export function parseSkillContent(rawContent: string): ParsedSkillFrontmatter {
+  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
+  const match = frontmatterRegex.exec(rawContent);
+
+  if (!match) {
+    // Extract first H1 heading if present: # Heading
+    const firstLine = rawContent.split(/\r?\n/).find((l) => l.trim().length > 0) ?? "";
+    const h1Match = /^#[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/.exec(firstLine);
+    return {
+      name: h1Match?.[1]?.trim(),
+      description: undefined,
+      body: rawContent,
+      hasFrontmatter: false,
+    };
+  }
+
+  const frontmatterText = match[1];
+  const body = rawContent.slice(match[0].length);
+
+  const extractField = (key: string): string | undefined => {
+    const prefix = `${key}:`;
+    const line = frontmatterText.split(/\r?\n/).find((l) => l.trim().startsWith(prefix));
+    if (!line) return undefined;
+    let val = line.trim().slice(prefix.length).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    return val || undefined;
+  };
+
+  return {
+    name: extractField("name"),
+    description: extractField("description"),
+    body,
+    hasFrontmatter: true,
+  };
 }
 
 export class SkillStore {
@@ -49,23 +110,94 @@ export class SkillStore {
   async createSkill(input: CreateSkillInput): Promise<SkillRecord> {
     await this.ensureDirectory();
 
-    const slug = this.slugify(input.name) || "skill";
-    const existing = await this.getSkill(input.name);
+    const rawContent = input.content.trim();
+    if (Buffer.byteLength(rawContent, "utf8") > MAX_SKILL_SIZE_BYTES) {
+      throw new Error(`Skill content exceeds maximum allowed size of 256 KB (${MAX_SKILL_SIZE_BYTES} bytes)`);
+    }
+
+    // Parse frontmatter if present
+    const parsed = parseSkillContent(rawContent);
+
+    const finalName = (input.name.trim() || parsed.name || "Untitled Skill").trim();
+    const finalDescription = (input.description.trim() || parsed.description || "").trim();
+    // Keep raw content or extracted body for prompt consumption
+    const finalContent = rawContent;
+
+    const slug = this.slugify(finalName) || "skill";
+    const existing = await this.getSkill(finalName);
     const id = existing?.id ?? `skill_${slug}_${crypto.randomBytes(4).toString("hex")}`;
     const now = Date.now();
 
     const record: SkillRecord = {
       id,
-      name: input.name.trim(),
-      description: input.description.trim(),
-      content: input.content.trim(),
+      name: finalName,
+      description: finalDescription,
+      content: finalContent,
       category: input.category?.trim() || "general",
+      origin: input.origin ?? (parsed.hasFrontmatter ? "frontmatter" : "custom"),
       createdAtMs: existing?.createdAtMs ?? now,
       updatedAtMs: now,
     };
 
     await this.saveSkillAtomic(record);
     return record;
+  }
+
+  /**
+   * Import a skill directly from a SKILL.md or text file on disk
+   */
+  async importSkillFromFile(filePath: string, category?: string): Promise<SkillRecord> {
+    const raw = await fs.readFile(filePath, "utf-8");
+    const basename = path.basename(filePath);
+    const parentDirName = path.basename(path.dirname(filePath));
+
+    // Parity with Grok Bot's U(e): if filename is SKILL.md, infer name from directory
+    const defaultName = basename.toLowerCase() === "skill.md" ? parentDirName : path.parse(basename).name;
+
+    const parsed = parseSkillContent(raw);
+    const name = parsed.name || defaultName;
+    const description = parsed.description || "";
+
+    return this.createSkill({
+      name,
+      description,
+      content: raw,
+      category: category || "imported",
+      origin: "file",
+    });
+  }
+
+  /**
+   * Discover and import all SKILL.md files from a folder (e.g. .cursor/skills-cursor/ or .opensand/skills/)
+   */
+  async importSkillsFromDirectory(dirPath: string, category?: string): Promise<SkillRecord[]> {
+    const imported: SkillRecord[] = [];
+
+    const walk = async (currDir: string) => {
+      let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }> = [];
+      try {
+        entries = await fs.readdir(currDir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+
+      for (const entry of entries) {
+        const full = path.join(currDir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(full);
+        } else if (entry.isFile() && (entry.name.toLowerCase() === "skill.md" || entry.name.endsWith(".md"))) {
+          try {
+            const skill = await this.importSkillFromFile(full, category);
+            imported.push(skill);
+          } catch {
+            // Skip invalid/oversized
+          }
+        }
+      }
+    };
+
+    await walk(dirPath);
+    return imported;
   }
 
   async getSkill(idOrName: string): Promise<SkillRecord | null> {
@@ -160,6 +292,9 @@ export class SkillStore {
     const mounted: string[] = Array.isArray(metadata.skills) ? [...metadata.skills] : [];
 
     if (!mounted.includes(skill.id)) {
+      if (mounted.length >= MAX_BOT_SKILLS) {
+        throw new Error(`Agent '${agentIdOrName}' has reached the maximum of ${MAX_BOT_SKILLS} mounted skills`);
+      }
       mounted.push(skill.id);
       await this.agentStore.updateAgent(agent.id, {
         metadata: {
