@@ -24,6 +24,8 @@ import {
   VaultStore,
   VaultSecret,
   VaultCredential,
+  SkillStore,
+  SkillRecord,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -46,6 +48,7 @@ export class DesktopIpcBridge extends EventEmitter {
   private habitExtractor: HabitExtractor;
   public memoryStore: MemoryStore;
   public vaultStore: VaultStore;
+  public skillStore: SkillStore;
   private coordinator: AgentCoordinator | null = null;
   private activeApprovals: Map<string, {
     request: ToolApprovalRequest;
@@ -82,6 +85,10 @@ export class DesktopIpcBridge extends EventEmitter {
     this.taskStore = new TaskStore(path.join(this.baseDir, 'tasks'));
     this.memoryStore = new MemoryStore({ baseDir: path.join(this.baseDir, 'memories') });
     this.vaultStore = new VaultStore({ baseDir: path.join(this.baseDir, 'vault') });
+    this.skillStore = new SkillStore({
+      baseDir: path.join(this.baseDir, 'skills'),
+      agentStore: this.agentStore,
+    });
     this.habitExtractor = new HabitExtractor({
       sessionsDir: path.join(this.baseDir, 'sessions'),
       memoryFilePath: path.join(this.baseDir, 'learned_rules.md'),
@@ -95,6 +102,7 @@ export class DesktopIpcBridge extends EventEmitter {
       habitExtractor: this.habitExtractor,
       memoryStore: this.memoryStore,
       vaultStore: this.vaultStore,
+      skillStore: this.skillStore,
       defaultEndpoint: this.settings.endpoint,
       defaultModel: this.settings.model,
       defaultApiKey: this.settings.apiKey,
@@ -175,6 +183,7 @@ export class DesktopIpcBridge extends EventEmitter {
 
     const learnedRules = await this.habitExtractor.getLearnedRulesMarkdown();
     const memoryContext = await this.memoryStore.getPromptMemoryContext(agentId);
+    const skillsContext = agentId ? await this.skillStore.formatSkillsPrompt(agentId) : '';
 
     // Create coordinator with interactive approval callback
     const coordinator = new AgentCoordinator({
@@ -187,6 +196,7 @@ export class DesktopIpcBridge extends EventEmitter {
         userInstructions: customInstructions,
         learnedRules,
         memoryContext,
+        skillsContext,
       },
       onApprovalRequired: async (req: ApprovalRequest) => {
         if (this.settings.autoApprove) {
@@ -486,5 +496,26 @@ export class DesktopIpcBridge extends EventEmitter {
 
   public async deleteCredential(idOrTitle: string): Promise<boolean> {
     return this.vaultStore.deleteCredential(idOrTitle);
+  }
+
+  // Skills API (Grok Bot Parity: AddGrokBotAgentSkill / ListGrokBotAgentSkills)
+  public async createSkill(input: any): Promise<SkillRecord> {
+    return this.skillStore.createSkill(input);
+  }
+
+  public async listSkills(category?: string): Promise<SkillRecord[]> {
+    return this.skillStore.listSkills(category);
+  }
+
+  public async mountSkill(agentId: string, skillId: string): Promise<any> {
+    return this.skillStore.mountSkillToAgent(agentId, skillId);
+  }
+
+  public async unmountSkill(agentId: string, skillId: string): Promise<any> {
+    return this.skillStore.unmountSkillFromAgent(agentId, skillId);
+  }
+
+  public async deleteSkill(skillId: string): Promise<boolean> {
+    return this.skillStore.deleteSkill(skillId);
   }
 }

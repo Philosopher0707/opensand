@@ -7,6 +7,7 @@ import { TaskStore, AgentTask, TaskStatus, TaskPriority } from "./agent-tasks.js
 import { HabitExtractor } from "./habit-extractor.js";
 import { MemoryStore, MemoryScope, MemoryTier } from "./memory-store.js";
 import { VaultStore, VaultItemKind } from "./vault-store.js";
+import { SkillStore } from "./skill-store.js";
 import { UniversalLLMClient } from "./llm-client.js";
 import { AgentCoordinator } from "./coordinator.js";
 
@@ -17,6 +18,7 @@ export interface RegisterOrchestratorToolsOptions {
   habitExtractor?: HabitExtractor;
   memoryStore?: MemoryStore;
   vaultStore?: VaultStore;
+  skillStore?: SkillStore;
   defaultEndpoint?: string;
   defaultModel?: string;
   defaultApiKey?: string;
@@ -29,12 +31,14 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   habitExtractor: HabitExtractor;
   memoryStore: MemoryStore;
   vaultStore: VaultStore;
+  skillStore: SkillStore;
 } {
   const { daemon } = options;
   const store = options.store ?? new AgentStore();
   const taskStore = options.taskStore ?? new TaskStore();
   const memoryStore = options.memoryStore ?? new MemoryStore();
   const vaultStore = options.vaultStore ?? new VaultStore();
+  const skillStore = options.skillStore ?? new SkillStore({ agentStore: store });
   const sessionsBaseDir = options.sessionsBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
   const habitExtractor = options.habitExtractor ?? new HabitExtractor({ sessionsDir: sessionsBaseDir });
 
@@ -842,5 +846,144 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
     },
   });
 
-  return { store, taskStore, habitExtractor, memoryStore, vaultStore };
+  // 20. Tool: add_skill (Parity with AddGrokBotAgentSkill)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "add_skill",
+        description: "Create or update a modular recipe skill pack that can be mounted to any agent persona.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "The name/identifier of the skill (e.g. 'postgresql-optimization', 'appsec-audit').",
+            },
+            description: {
+              type: "string",
+              description: "Short summary of what this skill enables or enforces.",
+            },
+            content: {
+              type: "string",
+              description: "Detailed markdown instructions, rules, patterns, and examples for this skill.",
+            },
+            category: {
+              type: "string",
+              description: "Optional category tag (e.g. 'database', 'security', 'frontend', 'devops').",
+            },
+          },
+          required: ["name", "description", "content"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const skill = await skillStore.createSkill({
+        name: args.name,
+        description: args.description,
+        content: args.content,
+        category: args.category,
+      });
+      return JSON.stringify({
+        status: "success",
+        message: `Skill '${skill.name}' created and saved to skills library (ID: ${skill.id}).`,
+        skill,
+      }, null, 2);
+    },
+  });
+
+  // 21. Tool: list_skills (Parity with ListGrokBotAgentSkills)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "list_skills",
+        description: "List all available modular recipe skills in the skills library.",
+        parameters: {
+          type: "object",
+          properties: {
+            category: {
+              type: "string",
+              description: "Optional category filter.",
+            },
+          },
+        },
+      },
+    },
+    handler: async (args) => {
+      const skills = await skillStore.listSkills(args.category);
+      return JSON.stringify(skills, null, 2);
+    },
+  });
+
+  // 22. Tool: mount_skill (Parity with AddGrokBotAgentSkill / Mount to agent)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "mount_skill",
+        description: "Mount/attach a modular skill to an agent persona so the skill's instructions are automatically active.",
+        parameters: {
+          type: "object",
+          properties: {
+            agent_id_or_name: {
+              type: "string",
+              description: "The agent ID or name to mount the skill to.",
+            },
+            skill_id_or_name: {
+              type: "string",
+              description: "The skill ID or name to mount.",
+            },
+          },
+          required: ["agent_id_or_name", "skill_id_or_name"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const res = await skillStore.mountSkillToAgent(args.agent_id_or_name, args.skill_id_or_name);
+      return JSON.stringify({
+        status: "success",
+        message: `Skill mounted to agent '${res.agentId}'. Active skills: [${res.mountedSkills.join(", ")}].`,
+        result: res,
+      }, null, 2);
+    },
+  });
+
+  // 23. Tool: unmount_skill (Parity with RemoveGrokBotAgentSkill)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "unmount_skill",
+        description: "Unmount/detach a modular skill from an agent persona.",
+        parameters: {
+          type: "object",
+          properties: {
+            agent_id_or_name: {
+              type: "string",
+              description: "The agent ID or name to unmount the skill from.",
+            },
+            skill_id_or_name: {
+              type: "string",
+              description: "The skill ID or name to unmount.",
+            },
+          },
+          required: ["agent_id_or_name", "skill_id_or_name"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const res = await skillStore.unmountSkillFromAgent(args.agent_id_or_name, args.skill_id_or_name);
+      return JSON.stringify({
+        status: "success",
+        message: `Skill unmounted from agent '${res.agentId}'. Active skills: [${res.mountedSkills.join(", ")}].`,
+        result: res,
+      }, null, 2);
+    },
+  });
+
+  return { store, taskStore, habitExtractor, memoryStore, vaultStore, skillStore };
 }

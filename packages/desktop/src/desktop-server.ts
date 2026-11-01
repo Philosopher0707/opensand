@@ -474,6 +474,66 @@ export class DesktopServer {
       return;
     }
 
+    // API: GET /api/skills
+    if (pathname === '/api/skills' && req.method === 'GET') {
+      const category = url.searchParams.get('category') || undefined;
+      const skills = await this.bridge.listSkills(category);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(skills));
+      return;
+    }
+
+    // API: POST /api/skills
+    if (pathname === '/api/skills' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      if (!body.name || !body.description || !body.content) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing name, description, or content' }));
+        return;
+      }
+      const skill = await this.bridge.createSkill(body);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(skill));
+      return;
+    }
+
+    // API: POST /api/skills/mount
+    if (pathname === '/api/skills/mount' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      if (!body.agentId || !body.skillId) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing agentId or skillId' }));
+        return;
+      }
+      const mounted = await this.bridge.mountSkill(body.agentId, body.skillId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(mounted));
+      return;
+    }
+
+    // API: POST /api/skills/unmount
+    if (pathname === '/api/skills/unmount' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      if (!body.agentId || !body.skillId) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing agentId or skillId' }));
+        return;
+      }
+      const unmounted = await this.bridge.unmountSkill(body.agentId, body.skillId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(unmounted));
+      return;
+    }
+
+    // API: DELETE /api/skills/:id
+    if (pathname.startsWith('/api/skills/') && req.method === 'DELETE') {
+      const skillId = pathname.replace('/api/skills/', '');
+      const deleted = await this.bridge.deleteSkill(skillId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: deleted }));
+      return;
+    }
+
     // Serve static files from renderer/
     let filePath = path.join(this.rendererDir, pathname === '/' ? 'index.html' : pathname);
     const resolvedPath = path.resolve(filePath);
