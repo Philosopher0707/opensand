@@ -87,7 +87,16 @@ Examples:
   await daemon.start();
 
   // Initialize Orchestrator Meta-Tools (create_agent, list_agents, delegate_to_agent)
-  const { store: agentStore, taskStore, habitExtractor } = registerOrchestratorTools({
+  const {
+    store: agentStore,
+    taskStore,
+    habitExtractor,
+    vaultStore,
+    skillStore,
+    routineEngine,
+    roomManager,
+    gitManager,
+  } = registerOrchestratorTools({
     daemon,
     defaultEndpoint: config.endpoint,
     defaultModel: config.model,
@@ -300,9 +309,18 @@ Examples:
       if (trimmed === "/help") {
         console.log(`
 Available OpenSand REPL Commands:
-  /tools              List all active OS, orchestrator, and MCP tools
+  /tools              List all 56 active OS, orchestrator, and native tools
   /bots, /agents      List all registered bot personas in Agent Store
   /bot <name>         Switch active bot persona (e.g. '/bot cto' or '/bot default')
+  /rooms              List all multi-agent collaborative rooms
+  /room <id> <topic>  Convene a round-table deliberation and render consensus verdict
+  /routines           List all scheduled automated background routines
+  /routine run <id>   Trigger an immediate execution of a scheduled routine
+  /skills             List all modular recipe skills
+  /skill <name>       Inspect full markdown recipe instructions of a skill
+  /vault              List encrypted secrets & credentials with masked values
+  /git                Inspect git branch, status, staged & modified files
+  /review [pr_or_ref] Run autonomous PR review bot on pull request diff
   /tasks              List active agent tasks and milestones
   /rules              Show continuous learning guidelines
   /clear              Clear terminal screen
@@ -332,7 +350,8 @@ Available OpenSand REPL Commands:
           console.log("  No custom agents registered yet. Use create_agent to add bots.");
         } else {
           agents.forEach((a) => {
-            console.log(`  \x1b[35m🤖 ${a.name}\x1b[0m (${a.role}) [ID: ${a.id}]`);
+            const icon = a.kind === "ROOM" ? "👥" : "🤖";
+            console.log(`  \x1b[35m${icon} ${a.name}\x1b[0m (${a.role}) [ID: ${a.id}]`);
             console.log(`     \x1b[2mModel: ${a.model ?? "default"} | Tools: ${a.allowedTools ? a.allowedTools.join(", ") : "all"}\x1b[0m`);
           });
         }
@@ -354,6 +373,155 @@ Available OpenSand REPL Commands:
           } else {
             ui.printError(`Agent '${query}' not found in Agent Store. Run /bots to inspect available agents.`);
           }
+        }
+        continue;
+      }
+
+      if (trimmed === "/rooms") {
+        const rooms = await roomManager.listRooms();
+        console.log(`\n\x1b[1m=== Multi-Agent Collaborative Rooms (${rooms.length}) ===\x1b[0m`);
+        if (rooms.length === 0) {
+          console.log("  No rooms created yet. Use create_room or the Desktop UI to create one.");
+        } else {
+          rooms.forEach((r) => {
+            console.log(`  \x1b[34m👥 ${r.name}\x1b[0m [ID: ${r.roomId}]`);
+            console.log(`     \x1b[2m${r.description} | Members: [${r.memberAgentIds.join(", ")}] | Discussions: ${r.discussionCount}\x1b[0m`);
+          });
+        }
+        continue;
+      }
+
+      if (trimmed.startsWith("/room ")) {
+        const parts = trimmed.slice(6).trim().split(" ");
+        const roomIdOrName = parts[0];
+        const topic = parts.slice(1).join(" ");
+        if (!topic) {
+          console.log("Usage: /room <roomId_or_name> <topic to deliberate on>");
+          continue;
+        }
+
+        const room = await roomManager.getRoom(roomIdOrName);
+        if (!room) {
+          ui.printError(`Room '${roomIdOrName}' not found. Run /rooms to list rooms.`);
+          continue;
+        }
+
+        ui.printInfo(`Convening deliberation in '${room.name}' on: "${topic}"...`);
+        const disc = await roomManager.runRoomDiscussion(room.roomId, topic);
+        console.log(`\n\x1b[1m=== Deliberation Results (${disc.turns.length} turns) ===\x1b[0m`);
+        disc.turns.forEach((t) => {
+          console.log(`\n\x1b[36mTurn ${t.turnIndex}: ${t.memberName} (${t.memberRole})\x1b[0m\n${t.content}`);
+        });
+        console.log(`\n\x1b[32m${disc.consensus}\x1b[0m`);
+        continue;
+      }
+
+      if (trimmed === "/routines") {
+        const routines = await routineEngine.listRoutines();
+        console.log(`\n\x1b[1m=== Scheduled Background Routines (${routines.length}) ===\x1b[0m`);
+        if (routines.length === 0) {
+          console.log("  No routines scheduled yet. Use create_routine to add one.");
+        } else {
+          routines.forEach((r) => {
+            const mark = r.isEnabled ? "\x1b[32m●\x1b[0m" : "\x1b[90m○\x1b[0m";
+            const nextRun = r.nextRunAtMs ? new Date(r.nextRunAtMs).toLocaleTimeString() : "Disabled";
+            console.log(`  ${mark} \x1b[33m⏱ ${r.name}\x1b[0m [ID: ${r.routineId}]`);
+            console.log(`     \x1b[2mSchedule: ${r.triggerDescription} | Next: ${nextRun} | Runs: ${r.runCount} | Status: ${r.lastRunStatus || "idle"}\x1b[0m`);
+          });
+        }
+        continue;
+      }
+
+      if (trimmed.startsWith("/routine run ")) {
+        const routineId = trimmed.slice(13).trim();
+        ui.printInfo(`Triggering routine '${routineId}'...`);
+        try {
+          const res = await routineEngine.triggerRoutine(routineId);
+          console.log(`\x1b[32m✔ Executed '${res.routine.name}':\x1b[0m\n${res.result}`);
+        } catch (err: any) {
+          ui.printError(`Failed to run routine: ${err.message}`);
+        }
+        continue;
+      }
+
+      if (trimmed === "/skills") {
+        const skills = await skillStore.listSkills();
+        console.log(`\n\x1b[1m=== Modular Recipe Skills (${skills.length}) ===\x1b[0m`);
+        if (skills.length === 0) {
+          console.log("  No skills in library. Use add_skill to register recipes.");
+        } else {
+          skills.forEach((s) => {
+            console.log(`  \x1b[35m🧩 ${s.name}\x1b[0m [${s.category || "general"}] - \x1b[2m${s.description || "No description"}\x1b[0m`);
+          });
+        }
+        continue;
+      }
+
+      if (trimmed.startsWith("/skill ")) {
+        const name = trimmed.slice(7).trim();
+        const skill = await skillStore.getSkill(name);
+        if (!skill) {
+          ui.printError(`Skill '${name}' not found.`);
+        } else {
+          console.log(`\n\x1b[1m=== Skill: ${skill.name} ===\x1b[0m`);
+          console.log(`Description: ${skill.description || "None"}\n`);
+          console.log(skill.content);
+        }
+        continue;
+      }
+
+      if (trimmed === "/vault") {
+        const secrets = await vaultStore.listSecrets();
+        const credentials = await vaultStore.listCredentials();
+        console.log(`\n\x1b[1m=== Encrypted Vault: ${secrets.length} Secrets, ${credentials.length} Credentials ===\x1b[0m`);
+        console.log("\x1b[1mSecrets:\x1b[0m");
+        if (secrets.length === 0) {
+          console.log("  (No secrets stored)");
+        } else {
+          secrets.forEach((s) => {
+            console.log(`  🔑 \x1b[33m${s.name}\x1b[0m - \x1b[2m${s.preview}\x1b[0m (${s.description || "no description"})`);
+          });
+        }
+        console.log("\x1b[1mCredentials:\x1b[0m");
+        if (credentials.length === 0) {
+          console.log("  (No credentials stored)");
+        } else {
+          credentials.forEach((c) => {
+            console.log(`  👤 \x1b[36m${c.title}\x1b[0m (${c.username || "user"}) [Sites: ${(c.sites || []).join(", ") || "Any"}]`);
+          });
+        }
+        continue;
+      }
+
+      if (trimmed === "/git" || trimmed === "/status") {
+        const status = await gitManager.getStatus();
+        console.log(`\n\x1b[1m=== Git Repository Status ===\x1b[0m`);
+        console.log(`  Branch: \x1b[32m${status.branch}\x1b[0m | Clean: ${status.isClean ? "✔ Yes" : "✖ No"}`);
+        if (status.staged.length > 0) {
+          console.log(`  Staged files (${status.staged.length}): ${status.staged.join(", ")}`);
+        }
+        if (status.modified.length > 0) {
+          console.log(`  Modified files (${status.modified.length}): ${status.modified.join(", ")}`);
+        }
+        if (status.untracked.length > 0) {
+          console.log(`  Untracked files (${status.untracked.length}): ${status.untracked.join(", ")}`);
+        }
+        continue;
+      }
+
+      if (trimmed.startsWith("/review")) {
+        const ref = trimmed.slice(7).trim() || "HEAD";
+        ui.printInfo(`Running PR review bot on '${ref}'...`);
+        const review = await gitManager.reviewPullRequest(ref);
+        const color = review.verdict === "APPROVED" ? "\x1b[32m" : review.verdict === "CHANGES_REQUESTED" ? "\x1b[31m" : "\x1b[33m";
+        console.log(`\n\x1b[1m=== PR Review Verdict: ${color}${review.verdict}\x1b[0m\x1b[1m ===\x1b[0m`);
+        console.log(`${review.summary}\n`);
+        if (review.issues.length > 0) {
+          console.log("\x1b[1mIssues Identified:\x1b[0m");
+          review.issues.forEach((iss, idx) => {
+            const sevColor = iss.severity === "critical" ? "\x1b[31m[CRITICAL]\x1b[0m" : "\x1b[33m[WARNING]\x1b[0m";
+            console.log(`  ${idx + 1}. ${sevColor} \x1b[36m${iss.file}${iss.line ? `:${iss.line}` : ""}\x1b[0m - ${iss.comment}`);
+          });
         }
         continue;
       }
