@@ -9,6 +9,7 @@ import {
   McpManager,
   registerOrchestratorTools,
   AgentRecord,
+  GitManager,
 } from "@opensand/coordinator";
 import { parseCliArgs, CliConfig, probeLocalOllama, validateConfig } from "./config.js";
 import { TerminalUI } from "./terminal-ui.js";
@@ -29,12 +30,14 @@ Options:
   --api-key <key>          API key (default: $OPENSAND_API_KEY)
   --bot <id_or_name>       Activate a registered bot persona from Agent Store (e.g. 'cto')
   --system-prompt <file>   Path to custom instructions markdown/text file
+  --worktree [name]        Run in an isolated Git worktree sandbox (CCD & Codex parity)
   --list-tools             List all active OS, orchestrator, and MCP tools
   --list-bots              List all registered bot personas in the Agent Store
   --list-tasks             List all agent tasks and milestones
   --auto-approve, -y       Auto-approve tool execution (non-interactive mode)
   --help, -h               Show this help message
   --version, -v            Show version
+  completion <bash|zsh>    Generate shell completion script
 
 Interactive REPL Commands:
   /help                    Show available REPL commands
@@ -95,6 +98,65 @@ Examples:
     console.log(`  📋 Active Tasks & Todos:   ${fleet.tasks.length} items`);
     console.log(`  🧠 Cognitive Memory Facts: ${fleet.memories.length} facts\n`);
     return;
+  }
+
+  // Shell Completion Generator
+  if (config.completion) {
+    if (config.completion === "zsh") {
+      console.log(`#compdef opensand
+_opensand() {
+  local -a opts
+  opts=(
+    '--endpoint[LLM API base URL]'
+    '--model[Model identifier]'
+    '--api-key[API key]'
+    '--bot[Activate registered bot persona]'
+    '--system-prompt[Custom instructions file]'
+    '--worktree[Run in isolated Git worktree]'
+    '--list-tools[List registered tools]'
+    '--list-bots[List registered bot personas]'
+    '--list-tasks[List agent tasks]'
+    '--auto-approve[Auto-approve tool execution]'
+    '-y[Auto-approve tool execution]'
+    '--help[Show help]'
+    '--version[Show version]'
+    'doctor[Run system diagnostic probes]'
+    'status[Show agent fleet status]'
+    'completion[Generate shell completions]'
+  )
+  _describe 'opensand options' opts
+}
+_opensand`);
+    } else {
+      console.log(`# bash completion for opensand
+_opensand_completions() {
+  local cur prev opts
+  COMPREPLY=()
+  cur="\${COMP_WORDS[COMP_CWORD]}"
+  prev="\${COMP_WORDS[COMP_CWORD-1]}"
+  opts="--endpoint --model --api-key --bot --system-prompt --worktree --list-tools --list-bots --list-tasks --auto-approve -y --help -h --version -v doctor status completion"
+
+  if [[ \${cur} == -* ]] || [[ \${COMP_CWORD} -eq 1 ]] ; then
+    COMPREPLY=( $(compgen -W "\${opts}" -- \${cur}) )
+    return 0
+  fi
+}
+complete -F _opensand_completions opensand`);
+    }
+    return;
+  }
+
+  // Git Worktree Sandbox Isolation (Parity with CCD git-worktrees & shadow sandboxing)
+  if (config.worktree) {
+    const gitManager = new GitManager();
+    try {
+      ui.printInfo(`🌿 Preparing isolated Git worktree sandbox: ${config.worktree}...`);
+      const { worktreePath, branch } = await gitManager.createWorktree(config.worktree);
+      ui.printSuccess(`🌿 Switched to isolated Git worktree: ${worktreePath} (branch: ${branch})`);
+      process.chdir(worktreePath);
+    } catch (err: any) {
+      ui.printWarning(`Could not create Git worktree: ${err.message}. Continuing in current workspace.`);
+    }
   }
 
   // If endpoint is cloud OpenAI default and no key is provided, check if local Ollama is alive

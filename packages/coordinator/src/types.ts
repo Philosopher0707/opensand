@@ -40,6 +40,7 @@ export interface LLMClientConfig {
   model: string;
   provider?: "openai" | "anthropic";
   thinkingBudgetTokens?: number;
+  enablePromptCaching?: boolean;
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;

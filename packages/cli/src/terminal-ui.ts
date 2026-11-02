@@ -30,6 +30,10 @@ export class TerminalUI {
     console.log(`${DIM}${text}${RESET}`);
   }
 
+  printSuccess(text: string): void {
+    console.log(`${GREEN}✔ ${text}${RESET}`);
+  }
+
   printWarning(text: string): void {
     console.log(`${YELLOW}⚠️  ${text}${RESET}`);
   }

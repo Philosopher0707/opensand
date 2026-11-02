@@ -63,6 +63,7 @@ export class UniversalLLMClient {
 
     if (isAnthropic) {
       headers["anthropic-version"] = "2023-06-01";
+      headers["anthropic-beta"] = "prompt-caching-2024-07-31";
       if (this.config.apiKey) {
         headers["x-api-key"] = this.config.apiKey;
       }

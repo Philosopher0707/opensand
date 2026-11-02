@@ -11,6 +11,12 @@ import {
 import { TranscriptManager } from "./transcript-manager.js";
 import { buildSystemPrompt, SystemPromptContext } from "./system-prompt.js";
 import { VaultStore } from "./vault-store.js";
+import { LifecycleHooks, HookDispatcher } from "./hooks.js";
+import {
+  truncateToolOutput,
+  foldHistoricalToolResults,
+  selectActiveTools,
+} from "./token-hygiene.js";
 
 export interface CoordinatorOptions {
   llmClient: UniversalLLMClient;
@@ -18,7 +24,10 @@ export interface CoordinatorOptions {
   sessionId?: string;
   systemPromptContext?: SystemPromptContext;
   allowedTools?: string[];
+  toolScopeMode?: "core" | "auto" | "all";
+  maxContextTokens?: number;
   vaultStore?: VaultStore;
+  hooks?: LifecycleHooks;
   onApprovalRequired?: ApprovalHandler;
   onEvent?: TurnEventListener;
   maxTurnIterations?: number;
@@ -31,7 +40,10 @@ export class AgentCoordinator {
   public readonly transcript: TranscriptManager;
   public readonly sessionId: string;
   public readonly allowedTools?: string[];
+  public readonly toolScopeMode: "core" | "auto" | "all";
+  public readonly maxContextTokens: number;
   public readonly vaultStore?: VaultStore;
+  public readonly hookDispatcher: HookDispatcher;
 
   private messages: ChatMessage[] = [];
   private onApprovalRequired?: ApprovalHandler;
@@ -45,7 +57,10 @@ export class AgentCoordinator {
     this.sessionId = options.sessionId ?? `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     this.transcript = new TranscriptManager(this.sessionId, options.sessionsBaseDir);
     this.allowedTools = options.allowedTools;
+    this.toolScopeMode = options.toolScopeMode ?? "auto";
+    this.maxContextTokens = options.maxContextTokens ?? 32000;
     this.vaultStore = options.vaultStore;
+    this.hookDispatcher = new HookDispatcher(options.hooks);
     this.onApprovalRequired = options.onApprovalRequired;
     this.onEvent = options.onEvent;
     this.maxTurnIterations = options.maxTurnIterations ?? 50;
@@ -76,7 +91,23 @@ export class AgentCoordinator {
    * Run a full multi-turn conversational tool-calling interaction turn.
    */
   async runTurn(userQuery: string, signal?: AbortSignal): Promise<string> {
-    // 1. Record User Message
+    if (!this.initialized) {
+      this.initialized = true;
+      await this.hookDispatcher.dispatchSessionStart({
+        sessionId: this.sessionId,
+        systemPrompt: this.messages[0]?.content ?? undefined,
+      });
+    }
+
+    // 1. Fold historical tool results from older turns to prevent memory and token explosion
+    this.messages = foldHistoricalToolResults(this.messages, 2);
+
+    // 2. Trigger auto-compaction if context footprint exceeds threshold
+    if (this.estimateTokens() > this.maxContextTokens) {
+      await this.compactHistory({ keepRecentTurns: 2 });
+    }
+
+    // 3. Record User Message
     this.messages.push({
       role: "user",
       content: userQuery,
@@ -94,6 +125,8 @@ export class AgentCoordinator {
       let toolDefs = this.daemon.getToolDefinitions();
       if (this.allowedTools && this.allowedTools.length > 0) {
         toolDefs = toolDefs.filter((d) => this.allowedTools!.includes(d.function.name));
+      } else {
+        toolDefs = selectActiveTools(toolDefs, userQuery, this.toolScopeMode);
       }
 
       const { stream, getConsolidated } = await this.llmClient.streamCompletion(
@@ -132,6 +165,10 @@ export class AgentCoordinator {
         const finalContent = assistantMsg.content ?? "";
         this.emit({ type: "turn_completed", finalContent });
         await this.transcript.writeHumanReadableTranscript(this.messages);
+        await this.hookDispatcher.dispatchStop({
+          sessionId: this.sessionId,
+          finalContent,
+        });
         return finalContent;
       }
 
@@ -173,6 +210,39 @@ export class AgentCoordinator {
             content: JSON.stringify(parseErrorResult),
           });
           continue;
+        }
+
+        // Lifecycle Hook: PreToolUse (Parity with Claude Code PreToolUse auditing & filtering)
+        const preHook = await this.hookDispatcher.dispatchPreToolUse({
+          sessionId: this.sessionId,
+          toolName: tc.function.name,
+          args,
+        });
+
+        if (!preHook.proceed) {
+          const hookDeniedResult: ToolExecutionResult = {
+            status: "error",
+            error: {
+              code: "PRE_TOOL_HOOK_DENIED",
+              message: preHook.reason || `Tool '${tc.function.name}' execution was denied by PreToolUse hook policy.`,
+            },
+          };
+          this.emit({ type: "tool_call_completed", toolCall: tc, result: hookDeniedResult });
+          this.messages.push({
+            role: "tool",
+            tool_call_id: tc.id,
+            content: JSON.stringify(hookDeniedResult),
+          });
+          await this.transcript.appendJsonl({
+            role: "tool",
+            tool_call_id: tc.id,
+            result: hookDeniedResult,
+          });
+          continue;
+        }
+
+        if (preHook.modifiedArgs) {
+          args = { ...args, ...preHook.modifiedArgs };
         }
 
         // Check if gate approval is needed
@@ -240,12 +310,17 @@ export class AgentCoordinator {
 
         const rawContent = JSON.stringify(execResult.output ?? execResult.error);
         const safeContent = this.vaultStore ? this.vaultStore.redactText(rawContent) : rawContent;
+        const boundedContent = truncateToolOutput(safeContent, {
+          maxCharacters: 16000,
+          headCharacters: 10000,
+          tailCharacters: 5000,
+        });
 
         this.emit({ type: "tool_call_completed", toolCall: tc, result: execResult });
         this.messages.push({
           role: "tool",
           tool_call_id: tc.id,
-          content: safeContent,
+          content: boundedContent,
         });
 
         await this.transcript.appendJsonl({
@@ -253,6 +328,19 @@ export class AgentCoordinator {
           tool_call_id: tc.id,
           result: execResult,
         });
+
+        // Lifecycle Hook: PostToolUse
+        await this.hookDispatcher.dispatchPostToolUse({
+          sessionId: this.sessionId,
+          toolName: tc.function.name,
+          args,
+          result: execResult,
+        });
+      }
+
+      // Auto-compact if tool results pushed context above the safety limit
+      if (this.estimateTokens() > this.maxContextTokens) {
+        await this.compactHistory({ keepRecentTurns: 2 });
       }
 
       // Loop continues: LLM evaluates tool results
@@ -262,6 +350,10 @@ export class AgentCoordinator {
     const fallbackMessage = `Execution limit reached: max turn iterations (${this.maxTurnIterations}) reached. Type 'continue' to proceed.`;
     this.emit({ type: "turn_completed", finalContent: fallbackMessage });
     await this.transcript.writeHumanReadableTranscript(this.messages);
+    await this.hookDispatcher.dispatchStop({
+      sessionId: this.sessionId,
+      finalContent: fallbackMessage,
+    });
     return fallbackMessage;
   }
 
@@ -384,6 +476,14 @@ ${question}`;
     }
 
     const cutTurnIndex = userIndices.length - keepRecentTurns;
+
+    // Lifecycle Hook: PreCompact (Parity with Claude Code PreCompact memory extraction)
+    await this.hookDispatcher.dispatchPreCompact({
+      sessionId: this.sessionId,
+      turnCount: cutTurnIndex,
+      tokensBefore: originalTokens,
+    });
+
     const cutMessageIndex = userIndices[cutTurnIndex];
 
     const systemMessage = this.messages[0];

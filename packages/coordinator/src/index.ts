@@ -15,6 +15,8 @@ export * from "./skill-store.js";
 export * from "./routine-engine.js";
 export * from "./room-manager.js";
 export * from "./git-manager.js";
+export * from "./hooks.js";
+export * from "./token-hygiene.js";
 export * from "./workspace-sentinel.js";
 export * from "./attachment-manager.js";
 export * from "./orchestrator-tools.js";

@@ -11,7 +11,7 @@ import { SkillStore } from "./skill-store.js";
 import { RoutineEngine } from "./routine-engine.js";
 import { RoomManager } from "./room-manager.js";
 import { GitManager } from "./git-manager.js";
-import { WorkspaceSentinel } from "./workspace-sentinel.js";
+import { WorkspaceSentinel, createAutonomousHealer } from "./workspace-sentinel.js";
 import { AttachmentManager } from "./attachment-manager.js";
 import { UniversalLLMClient } from "./llm-client.js";
 import { AgentCoordinator } from "./coordinator.js";
@@ -60,6 +60,9 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   const roomManager = options.roomManager ?? new RoomManager(undefined, store, vaultStore);
   const gitManager = options.gitManager ?? new GitManager(options.repoRoot);
   const workspaceSentinel = options.workspaceSentinel ?? new WorkspaceSentinel();
+  if (options.coordinator && !workspaceSentinel.hasHealer()) {
+    workspaceSentinel.setHealer(createAutonomousHealer(options.coordinator));
+  }
   const attachmentManager = options.attachmentManager ?? new AttachmentManager();
   const sessionsBaseDir = options.sessionsBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
   const habitExtractor = options.habitExtractor ?? new HabitExtractor({ sessionsDir: sessionsBaseDir });

@@ -63,13 +63,13 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
       }
     }, timeoutMs);
 
-    const MAX_BUFFER_SIZE = 4 * 1024 * 1024; // 4MB frame limit
+    const MAX_BUFFER_SIZE = 64 * 1024; // 64KB output buffer limit to prevent context flooding
 
     child.stdout.on("data", (chunk: Buffer) => {
       if (stdoutBuffer.length < MAX_BUFFER_SIZE) {
         stdoutBuffer += chunk.toString("utf-8");
         if (stdoutBuffer.length >= MAX_BUFFER_SIZE) {
-          stdoutBuffer += "\n[stdout truncated: exceeded 4MB buffer limit]";
+          stdoutBuffer += "\n[stdout truncated: exceeded 64KB buffer limit]";
         }
       }
     });
@@ -78,7 +78,7 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
       if (stderrBuffer.length < MAX_BUFFER_SIZE) {
         stderrBuffer += chunk.toString("utf-8");
         if (stderrBuffer.length >= MAX_BUFFER_SIZE) {
-          stderrBuffer += "\n[stderr truncated: exceeded 4MB buffer limit]";
+          stderrBuffer += "\n[stderr truncated: exceeded 64KB buffer limit]";
         }
       }
     });

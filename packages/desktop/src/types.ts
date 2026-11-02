@@ -35,7 +35,8 @@ export type DesktopEventType =
   | 'approval_required'
   | 'turn_complete'
   | 'error'
-  | 'status';
+  | 'status'
+  | 'sentinel';
 
 export interface DesktopEvent {
   type: DesktopEventType;

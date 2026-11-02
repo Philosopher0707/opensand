@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { WorkspaceSentinel, SentinelDiagnosticEvent } from "../src/workspace-sentinel.js";
+import { WorkspaceSentinel, SentinelDiagnosticEvent, createAutonomousHealer } from "../src/workspace-sentinel.js";
 
 describe("WorkspaceSentinel", () => {
   let tempDir: string;
@@ -78,5 +78,34 @@ describe("WorkspaceSentinel", () => {
     assert.strictEqual(healingInvoked, true);
     assert.strictEqual(event.status, "healed");
     assert.ok(event.healingProposal?.includes("Applied syntax correction"));
+  });
+
+  it("createAutonomousHealer invokes runner and verifies fix", async () => {
+    const flagFile = path.join(tempDir, "healed.flag");
+    const mockRunner = {
+      runTurn: async (prompt: string) => {
+        assert.ok(prompt.includes("AUTOMATED SENTINEL HEALER"));
+        // Simulate fixing the error by creating flagFile
+        await fs.writeFile(flagFile, "ok", "utf-8");
+        return "Created missing flag file";
+      },
+    };
+
+    const autoHealer = createAutonomousHealer(mockRunner);
+    sentinel.setHealer(autoHealer);
+
+    // Initial check will fail unless flagFile exists
+    const checkScript = `node -e "if (!require('fs').existsSync('${flagFile}')) process.exit(1)"`;
+
+    const watcher = await sentinel.startWatcher({
+      targetDir: tempDir,
+      checkCommand: checkScript,
+      autoHeal: true,
+      debounceMs: 50,
+    });
+
+    const event = await sentinel.runDiagnostic(watcher, "index.ts");
+    assert.strictEqual(event.status, "healed");
+    assert.ok(event.healingProposal?.includes("Created missing flag file"));
   });
 });

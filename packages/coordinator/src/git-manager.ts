@@ -44,6 +44,13 @@ export interface PrReviewResult {
   rawDiffSnippet?: string;
 }
 
+export interface GitWorktreeEntry {
+  path: string;
+  head: string;
+  branch: string;
+  isBare?: boolean;
+}
+
 export class GitManager {
   private defaultCwd: string;
 
@@ -157,7 +164,19 @@ export class GitManager {
     const sanitizedBranch = branchName.replace(/[^a-zA-Z0-9/_-]+/g, "-");
     const worktreeDir = customPath ?? path.join(os.tmpdir(), `opensand-worktree-${sanitizedBranch.replace(/\//g, "-")}-${Date.now()}`);
 
-    await this.execGit(["worktree", "add", "-b", sanitizedBranch, worktreeDir, "HEAD"], cwd);
+    let branchExists = false;
+    try {
+      await this.execGit(["rev-parse", "--verify", sanitizedBranch], cwd);
+      branchExists = true;
+    } catch {
+      branchExists = false;
+    }
+
+    if (branchExists) {
+      await this.execGit(["worktree", "add", worktreeDir, sanitizedBranch], cwd);
+    } else {
+      await this.execGit(["worktree", "add", "-b", sanitizedBranch, worktreeDir, "HEAD"], cwd);
+    }
 
     return {
       worktreePath: worktreeDir,
@@ -316,5 +335,63 @@ export class GitManager {
       issues,
       rawDiffSnippet: diffText.slice(0, 1000),
     };
+  }
+
+  /**
+   * List all active Git worktrees (Claude Code Desktop & Codex Worktree Isolation Parity).
+   */
+  async listWorktrees(cwd?: string): Promise<GitWorktreeEntry[]> {
+    try {
+      const { stdout } = await this.execGit(["worktree", "list", "--porcelain"], cwd);
+      const entries: GitWorktreeEntry[] = [];
+      const blocks = stdout.split("\n\n").filter((b) => b.trim().length > 0);
+
+      for (const block of blocks) {
+        const lines = block.split("\n");
+        let wtPath = "";
+        let wtHead = "";
+        let wtBranch = "";
+        let isBare = false;
+
+        for (const line of lines) {
+          if (line.startsWith("worktree ")) {
+            wtPath = line.replace("worktree ", "").trim();
+          } else if (line.startsWith("HEAD ")) {
+            wtHead = line.replace("HEAD ", "").trim();
+          } else if (line.startsWith("branch ")) {
+            wtBranch = line.replace("branch ", "").replace("refs/heads/", "").trim();
+          } else if (line === "bare") {
+            isBare = true;
+          }
+        }
+
+        if (wtPath) {
+          entries.push({
+            path: wtPath,
+            head: wtHead,
+            branch: wtBranch || "detached",
+            isBare,
+          });
+        }
+      }
+
+      return entries;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Remove an isolated Git worktree and prune worktree metadata.
+   */
+  async removeWorktree(targetPath: string, cwd?: string): Promise<boolean> {
+    const resolvedPath = path.resolve(targetPath);
+    try {
+      await this.execGit(["worktree", "remove", "--force", resolvedPath], cwd);
+      await this.execGit(["worktree", "prune"], cwd);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

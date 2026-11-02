@@ -42,6 +42,18 @@ describe("CliConfig", () => {
     assert.equal(config.query, "run audit");
   });
 
+  it("parses --worktree and completion flags", () => {
+    const wtConfig = parseCliArgs(["--worktree", "feature-branch", "run", "build"]);
+    assert.equal(wtConfig.worktree, "feature-branch");
+    assert.equal(wtConfig.query, "run build");
+
+    const zshConfig = parseCliArgs(["completion", "zsh"]);
+    assert.equal(zshConfig.completion, "zsh");
+
+    const bashConfig = parseCliArgs(["completion", "bash"]);
+    assert.equal(bashConfig.completion, "bash");
+  });
+
   it("defaults to standard environment", () => {
     const config = parseCliArgs([]);
 

@@ -48,6 +48,14 @@ export async function readFileOperation(input: ReadFileInput): Promise<ReadFileO
     } else {
       selectedContent = "";
     }
+  } else {
+    // Default safety bounding: cap unbounded reads at 800 lines to prevent token blowup
+    const DEFAULT_MAX_LINES = 800;
+    if (totalLines > DEFAULT_MAX_LINES) {
+      selectedContent =
+        lines.slice(0, DEFAULT_MAX_LINES).join("\n") +
+        `\n\n[... File truncated: showing lines 1-${DEFAULT_MAX_LINES} of ${totalLines} (${rawBytes.byteLength.toLocaleString()} bytes). Pass start_line and end_line arguments to read further sections. ...]`;
+    }
   }
 
   return {

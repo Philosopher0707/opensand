@@ -371,4 +371,167 @@ describe("AgentCoordinator Integration", () => {
     // Most recent turn is preserved
     assert.equal(coordinator.history[coordinator.history.length - 2].content, "Turn 4: Run unit test suite");
   });
+
+  it("bounds excessive tool output to protect the context window", async () => {
+    let capturedToolMessageContent: any = undefined;
+
+    const mockFetch = async (_url: any, init: any): Promise<Response> => {
+      const payload = JSON.parse(init.body as string);
+      const messages = payload.messages;
+      const lastMsg = messages[messages.length - 1];
+      const encoder = new TextEncoder();
+
+      let chunks: string[] = [];
+
+      if (lastMsg.role === "tool") {
+        capturedToolMessageContent = lastMsg.content;
+        chunks = [
+          `data: ${JSON.stringify({ choices: [{ delta: { content: "Parsed huge output safely." } }] })}\n\n`,
+          "data: [DONE]\n\n",
+        ];
+      } else {
+        chunks = [
+          `data: ${JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  content: "Generating large output.",
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call_huge_1",
+                      type: "function",
+                      function: {
+                        name: "exec_command",
+                        arguments: JSON.stringify({
+                          command: "node -e \"process.stdout.write('X'.repeat(30000))\"",
+                        }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          })}\n\n`,
+          "data: [DONE]\n\n",
+        ];
+      }
+
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const c of chunks) controller.enqueue(encoder.encode(c));
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    };
+
+    const client = new UniversalLLMClient({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      fetch: mockFetch as any,
+    });
+
+    const coordinator = new AgentCoordinator({
+      llmClient: client,
+      daemon,
+      sessionsBaseDir: path.join(tempDir, "sessions"),
+      onApprovalRequired: async () => true,
+    });
+
+    const reply = await coordinator.runTurn("Produce huge output");
+    assert.equal(reply, "Parsed huge output safely.");
+    assert.ok(typeof capturedToolMessageContent === "string");
+    // Bounded tool output must contain the truncation notice and be bounded
+    assert.ok(capturedToolMessageContent.includes("Tool output truncated:"));
+    assert.ok(capturedToolMessageContent.includes("characters omitted"));
+    assert.ok(capturedToolMessageContent.length < 20000);
+  });
+
+  it("automatically compacts context when maxContextTokens threshold is crossed", async () => {
+    const mockFetch = async (_url: any, init: any): Promise<Response> => {
+      const payload = JSON.parse(init.body as string);
+      const userMsg = payload.messages.filter((m: any) => m.role === "user").pop();
+      const encoder = new TextEncoder();
+      const chunks = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: `Answer to ${userMsg.content}` } }] })}\n\n`,
+        "data: [DONE]\n\n",
+      ];
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const c of chunks) controller.enqueue(encoder.encode(c));
+          controller.close();
+        },
+      });
+      return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    };
+
+    const client = new UniversalLLMClient({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      fetch: mockFetch as any,
+    });
+
+    // Set a very low maxContextTokens so auto-compaction is triggered
+    const coordinator = new AgentCoordinator({
+      llmClient: client,
+      daemon,
+      sessionsBaseDir: path.join(tempDir, "sessions"),
+      maxContextTokens: 100,
+    });
+
+    await coordinator.runTurn("Turn 1: Comprehensive architectural design document for asynchronous microservices with distributed transaction log.");
+    await coordinator.runTurn("Turn 2: Database schema specifications, index optimization strategy, and write-ahead log failover mechanisms.");
+    await coordinator.runTurn("Turn 3: Service discovery, RPC retry contracts, and circuit breaker rate limiting protocols.");
+    await coordinator.runTurn("Turn 4: Test suite execution and verification report.");
+
+    // Since maxContextTokens was set to 100, auto-compaction must have triggered
+    const summaryMsg = coordinator.history.find(
+      (m) => m.role === "system" && m.content?.includes("<historical_context_summary>")
+    );
+    assert.ok(summaryMsg !== undefined, "Expected historical context summary from auto-compaction");
+  });
+
+  it("scopes tools according to toolScopeMode", async () => {
+    let capturedToolCount = 0;
+
+    const mockFetch = async (_url: any, init: any): Promise<Response> => {
+      const payload = JSON.parse(init.body as string);
+      capturedToolCount = payload.tools?.length ?? 0;
+      const encoder = new TextEncoder();
+      const chunks = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "Understood." } }] })}\n\n`,
+        "data: [DONE]\n\n",
+      ];
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const c of chunks) controller.enqueue(encoder.encode(c));
+          controller.close();
+        },
+      });
+      return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    };
+
+    const client = new UniversalLLMClient({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      fetch: mockFetch as any,
+    });
+
+    // In "core" mode, only core coding tools should be sent
+    const coordinator = new AgentCoordinator({
+      llmClient: client,
+      daemon,
+      sessionsBaseDir: path.join(tempDir, "sessions"),
+      toolScopeMode: "core",
+    });
+
+    await coordinator.runTurn("Hello");
+    // Core mode should limit tools to the essential set (< 20), whereas daemon total is > 30
+    assert.ok(capturedToolCount > 0 && capturedToolCount <= 15);
+  });
 });

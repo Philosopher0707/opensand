@@ -37,6 +37,10 @@ import {
   AttachmentManager,
   AttachmentRecord,
   AgentTemplate,
+  workspaceSentinel,
+  createAutonomousHealer,
+  WatcherConfig,
+  SentinelDiagnosticEvent,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -144,6 +148,11 @@ export class DesktopIpcBridge extends EventEmitter {
       configPath: path.join(this.baseDir, 'mcp.json'),
     });
     this.mcpManager.startAll().catch(() => {});
+
+    // Forward Workspace Sentinel events to UI clients
+    workspaceSentinel.on('diagnostic', (event: SentinelDiagnosticEvent) => {
+      this.emitEvent('sentinel', event);
+    });
   }
 
   public getSettings(): DesktopSettings {
@@ -249,6 +258,11 @@ export class DesktopIpcBridge extends EventEmitter {
     });
 
     this.coordinator = coordinator;
+
+    // Auto-wire Sentinel Healer to session coordinator
+    if (!workspaceSentinel.hasHealer()) {
+      workspaceSentinel.setHealer(createAutonomousHealer(coordinator));
+    }
 
     // Run query asynchronously
     coordinator.runTurn(query)
@@ -644,5 +658,27 @@ export class DesktopIpcBridge extends EventEmitter {
       throw new Error('No active conversation coordinator available to compact');
     }
     return this.coordinator.compactHistory({ keepRecentTurns });
+  }
+
+  // Workspace Sentinel API (Frontier 2 Autonomous Sentinel Loop)
+  public getWatchers(): WatcherConfig[] {
+    return workspaceSentinel.getWatchers();
+  }
+
+  public async startWatcher(options: {
+    targetDir: string;
+    checkCommand?: string;
+    autoHeal?: boolean;
+    debounceMs?: number;
+  }): Promise<WatcherConfig> {
+    return workspaceSentinel.startWatcher(options);
+  }
+
+  public stopWatcher(watcherId: string): boolean {
+    return workspaceSentinel.stopWatcher(watcherId);
+  }
+
+  public getSentinelLogs(watcherId?: string): SentinelDiagnosticEvent[] {
+    return workspaceSentinel.getLogs(watcherId);
   }
 }

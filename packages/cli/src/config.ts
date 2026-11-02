@@ -10,6 +10,8 @@ export interface CliConfig {
   query?: string;
   systemPromptFile?: string;
   bot?: string;
+  worktree?: string;
+  completion?: 'bash' | 'zsh';
   listTools?: boolean;
   listBots?: boolean;
   listTasks?: boolean;
@@ -126,6 +128,18 @@ export function parseCliArgs(args: string[], customConfigFile?: string): CliConf
       config.listBots = true;
     } else if (arg === "--list-tasks") {
       config.listTasks = true;
+    } else if (arg === "--worktree") {
+      if (i + 1 < args.length && !args[i + 1].startsWith("-")) {
+        config.worktree = args[++i];
+      } else {
+        config.worktree = `opensand-worktree-${Date.now()}`;
+      }
+    } else if (arg === "completion" || arg === "--completion") {
+      if (i + 1 < args.length && (args[i + 1] === "zsh" || args[i + 1] === "bash")) {
+        config.completion = args[++i] as 'bash' | 'zsh';
+      } else {
+        config.completion = "bash";
+      }
     } else if (!arg.startsWith("-")) {
       positional.push(arg);
     }

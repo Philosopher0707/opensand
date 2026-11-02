@@ -285,6 +285,46 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     await compactPromise;
     assert.strictEqual(resCompact.statusCode, 400);
     assert.ok(JSON.parse(resCompact.body).error.includes('No active conversation coordinator'));
+
+    // Test Sentinel API: POST /api/sentinels
+    const reqStartWatcher = new MockIncomingMessage('POST', '/api/sentinels');
+    const resStartWatcher = new MockServerResponse();
+    const startWatcherPromise = (server as any).handleRequest(reqStartWatcher, resStartWatcher);
+    reqStartWatcher.emit('data', Buffer.from(JSON.stringify({
+      targetDir: tmpDir,
+      checkCommand: 'echo ok',
+      autoHeal: true,
+      debounceMs: 200,
+    })));
+    reqStartWatcher.emit('end');
+    await startWatcherPromise;
+    assert.strictEqual(resStartWatcher.statusCode, 201);
+    const createdWatcher = JSON.parse(resStartWatcher.body);
+    assert.ok(createdWatcher.id.startsWith('watcher_'));
+
+    // Test Sentinel API: GET /api/sentinels
+    const reqListWatchers = new MockIncomingMessage('GET', '/api/sentinels');
+    const resListWatchers = new MockServerResponse();
+    await (server as any).handleRequest(reqListWatchers, resListWatchers);
+    assert.strictEqual(resListWatchers.statusCode, 200);
+    const watcherList = JSON.parse(resListWatchers.body);
+    assert.ok(Array.isArray(watcherList));
+    assert.ok(watcherList.some((w: any) => w.id === createdWatcher.id));
+
+    // Test Sentinel API: GET /api/sentinels/logs
+    const reqSentinelLogs = new MockIncomingMessage('GET', '/api/sentinels/logs');
+    const resSentinelLogs = new MockServerResponse();
+    await (server as any).handleRequest(reqSentinelLogs, resSentinelLogs);
+    assert.strictEqual(resSentinelLogs.statusCode, 200);
+    const sentinelLogs = JSON.parse(resSentinelLogs.body);
+    assert.ok(Array.isArray(sentinelLogs));
+
+    // Test Sentinel API: DELETE /api/sentinels/:id
+    const reqStopWatcher = new MockIncomingMessage('DELETE', `/api/sentinels/${createdWatcher.id}`);
+    const resStopWatcher = new MockServerResponse();
+    await (server as any).handleRequest(reqStopWatcher, resStopWatcher);
+    assert.strictEqual(resStopWatcher.statusCode, 200);
+    assert.strictEqual(JSON.parse(resStopWatcher.body).success, true);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

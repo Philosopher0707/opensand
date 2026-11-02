@@ -782,6 +782,51 @@ export class DesktopServer {
       return;
     }
 
+    // API: GET /api/sentinels (Frontier 2: List active Sentinel workspace watchers)
+    if (pathname === '/api/sentinels' && req.method === 'GET') {
+      const watchers = this.bridge.getWatchers();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(watchers));
+      return;
+    }
+
+    // API: POST /api/sentinels (Frontier 2: Start new Sentinel workspace watcher)
+    if (pathname === '/api/sentinels' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      if (!body.targetDir) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing targetDir' }));
+        return;
+      }
+      try {
+        const watcher = await this.bridge.startWatcher(body);
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(watcher));
+      } catch (err: any) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
+    // API: DELETE /api/sentinels/:id (Frontier 2: Stop active Sentinel watcher)
+    if (pathname.startsWith('/api/sentinels/') && req.method === 'DELETE') {
+      const id = pathname.replace('/api/sentinels/', '');
+      const stopped = this.bridge.stopWatcher(id);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: stopped }));
+      return;
+    }
+
+    // API: GET /api/sentinels/logs (Frontier 2: Get Sentinel diagnostic logs)
+    if (pathname === '/api/sentinels/logs' && req.method === 'GET') {
+      const watcherId = url.searchParams.get('watcherId') || undefined;
+      const logs = this.bridge.getSentinelLogs(watcherId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(logs));
+      return;
+    }
+
     // Serve static files from renderer/
     let filePath = path.join(this.rendererDir, pathname === '/' ? 'index.html' : pathname);
     const resolvedPath = path.resolve(filePath);

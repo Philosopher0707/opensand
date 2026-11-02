@@ -20,7 +20,7 @@ export function resolveAnthropicEndpoint(baseUrl: string): string {
 export interface AnthropicMessagePayload {
   model: string;
   max_tokens: number;
-  system?: string;
+  system?: string | Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }>;
   messages: Array<{
     role: "user" | "assistant";
     content: string | Array<Record<string, unknown>>;
@@ -29,6 +29,7 @@ export interface AnthropicMessagePayload {
     name: string;
     description: string;
     input_schema: Record<string, unknown>;
+    cache_control?: { type: "ephemeral" };
   }>;
   thinking?: {
     type: "enabled";
@@ -126,7 +127,17 @@ export function buildAnthropicPayload(
   };
 
   if (systemPrompt) {
-    payload.system = systemPrompt;
+    if (config?.enablePromptCaching) {
+      payload.system = [
+        {
+          type: "text",
+          text: systemPrompt,
+          cache_control: { type: "ephemeral" },
+        },
+      ];
+    } else {
+      payload.system = systemPrompt;
+    }
   }
 
   if (config?.thinkingBudgetTokens && config.thinkingBudgetTokens > 0) {
@@ -137,11 +148,22 @@ export function buildAnthropicPayload(
   }
 
   if (tools && tools.length > 0) {
-    payload.tools = tools.map((t) => ({
-      name: t.function.name,
-      description: t.function.description,
-      input_schema: (t.function.parameters as Record<string, unknown>) || { type: "object", properties: {} },
-    }));
+    payload.tools = tools.map((t, idx) => {
+      const toolObj: {
+        name: string;
+        description: string;
+        input_schema: Record<string, unknown>;
+        cache_control?: { type: "ephemeral" };
+      } = {
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: (t.function.parameters as Record<string, unknown>) || { type: "object", properties: {} },
+      };
+      if (config?.enablePromptCaching && idx === tools.length - 1) {
+        toolObj.cache_control = { type: "ephemeral" };
+      }
+      return toolObj;
+    });
   }
 
   return payload;

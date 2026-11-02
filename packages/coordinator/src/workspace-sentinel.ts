@@ -20,6 +20,8 @@ export interface WatcherConfig {
 export interface SentinelDiagnosticEvent {
   id: string;
   watcherId: string;
+  targetDir?: string;
+  checkCommand?: string;
   triggerFile: string;
   timestampMs: number;
   status: "clean" | "error" | "healing" | "healed";
@@ -32,6 +34,68 @@ export type SentinelHealerCallback = (event: SentinelDiagnosticEvent) => Promise
   healed: boolean;
   proposal: string;
 }>;
+
+export interface HealerAgentRunner {
+  runTurn(prompt: string): Promise<string>;
+}
+
+export function createAutonomousHealer(
+  runner: HealerAgentRunner,
+  options?: { maxAttempts?: number }
+): SentinelHealerCallback {
+  const maxAttempts = options?.maxAttempts ?? 2;
+  return async (event: SentinelDiagnosticEvent) => {
+    const errorDetails = event.errorMessage || event.output;
+    const prompt = `[AUTOMATED SENTINEL HEALER]
+A diagnostic check failed following changes to ${event.triggerFile}.
+Working directory: ${event.targetDir || process.cwd()}
+Failed Command: ${event.checkCommand || 'N/A'}
+Error details:
+${errorDetails}
+
+Please diagnose the issue, explain the cause, and use the available file editing tools (such as edit_file or write_file) or execute_command to fix the error. Once fixed, ensure the code builds or passes tests.`;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await runner.runTurn(prompt);
+
+        if (event.checkCommand && event.targetDir) {
+          try {
+            await execAsync(event.checkCommand, { cwd: event.targetDir, timeout: 30000 });
+            return {
+              healed: true,
+              proposal: response || "Fix applied and verified successfully.",
+            };
+          } catch (recheckErr: any) {
+            if (attempt === maxAttempts) {
+              return {
+                healed: false,
+                proposal: `Attempted fix (${attempt}/${maxAttempts}) but check still failed: ${recheckErr.message || recheckErr}`,
+              };
+            }
+          }
+        } else {
+          return {
+            healed: true,
+            proposal: response || "Autonomous fix applied.",
+          };
+        }
+      } catch (err: any) {
+        if (attempt === maxAttempts) {
+          return {
+            healed: false,
+            proposal: `Autonomous healing error: ${err instanceof Error ? err.message : String(err)}`,
+          };
+        }
+      }
+    }
+
+    return {
+      healed: false,
+      proposal: "Max healing attempts reached without resolution.",
+    };
+  };
+}
 
 export class WorkspaceSentinel extends EventEmitter {
   private activeWatchers: Map<string, { config: WatcherConfig; ac: AbortController }> = new Map();
@@ -46,6 +110,10 @@ export class WorkspaceSentinel extends EventEmitter {
 
   setHealer(healer: SentinelHealerCallback): void {
     this.healer = healer;
+  }
+
+  hasHealer(): boolean {
+    return !!this.healer;
   }
 
   getWatchers(): WatcherConfig[] {
@@ -151,6 +219,8 @@ export class WorkspaceSentinel extends EventEmitter {
     const logEvent: SentinelDiagnosticEvent = {
       id: eventId,
       watcherId: config.id,
+      targetDir: config.targetDir,
+      checkCommand: config.checkCommand,
       triggerFile,
       timestampMs: Date.now(),
       status,
@@ -209,3 +279,5 @@ export class WorkspaceSentinel extends EventEmitter {
     }
   }
 }
+
+export const workspaceSentinel = new WorkspaceSentinel();

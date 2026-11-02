@@ -306,6 +306,95 @@ class OpenSandClient {
     });
     return res.json();
   }
+
+  // --- Attachments API ---
+  async getAttachments() {
+    const res = await fetch('/api/attachments');
+    return res.json();
+  }
+
+  async stageAttachment(filePath) {
+    const res = await fetch('/api/attachments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filePath }),
+    });
+    return res.json();
+  }
+
+  async deleteAttachment(id) {
+    const res = await fetch(`/api/attachments/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    return res.json();
+  }
+
+  // --- Templates API ---
+  async exportAgentTemplate(agentId) {
+    const res = await fetch(`/api/templates/${encodeURIComponent(agentId)}`);
+    return res.json();
+  }
+
+  async importAgentTemplate(template) {
+    const res = await fetch('/api/templates/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: typeof template === 'string' ? template : JSON.stringify(template),
+    });
+    return res.json();
+  }
+
+  // --- BTW Side Question & Rollback & Compact ---
+  async askBtw(question) {
+    const res = await fetch('/api/btw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+    });
+    return res.json();
+  }
+
+  async rollbackTurns(turns) {
+    const res = await fetch('/api/rollback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turns }),
+    });
+    return res.json();
+  }
+
+  async compactHistory(keepRecentTurns) {
+    const res = await fetch('/api/compact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keepRecentTurns }),
+    });
+    return res.json();
+  }
+
+  // --- Workspace Sentinel API ---
+  async getWatchers() {
+    const res = await fetch('/api/sentinels');
+    return res.json();
+  }
+
+  async startWatcher(options) {
+    const res = await fetch('/api/sentinels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options),
+    });
+    return res.json();
+  }
+
+  async stopWatcher(watcherId) {
+    const res = await fetch(`/api/sentinels/${encodeURIComponent(watcherId)}`, { method: 'DELETE' });
+    return res.json();
+  }
+
+  async getSentinelLogs(watcherId) {
+    const url = watcherId ? `/api/sentinels/logs?watcherId=${encodeURIComponent(watcherId)}` : '/api/sentinels/logs';
+    const res = await fetch(url);
+    return res.json();
+  }
 }
 
 // UI Controller
@@ -321,6 +410,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     skills: document.getElementById('viewSkills'),
     vault: document.getElementById('viewVault'),
     memories: document.getElementById('viewMemories'),
+    attachments: document.getElementById('viewAttachments'),
+    templates: document.getElementById('viewTemplates'),
+    sentinel: document.getElementById('viewSentinel'),
   };
 
   let currentView = 'chat';
@@ -344,6 +436,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (viewName === 'skills') refreshSkills();
     if (viewName === 'vault') refreshVault();
     if (viewName === 'memories') refreshMemories();
+    if (viewName === 'attachments') refreshAttachments();
+    if (viewName === 'templates') refreshTemplates();
+    if (viewName === 'sentinel') refreshSentinel();
   }
 
   navTabs.forEach((tab) => {
@@ -880,6 +975,184 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // --- ATTACHMENTS VIEW CONTROLLER ---
+  async function refreshAttachments() {
+    const grid = document.getElementById('attachmentsCardGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const list = await client.getAttachments();
+    if (!Array.isArray(list) || list.length === 0) {
+      grid.innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 13px;">No staged context attachments. Use "+ Stage Attachment" to add files.</div>`;
+      return;
+    }
+
+    for (const att of list) {
+      const card = document.createElement('div');
+      card.className = 'dashboard-card';
+      const sizeKb = Math.round(((att.byteLength || 0) / 1024) * 10) / 10;
+      card.innerHTML = `
+        <div class="card-top">
+          <div class="card-title">📎 ${escapeHtml(att.fileName || 'Attachment')}</div>
+          <span class="badge badge-success">Staged</span>
+        </div>
+        <div class="card-desc" style="word-break: break-all;"><strong>Path:</strong> ${escapeHtml(att.filePath || 'in-memory')}</div>
+        <div class="card-meta">
+          <span class="badge">${sizeKb} KB</span>
+          <span class="attachment-hash" title="SHA-256 Digest">SHA: ${escapeHtml((att.sha256 || '').slice(0, 16))}...</span>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost btn-xs btn-del-att" style="color: var(--danger);">Unstage</button>
+        </div>
+      `;
+
+      card.querySelector('.btn-del-att').onclick = async () => {
+        if (confirm(`Unstage attachment "${att.fileName}"?`)) {
+          await client.deleteAttachment(att.id);
+          refreshAttachments();
+        }
+      };
+
+      grid.appendChild(card);
+    }
+  }
+
+  // --- TEMPLATES VIEW CONTROLLER ---
+  async function refreshTemplates() {
+    const grid = document.getElementById('templateAgentsGrid');
+    const selectExport = document.getElementById('selectExportBot');
+    if (grid) grid.innerHTML = '';
+    if (selectExport) selectExport.innerHTML = '';
+
+    const agents = await client.getAgents();
+    if (!Array.isArray(agents) || agents.length === 0) {
+      if (grid) grid.innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 13px;">No agents registered. Create an agent persona first.</div>`;
+      return;
+    }
+
+    for (const a of agents) {
+      if (selectExport) {
+        const opt = document.createElement('option');
+        opt.value = a.id;
+        opt.textContent = `${a.name} (${a.role})`;
+        selectExport.appendChild(opt);
+      }
+
+      if (grid) {
+        const card = document.createElement('div');
+        card.className = 'dashboard-card';
+        card.innerHTML = `
+          <div class="card-top">
+            <div class="card-title">🤖 ${escapeHtml(a.name)}</div>
+            <span class="badge badge-bot">${escapeHtml(a.role)}</span>
+          </div>
+          <div class="card-desc">${escapeHtml((a.systemPrompt || '').slice(0, 120))}...</div>
+          <div class="card-meta">
+            <span class="badge">Model: ${escapeHtml(a.model || 'default')}</span>
+            <span class="badge">Tools: ${a.allowedTools ? a.allowedTools.length : 'All'}</span>
+          </div>
+          <div class="card-footer">
+            <button class="btn btn-secondary btn-xs btn-export-agent">Export Template</button>
+          </div>
+        `;
+
+        card.querySelector('.btn-export-agent').onclick = async () => {
+          if (selectExport) selectExport.value = a.id;
+          exportTemplateModal.classList.remove('hidden');
+          const tpl = await client.exportAgentTemplate(a.id);
+          exportTemplateJson.textContent = JSON.stringify(tpl, null, 2);
+        };
+
+        grid.appendChild(card);
+      }
+    }
+  }
+
+  // --- SENTINEL VIEW CONTROLLER ---
+  async function refreshSentinel() {
+    const watchersGrid = document.getElementById('sentinelWatchersGrid');
+    const feed = document.getElementById('sentinelFeed');
+    if (watchersGrid) watchersGrid.innerHTML = '';
+    if (feed) feed.innerHTML = '';
+
+    const watchers = await client.getWatchers();
+    const logs = await client.getSentinelLogs();
+
+    if (!Array.isArray(watchers) || watchers.length === 0) {
+      if (watchersGrid) {
+        watchersGrid.innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 13px;">No active workspace watchers. Click "+ New Watcher" to monitor code changes and enable auto-healing.</div>`;
+      }
+    } else {
+      for (const w of watchers) {
+        const card = document.createElement('div');
+        card.className = 'dashboard-card';
+        card.innerHTML = `
+          <div class="card-top">
+            <div class="card-title">🛡️ ${escapeHtml(w.id)}</div>
+            <span class="badge ${w.autoHeal ? 'badge-success' : ''}">${w.autoHeal ? 'Auto-Heal Active' : 'Passive'}</span>
+          </div>
+          <div class="card-desc"><strong>Target:</strong> ${escapeHtml(w.targetDir)}</div>
+          <div class="card-meta">
+            <span class="badge">Check: ${escapeHtml(w.checkCommand || 'Filesystem Only')}</span>
+            <span class="badge">Debounce: ${w.debounceMs}ms</span>
+          </div>
+          <div class="card-footer">
+            <button class="btn btn-ghost btn-xs btn-stop-watcher" style="color: var(--danger);">Stop Watcher</button>
+          </div>
+        `;
+
+        card.querySelector('.btn-stop-watcher').onclick = async () => {
+          if (confirm(`Stop watcher ${w.id}?`)) {
+            await client.stopWatcher(w.id);
+            refreshSentinel();
+          }
+        };
+
+        watchersGrid.appendChild(card);
+      }
+    }
+
+    if (!Array.isArray(logs) || logs.length === 0) {
+      if (feed) {
+        feed.innerHTML = `<div style="color: var(--text-muted); font-size: 13px;">No diagnostic events recorded yet. Modify a file in a watched directory to trigger Sentinel.</div>`;
+      }
+    } else {
+      for (const log of logs.slice(-20).reverse()) {
+        renderSentinelLogEntry(log, feed);
+      }
+    }
+  }
+
+  function renderSentinelLogEntry(log, container) {
+    if (!container) return;
+    const entry = document.createElement('div');
+    entry.className = `sentinel-item ${log.status || 'clean'}`;
+    const timeStr = new Date(log.timestampMs || Date.now()).toLocaleTimeString();
+
+    let proposalHtml = '';
+    if (log.healingProposal) {
+      proposalHtml = `
+        <div style="font-weight: 600; margin-top: 4px; color: #93c5fd;">Autonomous Healer Action / Proposal:</div>
+        <div class="sentinel-proposal-box">${escapeHtml(log.healingProposal)}</div>
+      `;
+    }
+
+    entry.innerHTML = `
+      <div class="sentinel-header-row">
+        <div>
+          <span class="status-badge ${log.status || 'clean'}">${log.status}</span>
+          <strong style="margin-left: 8px;">Trigger: ${escapeHtml(log.triggerFile || 'change')}</strong>
+        </div>
+        <span style="color: var(--text-muted); font-size: 11px;">${timeStr}</span>
+      </div>
+      <div style="color: var(--text-muted); font-size: 11px;">Target: ${escapeHtml(log.targetDir || '')} | Command: ${escapeHtml(log.checkCommand || 'N/A')}</div>
+      ${log.output ? `<div class="sentinel-output-box">${escapeHtml(log.output)}</div>` : ''}
+      ${proposalHtml}
+    `;
+
+    container.appendChild(entry);
+  }
+
   // --- MODAL DIALOG CONTROLLERS ---
 
   // Room creation
@@ -1211,6 +1484,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       approvalArgsBox.textContent = JSON.stringify(event.request.params, null, 2);
       approvalModal.classList.remove('hidden');
     }
+
+    if (event.type === 'sentinel') {
+      const feed = document.getElementById('sentinelFeed');
+      if (feed) {
+        if (feed.firstElementChild && feed.firstElementChild.textContent.includes('No diagnostic events')) {
+          feed.innerHTML = '';
+        }
+        renderSentinelLogEntry(event.data, feed);
+      }
+    }
   });
 
   // Approvals
@@ -1323,6 +1606,247 @@ document.addEventListener('DOMContentLoaded', async () => {
     settingsModal.classList.add('hidden');
     await refreshSettings();
   };
+
+  // --- BTW Ephemeral Side Question Modal ---
+  const btnOpenBtw = document.getElementById('btnOpenBtw');
+  const btwModal = document.getElementById('btwModal');
+  const btnCloseBtw = document.getElementById('btnCloseBtw');
+  const btnCloseBtwDone = document.getElementById('btnCloseBtwDone');
+  const btnSubmitBtw = document.getElementById('btnSubmitBtw');
+  const btwQuestion = document.getElementById('btwQuestion');
+  const btwAnswerContainer = document.getElementById('btwAnswerContainer');
+  const btwAnswerContent = document.getElementById('btwAnswerContent');
+
+  if (btnOpenBtw && btwModal) {
+    btnOpenBtw.onclick = () => {
+      btwQuestion.value = '';
+      btwAnswerContainer.classList.add('hidden');
+      btwAnswerContent.textContent = '';
+      btnSubmitBtw.disabled = false;
+      btnSubmitBtw.textContent = 'Ask Ephemeral';
+      btwModal.classList.remove('hidden');
+    };
+    btnCloseBtw.onclick = () => btwModal.classList.add('hidden');
+    btnCloseBtwDone.onclick = () => btwModal.classList.add('hidden');
+
+    btnSubmitBtw.onclick = async () => {
+      const q = btwQuestion.value.trim();
+      if (!q) return;
+      btnSubmitBtw.disabled = true;
+      btnSubmitBtw.textContent = 'Evaluating...';
+      try {
+        const res = await client.askBtw(q);
+        btwAnswerContent.textContent = res.answer || 'No response rendered.';
+        btwAnswerContainer.classList.remove('hidden');
+      } catch (err) {
+        btwAnswerContent.textContent = `Error: ${err.message}`;
+        btwAnswerContainer.classList.remove('hidden');
+      } finally {
+        btnSubmitBtw.disabled = false;
+        btnSubmitBtw.textContent = 'Ask Another';
+      }
+    };
+  }
+
+  // --- Rollback Conversation Turns Modal ---
+  const btnOpenRollback = document.getElementById('btnOpenRollback');
+  const rollbackModal = document.getElementById('rollbackModal');
+  const btnCloseRollback = document.getElementById('btnCloseRollback');
+  const btnCloseRollbackAction = document.getElementById('btnCloseRollbackAction');
+  const btnConfirmRollback = document.getElementById('btnConfirmRollback');
+  const rollbackTurnCount = document.getElementById('rollbackTurnCount');
+  const rollbackStatusBox = document.getElementById('rollbackStatusBox');
+
+  if (btnOpenRollback && rollbackModal) {
+    btnOpenRollback.onclick = () => {
+      rollbackStatusBox.classList.add('hidden');
+      rollbackStatusBox.textContent = '';
+      rollbackModal.classList.remove('hidden');
+    };
+    btnCloseRollback.onclick = () => rollbackModal.classList.add('hidden');
+    btnCloseRollbackAction.onclick = () => rollbackModal.classList.add('hidden');
+
+    btnConfirmRollback.onclick = async () => {
+      const turns = parseInt(rollbackTurnCount.value, 10) || 1;
+      btnConfirmRollback.disabled = true;
+      btnConfirmRollback.textContent = 'Rewinding...';
+      try {
+        const res = await client.rollbackTurns(turns);
+        rollbackStatusBox.textContent = `Successfully rolled back ${res.removedMessages || 0} messages. Remaining in context: ${res.remainingMessages || 0}.`;
+        rollbackStatusBox.classList.remove('hidden');
+        if (currentSessionId) {
+          await selectSession(currentSessionId);
+        }
+      } catch (err) {
+        rollbackStatusBox.textContent = `Error: ${err.message}`;
+        rollbackStatusBox.classList.remove('hidden');
+      } finally {
+        btnConfirmRollback.disabled = false;
+        btnConfirmRollback.textContent = 'Rewind Conversation';
+      }
+    };
+  }
+
+  // --- Auto-Compaction Modal ---
+  const btnOpenCompact = document.getElementById('btnOpenCompact');
+  const compactModal = document.getElementById('compactModal');
+  const btnCloseCompact = document.getElementById('btnCloseCompact');
+  const btnCloseCompactAction = document.getElementById('btnCloseCompactAction');
+  const btnConfirmCompact = document.getElementById('btnConfirmCompact');
+  const compactKeepTurns = document.getElementById('compactKeepTurns');
+  const compactResultBox = document.getElementById('compactResultBox');
+
+  if (btnOpenCompact && compactModal) {
+    btnOpenCompact.onclick = () => {
+      compactResultBox.classList.add('hidden');
+      compactResultBox.textContent = '';
+      compactModal.classList.remove('hidden');
+    };
+    btnCloseCompact.onclick = () => compactModal.classList.add('hidden');
+    btnCloseCompactAction.onclick = () => compactModal.classList.add('hidden');
+
+    btnConfirmCompact.onclick = async () => {
+      const keep = parseInt(compactKeepTurns.value, 10) || 2;
+      btnConfirmCompact.disabled = true;
+      btnConfirmCompact.textContent = 'Compacting...';
+      try {
+        const res = await client.compactHistory(keep);
+        compactResultBox.textContent = `Auto-Compaction succeeded! Original: ~${res.originalTokens} tokens -> Compacted: ~${res.compactedTokens} tokens (condensed ${res.compactedTurnCount} turns).`;
+        compactResultBox.classList.remove('hidden');
+        if (currentSessionId) {
+          await selectSession(currentSessionId);
+        }
+      } catch (err) {
+        compactResultBox.textContent = `Error: ${err.message}`;
+        compactResultBox.classList.remove('hidden');
+      } finally {
+        btnConfirmCompact.disabled = false;
+        btnConfirmCompact.textContent = 'Run Auto-Compaction';
+      }
+    };
+  }
+
+  // --- Attachments Modal ---
+  const btnOpenStageAttachment = document.getElementById('btnOpenStageAttachment');
+  const stageAttachmentModal = document.getElementById('stageAttachmentModal');
+  const btnCloseStageAttachment = document.getElementById('btnCloseStageAttachment');
+  const btnSaveStageAttachment = document.getElementById('btnSaveStageAttachment');
+  const attachmentFilePath = document.getElementById('attachmentFilePath');
+
+  if (btnOpenStageAttachment && stageAttachmentModal) {
+    btnOpenStageAttachment.onclick = () => {
+      attachmentFilePath.value = '';
+      stageAttachmentModal.classList.remove('hidden');
+    };
+    btnCloseStageAttachment.onclick = () => stageAttachmentModal.classList.add('hidden');
+    btnSaveStageAttachment.onclick = async () => {
+      const fp = attachmentFilePath.value.trim();
+      if (!fp) {
+        alert('Please specify a valid file path.');
+        return;
+      }
+      try {
+        await client.stageAttachment(fp);
+        stageAttachmentModal.classList.add('hidden');
+        refreshAttachments();
+      } catch (err) {
+        alert(`Failed to stage file: ${err.message}`);
+      }
+    };
+  }
+
+  // --- Template Export/Import Modals ---
+  const btnOpenExportTemplate = document.getElementById('btnOpenExportTemplate');
+  const exportTemplateModal = document.getElementById('exportTemplateModal');
+  const btnCloseExportTemplate = document.getElementById('btnCloseExportTemplate');
+  const btnGenerateExportTemplate = document.getElementById('btnGenerateExportTemplate');
+  const btnCopyExportTemplate = document.getElementById('btnCopyExportTemplate');
+  const selectExportBot = document.getElementById('selectExportBot');
+  const exportTemplateJson = document.getElementById('exportTemplateJson');
+
+  if (btnOpenExportTemplate && exportTemplateModal) {
+    btnOpenExportTemplate.onclick = () => {
+      exportTemplateModal.classList.remove('hidden');
+    };
+    btnCloseExportTemplate.onclick = () => exportTemplateModal.classList.add('hidden');
+
+    btnGenerateExportTemplate.onclick = async () => {
+      const botId = selectExportBot.value;
+      if (!botId) return;
+      const tpl = await client.exportAgentTemplate(botId);
+      exportTemplateJson.textContent = JSON.stringify(tpl, null, 2);
+    };
+
+    btnCopyExportTemplate.onclick = () => {
+      navigator.clipboard.writeText(exportTemplateJson.textContent);
+      alert('Template JSON copied to clipboard.');
+    };
+  }
+
+  const btnOpenImportTemplate = document.getElementById('btnOpenImportTemplate');
+  const importTemplateModal = document.getElementById('importTemplateModal');
+  const btnCloseImportTemplate = document.getElementById('btnCloseImportTemplate');
+  const btnConfirmImportTemplate = document.getElementById('btnConfirmImportTemplate');
+  const importTemplateJson = document.getElementById('importTemplateJson');
+
+  if (btnOpenImportTemplate && importTemplateModal) {
+    btnOpenImportTemplate.onclick = () => {
+      importTemplateJson.value = '';
+      importTemplateModal.classList.remove('hidden');
+    };
+    btnCloseImportTemplate.onclick = () => importTemplateModal.classList.add('hidden');
+
+    btnConfirmImportTemplate.onclick = async () => {
+      const raw = importTemplateJson.value.trim();
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        await client.importAgentTemplate(parsed);
+        importTemplateModal.classList.add('hidden');
+        refreshBots();
+        refreshTemplates();
+      } catch (err) {
+        alert(`Invalid template JSON: ${err.message}`);
+      }
+    };
+  }
+
+  // --- Sentinel Watcher Creation Modal ---
+  const btnOpenCreateWatcher = document.getElementById('btnOpenCreateWatcher');
+  const createWatcherModal = document.getElementById('createWatcherModal');
+  const btnCloseCreateWatcher = document.getElementById('btnCloseCreateWatcher');
+  const btnSaveWatcher = document.getElementById('btnSaveWatcher');
+  const watcherTargetDir = document.getElementById('watcherTargetDir');
+  const watcherCheckCommand = document.getElementById('watcherCheckCommand');
+  const watcherAutoHeal = document.getElementById('watcherAutoHeal');
+  const watcherDebounce = document.getElementById('watcherDebounce');
+
+  if (btnOpenCreateWatcher && createWatcherModal) {
+    btnOpenCreateWatcher.onclick = () => {
+      watcherTargetDir.value = '';
+      watcherCheckCommand.value = '';
+      watcherAutoHeal.checked = true;
+      watcherDebounce.value = 500;
+      createWatcherModal.classList.remove('hidden');
+    };
+    btnCloseCreateWatcher.onclick = () => createWatcherModal.classList.add('hidden');
+
+    btnSaveWatcher.onclick = async () => {
+      const targetDir = watcherTargetDir.value.trim();
+      if (!targetDir) {
+        alert('Please specify target directory to watch.');
+        return;
+      }
+      await client.startWatcher({
+        targetDir,
+        checkCommand: watcherCheckCommand.value.trim() || undefined,
+        autoHeal: watcherAutoHeal.checked,
+        debounceMs: parseInt(watcherDebounce.value, 10) || 500,
+      });
+      createWatcherModal.classList.add('hidden');
+      refreshSentinel();
+    };
+  }
 
   // Escape HTML helper
   function escapeHtml(str) {

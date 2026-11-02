@@ -73,9 +73,15 @@
           <button class="nav-tab" data-view="skills">🧩 Skills</button>
           <button class="nav-tab" data-view="vault">🔐 Vault</button>
           <button class="nav-tab" data-view="memories">🧠 Memories</button>
+          <button class="nav-tab" data-view="attachments">📎 Files</button>
+          <button class="nav-tab" data-view="templates">📋 Templates</button>
+          <button class="nav-tab" data-view="sentinel">🛡️ Sentinel</button>
         </nav>
 
         <div class="topbar-meta">
+          <button id="btnOpenBtw" class="btn btn-secondary btn-xs" title="Ask Glass Side Question">💡 BTW</button>
+          <button id="btnOpenRollback" class="btn btn-secondary btn-xs" title="Rollback Turns">⏪ Rewind</button>
+          <button id="btnOpenCompact" class="btn btn-secondary btn-xs" title="Auto-Compact History">🧹 Compact</button>
           <button id="btnViewLearnedRules" class="btn btn-secondary btn-xs" title="View learned rules">🧠 Habits</button>
           <span class="badge" id="badgeModel">qwen3:8b</span>
           <span class="badge badge-success" id="badgeAutoApprove">Safe Mode</span>
@@ -198,6 +204,67 @@
 
           <div class="sidebar-section-title" style="margin-top: 20px;">Active Memory Facts</div>
           <div class="card-grid" id="memoriesGrid"></div>
+        </div>
+      </div>
+
+      <!-- View 7: Staged Attachments View -->
+      <div id="viewAttachments" class="view-panel hidden">
+        <div class="dashboard-container">
+          <div class="dashboard-header">
+            <div>
+              <div class="dashboard-title">📎 Staged Context Attachments</div>
+              <div class="dashboard-subtitle">Grok Bot Parity: File staging and deterministic SHA-256 byte digest context attachments.</div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button id="btnOpenStageAttachment" class="btn btn-primary">+ Stage Attachment</button>
+            </div>
+          </div>
+          <div class="card-grid" id="attachmentsCardGrid">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- View 8: Agent Templates View -->
+      <div id="viewTemplates" class="view-panel hidden">
+        <div class="dashboard-container">
+          <div class="dashboard-header">
+            <div>
+              <div class="dashboard-title">📋 Agent Persona Templates</div>
+              <div class="dashboard-subtitle">Grok Bot Parity: Export and import autonomous bot templates with prompt instructions, allowed tools, and metadata.</div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button id="btnOpenExportTemplate" class="btn btn-secondary">Export Template</button>
+              <button id="btnOpenImportTemplate" class="btn btn-primary">Import Template</button>
+            </div>
+          </div>
+          <div class="sidebar-section-title" style="margin-top: 10px;">Available Agent Personas for Template Generation</div>
+          <div class="card-grid" id="templateAgentsGrid">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- View 9: Autonomous Workspace Sentinel View -->
+      <div id="viewSentinel" class="view-panel hidden">
+        <div class="dashboard-container">
+          <div class="dashboard-header">
+            <div>
+              <div class="dashboard-title">🛡️ Workspace Sentinel & Self-Healing Loop</div>
+              <div class="dashboard-subtitle">Frontier 2: Automated background filesystem watcher with real-time test/type diagnostics and autonomous healer turn loop.</div>
+            </div>
+            <button id="btnOpenCreateWatcher" class="btn btn-primary">+ New Watcher</button>
+          </div>
+
+          <div class="sidebar-section-title" style="margin-top: 10px;">Active Workspace Watchers</div>
+          <div class="card-grid" id="sentinelWatchersGrid">
+            <!-- Rendered dynamically -->
+          </div>
+
+          <div class="sidebar-section-title" style="margin-top: 20px;">Diagnostic & Autonomous Healing Event Feed</div>
+          <div class="sentinel-feed" id="sentinelFeed">
+            <!-- Rendered dynamically -->
+          </div>
         </div>
       </div>
     </main>
@@ -553,6 +620,183 @@
       </div>
       <div class="modal-actions">
         <button id="btnSaveSettings" class="btn btn-primary">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BTW Modal Overlay -->
+  <div class="modal-overlay hidden" id="btwModal">
+    <div class="modal-card" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3>💡 Glass BTW Ephemeral Side-Question</h3>
+        <button id="btnCloseBtw" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+          Grok Bot Parity (Section 8.1.A): Asks an ephemeral question evaluated directly against active context without modifying conversation history or writing to disk.
+        </p>
+        <div class="form-group">
+          <label for="btwQuestion">Your Side Question</label>
+          <textarea id="btwQuestion" class="form-control" rows="3" placeholder="e.g. What database schema or models are currently defined?"></textarea>
+        </div>
+        <div id="btwAnswerContainer" class="hidden" style="margin-top: 12px;">
+          <label>Answer (Ephemeral)</label>
+          <pre class="markdown-viewer" id="btwAnswerContent"></pre>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnSubmitBtw" class="btn btn-primary">Ask Ephemeral</button>
+        <button id="btnCloseBtwDone" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rollback Modal Overlay -->
+  <div class="modal-overlay hidden" id="rollbackModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>⏪ Rollback Dialogue Turns</h3>
+        <button id="btnCloseRollback" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+          Grok Bot Parity (Section 8.1.B RollBackGrokBotConversation): Rewinds dialogue by N turns, removes obsolete assistant/tool messages, and safely rewrites transcript.
+        </p>
+        <div class="form-group">
+          <label for="rollbackTurnCount">Number of Turns to Rewind</label>
+          <select id="rollbackTurnCount" class="form-control">
+            <option value="1">1 turn (last user prompt and response)</option>
+            <option value="2">2 turns</option>
+            <option value="3">3 turns</option>
+            <option value="5">5 turns</option>
+          </select>
+        </div>
+        <div id="rollbackStatusBox" class="hidden" style="margin-top: 10px; font-size: 13px; color: var(--accent);"></div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnConfirmRollback" class="btn btn-danger">Rewind Conversation</button>
+        <button id="btnCloseRollbackAction" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compact History Modal Overlay -->
+  <div class="modal-overlay hidden" id="compactModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>🧹 Context Auto-Compaction</h3>
+        <button id="btnCloseCompact" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+          Compress older conversation history into a dense historical context summary while preserving system instructions and recent active turns.
+        </p>
+        <div class="form-group">
+          <label for="compactKeepTurns">Recent Turns to Keep Intact</label>
+          <select id="compactKeepTurns" class="form-control">
+            <option value="2" selected>Keep last 2 turns</option>
+            <option value="1">Keep last 1 turn</option>
+            <option value="3">Keep last 3 turns</option>
+          </select>
+        </div>
+        <div id="compactResultBox" class="hidden" style="margin-top: 10px; font-size: 13px; color: var(--success);"></div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnConfirmCompact" class="btn btn-primary">Run Auto-Compaction</button>
+        <button id="btnCloseCompactAction" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stage Attachment Modal Overlay -->
+  <div class="modal-overlay hidden" id="stageAttachmentModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>📎 Stage Context Attachment</h3>
+        <button id="btnCloseStageAttachment" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="attachmentFilePath">Local File Path</label>
+          <input type="text" id="attachmentFilePath" class="form-control" placeholder="e.g. /Users/philosopher/dev/project/schema.sql">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnSaveStageAttachment" class="btn btn-primary">Stage File</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Template Export Modal Overlay -->
+  <div class="modal-overlay hidden" id="exportTemplateModal">
+    <div class="modal-card" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3>📋 Export Agent Persona Template</h3>
+        <button id="btnCloseExportTemplate" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="selectExportBot">Select Agent to Export</label>
+          <select id="selectExportBot" class="form-control"></select>
+        </div>
+        <div class="form-group">
+          <label>Generated Template JSON</label>
+          <pre class="markdown-viewer" id="exportTemplateJson">Click Generate Template</pre>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnGenerateExportTemplate" class="btn btn-primary">Generate Template</button>
+        <button id="btnCopyExportTemplate" class="btn btn-secondary">Copy JSON</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Template Import Modal Overlay -->
+  <div class="modal-overlay hidden" id="importTemplateModal">
+    <div class="modal-card" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3>📋 Import Agent Persona Template</h3>
+        <button id="btnCloseImportTemplate" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="importTemplateJson">Template JSON</label>
+          <textarea id="importTemplateJson" class="form-control" rows="8" placeholder='{"version":"1.0","agent":{"name":"CTO","role":"Architect",...}}'></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnConfirmImportTemplate" class="btn btn-primary">Import Agent Persona</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Watcher Modal Overlay -->
+  <div class="modal-overlay hidden" id="createWatcherModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>🛡️ Start Workspace Sentinel Watcher</h3>
+        <button id="btnCloseCreateWatcher" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="watcherTargetDir">Target Directory to Watch</label>
+          <input type="text" id="watcherTargetDir" class="form-control" placeholder="e.g. /Users/philosopher/dev/opensand">
+        </div>
+        <div class="form-group">
+          <label for="watcherCheckCommand">Verification Check Command (optional)</label>
+          <input type="text" id="watcherCheckCommand" class="form-control" placeholder="e.g. pnpm test, tsc -b, or npm run lint">
+        </div>
+        <div class="form-group-checkbox">
+          <input type="checkbox" id="watcherAutoHeal" checked>
+          <label for="watcherAutoHeal">Enable Autonomous Self-Healing Loop on Failure</label>
+        </div>
+        <div class="form-group">
+          <label for="watcherDebounce">Debounce Delay (ms)</label>
+          <input type="number" id="watcherDebounce" class="form-control" value="500" min="100">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnSaveWatcher" class="btn btn-primary">Start Sentinel Watcher</button>
       </div>
     </div>
   </div>
