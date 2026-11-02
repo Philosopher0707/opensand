@@ -15,6 +15,11 @@ import { parseCliArgs, CliConfig, probeLocalOllama, validateConfig } from "./con
 import { TerminalUI } from "./terminal-ui.js";
 import { runDoctorProbes } from "./doctor.js";
 import { getFleetStatus } from "./status.js";
+import {
+  generateZshCompletion,
+  generateBashCompletion,
+  getReplCompletions,
+} from "./completion.js";
 
 export async function runCli(argv: string[]): Promise<void> {
   if (argv.includes("--help") || argv.includes("-h")) {
@@ -103,45 +108,9 @@ Examples:
   // Shell Completion Generator
   if (config.completion) {
     if (config.completion === "zsh") {
-      console.log(`#compdef opensand
-_opensand() {
-  local -a opts
-  opts=(
-    '--endpoint[LLM API base URL]'
-    '--model[Model identifier]'
-    '--api-key[API key]'
-    '--bot[Activate registered bot persona]'
-    '--system-prompt[Custom instructions file]'
-    '--worktree[Run in isolated Git worktree]'
-    '--list-tools[List registered tools]'
-    '--list-bots[List registered bot personas]'
-    '--list-tasks[List agent tasks]'
-    '--auto-approve[Auto-approve tool execution]'
-    '-y[Auto-approve tool execution]'
-    '--help[Show help]'
-    '--version[Show version]'
-    'doctor[Run system diagnostic probes]'
-    'status[Show agent fleet status]'
-    'completion[Generate shell completions]'
-  )
-  _describe 'opensand options' opts
-}
-_opensand`);
+      console.log(generateZshCompletion());
     } else {
-      console.log(`# bash completion for opensand
-_opensand_completions() {
-  local cur prev opts
-  COMPREPLY=()
-  cur="\${COMP_WORDS[COMP_CWORD]}"
-  prev="\${COMP_WORDS[COMP_CWORD-1]}"
-  opts="--endpoint --model --api-key --bot --system-prompt --worktree --list-tools --list-bots --list-tasks --auto-approve -y --help -h --version -v doctor status completion"
-
-  if [[ \${cur} == -* ]] || [[ \${COMP_CWORD} -eq 1 ]] ; then
-    COMPREPLY=( $(compgen -W "\${opts}" -- \${cur}) )
-    return 0
-  fi
-}
-complete -F _opensand_completions opensand`);
+      console.log(generateBashCompletion());
     }
     return;
   }
@@ -381,8 +350,16 @@ complete -F _opensand_completions opensand`);
     return;
   }
 
-  // Interactive REPL loop
-  const rl = readline.createInterface({ input, output });
+  // Load registered bots for dynamic REPL autocompletion
+  const registeredBots = await agentStore.listAgents().catch(() => []);
+  const knownBotNames = registeredBots.map((b) => b.name);
+
+  // Interactive REPL loop with native tab autocompletion
+  const rl = readline.createInterface({
+    input,
+    output,
+    completer: (l: string) => getReplCompletions(l, knownBotNames),
+  });
 
   try {
     while (true) {
@@ -432,9 +409,28 @@ Available OpenSand REPL Commands:
   /review [pr_or_ref] Run autonomous PR review bot on pull request diff
   /tasks              List active agent tasks and milestones
   /rules              Show continuous learning guidelines
+  /tokens             Inspect real-time context token usage, bounds, and caching
   /clear              Clear terminal screen
   exit, quit, /exit   Terminate REPL session
 `);
+        continue;
+      }
+
+      if (trimmed === "/tokens" || trimmed === "/token-stats") {
+        const estTokens = coordinator.estimateTokens();
+        const userTurns = coordinator.history.filter((m) => m.role === "user").length;
+        const toolTurns = coordinator.history.filter((m) => m.role === "tool").length;
+        const asstTurns = coordinator.history.filter((m) => m.role === "assistant").length;
+        console.log(`\n\x1b[1m=== Context Window & Token Efficiency Telemetry ===\x1b[0m`);
+        console.log(`  📊 Estimated Context Footprint: \x1b[32m~${estTokens.toLocaleString()} tokens\x1b[0m`);
+        console.log(`  🛡 Auto-Compaction Safety Limit: ~${coordinator.maxContextTokens.toLocaleString()} tokens`);
+        console.log(`  🎯 Active Tool Scoping Mode:    \x1b[36m${coordinator.toolScopeMode}\x1b[0m`);
+        console.log(`  💬 Dialogue History Breakdown:`);
+        console.log(`     • User Turns:      ${userTurns}`);
+        console.log(`     • Assistant Turns: ${asstTurns}`);
+        console.log(`     • Tool Results:    ${toolTurns} (micro-compacted on older turns)`);
+        console.log(`     • Total Messages:  ${coordinator.history.length}`);
+        console.log(`  ⚡ Anthropic Prompt Caching:   Active (ephemeral system & tool break points)\n`);
         continue;
       }
 
@@ -783,7 +779,9 @@ Available OpenSand REPL Commands:
 
       try {
         await coordinator.runTurn(trimmed, turnAbort.signal);
-        console.log("\n");
+        const estTokens = coordinator.estimateTokens();
+        const userTurns = coordinator.history.filter((m) => m.role === "user").length;
+        console.log(`\x1b[2m[context: ~${estTokens.toLocaleString()} tokens | ${userTurns} turns | toolScope: ${coordinator.toolScopeMode}]\x1b[0m\n`);
       } catch (err: any) {
         if (turnAbort.signal.aborted || err?.name === "AbortError" || err?.code === "ABORT_ERR") {
           ui.printInfo("\n[Turn cancelled by user]");
