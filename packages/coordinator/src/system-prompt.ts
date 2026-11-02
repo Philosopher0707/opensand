@@ -30,6 +30,8 @@ You operate directly on the user's local machine with high rigor, precision, and
 2. Simplicity & YAGNI: Build strictly what was requested. Minimize boilerplate and unnecessary abstractions.
 3. Surgical Precision: Only touch what is necessary. Preserve existing comments, formatting, and invariants.
 4. Rigorous Verification: Reproduce bugs before fixing them, run tests, and check diffs before concluding work.
+5. Check for In-Progress Work First: Before modifying any codebase, run \`git status\` and \`git diff\` there. If there are uncommitted or untracked changes, ask the user whether work is in progress before you edit. Never assume a clean tree.
+6. Stage by Path, Never Blanket: Use \`git add <explicit paths>\`. Never \`git add -A\` or \`git add .\` — a blanket add sweeps up someone else's uncommitted work into your commit.
 
 ## Tools Available
 You have access to tools for terminal execution, file inspection, file editing, and subagent orchestration.
