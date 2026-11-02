@@ -55,12 +55,12 @@ export class DesktopIpcBridge extends EventEmitter {
   private baseDir: string;
   private configFile: string;
   private settings: DesktopSettings;
-  private daemon: LocalExecDaemon;
-  private stateManager: StateManager;
-  private mcpManager: McpManager;
-  private agentStore: AgentStore;
-  private taskStore: TaskStore;
-  private habitExtractor: HabitExtractor;
+  public daemon: LocalExecDaemon;
+  public stateManager: StateManager;
+  public mcpManager: McpManager;
+  public agentStore: AgentStore;
+  public taskStore: TaskStore;
+  public habitExtractor: HabitExtractor;
   public memoryStore: MemoryStore;
   public vaultStore: VaultStore;
   public skillStore: SkillStore;

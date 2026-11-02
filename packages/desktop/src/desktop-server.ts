@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
+import { createDefaultRpcGateway, RpcGateway } from './rpc-gateway.js';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -17,6 +18,7 @@ export interface DesktopServerOptions {
 export class DesktopServer {
   private server: http.Server | null = null;
   private bridge: DesktopIpcBridge;
+  private rpcGateway: RpcGateway;
   private sseClients: Set<http.ServerResponse> = new Set();
   private rendererDir: string;
   private port: number;
@@ -26,6 +28,7 @@ export class DesktopServer {
     this.port = options.port || 3456;
     this.host = options.host || '127.0.0.1';
     this.bridge = new DesktopIpcBridge({ baseDir: options.baseDir });
+    this.rpcGateway = createDefaultRpcGateway(this.bridge);
     this.rendererDir = path.join(__dirname, '../../renderer');
 
     // Forward bridge events to SSE clients
@@ -36,6 +39,10 @@ export class DesktopServer {
 
   public getBridge(): DesktopIpcBridge {
     return this.bridge;
+  }
+
+  public getRpcGateway(): RpcGateway {
+    return this.rpcGateway;
   }
 
   public async start(): Promise<{ port: number; host: string; url: string }> {
@@ -170,6 +177,13 @@ export class DesktopServer {
         this.sseClients.delete(res);
       });
       return;
+    }
+
+    // Clean-Room Unified RPC Gateway: POST /aiserver.v1.<ServiceName>/<MethodName>
+    if (pathname.startsWith('/aiserver.v1.') && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      const handled = await this.rpcGateway.handleHttpRequest(req, res, body);
+      if (handled) return;
     }
 
     // API: POST /api/query

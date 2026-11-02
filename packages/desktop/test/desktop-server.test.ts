@@ -335,6 +335,35 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     await (server as any).handleRequest(reqStopWatcher, resStopWatcher);
     assert.strictEqual(resStopWatcher.statusCode, 200);
     assert.strictEqual(JSON.parse(resStopWatcher.body).success, true);
+
+    // Test Clean-Room Unified RPC Gateway: POST /aiserver.v1.AgentStoreService/ListAgents
+    const reqRpcList = new MockIncomingMessage('POST', '/aiserver.v1.AgentStoreService/ListAgents');
+    const resRpcList = new MockServerResponse();
+    const rpcListPromise = (server as any).handleRequest(reqRpcList, resRpcList);
+    reqRpcList.emit('end');
+    await rpcListPromise;
+    assert.strictEqual(resRpcList.statusCode, 200);
+    const rpcListBody = JSON.parse(resRpcList.body);
+    assert.ok(Array.isArray(rpcListBody.agents));
+
+    // Test Clean-Room Unified RPC Gateway: POST /aiserver.v1.DashboardService/GetFleetStatus
+    const reqRpcFleet = new MockIncomingMessage('POST', '/aiserver.v1.DashboardService/GetFleetStatus');
+    const resRpcFleet = new MockServerResponse();
+    const rpcFleetPromise = (server as any).handleRequest(reqRpcFleet, resRpcFleet);
+    reqRpcFleet.emit('end');
+    await rpcFleetPromise;
+    assert.strictEqual(resRpcFleet.statusCode, 200);
+    const rpcFleetBody = JSON.parse(resRpcFleet.body);
+    assert.strictEqual(rpcFleetBody.fleet.status, 'operational');
+
+    // Test Clean-Room Unified RPC Gateway: POST /aiserver.v1.AnalyticsService/TrackEvents
+    const reqRpcAnalytics = new MockIncomingMessage('POST', '/aiserver.v1.AnalyticsService/TrackEvents');
+    const resRpcAnalytics = new MockServerResponse();
+    const rpcAnalyticsPromise = (server as any).handleRequest(reqRpcAnalytics, resRpcAnalytics);
+    reqRpcAnalytics.emit('end');
+    await rpcAnalyticsPromise;
+    assert.strictEqual(resRpcAnalytics.statusCode, 200);
+    assert.strictEqual(JSON.parse(resRpcAnalytics.body).recorded, true);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
