@@ -395,6 +395,71 @@ class OpenSandClient {
     const res = await fetch(url);
     return res.json();
   }
+
+  // --- Boundaries API ---
+  async getPolicies() {
+    const res = await fetch('/api/policies');
+    return res.json();
+  }
+
+  async createPolicy(rule) {
+    const res = await fetch('/api/policies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rule),
+    });
+    return res.json();
+  }
+
+  async deletePolicy(id) {
+    const res = await fetch(`/api/policies/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    return res.json();
+  }
+
+  async getPolicyAudit() {
+    const res = await fetch('/api/policies/audit');
+    return res.json();
+  }
+
+  // --- Webhooks API ---
+  async getWebhooks() {
+    const res = await fetch('/api/webhooks');
+    return res.json();
+  }
+
+  async createWebhook(webhook) {
+    const res = await fetch('/api/webhooks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhook),
+    });
+    return res.json();
+  }
+
+  async deleteWebhook(name) {
+    const res = await fetch(`/api/webhooks/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    return res.json();
+  }
+
+  async getWebhookDeliveries() {
+    const res = await fetch('/api/webhooks/deliveries');
+    return res.json();
+  }
+
+  // --- Graphs API ---
+  async getGraphs() {
+    const res = await fetch('/api/graphs');
+    return res.json();
+  }
+
+  async runGraph(graphId, task) {
+    const res = await fetch(`/api/graphs/${encodeURIComponent(graphId)}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task }),
+    });
+    return res.json();
+  }
 }
 
 // UI Controller
@@ -413,6 +478,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     attachments: document.getElementById('viewAttachments'),
     templates: document.getElementById('viewTemplates'),
     sentinel: document.getElementById('viewSentinel'),
+    graphs: document.getElementById('viewGraphs'),
+    boundaries: document.getElementById('viewBoundaries'),
+    webhooks: document.getElementById('viewWebhooks'),
   };
 
   let currentView = 'chat';
@@ -439,6 +507,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (viewName === 'attachments') refreshAttachments();
     if (viewName === 'templates') refreshTemplates();
     if (viewName === 'sentinel') refreshSentinel();
+    if (viewName === 'graphs') refreshGraphs();
+    if (viewName === 'boundaries') refreshBoundaries();
+    if (viewName === 'webhooks') refreshWebhooks();
   }
 
   navTabs.forEach((tab) => {
@@ -1235,6 +1306,262 @@ document.addEventListener('DOMContentLoaded', async () => {
     `;
 
     container.appendChild(entry);
+  }
+
+  // --- GRAPHS VIEW CONTROLLER ---
+  async function refreshGraphs() {
+    const grid = document.getElementById('graphsCardGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const graphs = await client.getGraphs();
+    if (!Array.isArray(graphs) || graphs.length === 0) {
+      grid.innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 13px;">No agent graphs registered.</div>`;
+      return;
+    }
+
+    for (const g of graphs) {
+      const card = document.createElement('div');
+      card.className = 'dashboard-card';
+      const nodesBadges = (g.nodes || []).map((n) => `<span class="badge" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">${escapeHtml(n)}</span>`).join(' ➔ ');
+
+      card.innerHTML = `
+        <div class="card-top">
+          <div class="card-title">🕸️ ${escapeHtml(g.name)}</div>
+          <span class="badge badge-success">Cycle Limit: ${g.cycleLimit || 3}</span>
+        </div>
+        <div class="card-desc">${escapeHtml(g.description)}</div>
+        <div class="card-meta" style="flex-wrap: wrap; gap: 4px; margin-top: 8px;">
+          ${nodesBadges}
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-primary btn-xs btn-run-single-graph" data-graph-id="${escapeHtml(g.id)}">▶ Run Graph</button>
+        </div>
+      `;
+
+      card.querySelector('.btn-run-single-graph').onclick = () => runGraphExecution(g.id, g.name);
+      grid.appendChild(card);
+    }
+  }
+
+  async function runGraphExecution(graphId, graphName) {
+    const feed = document.getElementById('graphTraceFeed');
+    if (!feed) return;
+    feed.innerHTML = `
+      <div class="sentinel-item clean">
+        <div class="sentinel-header-row">
+          <div><span class="status-badge warn">RUNNING</span><strong style="margin-left: 8px;">${escapeHtml(graphName || graphId)}</strong></div>
+          <span style="color: var(--text-muted); font-size: 11px;">Starting cyclical state graph execution...</span>
+        </div>
+      </div>
+    `;
+
+    try {
+      const result = await client.runGraph(graphId, 'Implement robust error-bounded worker queue with self-repair');
+      feed.innerHTML = '';
+
+      for (const ev of (result.trace || [])) {
+        const item = document.createElement('div');
+        const isError = ev.type === 'cycle_detected' || ev.type === 'graph_error';
+        const isComplete = ev.type === 'graph_complete';
+        item.className = `sentinel-item ${isError ? 'fail' : (isComplete ? 'clean' : 'warn')}`;
+        const timeStr = new Date(ev.timestamp || Date.now()).toLocaleTimeString();
+
+        let detailsHtml = '';
+        if (ev.details) {
+          detailsHtml = `<pre class="sentinel-output-box" style="margin-top: 6px;">${escapeHtml(typeof ev.details === 'object' ? JSON.stringify(ev.details, null, 2) : ev.details)}</pre>`;
+        }
+
+        item.innerHTML = `
+          <div class="sentinel-header-row">
+            <div>
+              <span class="status-badge ${isError ? 'fail' : (isComplete ? 'clean' : 'warn')}">${escapeHtml(ev.type.toUpperCase())}</span>
+              <strong style="margin-left: 8px;">${escapeHtml(ev.node ? `Node: ${ev.node}` : (ev.edge ? `Edge: ${ev.edge}` : 'State Transition'))}</strong>
+              ${ev.step ? `<span style="color: var(--text-muted); font-size: 11px; margin-left: 6px;">(Step ${ev.step})</span>` : ''}
+            </div>
+            <span style="color: var(--text-muted); font-size: 11px;">${timeStr}</span>
+          </div>
+          ${detailsHtml}
+        `;
+        feed.appendChild(item);
+      }
+
+      if (result.finalState && result.finalState.finalSummary) {
+        const summaryCard = document.createElement('div');
+        summaryCard.className = 'sentinel-item clean';
+        summaryCard.innerHTML = `
+          <div class="sentinel-header-row">
+            <div><span class="status-badge clean">SUMMARY</span><strong style="margin-left: 8px;">Final Output & Verification</strong></div>
+          </div>
+          <div class="sentinel-proposal-box" style="margin-top: 8px;">${escapeHtml(result.finalState.finalSummary)}</div>
+        `;
+        feed.appendChild(summaryCard);
+      }
+    } catch (err) {
+      feed.innerHTML += `
+        <div class="sentinel-item fail" style="margin-top: 8px;">
+          <div class="sentinel-header-row">
+            <div><span class="status-badge fail">ERROR</span><strong style="margin-left: 8px;">Execution Failure</strong></div>
+          </div>
+          <div class="sentinel-output-box">${escapeHtml(err.message)}</div>
+        </div>
+      `;
+    }
+  }
+
+  const btnRunCodingGraph = document.getElementById('btnRunCodingGraph');
+  if (btnRunCodingGraph) {
+    btnRunCodingGraph.onclick = () => runGraphExecution('self_reflecting_coding', 'Autonomous Self-Reflecting Coding Graph');
+  }
+
+  // --- BOUNDARIES VIEW CONTROLLER ---
+  async function refreshBoundaries() {
+    const grid = document.getElementById('boundariesCardGrid');
+    const feed = document.getElementById('boundariesAuditFeed');
+    if (grid) grid.innerHTML = '';
+    if (feed) feed.innerHTML = '';
+
+    const policies = await client.getPolicies();
+    const audit = await client.getPolicyAudit();
+
+    if (!Array.isArray(policies) || policies.length === 0) {
+      if (grid) grid.innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 13px;">No boundary policy rules defined. Fail-closed defaults apply.</div>`;
+    } else if (grid) {
+      for (const p of policies) {
+        const card = document.createElement('div');
+        card.className = 'dashboard-card';
+        const actionBadgeClass = p.action === 'DENY' ? 'badge-danger' : (p.action === 'REQUIRE_APPROVAL' ? 'badge-warning' : 'badge-success');
+
+        card.innerHTML = `
+          <div class="card-top">
+            <div class="card-title">🛡️ ${escapeHtml(p.name)}</div>
+            <span class="badge ${actionBadgeClass}">${escapeHtml(p.action)}</span>
+          </div>
+          <div class="card-desc">${escapeHtml(p.description || 'No description.')}</div>
+          <div class="card-meta">
+            ${p.tools ? `<span class="badge">Tools: ${escapeHtml(p.tools.join(', '))}</span>` : ''}
+            ${p.commandRegex ? `<span class="badge">Regex: ${escapeHtml(p.commandRegex)}</span>` : ''}
+            ${p.pathsPrefix ? `<span class="badge">Paths: ${escapeHtml(p.pathsPrefix.join(', '))}</span>` : ''}
+          </div>
+          <div class="card-footer">
+            <button class="btn btn-ghost btn-xs btn-delete-rule" style="color: var(--danger);">Delete Rule</button>
+          </div>
+        `;
+
+        card.querySelector('.btn-delete-rule').onclick = async () => {
+          if (confirm(`Delete policy rule "${p.name}"?`)) {
+            await client.deletePolicy(p.id);
+            refreshBoundaries();
+          }
+        };
+
+        grid.appendChild(card);
+      }
+    }
+
+    if (!Array.isArray(audit) || audit.length === 0) {
+      if (feed) feed.innerHTML = `<div style="color: var(--text-muted); font-size: 13px;">No policy evaluations logged yet. Tool executions evaluate against fail-closed boundaries automatically.</div>`;
+    } else if (feed) {
+      for (const entry of audit.slice(-25).reverse()) {
+        const item = document.createElement('div');
+        const isDeny = entry.decision === 'DENIED';
+        const isApproval = entry.decision === 'REQUIRE_APPROVAL';
+        item.className = `sentinel-item ${isDeny ? 'fail' : (isApproval ? 'warn' : 'clean')}`;
+        const timeStr = new Date(entry.timestamp || Date.now()).toLocaleTimeString();
+
+        item.innerHTML = `
+          <div class="sentinel-header-row">
+            <div>
+              <span class="status-badge ${isDeny ? 'fail' : (isApproval ? 'warn' : 'clean')}">${escapeHtml(entry.decision)}</span>
+              <strong style="margin-left: 8px;">Tool: ${escapeHtml(entry.toolName)}</strong>
+              ${entry.ruleName ? `<span style="color: var(--text-muted); font-size: 11px; margin-left: 6px;">(Rule: ${escapeHtml(entry.ruleName)})</span>` : ''}
+            </div>
+            <span style="color: var(--text-muted); font-size: 11px;">${timeStr}</span>
+          </div>
+          <div style="font-size: 12px; margin-top: 4px; color: ${isDeny ? '#f87171' : 'var(--text-muted)'};">${escapeHtml(entry.reason)}</div>
+          ${entry.argsSummary ? `<pre class="sentinel-output-box" style="margin-top: 4px; max-height: 80px;">${escapeHtml(entry.argsSummary)}</pre>` : ''}
+        `;
+        feed.appendChild(item);
+      }
+    }
+  }
+
+  // --- WEBHOOKS VIEW CONTROLLER ---
+  async function refreshWebhooks() {
+    const grid = document.getElementById('webhooksCardGrid');
+    const feed = document.getElementById('webhooksDeliveriesFeed');
+    if (grid) grid.innerHTML = '';
+    if (feed) feed.innerHTML = '';
+
+    const webhooks = await client.getWebhooks();
+    const deliveries = await client.getWebhookDeliveries();
+
+    if (!Array.isArray(webhooks) || webhooks.length === 0) {
+      if (grid) grid.innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 13px;">No inbound webhooks configured. Click "+ New Webhook" to register an HTTP trigger.</div>`;
+    } else if (grid) {
+      for (const w of webhooks) {
+        const card = document.createElement('div');
+        card.className = 'dashboard-card';
+        const hookUrl = `${window.location.origin}/api/webhooks/${encodeURIComponent(w.name)}`;
+
+        card.innerHTML = `
+          <div class="card-top">
+            <div class="card-title">⚡ ${escapeHtml(w.name)}</div>
+            <span class="badge badge-success">Triggers: ${w.triggerCount || 0}</span>
+          </div>
+          <div class="card-desc"><strong>Target:</strong> ${escapeHtml(w.targetType.toUpperCase())} ➔ ${escapeHtml(w.targetId)}</div>
+          <div class="card-meta">
+            <span class="badge">Auth: ${w.hasSecret ? 'HMAC-SHA256' : 'Open'}</span>
+            ${w.filterEvent ? `<span class="badge">Event: ${escapeHtml(w.filterEvent)}</span>` : ''}
+          </div>
+          <div class="sentinel-output-box" style="font-size: 11px; margin-top: 8px; user-select: all;">${escapeHtml(hookUrl)}</div>
+          <div class="card-footer" style="margin-top: 8px;">
+            <button class="btn btn-secondary btn-xs btn-copy-curl">Copy curl</button>
+            <button class="btn btn-ghost btn-xs btn-delete-webhook" style="color: var(--danger);">Delete</button>
+          </div>
+        `;
+
+        card.querySelector('.btn-copy-curl').onclick = () => {
+          const curl = `curl -X POST "${hookUrl}" -H "Content-Type: application/json" -d '{"event":"trigger","data":{"action":"run"}}'`;
+          navigator.clipboard.writeText(curl);
+          alert('Webhook cURL copied to clipboard.');
+        };
+
+        card.querySelector('.btn-delete-webhook').onclick = async () => {
+          if (confirm(`Delete webhook "${w.name}"?`)) {
+            await client.deleteWebhook(w.name);
+            refreshWebhooks();
+          }
+        };
+
+        grid.appendChild(card);
+      }
+    }
+
+    if (!Array.isArray(deliveries) || deliveries.length === 0) {
+      if (feed) feed.innerHTML = `<div style="color: var(--text-muted); font-size: 13px;">No webhook deliveries received yet. Post HTTP requests to your webhook URLs to trigger actions.</div>`;
+    } else if (feed) {
+      for (const d of deliveries.slice(-25).reverse()) {
+        const item = document.createElement('div');
+        const isSuccess = d.status === 'success';
+        item.className = `sentinel-item ${isSuccess ? 'clean' : 'fail'}`;
+        const timeStr = new Date(d.timestamp || Date.now()).toLocaleTimeString();
+
+        item.innerHTML = `
+          <div class="sentinel-header-row">
+            <div>
+              <span class="status-badge ${isSuccess ? 'clean' : 'fail'}">${escapeHtml(d.status.toUpperCase())}</span>
+              <strong style="margin-left: 8px;">Webhook: ${escapeHtml(d.webhookName)}</strong>
+              ${d.durationMs !== undefined ? `<span style="color: var(--text-muted); font-size: 11px; margin-left: 6px;">(${d.durationMs}ms)</span>` : ''}
+            </div>
+            <span style="color: var(--text-muted); font-size: 11px;">${timeStr}</span>
+          </div>
+          ${d.error ? `<div style="color: #f87171; font-size: 12px; margin-top: 4px;">Error: ${escapeHtml(d.error)}</div>` : ''}
+          ${d.result ? `<pre class="sentinel-output-box" style="margin-top: 4px; max-height: 80px;">${escapeHtml(typeof d.result === 'object' ? JSON.stringify(d.result, null, 2) : d.result)}</pre>` : ''}
+        `;
+        feed.appendChild(item);
+      }
+    }
   }
 
   // --- MODAL DIALOG CONTROLLERS ---
@@ -2275,6 +2602,99 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       createWatcherModal.classList.add('hidden');
       refreshSentinel();
+    };
+  }
+
+  // --- Boundary Policy Modal ---
+  const btnOpenCreateRule = document.getElementById('btnOpenCreateRule');
+  const createRuleModal = document.getElementById('createRuleModal');
+  const btnCloseCreateRule = document.getElementById('btnCloseCreateRule');
+  const btnSaveRule = document.getElementById('btnSaveRule');
+  const ruleName = document.getElementById('ruleName');
+  const ruleAction = document.getElementById('ruleAction');
+  const ruleTool = document.getElementById('ruleTool');
+  const ruleCommandRegex = document.getElementById('ruleCommandRegex');
+  const rulePathPrefix = document.getElementById('rulePathPrefix');
+  const ruleDesc = document.getElementById('ruleDesc');
+
+  if (btnOpenCreateRule && createRuleModal) {
+    btnOpenCreateRule.onclick = () => {
+      ruleName.value = '';
+      ruleAction.value = 'DENY';
+      ruleTool.value = '';
+      ruleCommandRegex.value = '';
+      rulePathPrefix.value = '';
+      ruleDesc.value = '';
+      createRuleModal.classList.remove('hidden');
+    };
+    btnCloseCreateRule.onclick = () => createRuleModal.classList.add('hidden');
+
+    btnSaveRule.onclick = async () => {
+      const name = ruleName.value.trim();
+      if (!name) {
+        alert('Please specify a rule name.');
+        return;
+      }
+      const tools = ruleTool.value.trim() ? ruleTool.value.split(',').map((t) => t.trim()).filter(Boolean) : undefined;
+      const pathsPrefix = rulePathPrefix.value.trim() ? rulePathPrefix.value.split(',').map((p) => p.trim()).filter(Boolean) : undefined;
+      const commandRegex = ruleCommandRegex.value.trim() || undefined;
+
+      await client.createPolicy({
+        id: `rule_${Date.now()}`,
+        name,
+        action: ruleAction.value,
+        tools,
+        commandRegex,
+        pathsPrefix,
+        description: ruleDesc.value.trim() || undefined,
+        enabled: true,
+      });
+
+      createRuleModal.classList.add('hidden');
+      refreshBoundaries();
+    };
+  }
+
+  // --- Webhook Modal ---
+  const btnOpenCreateWebhook = document.getElementById('btnOpenCreateWebhook');
+  const createWebhookModal = document.getElementById('createWebhookModal');
+  const btnCloseCreateWebhook = document.getElementById('btnCloseCreateWebhook');
+  const btnSaveWebhook = document.getElementById('btnSaveWebhook');
+  const webhookName = document.getElementById('webhookName');
+  const webhookTargetType = document.getElementById('webhookTargetType');
+  const webhookTargetId = document.getElementById('webhookTargetId');
+  const webhookSecret = document.getElementById('webhookSecret');
+  const webhookFilterEvent = document.getElementById('webhookFilterEvent');
+
+  if (btnOpenCreateWebhook && createWebhookModal) {
+    btnOpenCreateWebhook.onclick = () => {
+      webhookName.value = '';
+      webhookTargetType.value = 'routine';
+      webhookTargetId.value = '';
+      webhookSecret.value = '';
+      webhookFilterEvent.value = '';
+      createWebhookModal.classList.remove('hidden');
+    };
+    btnCloseCreateWebhook.onclick = () => createWebhookModal.classList.add('hidden');
+
+    btnSaveWebhook.onclick = async () => {
+      const name = webhookName.value.trim();
+      const targetId = webhookTargetId.value.trim();
+      if (!name || !targetId) {
+        alert('Please specify webhook slug name and target ID.');
+        return;
+      }
+      await client.createWebhook({
+        name,
+        targetType: webhookTargetType.value,
+        targetId,
+        secret: webhookSecret.value.trim() || undefined,
+        filterEvent: webhookFilterEvent.value.trim() || undefined,
+        enabled: true,
+      });
+
+      createWebhookModal.classList.add('hidden');
+      refreshWebhooks();
     };
   }
 

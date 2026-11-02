@@ -21,4 +21,7 @@ export * from "./token-hygiene.js";
 export * from "./workspace-sentinel.js";
 export * from "./attachment-manager.js";
 export * from "./orchestrator-tools.js";
+export * from "./agent-graph.js";
+export * from "./ag-ui-gateway.js";
+export * from "./webhook-gateway.js";
 export * from "./coordinator.js";

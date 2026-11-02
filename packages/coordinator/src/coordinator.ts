@@ -47,7 +47,7 @@ export class AgentCoordinator {
 
   private messages: ChatMessage[] = [];
   private onApprovalRequired?: ApprovalHandler;
-  private onEvent?: TurnEventListener;
+  private eventListeners: Set<TurnEventListener> = new Set();
   private maxTurnIterations: number;
   private initialized = false;
 
@@ -62,7 +62,9 @@ export class AgentCoordinator {
     this.vaultStore = options.vaultStore;
     this.hookDispatcher = new HookDispatcher(options.hooks);
     this.onApprovalRequired = options.onApprovalRequired;
-    this.onEvent = options.onEvent;
+    if (options.onEvent) {
+      this.eventListeners.add(options.onEvent);
+    }
     this.maxTurnIterations = options.maxTurnIterations ?? 50;
 
     // Initialize system message
@@ -77,10 +79,15 @@ export class AgentCoordinator {
     return this.messages;
   }
 
+  public addEventListener(listener: TurnEventListener): () => void {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
+  }
+
   private emit(event: TurnEvent): void {
-    if (this.onEvent) {
+    for (const listener of this.eventListeners) {
       try {
-        this.onEvent(event);
+        listener(event);
       } catch {
         // Event listener errors should not disrupt the agent turn loop
       }

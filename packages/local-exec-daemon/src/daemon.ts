@@ -1,5 +1,6 @@
 import { StateManager } from "./state-manager.js";
 import { ToolRegistry, ToolExecutionContext, CustomToolRegistration } from "./tool-registry.js";
+import { PolicyEngine, PolicyDecision } from "./policy-engine.js";
 import {
   DaemonState,
   DaemonConnection,
@@ -18,6 +19,7 @@ export interface DaemonOptions {
 export class LocalExecDaemon {
   public readonly state: StateManager;
   public readonly tools: ToolRegistry;
+  public readonly policy: PolicyEngine;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private inflightCount = 0;
   private generation = 1;
@@ -28,6 +30,7 @@ export class LocalExecDaemon {
   constructor(options: DaemonOptions = {}) {
     this.state = new StateManager(options.stateDir);
     this.tools = new ToolRegistry();
+    this.policy = new PolicyEngine({ storageDir: options.stateDir });
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 5000;
   }
 
@@ -127,6 +130,22 @@ export class LocalExecDaemon {
   ): Promise<ToolExecutionResult> {
     this.inflightCount++;
     try {
+      // Evaluate fail-closed boundary policy
+      const decision = this.policy.evaluate({
+        tool: name,
+        args,
+      });
+
+      if (decision.action === 'DENY') {
+        return {
+          status: 'error',
+          error: {
+            code: 'POLICY_DENIED',
+            message: `Policy Boundary Violation: ${decision.reason}`,
+          },
+        };
+      }
+
       // Refresh current permission gates if not explicitly passed
       let effectiveContext = context;
       if (!context?.permissionGates) {

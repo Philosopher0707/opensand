@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
 import { createDefaultRpcGateway, RpcGateway } from './rpc-gateway.js';
+import { handleAgUiRunRequest, AgUiEventPayload } from '@opensand/coordinator';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -846,6 +847,135 @@ export class DesktopServer {
       const logs = this.bridge.getSentinelLogs(watcherId);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(logs));
+      return;
+    }
+
+    // API: GET /api/policies (Boundaries parity)
+    if (pathname === '/api/policies' && req.method === 'GET') {
+      const policies = this.bridge.getPolicies();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(policies));
+      return;
+    }
+
+    // API: POST /api/policies
+    if (pathname === '/api/policies' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      this.bridge.setPolicy(body);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
+      return;
+    }
+
+    // API: DELETE /api/policies/:id
+    if (pathname.startsWith('/api/policies/') && req.method === 'DELETE') {
+      const id = pathname.replace('/api/policies/', '');
+      const deleted = this.bridge.deletePolicy(id);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: deleted }));
+      return;
+    }
+
+    // API: GET /api/policies/audit
+    if (pathname === '/api/policies/audit' && req.method === 'GET') {
+      const audit = this.bridge.getPolicyAudit();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(audit));
+      return;
+    }
+
+    // API: GET /api/webhooks
+    if (pathname === '/api/webhooks' && req.method === 'GET') {
+      const webhooks = this.bridge.getWebhooks();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(webhooks));
+      return;
+    }
+
+    // API: POST /api/webhooks (Register webhook)
+    if (pathname === '/api/webhooks' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      const reg = this.bridge.registerWebhook(body);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(reg));
+      return;
+    }
+
+    // API: GET /api/webhooks/deliveries
+    if (pathname === '/api/webhooks/deliveries' && req.method === 'GET') {
+      const deliveries = this.bridge.getWebhookDeliveries();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(deliveries));
+      return;
+    }
+
+    // API: DELETE /api/webhooks/:name
+    if (pathname.startsWith('/api/webhooks/') && req.method === 'DELETE') {
+      const name = pathname.replace('/api/webhooks/', '');
+      const deleted = this.bridge.deleteWebhook(name);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: deleted }));
+      return;
+    }
+
+    // API: POST /api/webhooks/:name (External webhook trigger ingestion)
+    if (pathname.startsWith('/api/webhooks/') && req.method === 'POST') {
+      const name = pathname.replace('/api/webhooks/', '');
+      const body = await this.readJsonBody(req);
+      const result = await this.bridge.handleWebhook(name, body, req.headers as Record<string, string>);
+      res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    // API: GET /api/graphs (State Graphs & Cyclical Loops)
+    if (pathname === '/api/graphs' && req.method === 'GET') {
+      const graphs = this.bridge.getAvailableGraphs();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(graphs));
+      return;
+    }
+
+    // API: POST /api/graphs/:id/run
+    if (pathname.startsWith('/api/graphs/') && pathname.endsWith('/run') && req.method === 'POST') {
+      const graphId = pathname.replace('/api/graphs/', '').replace('/run', '');
+      const body = await this.readJsonBody(req);
+      const result = await this.bridge.runGraph(graphId, body.task);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    // Universal AG-UI Protocol: POST /ag-ui/v1/run
+    if (pathname === '/ag-ui/v1/run' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+      const sink = {
+        writeEvent: (ev: AgUiEventPayload) => {
+          res.write(`data: ${JSON.stringify(ev)}\n\n`);
+        },
+        close: () => {
+          res.write('data: [DONE]\n\n');
+          res.end();
+        },
+      };
+      try {
+        const coordinator = this.bridge.getCoordinator() || (await this.bridge.createSessionCoordinator(body.threadId, body.agentId));
+        await handleAgUiRunRequest(body, coordinator, sink);
+      } catch (err: any) {
+        sink.writeEvent({
+          event: 'RUN_ERROR',
+          threadId: body.threadId || 'default',
+          runId: body.runId || 'default',
+          data: { error: err.message },
+          timestamp: Date.now(),
+        });
+        sink.close();
+      }
       return;
     }
 

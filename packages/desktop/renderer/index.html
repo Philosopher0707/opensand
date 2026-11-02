@@ -76,6 +76,9 @@
           <button class="nav-tab" data-view="attachments">📎 Files</button>
           <button class="nav-tab" data-view="templates">📋 Templates</button>
           <button class="nav-tab" data-view="sentinel">🛡️ Sentinel</button>
+          <button class="nav-tab" data-view="graphs">🕸️ Graphs</button>
+          <button class="nav-tab" data-view="boundaries">🚧 Boundaries</button>
+          <button class="nav-tab" data-view="webhooks">⚡ Webhooks</button>
         </nav>
 
         <div class="topbar-meta">
@@ -283,6 +286,75 @@
 
           <div class="sidebar-section-title" style="margin-top: 20px;">Diagnostic & Autonomous Healing Event Feed</div>
           <div class="sentinel-feed" id="sentinelFeed">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- View 10: Agent Graphs View -->
+      <div id="viewGraphs" class="view-panel hidden">
+        <div class="dashboard-container">
+          <div class="dashboard-header">
+            <div>
+              <div class="dashboard-title">🕸️ Agent Graphs & Cyclical Node Loops</div>
+              <div class="dashboard-subtitle">Declarative state graphs enabling multi-node reflection, self-repair loops, and conditional state routing.</div>
+            </div>
+            <button id="btnRunCodingGraph" class="btn btn-primary">▶ Run Self-Reflecting Graph</button>
+          </div>
+
+          <div class="sidebar-section-title" style="margin-top: 10px;">Available State Graphs</div>
+          <div class="card-grid" id="graphsCardGrid">
+            <!-- Rendered dynamically -->
+          </div>
+
+          <div class="sidebar-section-title" style="margin-top: 20px;">Live Graph Stepper & Execution Trace</div>
+          <div class="sentinel-feed" id="graphTraceFeed">
+            <div style="color: var(--text-muted); font-size: 13px;">No active graph execution. Select a graph and click run.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- View 11: Fail-Closed Policy Boundaries View -->
+      <div id="viewBoundaries" class="view-panel hidden">
+        <div class="dashboard-container">
+          <div class="dashboard-header">
+            <div>
+              <div class="dashboard-title">🚧 Fail-Closed Policy Boundaries (/admin/boundaries parity)</div>
+              <div class="dashboard-subtitle">Declarative security rules evaluating tool names, command patterns, and filesystem paths before execution.</div>
+            </div>
+            <button id="btnOpenCreateRule" class="btn btn-primary">+ New Rule</button>
+          </div>
+
+          <div class="sidebar-section-title" style="margin-top: 10px;">Active Policy Rules</div>
+          <div class="card-grid" id="boundariesCardGrid">
+            <!-- Rendered dynamically -->
+          </div>
+
+          <div class="sidebar-section-title" style="margin-top: 20px;">Security Policy Audit Log</div>
+          <div class="sentinel-feed" id="boundariesAuditFeed">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- View 12: Inbound Proactive Webhooks View -->
+      <div id="viewWebhooks" class="view-panel hidden">
+        <div class="dashboard-container">
+          <div class="dashboard-header">
+            <div>
+              <div class="dashboard-title">⚡ Inbound Proactive Webhooks & Triggers</div>
+              <div class="dashboard-subtitle">Trigger background routines, agent graphs, or autonomous turns from GitHub PRs, CI pipelines, and external webhooks.</div>
+            </div>
+            <button id="btnOpenCreateWebhook" class="btn btn-primary">+ New Webhook</button>
+          </div>
+
+          <div class="sidebar-section-title" style="margin-top: 10px;">Configured Webhooks</div>
+          <div class="card-grid" id="webhooksCardGrid">
+            <!-- Rendered dynamically -->
+          </div>
+
+          <div class="sidebar-section-title" style="margin-top: 20px;">Webhook Delivery History</div>
+          <div class="sentinel-feed" id="webhooksDeliveriesFeed">
             <!-- Rendered dynamically -->
           </div>
         </div>
@@ -817,6 +889,88 @@
       </div>
       <div class="modal-actions">
         <button id="btnSaveWatcher" class="btn btn-primary">Start Sentinel Watcher</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Boundary Rule Modal -->
+  <div class="modal-overlay hidden" id="createRuleModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Create Boundary Policy Rule</h3>
+        <button id="btnCloseCreateRule" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="ruleName">Rule Name</label>
+          <input type="text" id="ruleName" class="form-control" placeholder="e.g. Deny SSH Keys Access">
+        </div>
+        <div class="form-group">
+          <label for="ruleAction">Action</label>
+          <select id="ruleAction" class="form-control">
+            <option value="DENY">DENY (Hard Refusal)</option>
+            <option value="REQUIRE_APPROVAL">REQUIRE_APPROVAL (User Confirmation)</option>
+            <option value="ALLOW">ALLOW (Explicit Permit)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="ruleTool">Tool Filter (optional, comma-separated or wildcard)</label>
+          <input type="text" id="ruleTool" class="form-control" placeholder="e.g. exec_command, write_file, *">
+        </div>
+        <div class="form-group">
+          <label for="ruleCommandRegex">Command Regex Filter (optional)</label>
+          <input type="text" id="ruleCommandRegex" class="form-control" placeholder="e.g. \b(sudo|curl\s+.*\|\s*sh)\b">
+        </div>
+        <div class="form-group">
+          <label for="rulePathPrefix">Path Prefix Filter (optional, comma-separated)</label>
+          <input type="text" id="rulePathPrefix" class="form-control" placeholder="e.g. /etc/, .ssh, .env">
+        </div>
+        <div class="form-group">
+          <label for="ruleDesc">Description / Refusal Reason</label>
+          <input type="text" id="ruleDesc" class="form-control" placeholder="Explanation logged in audit trail when rule matches">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnSaveRule" class="btn btn-primary">Save Policy Rule</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Webhook Trigger Modal -->
+  <div class="modal-overlay hidden" id="createWebhookModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Register Inbound Webhook</h3>
+        <button id="btnCloseCreateWebhook" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="webhookName">Webhook Name (URL slug)</label>
+          <input type="text" id="webhookName" class="form-control" placeholder="e.g. github-ci-pr">
+        </div>
+        <div class="form-group">
+          <label for="webhookTargetType">Target Type</label>
+          <select id="webhookTargetType" class="form-control">
+            <option value="routine">Routine</option>
+            <option value="graph">Agent Graph</option>
+            <option value="agent">Direct Agent</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="webhookTargetId">Target ID or Graph Name</label>
+          <input type="text" id="webhookTargetId" class="form-control" placeholder="e.g. self_repair_graph or routine ID">
+        </div>
+        <div class="form-group">
+          <label for="webhookSecret">Secret Token / HMAC Key (optional)</label>
+          <input type="text" id="webhookSecret" class="form-control" placeholder="Secret for X-Hub-Signature-256 or Bearer auth">
+        </div>
+        <div class="form-group">
+          <label for="webhookFilterEvent">Event Filter (optional)</label>
+          <input type="text" id="webhookFilterEvent" class="form-control" placeholder="e.g. pull_request, push">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnSaveWebhook" class="btn btn-primary">Register Webhook</button>
       </div>
     </div>
   </div>

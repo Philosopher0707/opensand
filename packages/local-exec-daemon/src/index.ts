@@ -4,4 +4,5 @@ export * from "./command-runner.js";
 export * from "./file-ops.js";
 export * from "./state-manager.js";
 export * from "./tool-registry.js";
+export * from "./policy-engine.js";
 export * from "./daemon.js";
