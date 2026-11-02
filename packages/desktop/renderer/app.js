@@ -596,8 +596,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentSessionId = null;
   let activeAgentId = null;
   let activeApprovalId = null;
-  let currentAssistantBubble = null;
+  let currentAssistantMessage = null;
   let currentAssistantText = '';
+  let activeToolLines = [];
+
+  // Theme Controller
+  const btnToggleTheme = document.getElementById('btnToggleTheme');
+  function initTheme() {
+    const saved = localStorage.getItem('opensand-theme');
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const theme = saved || (prefersDark ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+    if (btnToggleTheme) {
+      btnToggleTheme.textContent = theme === 'dark' ? '🌙' : '☀️';
+      btnToggleTheme.title = `Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Theme`;
+    }
+  }
+
+  if (btnToggleTheme) {
+    btnToggleTheme.onclick = () => {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      const next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('opensand-theme', next);
+      btnToggleTheme.textContent = next === 'dark' ? '🌙' : '☀️';
+      btnToggleTheme.title = `Switch to ${next === 'dark' ? 'Light' : 'Dark'} Theme`;
+    };
+  }
 
   // --- REFRESH FUNCTIONS ---
 
@@ -606,6 +631,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     badgeModel.textContent = s.model || 'Default';
     badgeAutoApprove.textContent = s.autoApprove ? '⚡ Auto-Approve' : '🛡 Safe Mode';
     badgeAutoApprove.className = s.autoApprove ? 'badge badge-warning' : 'badge badge-success';
+
+    const composerModelBadge = document.getElementById('composerModelBadge');
+    if (composerModelBadge) {
+      composerModelBadge.textContent = s.model || 'Default';
+    }
+    const composerAutoApproveText = document.getElementById('composerAutoApproveText');
+    if (composerAutoApproveText) {
+      composerAutoApproveText.textContent = s.autoApprove ? 'Auto-Approve' : 'Safe Mode';
+    }
   }
 
   async function refreshTokenBadge() {
@@ -616,12 +650,26 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await res.json();
       const current = data.estimatedTokens || 0;
       const max = data.maxContextTokens || 32000;
-      badgeTokens.textContent = `⚡ ${current.toLocaleString()} / ${max.toLocaleString()} tokens`;
+      const pct = Math.min(100, Math.max(0, Math.round((current / max) * 100)));
+
+      badgeTokens.textContent = `⚡ ${current.toLocaleString()} / ${max.toLocaleString()} tokens (${pct}%)`;
       badgeTokens.className = 'badge badge-tokens';
-      if (current > max * 0.8) {
+      if (pct > 80) {
         badgeTokens.classList.add('danger');
-      } else if (current > max * 0.5) {
+      } else if (pct > 50) {
         badgeTokens.classList.add('warn');
+      }
+
+      const meterBar = document.getElementById('contextMeterProgress');
+      if (meterBar) {
+        meterBar.style.width = `${pct}%`;
+        if (pct > 80) {
+          meterBar.style.backgroundColor = 'var(--danger)';
+        } else if (pct > 50) {
+          meterBar.style.backgroundColor = 'var(--warning)';
+        } else {
+          meterBar.style.backgroundColor = 'var(--accent)';
+        }
       }
     } catch {
       // Ignore
@@ -1380,6 +1428,256 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // --- CHAT INTERACTION CONTROLLER ---
 
+  // Markdown & Thinking Renderer (OpenBot parity)
+  function renderMarkdown(rawText) {
+    if (!rawText) return '';
+
+    let content = rawText;
+
+    // 1. Extract <thinking> tags (both closed and unclosed streaming)
+    content = content.replace(/<thinking>([\s\S]*?)(?:<\/thinking>|$)/gi, (match, thoughtText) => {
+      const trimmed = thoughtText.trim();
+      if (!trimmed) return '';
+      return `\n<div class="thought-accordion">
+  <div class="thought-header">
+    <span class="thought-toggle">▶</span>
+    <span class="thought-icon">💭</span>
+    <span class="thought-label">Thinking Process</span>
+  </div>
+  <div class="thought-body hidden">${escapeHtml(trimmed)}</div>
+</div>\n`;
+    });
+
+    // 2. Fenced code blocks ```lang\ncode\n```
+    const codeBlocks = [];
+    content = content.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+      const idx = codeBlocks.length;
+      const cleanLang = (lang || '').trim() || 'text';
+      const cleanCode = code.replace(/\n$/, '');
+      const safeCode = escapeHtml(cleanCode);
+      codeBlocks.push(`
+<div class="code-block-wrapper">
+  <div class="code-block-header">
+    <span class="code-lang">${cleanLang}</span>
+    <button class="btn-copy-code" type="button" data-code="${escapeHtml(cleanCode)}">Copy</button>
+  </div>
+  <pre><code class="language-${cleanLang}">${safeCode}</code></pre>
+</div>`);
+      return `\n%%CODE_BLOCK_${idx}%%\n`;
+    });
+
+    // 3. Inline code `code`
+    content = content.replace(/`([^`\n]+)`/g, (match, inlineCode) => {
+      return `<code>${escapeHtml(inlineCode)}</code>`;
+    });
+
+    // 4. Headings (###, ##, #)
+    content = content.replace(/^### (.*$)/gim, '<h4>$1</h4>');
+    content = content.replace(/^## (.*$)/gim, '<h3>$1</h3>');
+    content = content.replace(/^# (.*$)/gim, '<h2>$1</h2>');
+
+    // 5. Blockquotes (> quote)
+    content = content.replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>');
+
+    // 6. Bold & Italics
+    content = content.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    content = content.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+    // 7. Unordered lists (- item or * item)
+    content = content.replace(/^\s*[-*]\s+(.*)$/gim, '<li>$1</li>');
+    content = content.replace(/(<li>.*<\/li>)/gms, '<ul>$1</ul>');
+    content = content.replace(/<\/ul>\s*<ul>/g, '');
+
+    // 8. Markdown links [text](url)
+    content = content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+    // 9. Line breaks: replace double newlines with paragraphs, single with <br>
+    content = content.replace(/\n{2,}/g, '</p><p>');
+    content = content.replace(/\n/g, '<br>');
+    content = `<p>${content}</p>`;
+
+    // Clean empty paragraphs and wrappers around block elements
+    content = content.replace(/<p>\s*<\/p>/g, '');
+    content = content.replace(/<p>\s*(<div class="thought-accordion">[\s\S]*?<\/div>)\s*<\/p>/g, '$1');
+    content = content.replace(/<p>\s*(<h2>.*?<\/h2>|<h3>.*?<\/h3>|<h4>.*?<\/h4>|<blockquote>.*?<\/blockquote>|<ul>.*?<\/ul>)\s*<\/p>/g, '$1');
+
+    // 10. Re-insert code blocks
+    codeBlocks.forEach((blockHtml, i) => {
+      content = content.replace(new RegExp(`<p>\\s*%%CODE_BLOCK_${i}%%\\s*<\\/p>|%%CODE_BLOCK_${i}%%`, 'g'), blockHtml);
+    });
+
+    return content;
+  }
+
+  // Tool Line Rhythm Component (OpenBot parity)
+  function inferToolIcon(name) {
+    const n = (name || '').toLowerCase();
+    if (n.includes('file') || n.includes('dir') || n.includes('artifact') || n.includes('source') || n.includes('patch')) return '📄';
+    if (n.includes('cmd') || n.includes('command') || n.includes('exec') || n.includes('bash') || n.includes('shell') || n.includes('rizin')) return '💻';
+    if (n.includes('search') || n.includes('grep') || n.includes('find') || n.includes('bytes') || n.includes('strings') || n.includes('xrefs')) return '🔍';
+    if (n.includes('web') || n.includes('browser') || n.includes('fetch') || n.includes('curl') || n.includes('network') || n.includes('packet')) return '🌐';
+    if (n.includes('agent') || n.includes('task') || n.includes('routine') || n.includes('room') || n.includes('sentinel') || n.includes('memory') || n.includes('vault')) return '🤖';
+    if (n.includes('ocr') || n.includes('window') || n.includes('screen') || n.includes('display')) return '👁️';
+    return '⚡';
+  }
+
+  function formatToolName(name) {
+    if (!name) return 'Tool Execution';
+    return name
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  function extractToolDetail(args) {
+    if (!args || typeof args !== 'object') return '';
+    if (args.CommandLine) return args.CommandLine;
+    if (args.command) return args.command;
+    if (args.cmd) return args.cmd;
+    if (args.Path) return args.Path;
+    if (args.path) return args.path;
+    if (args.filePath) return args.filePath;
+    if (args.query) return args.query;
+    if (args.pattern) return args.pattern;
+    if (args.url) return args.url;
+    if (args.topic) return args.topic;
+    if (args.title) return args.title;
+    if (args.tool) return args.tool;
+
+    const firstKey = Object.keys(args)[0];
+    if (firstKey) {
+      const val = typeof args[firstKey] === 'string' ? args[firstKey] : JSON.stringify(args[firstKey]);
+      return `${firstKey}: ${val}`;
+    }
+    return '';
+  }
+
+  function createToolLineElement(toolCall, status = 'running', result = null) {
+    const name = toolCall.function?.name || toolCall.name || 'tool';
+    let args = {};
+    try {
+      if (typeof toolCall.function?.arguments === 'string') {
+        args = JSON.parse(toolCall.function.arguments);
+      } else if (toolCall.args) {
+        args = toolCall.args;
+      }
+    } catch {
+      args = { raw: toolCall.function?.arguments || toolCall.args };
+    }
+
+    const icon = inferToolIcon(name);
+    const label = formatToolName(name);
+    const detail = extractToolDetail(args);
+
+    const isRunning = status === 'running';
+    const isError = status === 'error' || status === 'failed';
+    const badgeText = isRunning ? 'Running' : isError ? 'Failed' : 'Done';
+    const badgeClass = isRunning ? 'badge-running' : isError ? 'badge-error' : 'badge-done';
+
+    const div = document.createElement('div');
+    div.className = `tool-line ${isRunning ? 'tool-line-running' : ''}`;
+    div.dataset.toolName = name;
+
+    div.innerHTML = `
+      <div class="tool-line-header">
+        <span class="tool-line-toggle">▶</span>
+        <span class="tool-line-icon">${icon}</span>
+        <span class="tool-line-label">${escapeHtml(label)}</span>
+        <span class="tool-line-detail" title="${escapeHtml(detail)}">${escapeHtml(detail)}</span>
+        <span class="tool-line-badge ${badgeClass}">${badgeText}</span>
+      </div>
+      <div class="tool-line-details hidden">
+        <div class="tool-details-header">Parameters:</div>
+        <pre class="tool-details-pre">${escapeHtml(JSON.stringify(args, null, 2))}</pre>
+        ${result !== null && result !== undefined ? `
+          <div class="tool-details-header" style="margin-top: 8px;">Output Result:</div>
+          <pre class="tool-details-pre tool-result-pre">${escapeHtml(typeof result === 'string' ? result : JSON.stringify(result, null, 2))}</pre>
+        ` : ''}
+      </div>
+    `;
+
+    return div;
+  }
+
+  function updateToolLineStatus(toolEl, status, result) {
+    if (!toolEl) return;
+    toolEl.classList.remove('tool-line-running');
+    const badge = toolEl.querySelector('.tool-line-badge');
+    if (badge) {
+      const isError = status === 'error' || status === 'failed';
+      badge.textContent = isError ? 'Failed' : 'Done';
+      badge.className = `tool-line-badge ${isError ? 'badge-error' : 'badge-done'}`;
+    }
+    if (result !== undefined && result !== null) {
+      const details = toolEl.querySelector('.tool-line-details');
+      if (details) {
+        let resultPre = details.querySelector('.tool-result-pre');
+        if (!resultPre) {
+          const outHeader = document.createElement('div');
+          outHeader.className = 'tool-details-header';
+          outHeader.style.marginTop = '8px';
+          outHeader.textContent = 'Output Result:';
+          resultPre = document.createElement('pre');
+          resultPre.className = 'tool-details-pre tool-result-pre';
+          details.appendChild(outHeader);
+          details.appendChild(resultPre);
+        }
+        resultPre.textContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+      }
+    }
+  }
+
+  // Delegated interactions for Code Copy, Thinking Accordion, and Tool Details
+  chatContainer.addEventListener('click', (e) => {
+    // 1. Copy code button
+    const copyBtn = e.target.closest('.btn-copy-code');
+    if (copyBtn) {
+      e.stopPropagation();
+      const codeBlock = copyBtn.closest('.code-block-wrapper');
+      const codeText = copyBtn.dataset.code || (codeBlock ? codeBlock.querySelector('code')?.textContent : '');
+      if (codeText) {
+        navigator.clipboard.writeText(codeText).then(() => {
+          copyBtn.textContent = '✓ Copied!';
+          copyBtn.classList.add('copied');
+          setTimeout(() => {
+            copyBtn.textContent = 'Copy';
+            copyBtn.classList.remove('copied');
+          }, 1500);
+        }).catch(() => {
+          copyBtn.textContent = 'Failed';
+        });
+      }
+      return;
+    }
+
+    // 2. Thought accordion toggle
+    const thoughtHeader = e.target.closest('.thought-header');
+    if (thoughtHeader) {
+      e.stopPropagation();
+      const accordion = thoughtHeader.closest('.thought-accordion');
+      const body = accordion ? accordion.querySelector('.thought-body') : null;
+      const toggle = thoughtHeader.querySelector('.thought-toggle');
+      if (body) {
+        const isHidden = body.classList.toggle('hidden');
+        if (toggle) toggle.textContent = isHidden ? '▶' : '▼';
+      }
+      return;
+    }
+
+    // 3. Tool line details toggle
+    const toolHeader = e.target.closest('.tool-line-header');
+    if (toolHeader) {
+      e.stopPropagation();
+      const toolLine = toolHeader.closest('.tool-line');
+      const details = toolLine ? toolLine.querySelector('.tool-line-details') : null;
+      const toggle = toolHeader.querySelector('.tool-line-toggle');
+      if (details) {
+        const isHidden = details.classList.toggle('hidden');
+        if (toggle) toggle.textContent = isHidden ? '▶' : '▼';
+      }
+      return;
+    }
+  });
+
   async function selectSession(sessionId) {
     currentSessionId = sessionId;
     activeSessionTitle.textContent = `Session: ${sessionId}`;
@@ -1413,30 +1711,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     const body = document.createElement('div');
     body.className = 'message-body';
 
+    const contentEl = document.createElement('div');
+    contentEl.className = 'message-content';
+
+    const toolsEl = document.createElement('div');
+    toolsEl.className = 'message-tools-container';
+
     if (content) {
-      const textDiv = document.createElement('div');
-      textDiv.className = 'message-text';
-      textDiv.textContent = content;
-      body.appendChild(textDiv);
+      if (role === 'user') {
+        contentEl.textContent = content;
+      } else {
+        contentEl.innerHTML = renderMarkdown(content);
+      }
     }
 
     if (toolCalls && toolCalls.length > 0) {
       for (const tc of toolCalls) {
-        const toolDiv = document.createElement('div');
-        toolDiv.className = 'tool-call-block';
-        toolDiv.innerHTML = `
-          <div class="tool-call-header">⚡ Tool: <strong>${escapeHtml(tc.function.name)}</strong></div>
-          <pre class="tool-call-args">${escapeHtml(JSON.stringify(JSON.parse(tc.function.arguments || '{}'), null, 2))}</pre>
-        `;
-        body.appendChild(toolDiv);
+        const toolEl = createToolLineElement(tc, 'done');
+        toolsEl.appendChild(toolEl);
       }
     }
+
+    body.appendChild(contentEl);
+    body.appendChild(toolsEl);
 
     msgDiv.appendChild(avatar);
     msgDiv.appendChild(body);
     messageFeed.appendChild(msgDiv);
     chatContainer.scrollTop = chatContainer.scrollHeight;
-    return body;
+
+    return { msgDiv, body, contentEl, toolsEl };
   }
 
   async function submitQuery() {
@@ -1444,6 +1748,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!q) return;
 
     promptInput.value = '';
+    promptInput.style.height = 'auto';
     promptInput.disabled = true;
     btnSend.disabled = true;
     botStatusAvatar.textContent = '⏳';
@@ -1451,14 +1756,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     appendMessage('user', q);
 
-    currentAssistantBubble = appendMessage('assistant', '');
+    currentAssistantMessage = appendMessage('assistant', '');
     currentAssistantText = '';
+    activeToolLines = [];
 
     try {
       await client.sendQuery(q, currentSessionId, activeAgentId);
     } catch (err) {
-      if (currentAssistantBubble) {
-        currentAssistantBubble.innerHTML += `<div style="color: var(--danger);">Error: ${escapeHtml(err.message)}</div>`;
+      if (currentAssistantMessage) {
+        currentAssistantMessage.contentEl.innerHTML += `<div style="color: var(--danger); margin-top: 8px;">Error: ${escapeHtml(err.message)}</div>`;
       }
     } finally {
       promptInput.disabled = false;
@@ -1471,12 +1777,57 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   btnSend.onclick = submitQuery;
+
+  // Auto-resize composer textarea
+  promptInput.addEventListener('input', () => {
+    promptInput.style.height = 'auto';
+    promptInput.style.height = Math.min(220, promptInput.scrollHeight) + 'px';
+  });
+
+  // Keyboard shortcut: Cmd/Ctrl+Enter or Enter sends
   promptInput.onkeydown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      submitQuery();
+    if (e.key === 'Enter') {
+      if (e.metaKey || e.ctrlKey || !e.shiftKey) {
+        e.preventDefault();
+        submitQuery();
+      }
     }
   };
+
+  // Composer Attach Button & Safe Mode Toggle
+  const btnStageFile = document.getElementById('btnStageFile');
+  const fileAttachmentInput = document.getElementById('fileAttachmentInput');
+  if (btnStageFile && fileAttachmentInput) {
+    btnStageFile.onclick = () => fileAttachmentInput.click();
+    fileAttachmentInput.onchange = async () => {
+      const file = fileAttachmentInput.files && fileAttachmentInput.files[0];
+      if (!file) return;
+      try {
+        const filePath = file.path || file.name;
+        await client.stageAttachment(filePath);
+        await refreshAttachments();
+        alert(`File "${file.name}" staged successfully.`);
+      } catch (err) {
+        alert(`Error staging attachment: ${err.message}`);
+      } finally {
+        fileAttachmentInput.value = '';
+      }
+    };
+  }
+
+  const btnToggleSafeMode = document.getElementById('btnToggleSafeMode');
+  if (btnToggleSafeMode) {
+    btnToggleSafeMode.onclick = async () => {
+      try {
+        const s = await client.getSettings();
+        const nextAutoApprove = !s.autoApprove;
+        await client.updateSettings({ autoApprove: nextAutoApprove });
+        await refreshSettings();
+      } catch (err) {
+        console.error('Error toggling safe mode:', err);
+      }
+    };
+  }
 
   // Quick Prompt Chips
   document.querySelectorAll('.prompt-chip').forEach((chip) => {
@@ -1494,34 +1845,76 @@ document.addEventListener('DOMContentLoaded', async () => {
       refreshSessions();
     }
 
-    if (event.type === 'text_delta') {
-      if (currentAssistantBubble) {
-        currentAssistantText += event.text;
-        currentAssistantBubble.textContent = currentAssistantText;
+    // Token delta stream
+    if (event.type === 'token' || event.type === 'text_delta') {
+      const delta = event.data?.token || event.token || event.text || '';
+      if (delta && currentAssistantMessage) {
+        currentAssistantText += delta;
+        currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
         chatContainer.scrollTop = chatContainer.scrollHeight;
       }
     }
 
+    // Thought delta stream
+    if (event.type === 'thought') {
+      const thought = event.data?.thought || event.thought || '';
+      if (thought && currentAssistantMessage) {
+        currentAssistantText = `<thinking>${thought}</thinking>\n` + currentAssistantText;
+        currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
+    }
+
+    // Tool call started
     if (event.type === 'tool_call') {
-      if (currentAssistantBubble) {
-        const toolDiv = document.createElement('div');
-        toolDiv.className = 'tool-call-block';
-        toolDiv.innerHTML = `
-          <div class="tool-call-header">⚡ Tool: <strong>${escapeHtml(event.toolCall.function.name)}</strong></div>
-          <pre class="tool-call-args">${escapeHtml(JSON.stringify(JSON.parse(event.toolCall.function.arguments || '{}'), null, 2))}</pre>
-        `;
-        currentAssistantBubble.appendChild(toolDiv);
+      if (currentAssistantMessage) {
+        const toolCall = event.data || event.toolCall || event;
+        const toolEl = createToolLineElement(toolCall, 'running');
+        currentAssistantMessage.toolsEl.appendChild(toolEl);
+        activeToolLines.push(toolEl);
         chatContainer.scrollTop = chatContainer.scrollHeight;
       }
     }
 
+    // Tool call completed
+    if (event.type === 'tool_result') {
+      const toolName = event.data?.name || event.name;
+      const result = event.data?.result !== undefined ? event.data.result : event.result;
+      const targetEl = activeToolLines.find(el => el.classList.contains('tool-line-running') && (!toolName || el.dataset.toolName === toolName))
+        || activeToolLines.find(el => el.classList.contains('tool-line-running'))
+        || (currentAssistantMessage && currentAssistantMessage.toolsEl.querySelector('.tool-line-running'));
+      if (targetEl) {
+        updateToolLineStatus(targetEl, 'done', result);
+      }
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // Turn completed
+    if (event.type === 'turn_complete') {
+      if (currentAssistantMessage) {
+        const runningLines = currentAssistantMessage.toolsEl.querySelectorAll('.tool-line-running');
+        runningLines.forEach((el) => updateToolLineStatus(el, 'done'));
+
+        const response = event.data?.response || event.response;
+        if (response && !currentAssistantText.trim()) {
+          currentAssistantText = response;
+          currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
+        }
+      }
+      refreshTokenBadge();
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // Approval required
     if (event.type === 'approval_required') {
-      activeApprovalId = event.approvalId;
-      approvalToolName.textContent = event.request.tool;
-      approvalArgsBox.textContent = JSON.stringify(event.request.params, null, 2);
+      activeApprovalId = event.approvalId || event.data?.approvalId;
+      const req = event.request || event.data?.request || {};
+      approvalToolName.textContent = req.tool || event.data?.toolName || 'Tool';
+      approvalArgsBox.textContent = JSON.stringify(req.params || req.args || event.data?.args || {}, null, 2);
       approvalModal.classList.remove('hidden');
     }
 
+    // Sentinel diagnostic log
     if (event.type === 'sentinel') {
       const feed = document.getElementById('sentinelFeed');
       if (feed) {
@@ -1897,6 +2290,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Boot Initial Load
+  initTheme();
   await refreshSettings();
   await refreshBots();
   await refreshTasks();
