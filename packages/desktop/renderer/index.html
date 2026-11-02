@@ -19,77 +19,116 @@
             <span class="status-indicator" id="botStatusText">Ready</span>
           </div>
         </div>
-        <button id="btnNewSession" class="btn btn-secondary btn-sm" title="New Session">+ New</button>
+        <button id="btnNewSession" class="btn btn-primary btn-xs" title="New Dialogue Session">+ New</button>
       </div>
 
-      <div class="sidebar-section-title">Sessions</div>
-      <div class="session-list" id="sessionList">
-        <!-- Rendered dynamically -->
-      </div>
+      <!-- Main Navigation Spines (OpenBot Parity Layout) -->
+      <nav class="sidebar-nav" id="sidebarNav">
+        <div class="sidebar-category">Core Workflows</div>
+        <button class="nav-tab active" data-view="chat">
+          <span class="nav-icon">💬</span>
+          <span class="nav-label">Chat & Dialogue</span>
+        </button>
+        <button class="nav-tab" data-view="graphs">
+          <span class="nav-icon">🕸️</span>
+          <span class="nav-label">Agent Graphs</span>
+          <span class="nav-badge">Cycles</span>
+        </button>
+        <button class="nav-tab" data-view="sentinel">
+          <span class="nav-icon">🛡️</span>
+          <span class="nav-label">Workspace Sentinel</span>
+          <span class="nav-badge success">Live</span>
+        </button>
 
-      <!-- Autonomous Bots & Personas -->
-      <div class="sidebar-section-header">
-        <span class="sidebar-section-title">Bots & Personas</span>
-        <button id="btnOpenCreateBot" class="btn btn-ghost btn-xs" title="Create New Bot Persona">+ New Bot</button>
-      </div>
-      <div class="bot-list" id="botList">
-        <!-- Rendered dynamically from /api/agents -->
-      </div>
+        <div class="sidebar-category">Collaboration & Skills</div>
+        <button class="nav-tab" data-view="rooms">
+          <span class="nav-icon">👥</span>
+          <span class="nav-label">Team Rooms</span>
+        </button>
+        <button class="nav-tab" data-view="routines">
+          <span class="nav-icon">⏱</span>
+          <span class="nav-label">Routines</span>
+        </button>
+        <button class="nav-tab" data-view="skills">
+          <span class="nav-icon">🧩</span>
+          <span class="nav-label">Recipe Skills</span>
+        </button>
+        <button class="nav-tab" data-view="templates">
+          <span class="nav-icon">📋</span>
+          <span class="nav-label">Persona Templates</span>
+        </button>
 
-      <!-- Agent Tasks & Todos -->
-      <div class="sidebar-section-header">
-        <span class="sidebar-section-title">Tasks & Todos</span>
-        <button id="btnOpenCreateTask" class="btn btn-ghost btn-xs" title="Add Task">+ Add</button>
-      </div>
-      <div class="task-list" id="taskList">
-        <!-- Rendered dynamically from /api/tasks -->
-      </div>
+        <div class="sidebar-category">Security & Control</div>
+        <button class="nav-tab" data-view="boundaries">
+          <span class="nav-icon">🚧</span>
+          <span class="nav-label">Boundaries</span>
+          <span class="nav-badge danger">Fail-Closed</span>
+        </button>
+        <button class="nav-tab" data-view="vault">
+          <span class="nav-icon">🔐</span>
+          <span class="nav-label">Encrypted Vault</span>
+        </button>
+        <button class="nav-tab" data-view="memories">
+          <span class="nav-icon">🧠</span>
+          <span class="nav-label">7-Layer Memory</span>
+        </button>
+        <button class="nav-tab" data-view="webhooks">
+          <span class="nav-icon">⚡</span>
+          <span class="nav-label">Inbound Webhooks</span>
+        </button>
+        <button class="nav-tab" data-view="attachments">
+          <span class="nav-icon">📎</span>
+          <span class="nav-label">Context Files</span>
+        </button>
+      </nav>
 
-      <div class="sidebar-section-title">Native Tools</div>
-      <div class="quick-tools">
-        <button id="btnQuickOcr" class="btn btn-tool btn-sm">👁 Recognize Text</button>
-        <button id="btnQuickWindow" class="btn btn-tool btn-sm">🪟 Capture Window</button>
+      <!-- Contextual Subpanel: Recent Sessions & Tasks -->
+      <div class="sidebar-contextual-panel" id="sidebarContextualPanel">
+        <div class="sidebar-section-header">
+          <span class="sidebar-section-title">Recent Sessions</span>
+        </div>
+        <div class="session-list" id="sessionList"></div>
+
+        <div class="sidebar-section-header">
+          <span class="sidebar-section-title">Active Persona</span>
+          <button id="btnOpenCreateBot" class="btn btn-ghost btn-xs" title="New Persona">+ Bot</button>
+        </div>
+        <div class="bot-list compact" id="botList"></div>
+
+        <div class="sidebar-section-header">
+          <span class="sidebar-section-title">Tasks & Todos</span>
+          <button id="btnOpenCreateTask" class="btn btn-ghost btn-xs" title="Add Task">+ Add</button>
+        </div>
+        <div class="task-list compact" id="taskList"></div>
       </div>
 
       <div class="sidebar-footer">
+        <div class="quick-tools">
+          <button id="btnQuickOcr" class="btn btn-ghost btn-xs" title="Recognize Text">👁 OCR</button>
+          <button id="btnQuickWindow" class="btn btn-ghost btn-xs" title="Capture Window">🪟 Window</button>
+        </div>
         <button id="btnSettings" class="btn btn-secondary btn-block">⚙ Settings</button>
       </div>
     </aside>
 
     <!-- Main Content -->
     <main class="main-panel">
-      <!-- Top Bar -->
+      <!-- Top Bar (Clean, Uncluttered & Responsive) -->
       <header class="topbar">
         <div class="topbar-left">
-          <div class="active-session-title" id="activeSessionTitle">New Session</div>
+          <h1 class="view-header-title" id="viewHeaderTitle">💬 Chat & Dialogue</h1>
           <span class="badge badge-bot" id="badgeActiveBot">🤖 Default Assistant</span>
+          <span class="active-session-title" id="activeSessionTitle">New Session</span>
         </div>
 
-        <!-- Navigation Tabs -->
-        <nav class="nav-tabs" id="navTabs">
-          <button class="nav-tab active" data-view="chat">💬 Chat</button>
-          <button class="nav-tab" data-view="rooms">👥 Rooms</button>
-          <button class="nav-tab" data-view="routines">⏱ Routines</button>
-          <button class="nav-tab" data-view="skills">🧩 Skills</button>
-          <button class="nav-tab" data-view="vault">🔐 Vault</button>
-          <button class="nav-tab" data-view="memories">🧠 Memories</button>
-          <button class="nav-tab" data-view="attachments">📎 Files</button>
-          <button class="nav-tab" data-view="templates">📋 Templates</button>
-          <button class="nav-tab" data-view="sentinel">🛡️ Sentinel</button>
-          <button class="nav-tab" data-view="graphs">🕸️ Graphs</button>
-          <button class="nav-tab" data-view="boundaries">🚧 Boundaries</button>
-          <button class="nav-tab" data-view="webhooks">⚡ Webhooks</button>
-        </nav>
-
         <div class="topbar-meta">
-          <button id="btnOpenBtw" class="btn btn-secondary btn-xs" title="Ask Glass Side Question">💡 BTW</button>
-          <button id="btnOpenRollback" class="btn btn-secondary btn-xs" title="Rollback Turns">⏪ Rewind</button>
-          <button id="btnOpenCompact" class="btn btn-secondary btn-xs" title="Auto-Compact History">🧹 Compact</button>
-          <button id="btnViewLearnedRules" class="btn btn-secondary btn-xs" title="View learned rules">🧠 Habits</button>
-          <button id="btnToggleTheme" class="btn btn-secondary btn-xs" title="Toggle Light/Dark Theme">🌓</button>
-          <span class="badge" id="badgeModel">qwen3:8b</span>
+          <button id="btnOpenBtw" class="btn btn-icon-sm" title="Glass BTW Ephemeral Side-Question">💡 <span class="btn-text-sm">BTW</span></button>
+          <button id="btnOpenRollback" class="btn btn-icon-sm" title="Rollback Turns">⏪ <span class="btn-text-sm">Rewind</span></button>
+          <button id="btnOpenCompact" class="btn btn-icon-sm" title="Auto-Compact History">🧹 <span class="btn-text-sm">Compact</span></button>
+          <button id="btnViewLearnedRules" class="btn btn-icon-sm" title="View Learned Rules">🧠 <span class="btn-text-sm">Habits</span></button>
+          <span class="badge badge-tokens" id="badgeTokens" title="Context Token Utilization">⚡ 0 tokens</span>
           <span class="badge badge-success" id="badgeAutoApprove">Safe Mode</span>
-          <span class="badge badge-tokens" id="badgeTokens" title="Estimated Context Token Footprint (click to compact)">⚡ 0 tokens</span>
+          <button id="btnToggleTheme" class="btn btn-icon-sm" title="Toggle Light/Dark Theme">🌓</button>
         </div>
       </header>
       <div class="context-meter-bar" title="Context Window Utilization">

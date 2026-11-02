@@ -485,11 +485,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let currentView = 'chat';
 
+  const viewTitles = {
+    chat: '💬 Chat & Dialogue',
+    graphs: '🕸️ Agent Graphs & Cyclical Loops',
+    sentinel: '🛡️ Workspace Sentinel & Self-Healing',
+    rooms: '👥 Multi-Agent Collaborative Rooms',
+    routines: '⏱ Scheduled Background Routines',
+    skills: '🧩 Modular Recipe Skills Library',
+    templates: '📋 Agent Persona Templates',
+    boundaries: '🚧 Fail-Closed Policy Boundaries',
+    vault: '🔐 Local Encrypted Secrets Vault',
+    memories: '🧠 7-Layer Discrete Fact Memory',
+    webhooks: '⚡ Inbound Proactive Webhooks',
+    attachments: '📎 Staged Context Attachments',
+  };
+
   function switchView(viewName) {
     currentView = viewName;
     navTabs.forEach((tab) => {
       tab.classList.toggle('active', tab.dataset.view === viewName);
     });
+
+    const viewHeaderTitle = document.getElementById('viewHeaderTitle');
+    if (viewHeaderTitle && viewTitles[viewName]) {
+      viewHeaderTitle.textContent = viewTitles[viewName];
+    }
 
     Object.keys(viewPanels).forEach((key) => {
       const panel = viewPanels[key];
@@ -513,7 +533,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   navTabs.forEach((tab) => {
-    tab.onclick = () => switchView(tab.dataset.view);
+    tab.onclick = () => {
+      const view = tab.dataset.view;
+      if (view) {
+        window.location.hash = view;
+        switchView(view);
+      }
+    };
+  });
+
+  // Support direct URL query & hash navigation (?view=graphs or #graphs)
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialView = urlParams.get('view') || window.location.hash.replace('#', '');
+  if (initialView && viewPanels[initialView]) {
+    switchView(initialView);
+  }
+  window.addEventListener('hashchange', () => {
+    const h = window.location.hash.replace('#', '');
+    if (h && viewPanels[h]) {
+      switchView(h);
+    }
   });
 
   // Chat Elements
