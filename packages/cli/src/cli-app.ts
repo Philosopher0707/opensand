@@ -10,6 +10,8 @@ import {
   registerOrchestratorTools,
   AgentRecord,
   GitManager,
+  MemoryStore,
+  MemoStore,
 } from "@opensand/coordinator";
 import { parseCliArgs, CliConfig, probeLocalOllama, validateConfig } from "./config.js";
 import { TerminalUI } from "./terminal-ui.js";
@@ -251,6 +253,13 @@ Examples:
   }
 
   const learnedRules = await habitExtractor.getLearnedRulesMarkdown();
+  // Stored memories were previously only injected by the desktop bridge; the
+  // CLI started every session blind. Load them here so both surfaces agree.
+  const memoryStore = new MemoryStore();
+  const legacyContext = await memoryStore.getPromptMemoryContext().catch(() => "");
+  // The real store: ~/.memory/memo.db, written by the `memo` tool.
+  const memoContext = new MemoStore().formatForPrompt(process.cwd());
+  const memoryContext = [legacyContext, memoContext].filter(Boolean).join("\n\n");
 
   // Helper to build coordinator
   function createCoordinator(instructions?: string, modelOverride?: string, endpointOverride?: string): AgentCoordinator {
@@ -270,6 +279,7 @@ Examples:
       systemPromptContext: {
         userInstructions: instructions,
         learnedRules,
+        memoryContext,
       },
       onApprovalRequired: async (req) => {
         if (config.autoApprove) return true;
