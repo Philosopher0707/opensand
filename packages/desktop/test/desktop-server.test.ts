@@ -286,6 +286,16 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     assert.strictEqual(resCompact.statusCode, 400);
     assert.ok(JSON.parse(resCompact.body).error.includes('No active conversation coordinator'));
 
+    // Test Token Telemetry API: GET /api/tokens
+    const reqTokens = new MockIncomingMessage('GET', '/api/tokens');
+    const resTokens = new MockServerResponse();
+    await (server as any).handleRequest(reqTokens, resTokens);
+    assert.strictEqual(resTokens.statusCode, 200);
+    const tokenData = JSON.parse(resTokens.body);
+    assert.strictEqual(typeof tokenData.estimatedTokens, 'number');
+    assert.strictEqual(typeof tokenData.maxContextTokens, 'number');
+    assert.strictEqual(tokenData.toolScopeMode, 'auto');
+
     // Test Sentinel API: POST /api/sentinels
     const reqStartWatcher = new MockIncomingMessage('POST', '/api/sentinels');
     const resStartWatcher = new MockServerResponse();

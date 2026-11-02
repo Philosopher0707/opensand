@@ -459,6 +459,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const badgeActiveBot = document.getElementById('badgeActiveBot');
   const badgeModel = document.getElementById('badgeModel');
   const badgeAutoApprove = document.getElementById('badgeAutoApprove');
+  const badgeTokens = document.getElementById('badgeTokens');
   const botStatusAvatar = document.getElementById('botStatusAvatar');
   const botStatusText = document.getElementById('botStatusText');
 
@@ -605,6 +606,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     badgeModel.textContent = s.model || 'Default';
     badgeAutoApprove.textContent = s.autoApprove ? '⚡ Auto-Approve' : '🛡 Safe Mode';
     badgeAutoApprove.className = s.autoApprove ? 'badge badge-warning' : 'badge badge-success';
+  }
+
+  async function refreshTokenBadge() {
+    if (!badgeTokens) return;
+    try {
+      const res = await fetch('/api/tokens');
+      if (!res.ok) return;
+      const data = await res.json();
+      const current = data.estimatedTokens || 0;
+      const max = data.maxContextTokens || 32000;
+      badgeTokens.textContent = `⚡ ${current.toLocaleString()} / ${max.toLocaleString()} tokens`;
+      badgeTokens.className = 'badge badge-tokens';
+      if (current > max * 0.8) {
+        badgeTokens.classList.add('danger');
+      } else if (current > max * 0.5) {
+        badgeTokens.classList.add('warn');
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  if (badgeTokens) {
+    badgeTokens.addEventListener('click', async () => {
+      const res = await fetch('/api/tokens');
+      if (!res.ok) return;
+      const data = await res.json();
+      const confirmed = confirm(
+        `Current Context Footprint:\n• Estimated Tokens: ${data.estimatedTokens.toLocaleString()} / ${data.maxContextTokens.toLocaleString()}\n• Turns: ${data.turnsCount}\n• Messages: ${data.messagesCount}\n• Tool Scoping: ${data.toolScopeMode}\n\nCompact conversation history now?`
+      );
+      if (confirmed) {
+        await client.compactHistory(2);
+        await refreshTokenBadge();
+      }
+    });
   }
 
   async function refreshBots() {
@@ -1430,6 +1466,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       promptInput.focus();
       botStatusAvatar.textContent = '⚡';
       botStatusText.textContent = 'Ready';
+      refreshTokenBadge();
     }
   }
 
@@ -1864,4 +1901,5 @@ document.addEventListener('DOMContentLoaded', async () => {
   await refreshBots();
   await refreshTasks();
   await refreshSessions();
+  await refreshTokenBadge();
 });

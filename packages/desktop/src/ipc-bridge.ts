@@ -660,6 +660,31 @@ export class DesktopIpcBridge extends EventEmitter {
     return this.coordinator.compactHistory({ keepRecentTurns });
   }
 
+  public getTokenTelemetry(): {
+    estimatedTokens: number;
+    maxContextTokens: number;
+    toolScopeMode: string;
+    turnsCount: number;
+    messagesCount: number;
+  } {
+    if (!this.coordinator) {
+      return {
+        estimatedTokens: 0,
+        maxContextTokens: 32000,
+        toolScopeMode: 'auto',
+        turnsCount: 0,
+        messagesCount: 0,
+      };
+    }
+    return {
+      estimatedTokens: this.coordinator.estimateTokens(),
+      maxContextTokens: this.coordinator.maxContextTokens,
+      toolScopeMode: this.coordinator.toolScopeMode,
+      turnsCount: this.coordinator.history.filter((m) => m.role === 'user').length,
+      messagesCount: this.coordinator.history.length,
+    };
+  }
+
   // Workspace Sentinel API (Frontier 2 Autonomous Sentinel Loop)
   public getWatchers(): WatcherConfig[] {
     return workspaceSentinel.getWatchers();

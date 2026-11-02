@@ -782,6 +782,14 @@ export class DesktopServer {
       return;
     }
 
+    // API: GET /api/tokens (Context Window & Token Telemetry)
+    if (pathname === '/api/tokens' && req.method === 'GET') {
+      const telemetry = this.bridge.getTokenTelemetry();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(telemetry));
+      return;
+    }
+
     // API: GET /api/sentinels (Frontier 2: List active Sentinel workspace watchers)
     if (pathname === '/api/sentinels' && req.method === 'GET') {
       const watchers = this.bridge.getWatchers();

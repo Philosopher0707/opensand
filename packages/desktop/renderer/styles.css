@@ -203,6 +203,32 @@ body {
   background-color: rgba(16, 185, 129, 0.08);
 }
 
+.badge-tokens {
+  cursor: pointer;
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  font-family: var(--font-mono, monospace);
+  transition: all 0.2s ease;
+}
+
+.badge-tokens:hover {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
+.badge-tokens.warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.badge-tokens.danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
 /* Chat container */
 .chat-container {
   flex: 1;
