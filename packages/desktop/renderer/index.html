@@ -9,105 +9,76 @@
 </head>
 <body>
   <div class="app-layout">
-    <!-- Sidebar -->
+    <!-- Sidebar (OpenBot True Architecture: Roster Spine + Footer Nav) -->
     <aside class="sidebar">
       <div class="sidebar-header">
-        <div class="brand">
+        <div class="brand" id="brandHomeBtn" role="button" title="OpenSand Home">
           <div class="brand-avatar" id="botStatusAvatar">⚡</div>
           <div class="brand-info">
             <span class="brand-title">OpenSand</span>
             <span class="status-indicator" id="botStatusText">Ready</span>
           </div>
         </div>
-        <button id="btnNewSession" class="btn btn-primary btn-xs" title="New Dialogue Session">+ New</button>
+        <button id="btnNewSession" class="btn-icon-ghost" aria-label="New conversation" title="New conversation">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
       </div>
 
-      <!-- Main Navigation Spines (OpenBot Parity Layout) -->
-      <nav class="sidebar-nav" id="sidebarNav">
-        <div class="sidebar-category">Core Workflows</div>
-        <button class="nav-tab active" data-view="chat">
-          <span class="nav-icon">💬</span>
-          <span class="nav-label">Chat & Dialogue</span>
-        </button>
-        <button class="nav-tab" data-view="graphs">
-          <span class="nav-icon">🕸️</span>
-          <span class="nav-label">Agent Graphs</span>
-          <span class="nav-badge">Cycles</span>
-        </button>
-        <button class="nav-tab" data-view="sentinel">
-          <span class="nav-icon">🛡️</span>
-          <span class="nav-label">Workspace Sentinel</span>
-          <span class="nav-badge success">Live</span>
-        </button>
+      <!-- Conversations Search Box -->
+      <div class="sidebar-search-box">
+        <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" id="conversationSearchInput" class="search-input" placeholder="Search…" aria-label="Search conversations" />
+      </div>
 
-        <div class="sidebar-category">Collaboration & Skills</div>
-        <button class="nav-tab" data-view="rooms">
-          <span class="nav-icon">👥</span>
-          <span class="nav-label">Team Rooms</span>
-        </button>
-        <button class="nav-tab" data-view="routines">
-          <span class="nav-icon">⏱</span>
-          <span class="nav-label">Routines</span>
-        </button>
-        <button class="nav-tab" data-view="skills">
-          <span class="nav-icon">🧩</span>
-          <span class="nav-label">Recipe Skills</span>
-        </button>
-        <button class="nav-tab" data-view="templates">
-          <span class="nav-icon">📋</span>
-          <span class="nav-label">Persona Templates</span>
-        </button>
-
-        <div class="sidebar-category">Security & Control</div>
-        <button class="nav-tab" data-view="boundaries">
-          <span class="nav-icon">🚧</span>
-          <span class="nav-label">Boundaries</span>
-          <span class="nav-badge danger">Fail-Closed</span>
-        </button>
-        <button class="nav-tab" data-view="vault">
-          <span class="nav-icon">🔐</span>
-          <span class="nav-label">Encrypted Vault</span>
-        </button>
-        <button class="nav-tab" data-view="memories">
-          <span class="nav-icon">🧠</span>
-          <span class="nav-label">7-Layer Memory</span>
-        </button>
-        <button class="nav-tab" data-view="webhooks">
-          <span class="nav-icon">⚡</span>
-          <span class="nav-label">Inbound Webhooks</span>
-        </button>
-        <button class="nav-tab" data-view="attachments">
-          <span class="nav-icon">📎</span>
-          <span class="nav-label">Context Files</span>
-        </button>
-      </nav>
-
-      <!-- Contextual Subpanel: Recent Sessions & Tasks -->
-      <div class="sidebar-contextual-panel" id="sidebarContextualPanel">
-        <div class="sidebar-section-header">
-          <span class="sidebar-section-title">Recent Sessions</span>
-        </div>
+      <!-- Main Conversation Roster Spine -->
+      <div class="sidebar-roster-container">
         <div class="session-list" id="sessionList"></div>
-
-        <div class="sidebar-section-header">
-          <span class="sidebar-section-title">Active Persona</span>
-          <button id="btnOpenCreateBot" class="btn btn-ghost btn-xs" title="New Persona">+ Bot</button>
-        </div>
-        <div class="bot-list compact" id="botList"></div>
-
-        <div class="sidebar-section-header">
-          <span class="sidebar-section-title">Tasks & Todos</span>
-          <button id="btnOpenCreateTask" class="btn btn-ghost btn-xs" title="Add Task">+ Add</button>
-        </div>
-        <div class="task-list compact" id="taskList"></div>
       </div>
 
+      <!-- Sidebar Footer Navigation (OpenBot Parity) -->
       <div class="sidebar-footer">
-        <div class="quick-tools">
-          <button id="btnQuickOcr" class="btn btn-ghost btn-xs" title="Recognize Text">👁 OCR</button>
-          <button id="btnQuickWindow" class="btn btn-ghost btn-xs" title="Capture Window">🪟 Window</button>
+        <nav class="sidebar-footer-nav" aria-label="Primary destinations">
+          <button class="footer-nav-btn" data-view="templates" id="navBtnBots" title="Bots & Personas">
+            <span class="footer-nav-icon">🤖</span>
+            <span class="footer-nav-label">Bots</span>
+          </button>
+          <button class="footer-nav-btn" data-view="skills" id="navBtnCapabilities" title="Skills, Memory & Routines">
+            <span class="footer-nav-icon">📦</span>
+            <span class="footer-nav-label">Capabilities</span>
+          </button>
+          <button class="footer-nav-btn" data-view="boundaries" id="navBtnConnections" title="Boundaries, Webhooks & Graphs">
+            <span class="footer-nav-icon">🔌</span>
+            <span class="footer-nav-label">Connections</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-account-box">
+          <button class="account-btn" id="accountMenuTrigger" aria-haspopup="true" aria-expanded="false" title="Account & Preferences">
+            <div class="user-avatar-initials" id="userAvatarInitials">P</div>
+            <span class="account-name" id="userAccountName">Phil</span>
+            <span class="account-dots">⋯</span>
+          </button>
+          <div class="account-popup hidden" id="accountPopup">
+            <button class="account-popup-item" id="btnMenuSentinel">
+              <span class="popup-icon">🛡️</span>
+              <span>Admin / Sentinel</span>
+            </button>
+            <button class="account-popup-item" id="btnMenuSettings">
+              <span class="popup-icon">⚙️</span>
+              <span>Settings</span>
+            </button>
+            <button class="account-popup-item" id="btnMenuToggleTheme">
+              <span class="popup-icon">🌓</span>
+              <span>Toggle Theme</span>
+            </button>
+            <div class="popup-divider"></div>
+            <button class="account-popup-item danger" id="btnMenuClearSessions">
+              <span class="popup-icon">🗑️</span>
+              <span>Clear History</span>
+            </button>
+          </div>
         </div>
-        <button id="btnSettings" class="btn btn-secondary btn-block">⚙ Settings</button>
+        <button id="btnSettings" class="hidden"></button>
       </div>
     </aside>
 
@@ -116,12 +87,15 @@
       <!-- Top Bar (Clean, Uncluttered & Responsive) -->
       <header class="topbar">
         <div class="topbar-left">
+          <button id="btnBackToChat" class="btn btn-ghost btn-xs hidden" title="Back to Dialogue">← Chat</button>
           <h1 class="view-header-title" id="viewHeaderTitle">💬 Chat & Dialogue</h1>
           <span class="badge badge-bot" id="badgeActiveBot">🤖 Default Assistant</span>
           <span class="active-session-title" id="activeSessionTitle">New Session</span>
         </div>
 
         <div class="topbar-meta">
+          <button id="btnQuickOcr" class="btn btn-icon-sm" title="Recognize Screen Text">👁 <span class="btn-text-sm">OCR</span></button>
+          <button id="btnQuickWindow" class="btn btn-icon-sm" title="Capture Window">🪟 <span class="btn-text-sm">Window</span></button>
           <button id="btnOpenBtw" class="btn btn-icon-sm" title="Glass BTW Ephemeral Side-Question">💡 <span class="btn-text-sm">BTW</span></button>
           <button id="btnOpenRollback" class="btn btn-icon-sm" title="Rollback Turns">⏪ <span class="btn-text-sm">Rewind</span></button>
           <button id="btnOpenCompact" class="btn btn-icon-sm" title="Auto-Compact History">🧹 <span class="btn-text-sm">Compact</span></button>
@@ -138,14 +112,40 @@
       <!-- View 1: Chat View -->
       <div id="viewChat" class="view-panel">
         <div class="chat-container" id="chatContainer">
+          <!-- OpenBot Hero Home State -->
           <div class="welcome-banner" id="welcomeBanner">
-            <h2>Welcome to OpenSand</h2>
-            <p>Local-first, universal clean-room coding agent.</p>
-            <div class="quick-prompts">
-              <button class="prompt-chip" data-query="Conduct a comprehensive architectural and code health audit of this repository.">🏗️ Code Health Audit</button>
-              <button class="prompt-chip" data-query="Inspect the files in the current repository and summarize the structure.">Inspect Repository</button>
-              <button class="prompt-chip" data-query="Run git status and show modified files.">Git Status</button>
-              <button class="prompt-chip" data-query="List all active on-screen windows.">List Active Windows</button>
+            <div class="hero-brand-tag">OPENSAND</div>
+            <h1 class="hero-greeting">What would you like to build today?</h1>
+            <p class="hero-subtitle">Local-first, universal clean-room coding agent.</p>
+            <div class="hero-prompt-grid">
+              <button class="hero-prompt-card prompt-chip" data-query="Conduct a comprehensive architectural and code health audit of this repository.">
+                <div class="card-icon">🏗️</div>
+                <div class="card-body">
+                  <div class="card-title">Code Health Audit</div>
+                  <div class="card-desc">Comprehensive architectural and quality review</div>
+                </div>
+              </button>
+              <button class="hero-prompt-card prompt-chip" data-query="Inspect the files in the current repository and summarize the structure.">
+                <div class="card-icon">🔍</div>
+                <div class="card-body">
+                  <div class="card-title">Inspect Repository</div>
+                  <div class="card-desc">Analyze codebase files, dependencies & tree</div>
+                </div>
+              </button>
+              <button class="hero-prompt-card prompt-chip" data-query="Convene an agent graph cycle to plan and execute task decomposition.">
+                <div class="card-icon">⚡</div>
+                <div class="card-body">
+                  <div class="card-title">Agent Graph Cycles</div>
+                  <div class="card-desc">Autonomous cyclical planning and execution loops</div>
+                </div>
+              </button>
+              <button class="hero-prompt-card prompt-chip" data-query="Audit active policy boundaries and workspace sentinel safety tripwires.">
+                <div class="card-icon">🛡️</div>
+                <div class="card-body">
+                  <div class="card-title">Security Sentinel</div>
+                  <div class="card-desc">Audit fail-closed boundaries & tripwires</div>
+                </div>
+              </button>
             </div>
           </div>
           <div class="message-feed" id="messageFeed"></div>
@@ -181,6 +181,13 @@
       <!-- View 2: Team Rooms View -->
       <div id="viewRooms" class="view-panel hidden">
         <div class="dashboard-container">
+          <div class="subnav-tabs" data-group="connections">
+            <button class="subnav-tab" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
+            <button class="subnav-tab" data-view="webhooks">⚡ Inbound Webhooks</button>
+            <button class="subnav-tab" data-view="attachments">📎 Context Files</button>
+            <button class="subnav-tab" data-view="graphs">🕸️ Agent Graphs</button>
+            <button class="subnav-tab active" data-view="rooms">👥 Team Rooms</button>
+          </div>
           <div class="dashboard-header">
             <div>
               <div class="dashboard-title">👥 Multi-Agent Collaborative Rooms</div>
@@ -197,6 +204,12 @@
       <!-- View 3: Scheduled Routines View -->
       <div id="viewRoutines" class="view-panel hidden">
         <div class="dashboard-container">
+          <div class="subnav-tabs" data-group="capabilities">
+            <button class="subnav-tab" data-view="skills">🧩 Recipe Skills</button>
+            <button class="subnav-tab" data-view="memories">🧠 7-Layer Memory</button>
+            <button class="subnav-tab active" data-view="routines">⏱ Scheduled Routines</button>
+            <button class="subnav-tab" data-view="vault">🔐 Encrypted Vault</button>
+          </div>
           <div class="dashboard-header">
             <div>
               <div class="dashboard-title">⏱ Scheduled Background Routines</div>
@@ -213,6 +226,12 @@
       <!-- View 4: Recipe Skills View -->
       <div id="viewSkills" class="view-panel hidden">
         <div class="dashboard-container">
+          <div class="subnav-tabs" data-group="capabilities">
+            <button class="subnav-tab active" data-view="skills">🧩 Recipe Skills</button>
+            <button class="subnav-tab" data-view="memories">🧠 7-Layer Memory</button>
+            <button class="subnav-tab" data-view="routines">⏱ Scheduled Routines</button>
+            <button class="subnav-tab" data-view="vault">🔐 Encrypted Vault</button>
+          </div>
           <div class="dashboard-header">
             <div>
               <div class="dashboard-title">🧩 Modular Recipe Skills Library</div>
@@ -231,6 +250,12 @@
       <!-- View 5: Encrypted Secrets Vault View -->
       <div id="viewVault" class="view-panel hidden">
         <div class="dashboard-container">
+          <div class="subnav-tabs" data-group="capabilities">
+            <button class="subnav-tab" data-view="skills">🧩 Recipe Skills</button>
+            <button class="subnav-tab" data-view="memories">🧠 7-Layer Memory</button>
+            <button class="subnav-tab" data-view="routines">⏱ Scheduled Routines</button>
+            <button class="subnav-tab active" data-view="vault">🔐 Encrypted Vault</button>
+          </div>
           <div class="dashboard-header">
             <div>
               <div class="dashboard-title">🔐 Local Encrypted Secrets Vault</div>
@@ -253,6 +278,12 @@
       <!-- View 6: 7-Layer Memory & Rules View -->
       <div id="viewMemories" class="view-panel hidden">
         <div class="dashboard-container">
+          <div class="subnav-tabs" data-group="capabilities">
+            <button class="subnav-tab" data-view="skills">🧩 Recipe Skills</button>
+            <button class="subnav-tab active" data-view="memories">🧠 7-Layer Memory</button>
+            <button class="subnav-tab" data-view="routines">⏱ Scheduled Routines</button>
+            <button class="subnav-tab" data-view="vault">🔐 Encrypted Vault</button>
+          </div>
           <div class="dashboard-header">
             <div>
               <div class="dashboard-title">🧠 7-Layer Memory & Team Review Queue</div>
@@ -272,6 +303,13 @@
       <!-- View 7: Staged Attachments View -->
       <div id="viewAttachments" class="view-panel hidden">
         <div class="dashboard-container">
+          <div class="subnav-tabs" data-group="connections">
+            <button class="subnav-tab" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
+            <button class="subnav-tab" data-view="webhooks">⚡ Inbound Webhooks</button>
+            <button class="subnav-tab active" data-view="attachments">📎 Context Files</button>
+            <button class="subnav-tab" data-view="graphs">🕸️ Agent Graphs</button>
+            <button class="subnav-tab" data-view="rooms">👥 Team Rooms</button>
+          </div>
           <div class="dashboard-header">
             <div>
               <div class="dashboard-title">📎 Staged Context Attachments</div>
@@ -292,14 +330,25 @@
         <div class="dashboard-container">
           <div class="dashboard-header">
             <div>
-              <div class="dashboard-title">📋 Agent Persona Templates</div>
-              <div class="dashboard-subtitle">Grok Bot Parity: Export and import autonomous bot templates with prompt instructions, allowed tools, and metadata.</div>
+              <div class="dashboard-title">🤖 Bots & Personas</div>
+              <div class="dashboard-subtitle">Configure autonomous agent personas, custom system instructions, tool whitelists, and template exports.</div>
             </div>
             <div style="display: flex; gap: 8px;">
+              <button id="btnOpenCreateBot" class="btn btn-primary">+ New Persona</button>
               <button id="btnOpenExportTemplate" class="btn btn-secondary">Export Template</button>
-              <button id="btnOpenImportTemplate" class="btn btn-primary">Import Template</button>
+              <button id="btnOpenImportTemplate" class="btn btn-secondary">Import Template</button>
             </div>
           </div>
+
+          <div class="sidebar-section-title" style="margin-top: 14px;">Active Persona Roster</div>
+          <div class="bot-list compact" id="botList" style="max-height: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-bottom: 20px;"></div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; margin-bottom: 8px;">
+            <div class="sidebar-section-title" style="margin: 0;">Active Workspace Tasks</div>
+            <button id="btnOpenCreateTask" class="btn btn-ghost btn-xs">+ Add Task</button>
+          </div>
+          <div class="task-list compact" id="taskList" style="max-height: 200px; overflow-y: auto; margin-bottom: 24px;"></div>
+
           <div class="sidebar-section-title" style="margin-top: 10px;">Available Agent Personas for Template Generation</div>
           <div class="card-grid" id="templateAgentsGrid">
             <!-- Rendered dynamically -->
@@ -333,6 +382,13 @@
       <!-- View 10: Agent Graphs View -->
       <div id="viewGraphs" class="view-panel hidden">
         <div class="dashboard-container">
+          <div class="subnav-tabs" data-group="connections">
+            <button class="subnav-tab" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
+            <button class="subnav-tab" data-view="webhooks">⚡ Inbound Webhooks</button>
+            <button class="subnav-tab" data-view="attachments">📎 Context Files</button>
+            <button class="subnav-tab active" data-view="graphs">🕸️ Agent Graphs</button>
+            <button class="subnav-tab" data-view="rooms">👥 Team Rooms</button>
+          </div>
           <div class="dashboard-header">
             <div>
               <div class="dashboard-title">🕸️ Agent Graphs & Cyclical Node Loops</div>
@@ -356,6 +412,13 @@
       <!-- View 11: Fail-Closed Policy Boundaries View -->
       <div id="viewBoundaries" class="view-panel hidden">
         <div class="dashboard-container">
+          <div class="subnav-tabs" data-group="connections">
+            <button class="subnav-tab active" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
+            <button class="subnav-tab" data-view="webhooks">⚡ Inbound Webhooks</button>
+            <button class="subnav-tab" data-view="attachments">📎 Context Files</button>
+            <button class="subnav-tab" data-view="graphs">🕸️ Agent Graphs</button>
+            <button class="subnav-tab" data-view="rooms">👥 Team Rooms</button>
+          </div>
           <div class="dashboard-header">
             <div>
               <div class="dashboard-title">🚧 Fail-Closed Policy Boundaries (/admin/boundaries parity)</div>
@@ -379,6 +442,13 @@
       <!-- View 12: Inbound Proactive Webhooks View -->
       <div id="viewWebhooks" class="view-panel hidden">
         <div class="dashboard-container">
+          <div class="subnav-tabs" data-group="connections">
+            <button class="subnav-tab" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
+            <button class="subnav-tab active" data-view="webhooks">⚡ Inbound Webhooks</button>
+            <button class="subnav-tab" data-view="attachments">📎 Context Files</button>
+            <button class="subnav-tab" data-view="graphs">🕸️ Agent Graphs</button>
+            <button class="subnav-tab" data-view="rooms">👥 Team Rooms</button>
+          </div>
           <div class="dashboard-header">
             <div>
               <div class="dashboard-title">⚡ Inbound Proactive Webhooks & Triggers</div>

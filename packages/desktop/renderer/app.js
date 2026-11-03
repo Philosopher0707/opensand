@@ -467,7 +467,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const client = new OpenSandClient();
 
   // Navigation Tabs & Views
-  const navTabs = document.querySelectorAll('.nav-tab');
+  const footerNavBtns = document.querySelectorAll('.footer-nav-btn');
   const viewPanels = {
     chat: document.getElementById('viewChat'),
     rooms: document.getElementById('viewRooms'),
@@ -492,7 +492,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     rooms: '👥 Multi-Agent Collaborative Rooms',
     routines: '⏱ Scheduled Background Routines',
     skills: '🧩 Modular Recipe Skills Library',
-    templates: '📋 Agent Persona Templates',
+    templates: '🤖 Bots & Personas',
     boundaries: '🚧 Fail-Closed Policy Boundaries',
     vault: '🔐 Local Encrypted Secrets Vault',
     memories: '🧠 7-Layer Discrete Fact Memory',
@@ -502,11 +502,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function switchView(viewName) {
     currentView = viewName;
-    navTabs.forEach((tab) => {
+
+    // Update footer navigation buttons active states (OpenBot parity)
+    footerNavBtns.forEach((btn) => {
+      const navTarget = btn.dataset.view;
+      if (navTarget === 'templates') {
+        btn.classList.toggle('active', viewName === 'templates');
+      } else if (navTarget === 'skills') {
+        btn.classList.toggle('active', ['skills', 'memories', 'routines', 'vault'].includes(viewName));
+      } else if (navTarget === 'boundaries') {
+        btn.classList.toggle('active', ['boundaries', 'webhooks', 'attachments', 'graphs', 'rooms'].includes(viewName));
+      }
+    });
+
+    // Update subnav tab buttons
+    document.querySelectorAll('.subnav-tab').forEach((tab) => {
       tab.classList.toggle('active', tab.dataset.view === viewName);
     });
 
+    // Update header title and back button
     const viewHeaderTitle = document.getElementById('viewHeaderTitle');
+    const btnBackToChat = document.getElementById('btnBackToChat');
+    if (btnBackToChat) {
+      btnBackToChat.classList.toggle('hidden', viewName === 'chat');
+    }
+
     if (viewHeaderTitle && viewTitles[viewName]) {
       viewHeaderTitle.textContent = viewTitles[viewName];
     }
@@ -532,7 +552,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (viewName === 'webhooks') refreshWebhooks();
   }
 
-  navTabs.forEach((tab) => {
+  footerNavBtns.forEach((btn) => {
+    btn.onclick = () => {
+      const view = btn.dataset.view;
+      if (view) {
+        window.location.hash = view;
+        switchView(view);
+      }
+    };
+  });
+
+  document.querySelectorAll('.subnav-tab').forEach((tab) => {
     tab.onclick = () => {
       const view = tab.dataset.view;
       if (view) {
@@ -541,6 +571,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     };
   });
+
+  const btnBackToChat = document.getElementById('btnBackToChat');
+  if (btnBackToChat) {
+    btnBackToChat.onclick = () => switchView('chat');
+  }
 
   // Support direct URL query & hash navigation (?view=graphs or #graphs)
   const urlParams = new URLSearchParams(window.location.search);
@@ -851,17 +886,81 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  async function refreshSessions() {
+  const RELATIVE_UNITS = [
+    { limit: 60_000, divisor: 1_000, unit: 'second' },
+    { limit: 3_600_000, divisor: 60_000, unit: 'minute' },
+    { limit: 86_400_000, divisor: 3_600_000, unit: 'hour' },
+    { limit: 604_800_000, divisor: 86_400_000, unit: 'day' },
+    { limit: Number.POSITIVE_INFINITY, divisor: 604_800_000, unit: 'week' },
+  ];
+  const relativeFormat = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+
+  function relativeTime(iso) {
+    if (!iso) return '';
+    const time = new Date(iso).getTime();
+    if (!Number.isFinite(time)) return '';
+    const elapsed = Date.now() - time;
+    const scale = RELATIVE_UNITS.find(({ limit }) => Math.abs(elapsed) < limit) || RELATIVE_UNITS[RELATIVE_UNITS.length - 1];
+    return relativeFormat.format(-Math.round(elapsed / scale.divisor), scale.unit);
+  }
+
+  const conversationSearchInput = document.getElementById('conversationSearchInput');
+
+  async function refreshSessions(filterQuery = '') {
     const sessions = await client.getSessions();
     sessionList.innerHTML = '';
 
-    for (const s of sessions) {
+    const query = filterQuery || (conversationSearchInput ? conversationSearchInput.value.trim().toLowerCase() : '');
+    const filtered = query
+      ? sessions.filter(s => (s.title || s.id).toLowerCase().includes(query))
+      : sessions;
+
+    if (filtered.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'roster-empty';
+      if (query) {
+        emptyDiv.innerHTML = `
+          <div class="roster-empty-title">No conversations match</div>
+          <div class="roster-empty-desc">No conversation has “${escapeHtml(query)}” in its name.</div>
+        `;
+      } else {
+        emptyDiv.innerHTML = `
+          <div class="roster-empty-title">No conversations yet</div>
+          <div class="roster-empty-desc">Start a conversation with a Bot and it shows up here.</div>
+        `;
+      }
+      sessionList.appendChild(emptyDiv);
+      return;
+    }
+
+    for (const s of filtered) {
       const item = document.createElement('div');
-      item.className = `session-item ${s.id === currentSessionId ? 'active' : ''}`;
-      item.textContent = s.title || s.id;
+      item.className = `session-channel-item ${s.id === currentSessionId ? 'active' : ''}`;
+      const timeStr = relativeTime(s.updatedAt || s.createdAt);
+      const title = s.title || s.id || 'New conversation';
+      const countSnippet = s.messageCount ? `${s.messageCount} messages` : 'New conversation';
+
+      item.innerHTML = `
+        <div class="channel-avatar">🤖</div>
+        <div class="channel-info">
+          <div class="channel-line-1">
+            <span class="channel-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
+            <span class="channel-time">${escapeHtml(timeStr)}</span>
+          </div>
+          <div class="channel-line-2">
+            <span class="channel-snippet">${escapeHtml(countSnippet)}</span>
+          </div>
+        </div>
+      `;
       item.onclick = () => selectSession(s.id);
       sessionList.appendChild(item);
     }
+  }
+
+  if (conversationSearchInput) {
+    conversationSearchInput.addEventListener('input', () => {
+      refreshSessions(conversationSearchInput.value.trim().toLowerCase());
+    });
   }
 
   // --- ROOMS VIEW CONTROLLER ---
@@ -2046,6 +2145,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function selectSession(sessionId) {
     currentSessionId = sessionId;
+    switchView('chat');
     activeSessionTitle.textContent = `Session: ${sessionId}`;
     messageFeed.innerHTML = '';
     welcomeBanner.classList.add('hidden');
@@ -2057,13 +2157,71 @@ document.addEventListener('DOMContentLoaded', async () => {
     refreshSessions();
   }
 
-  btnNewSession.onclick = () => {
+  function startNewSession() {
     currentSessionId = null;
     activeSessionTitle.textContent = 'New Session';
     messageFeed.innerHTML = '';
     welcomeBanner.classList.remove('hidden');
+    switchView('chat');
     refreshSessions();
-  };
+    if (promptInput) {
+      promptInput.value = '';
+      promptInput.focus();
+    }
+  }
+
+  btnNewSession.onclick = startNewSession;
+  const brandHomeBtn = document.getElementById('brandHomeBtn');
+  if (brandHomeBtn) {
+    brandHomeBtn.onclick = startNewSession;
+  }
+
+  // Account Popup Menu Wiring (OpenBot Parity)
+  const accountMenuTrigger = document.getElementById('accountMenuTrigger');
+  const accountPopup = document.getElementById('accountPopup');
+  if (accountMenuTrigger && accountPopup) {
+    accountMenuTrigger.onclick = (e) => {
+      e.stopPropagation();
+      accountPopup.classList.toggle('hidden');
+    };
+    document.addEventListener('click', (e) => {
+      if (!accountPopup.contains(e.target) && e.target !== accountMenuTrigger) {
+        accountPopup.classList.add('hidden');
+      }
+    });
+  }
+
+  const btnMenuSentinel = document.getElementById('btnMenuSentinel');
+  if (btnMenuSentinel) {
+    btnMenuSentinel.onclick = () => {
+      if (accountPopup) accountPopup.classList.add('hidden');
+      switchView('sentinel');
+    };
+  }
+
+  const btnMenuSettings = document.getElementById('btnMenuSettings');
+  if (btnMenuSettings) {
+    btnMenuSettings.onclick = () => {
+      if (accountPopup) accountPopup.classList.add('hidden');
+      btnSettings.click();
+    };
+  }
+
+  const btnMenuToggleTheme = document.getElementById('btnMenuToggleTheme');
+  if (btnMenuToggleTheme) {
+    btnMenuToggleTheme.onclick = () => {
+      if (accountPopup) accountPopup.classList.add('hidden');
+      btnToggleTheme.click();
+    };
+  }
+
+  const btnMenuClearSessions = document.getElementById('btnMenuClearSessions');
+  if (btnMenuClearSessions) {
+    btnMenuClearSessions.onclick = () => {
+      if (accountPopup) accountPopup.classList.add('hidden');
+      startNewSession();
+    };
+  }
 
   function appendMessage(role, content, toolCalls = []) {
     welcomeBanner.classList.add('hidden');
