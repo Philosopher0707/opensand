@@ -38,7 +38,7 @@ export interface LLMClientConfig {
   baseUrl: string;
   apiKey?: string;
   model: string;
-  provider?: "openai" | "anthropic";
+  provider?: "openai" | "anthropic" | "openrouter";
   thinkingBudgetTokens?: number;
   enablePromptCaching?: boolean;
   temperature?: number;

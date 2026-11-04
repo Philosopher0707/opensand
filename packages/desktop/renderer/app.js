@@ -3027,15 +3027,94 @@ document.addEventListener('DOMContentLoaded', async () => {
     submitQuery();
   };
 
+  // Settings Modal Elements & Model Suggestions
+  const modelSuggestionsList = document.getElementById('modelSuggestionsList');
+  const modelContextHint = document.getElementById('modelContextHint');
+  let cachedModelList = [];
+
+  async function populateModelSuggestions(provider, endpoint) {
+    if (!modelSuggestionsList) return;
+    try {
+      const q = new URLSearchParams();
+      if (provider) q.set('provider', provider);
+      if (endpoint) q.set('endpoint', endpoint);
+      const res = await fetch(`/api/models?${q.toString()}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.models)) {
+        cachedModelList = data.models;
+        modelSuggestionsList.innerHTML = '';
+        for (const m of data.models) {
+          const opt = document.createElement('option');
+          opt.value = m.id;
+          opt.textContent = `${m.name || m.id} (~${(m.context_length || 0).toLocaleString()} tokens)`;
+          modelSuggestionsList.appendChild(opt);
+        }
+        updateModelHint(settingModel?.value);
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  function updateModelHint(modelId) {
+    if (!modelContextHint) return;
+    const match = cachedModelList.find((m) => m.id === modelId || m.id?.toLowerCase() === (modelId || '').toLowerCase());
+    if (match && match.context_length) {
+      modelContextHint.textContent = `⚡ Context: ${match.context_length.toLocaleString()} tokens`;
+      modelContextHint.style.color = 'var(--accent)';
+    } else {
+      modelContextHint.textContent = '';
+    }
+  }
+
+  if (settingModel) {
+    settingModel.addEventListener('input', () => updateModelHint(settingModel.value));
+  }
+
+  if (settingProvider) {
+    settingProvider.addEventListener('change', () => {
+      const p = settingProvider.value;
+      if (p === 'openrouter') {
+        if (!settingEndpoint.value || settingEndpoint.value.includes('anthropic.com') || settingEndpoint.value.includes('localhost')) {
+          settingEndpoint.value = 'https://openrouter.ai/api/v1';
+        }
+        if (!settingModel.value || settingModel.value.startsWith('claude-')) {
+          settingModel.value = 'deepseek/deepseek-v4.1-flash-1017';
+        }
+      } else if (p === 'anthropic') {
+        if (!settingEndpoint.value || settingEndpoint.value.includes('openrouter.ai') || settingEndpoint.value.includes('localhost')) {
+          settingEndpoint.value = 'https://api.anthropic.com/v1/messages';
+        }
+        if (!settingModel.value || settingModel.value.includes('/')) {
+          settingModel.value = 'claude-3-7-sonnet-20250219';
+        }
+      } else if (p === 'openai') {
+        if (!settingEndpoint.value || settingEndpoint.value.includes('anthropic.com') || settingEndpoint.value.includes('openrouter.ai')) {
+          settingEndpoint.value = 'http://localhost:11434/v1/chat/completions';
+        }
+        if (!settingModel.value || settingModel.value.startsWith('claude-') || settingModel.value.includes('/')) {
+          settingModel.value = 'llama3.1';
+        }
+      }
+      populateModelSuggestions(p, settingEndpoint.value);
+    });
+  }
+
   // Settings
   btnSettings.onclick = async () => {
     const s = await client.getSettings();
-    settingProvider.value = s.provider || 'openai';
+    let detectedProvider = s.provider || 'openai';
+    if ((!s.provider || s.provider === 'openai') && s.endpoint?.includes('openrouter.ai')) {
+      detectedProvider = 'openrouter';
+    }
+    settingProvider.value = detectedProvider;
     settingEndpoint.value = s.endpoint || '';
     settingModel.value = s.model || '';
     settingApiKey.value = s.apiKey || '';
     settingAutoApprove.checked = !!s.autoApprove;
     settingsModal.classList.remove('hidden');
+    populateModelSuggestions(settingProvider.value, settingEndpoint.value);
   };
   btnCloseSettings.onclick = () => settingsModal.classList.add('hidden');
   btnSaveSettings.onclick = async () => {

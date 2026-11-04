@@ -5,8 +5,17 @@ import { ConsolidatedAssistantResponse } from "./llm-client.js";
 
 export function isAnthropicProvider(config: LLMClientConfig): boolean {
   if (config.provider === "anthropic") return true;
-  if (config.baseUrl.includes("anthropic.com") || config.baseUrl.endsWith("/v1/messages")) return true;
-  if (config.model.toLowerCase().startsWith("claude")) return true;
+  if (config.provider === "openai" || config.provider === "openrouter") return false;
+  const base = (config.baseUrl || "").toLowerCase();
+  if (base.includes("openrouter.ai") || base.includes("/chat/completions")) {
+    return false;
+  }
+  if (base.includes("anthropic.com") || base.endsWith("/v1/messages") || base.endsWith("/messages")) {
+    return true;
+  }
+  if (config.model && config.model.toLowerCase().startsWith("claude")) {
+    return true;
+  }
   return false;
 }
 

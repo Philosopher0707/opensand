@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
 import { createDefaultRpcGateway, RpcGateway } from './rpc-gateway.js';
-import { handleAgUiRunRequest, AgUiEventPayload } from '@opensand/coordinator';
+import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient } from '@opensand/coordinator';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -826,6 +826,30 @@ export class DesktopServer {
       const telemetry = await this.bridge.getTokenTelemetry(agentId, sessionId);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(telemetry));
+      return;
+    }
+
+    // API: GET /api/models (List available models from provider/catalog)
+    if (pathname === '/api/models' && req.method === 'GET') {
+      const provider = url.searchParams.get('provider') || this.bridge.getSettings().provider;
+      const endpoint = url.searchParams.get('endpoint') || this.bridge.getSettings().endpoint;
+      const apiKey = this.bridge.getSettings().apiKey;
+
+      try {
+        if (provider === 'anthropic' || endpoint?.includes('anthropic.com')) {
+          const client = new AnthropicClient();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ models: client.listModels() }));
+          return;
+        }
+
+        const models = await defaultOpenRouterCatalog.fetchModels(endpoint, apiKey);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ models }));
+      } catch (err: any) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ models: [], error: err.message }));
+      }
       return;
     }
 

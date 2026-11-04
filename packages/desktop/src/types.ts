@@ -3,7 +3,7 @@ export interface DesktopSettings {
   model: string;
   apiKey?: string;
   autoApprove: boolean;
-  provider: 'openai' | 'anthropic';
+  provider: 'openai' | 'anthropic' | 'openrouter';
   theme: 'dark' | 'light' | 'system';
   maxContextTokens?: number;
 }

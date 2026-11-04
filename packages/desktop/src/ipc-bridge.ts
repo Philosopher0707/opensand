@@ -48,6 +48,9 @@ import {
   createSelfReflectiveCodingGraph,
   CodingGraphState,
   getModelMaxContextTokens,
+  resolveModelContextWindow,
+  defaultOpenRouterCatalog,
+  AnthropicClient,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -165,6 +168,12 @@ export class DesktopIpcBridge extends EventEmitter {
     workspaceSentinel.on('diagnostic', (event: SentinelDiagnosticEvent) => {
       this.emitEvent('sentinel', event);
     });
+
+    // Initialize OpenRouter model catalog cache
+    defaultOpenRouterCatalog.initCacheDir(path.join(this.baseDir, 'cache'));
+    if (this.settings.endpoint?.includes('openrouter.ai')) {
+      defaultOpenRouterCatalog.fetchModels(this.settings.endpoint, this.settings.apiKey).catch(() => {});
+    }
   }
 
   public getSettings(): DesktopSettings {
@@ -233,13 +242,16 @@ export class DesktopIpcBridge extends EventEmitter {
       baseUrl: targetEndpoint,
       model: targetModel,
       apiKey: this.settings.apiKey,
+      provider: this.settings.provider,
     });
 
     const learnedRules = await this.habitExtractor.getLearnedRulesMarkdown();
     const memoryContext = await this.memoryStore.getPromptMemoryContext(agentId);
     const skillsContext = agentId ? await this.skillStore.formatSkillsPrompt(agentId) : '';
 
-    const maxTokens = this.settings.maxContextTokens ?? getModelMaxContextTokens(targetModel);
+    const maxTokens =
+      this.settings.maxContextTokens ??
+      (await resolveModelContextWindow(targetModel, targetEndpoint, this.settings.apiKey));
 
     const coordinator = new AgentCoordinator({
       llmClient,
@@ -734,10 +746,14 @@ export class DesktopIpcBridge extends EventEmitter {
     model: string;
   }> {
     let activeModel = this.settings.model;
+    let activeEndpoint = this.settings.endpoint;
     if (agentId) {
       const agent = await this.agentStore.getAgent(agentId);
       if (agent?.model) {
         activeModel = agent.model;
+      }
+      if (agent?.endpoint) {
+        activeEndpoint = agent.endpoint;
       }
     } else if (this.coordinator?.llmClient?.model) {
       activeModel = this.coordinator.llmClient.model;
@@ -747,7 +763,7 @@ export class DesktopIpcBridge extends EventEmitter {
       this.settings.maxContextTokens ??
       (this.coordinator && (!agentId || !this.coordinator.llmClient || this.coordinator.llmClient.model === activeModel)
         ? this.coordinator.maxContextTokens
-        : getModelMaxContextTokens(activeModel));
+        : await resolveModelContextWindow(activeModel, activeEndpoint, this.settings.apiKey));
 
     const targetSessionId = sessionId || this.currentSessionId;
     if (this.coordinator && (!targetSessionId || this.coordinator.sessionId === targetSessionId)) {

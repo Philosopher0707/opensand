@@ -340,14 +340,23 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     assert.strictEqual(claudeData.maxContextTokens, 200000);
     assert.strictEqual(claudeData.model, 'claude-3-5-sonnet-20241022');
 
-    // Dynamic model context window verification: DeepSeek (128k)
-    (server as any).bridge.updateSettings({ model: 'deepseek/deepseek-v4.1-flash-1017' });
+    // Dynamic model context window verification: DeepSeek on OpenRouter (1,048,576 from OpenRouter listed models)
+    (server as any).bridge.updateSettings({ model: 'deepseek/deepseek-v4.1-flash-1017', endpoint: 'https://openrouter.ai/api/v1' });
     const reqDeepseek = new MockIncomingMessage('GET', '/api/tokens');
     const resDeepseek = new MockServerResponse();
     await (server as any).handleRequest(reqDeepseek, resDeepseek);
     const deepseekData = JSON.parse(resDeepseek.body);
-    assert.strictEqual(deepseekData.maxContextTokens, 128000);
+    assert.strictEqual(deepseekData.maxContextTokens, 1048576);
     assert.strictEqual(deepseekData.model, 'deepseek/deepseek-v4.1-flash-1017');
+
+    // Test GET /api/models (Anthropic models)
+    const reqAnthropicModels = new MockIncomingMessage('GET', '/api/models?provider=anthropic');
+    const resAnthropicModels = new MockServerResponse();
+    await (server as any).handleRequest(reqAnthropicModels, resAnthropicModels);
+    assert.strictEqual(resAnthropicModels.statusCode, 200);
+    const anthropicModelsData = JSON.parse(resAnthropicModels.body);
+    assert.ok(Array.isArray(anthropicModelsData.models));
+    assert.ok(anthropicModelsData.models.some((m: any) => m.id.includes('claude-3-7')));
 
     // Dynamic model context window verification: Qwen 8B (32,768)
     (server as any).bridge.updateSettings({ model: 'qwen3:8b' });

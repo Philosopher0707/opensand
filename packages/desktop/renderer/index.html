@@ -820,17 +820,22 @@
         <div class="form-group">
           <label for="settingProvider">Model Provider</label>
           <select id="settingProvider" class="form-control">
-            <option value="openai">OpenAI / Ollama / DeepSeek / vLLM (/v1/chat/completions)</option>
+            <option value="openrouter">OpenRouter (https://openrouter.ai/api/v1)</option>
             <option value="anthropic">Anthropic Claude (/v1/messages)</option>
+            <option value="openai">OpenAI / Ollama / Local (/v1/chat/completions)</option>
           </select>
         </div>
         <div class="form-group">
           <label for="settingEndpoint">API Endpoint</label>
-          <input type="text" id="settingEndpoint" class="form-control" placeholder="http://localhost:11434/v1/chat/completions">
+          <input type="text" id="settingEndpoint" class="form-control" placeholder="https://openrouter.ai/api/v1">
         </div>
         <div class="form-group">
-          <label for="settingModel">Model Identifier</label>
-          <input type="text" id="settingModel" class="form-control" placeholder="llama3.1">
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <label for="settingModel">Model Identifier</label>
+            <span id="modelContextHint" style="font-size: 11px; color: var(--text-muted);"></span>
+          </div>
+          <input type="text" id="settingModel" class="form-control" list="modelSuggestionsList" placeholder="e.g. deepseek/deepseek-v4.1-flash-1017">
+          <datalist id="modelSuggestionsList"></datalist>
         </div>
         <div class="form-group">
           <label for="settingApiKey">API Key (optional for local Ollama)</label>
