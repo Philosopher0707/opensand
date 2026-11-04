@@ -786,6 +786,51 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
   }
 
+  // Sidebar Collapse Controller
+  const sidebarEl = document.querySelector('.sidebar');
+  const btnToggleSidebar = document.getElementById('btnToggleSidebar');
+  const btnCollapseSidebar = document.getElementById('btnCollapseSidebar');
+
+  function initSidebarCollapse() {
+    const saved = localStorage.getItem('opensand-sidebar-collapsed');
+    const isCollapsed = saved === 'true';
+    if (sidebarEl) {
+      sidebarEl.classList.toggle('collapsed', isCollapsed);
+    }
+    if (btnToggleSidebar) {
+      btnToggleSidebar.classList.toggle('active', isCollapsed);
+      btnToggleSidebar.title = isCollapsed ? 'Expand Sidebar (Cmd+B)' : 'Collapse Sidebar (Cmd+B)';
+    }
+  }
+
+  function toggleSidebar(forceState) {
+    if (!sidebarEl) return;
+    const shouldCollapse = forceState !== undefined ? forceState : !sidebarEl.classList.contains('collapsed');
+    sidebarEl.classList.toggle('collapsed', shouldCollapse);
+    if (btnToggleSidebar) {
+      btnToggleSidebar.classList.toggle('active', shouldCollapse);
+      btnToggleSidebar.title = shouldCollapse ? 'Expand Sidebar (Cmd+B)' : 'Collapse Sidebar (Cmd+B)';
+    }
+    localStorage.setItem('opensand-sidebar-collapsed', shouldCollapse ? 'true' : 'false');
+  }
+
+  if (btnToggleSidebar) {
+    btnToggleSidebar.onclick = () => toggleSidebar();
+  }
+  if (btnCollapseSidebar) {
+    btnCollapseSidebar.onclick = () => toggleSidebar(true);
+  }
+
+  // Global Keyboard Shortcut: Cmd+B or Ctrl+B toggles sidebar
+  window.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+      e.preventDefault();
+      toggleSidebar();
+    }
+  });
+
+  initSidebarCollapse();
+
   // --- REFRESH FUNCTIONS ---
 
   async function refreshSettings() {
