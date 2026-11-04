@@ -277,3 +277,68 @@ test('DesktopIpcBridge - getTokenTelemetry calculates accurate context windows a
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+
+test('DesktopIpcBridge - config.json never stores the raw apiKey and is written 0o600 atomically', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-key-'));
+
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    bridge.updateSettings({ model: 'test-model-x', apiKey: 'sk-secret-12345' });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    const configPath = path.join(tmpDir, 'config.json');
+    const raw = fs.readFileSync(configPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    assert.ok(!('apiKey' in parsed), 'apiKey must not be persisted to config.json');
+    assert.ok(!raw.includes('sk-secret-12345'), 'raw key must not appear anywhere in config.json');
+    assert.strictEqual(parsed.model, 'test-model-x');
+
+    const mode = fs.statSync(configPath).mode & 0o777;
+    assert.strictEqual(mode, 0o600, 'config.json must be owner-only (0600)');
+
+    // In-memory settings still carry the key for LLM calls
+    assert.strictEqual(bridge.getSettings().apiKey, 'sk-secret-12345');
+
+    // And the key must have been vaulted (never written in plaintext)
+    const vault = (bridge as any).vaultStore;
+    const secret = await vault.getSecret('default-api-key');
+    assert.ok(secret, 'default-api-key must be vaulted');
+    assert.strictEqual(secret.value, 'sk-secret-12345');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('DesktopIpcBridge - legacy plaintext apiKey in config.json is migrated to the vault on load', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-legacy-'));
+
+  try {
+    fs.writeFileSync(
+      path.join(tmpDir, 'config.json'),
+      JSON.stringify({ endpoint: 'http://localhost:11434/v1/chat/completions', model: 'llama3.1', apiKey: 'sk-legacy-key', autoApprove: false, provider: 'openai', theme: 'dark' }, null, 2),
+      'utf8'
+    );
+
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Legacy key migrated to vault
+    const vault = (bridge as any).vaultStore;
+    const secret = await vault.getSecret('default-api-key');
+    assert.ok(secret, 'legacy key must be migrated to vault');
+    assert.strictEqual(secret.value, 'sk-legacy-key');
+
+    // In-memory key is the legacy value (kept for this session's LLM calls)
+    assert.strictEqual(bridge.getSettings().apiKey, 'sk-legacy-key');
+
+    // Next save must have stripped it
+    bridge.updateSettings({ model: 'llama3.1' });
+    const raw = fs.readFileSync(path.join(tmpDir, 'config.json'), 'utf8');
+    assert.ok(!('apiKey' in JSON.parse(raw)), 'apiKey stripped on save');
+    assert.ok(!raw.includes('sk-legacy-key'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

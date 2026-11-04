@@ -1,3 +1,8 @@
+// Security note: config.json NEVER stores the raw apiKey — only the
+// non-secret endpoint/model/provider/theme/autoApprove. The key lives in the
+// encrypted VaultStore (secret name "default-api-key") or in the
+// OPENSAND_API_KEY environment variable. saveSettings() defensively omits it
+// and loadSettings() falls back to env -> vault -> "none".
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -92,18 +97,26 @@ export class DesktopIpcBridge extends EventEmitter {
     this.baseDir = options.baseDir || path.join(os.homedir(), '.opensand');
     this.configFile = path.join(this.baseDir, 'config.json');
 
-    // Default settings
+    // Default settings (apiKey is resolved lazily in loadSettings() from
+    // OPENSAND_API_KEY env -> VaultStore -> "none", never persisted)
     this.settings = {
       endpoint: process.env.OPENSAND_ENDPOINT || 'http://localhost:11434/v1/chat/completions',
       model: process.env.OPENSAND_MODEL || 'llama3.1',
-      apiKey: process.env.OPENSAND_API_KEY || 'none',
+      apiKey: 'none',
       autoApprove: false,
       provider: 'openai',
       theme: 'dark',
       ...options.defaultSettings,
     };
 
+    // VaultStore must exist before loadSettings(): legacy plaintext apiKeys
+    // in config.json are migrated into it during load.
+    this.vaultStore = new VaultStore({ baseDir: path.join(this.baseDir, 'vault') });
     this.loadSettings();
+
+    // NOTE: API-key resolution from the vault is deferred until first use
+    // (sendQuery / createSessionCoordinator / getTokenTelemetry) — the
+    // constructor is sync.
 
     // Setup daemon and native tools
     const stateDir = path.join(this.baseDir, 'state');
@@ -115,7 +128,6 @@ export class DesktopIpcBridge extends EventEmitter {
     this.agentStore = new AgentStore(path.join(this.baseDir, 'agents'));
     this.taskStore = new TaskStore(path.join(this.baseDir, 'tasks'));
     this.memoryStore = new MemoryStore({ baseDir: path.join(this.baseDir, 'memories') });
-    this.vaultStore = new VaultStore({ baseDir: path.join(this.baseDir, 'vault') });
     this.skillStore = new SkillStore({
       baseDir: path.join(this.baseDir, 'skills'),
       agentStore: this.agentStore,
@@ -191,6 +203,13 @@ export class DesktopIpcBridge extends EventEmitter {
       (partial.maxContextTokens !== undefined && partial.maxContextTokens !== this.settings.maxContextTokens);
 
     this.settings = { ...this.settings, ...partial };
+    if (partial.apiKey !== undefined && partial.apiKey !== 'none') {
+      // New API key entered in the UI: vault it immediately, still never
+      // write it to config.json.
+      this.vaultStore
+        ?.putSecret({ name: 'default-api-key', value: partial.apiKey, description: 'API key from settings UI' })
+        .catch(() => {});
+    }
     if (modelChanged) {
       this.coordinator = null;
       this.activeAgentId = undefined;
@@ -205,17 +224,65 @@ export class DesktopIpcBridge extends EventEmitter {
       if (fs.existsSync(this.configFile)) {
         const raw = fs.readFileSync(this.configFile, 'utf8');
         const parsed = JSON.parse(raw);
+
+        // Legacy config may still contain a plaintext apiKey: treat it as a
+        // secret, migrate it to the vault on first load, and never write it
+        // back. Fresh installs never write apiKey to config.json.
+        let legacyApiKey: string | undefined = parsed.apiKey;
+        delete parsed.apiKey;
+        if (legacyApiKey && legacyApiKey !== 'none') {
+          // Fire-and-forget migration; the final value is below.
+          this.vaultStore
+            ?.putSecret({ name: 'default-api-key', value: legacyApiKey, description: 'API key migrated from config.json' })
+            .catch(() => {});
+          this.settings.apiKey = legacyApiKey;
+        }
+
         this.settings = { ...this.settings, ...parsed };
       }
     } catch {
       // Ignore parse errors, use defaults
     }
+
+    // Resolution order: explicit value > OPENSAND_API_KEY env > vault > "none"
+    if (!this.settings.apiKey || this.settings.apiKey === 'none') {
+      this.settings.apiKey = process.env.OPENSAND_API_KEY || 'none';
+    }
+  }
+
+  /** Resolve the API key from env -> VaultStore ("default-api-key") -> "none". */
+  private async resolveApiKeyAsync(): Promise<string> {
+    if (this.settings.apiKey && this.settings.apiKey !== 'none') return this.settings.apiKey;
+    const envKey = process.env.OPENSAND_API_KEY;
+    if (envKey) return envKey;
+    if (this.vaultStore) {
+      try {
+        const secret = await this.vaultStore.getSecret('default-api-key');
+        if (secret?.value) return secret.value;
+      } catch {
+        // Vault unavailable — fall through to "none" (keyless local models)
+      }
+    }
+    return 'none';
+  }
+
+  /** Ensure the in-memory key is resolved before use (constructor is sync). */
+  public async ensureApiKeyResolved(): Promise<void> {
+    if (!this.settings.apiKey || this.settings.apiKey === 'none') {
+      this.settings.apiKey = await this.resolveApiKeyAsync();
+    }
   }
 
   private saveSettings(): void {
     try {
-      fs.mkdirSync(this.baseDir, { recursive: true });
-      fs.writeFileSync(this.configFile, JSON.stringify(this.settings, null, 2), 'utf8');
+      fs.mkdirSync(this.baseDir, { recursive: true, mode: 0o700 });
+      // config.json NEVER stores the raw apiKey — only non-secret settings.
+      const { apiKey: _omit, ...persistable } = this.settings;
+      // Atomic write: a crash must not leave a truncated or half-written
+      // config, and the file must be owner-only (0600).
+      const tmp = `${this.configFile}.${Date.now()}.${Math.random().toString(36).slice(2, 6)}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(persistable, null, 2), { mode: 0o600 });
+      fs.renameSync(tmp, this.configFile);
     } catch {
       // Ignore write errors
     }
@@ -235,6 +302,7 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async createSessionCoordinator(sessionId?: string, agentId?: string): Promise<AgentCoordinator> {
+    await this.ensureApiKeyResolved();
     const activeSessionId = sessionId || this.currentSessionId || `session_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     this.currentSessionId = activeSessionId;
 
@@ -320,6 +388,7 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async sendQuery(query: string, sessionId?: string, agentId?: string): Promise<{ success: boolean; sessionId: string }> {
+    await this.ensureApiKeyResolved();
     const coordinator = await this.createSessionCoordinator(sessionId, agentId);
     const activeSessionId = this.currentSessionId!;
 
@@ -814,6 +883,7 @@ export class DesktopIpcBridge extends EventEmitter {
     messagesCount: number;
     model: string;
   }> {
+    await this.ensureApiKeyResolved();
     let activeModel = this.settings.model;
     let activeEndpoint = this.settings.endpoint;
     if (agentId) {
