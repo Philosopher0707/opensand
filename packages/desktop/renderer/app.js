@@ -652,6 +652,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   const botStatusAvatar = document.getElementById('botStatusAvatar');
   const botStatusText = document.getElementById('botStatusText');
 
+  // Floating Composer & Detail Inspector Elements (OpenBot / Grok Bot Parity)
+  const inputWrapper = document.getElementById('inputWrapper');
+  const attachmentStrip = document.getElementById('attachmentStrip');
+  const triggerPopover = document.getElementById('triggerPopover');
+  const btnDictate = document.getElementById('btnDictate');
+  const btnToggleDetail = document.getElementById('btnToggleDetail');
+  const detailPanel = document.getElementById('detailPanel');
+  const btnCloseDetail = document.getElementById('btnCloseDetail');
+  const detailBotAvatar = document.getElementById('detailBotAvatar');
+  const detailBotName = document.getElementById('detailBotName');
+  const detailBotRole = document.getElementById('detailBotRole');
+  const detailBotModelCode = document.getElementById('detailBotModelCode');
+  const detailBotPromptPreview = document.getElementById('detailBotPromptPreview');
+  const detailTokensUsed = document.getElementById('detailTokensUsed');
+  const detailMeterFill = document.getElementById('detailMeterFill');
+  const detailTokensMax = document.getElementById('detailTokensMax');
+  const detailTokensPct = document.getElementById('detailTokensPct');
+  const detailMemoriesList = document.getElementById('detailMemoriesList');
+  const detailSkillsTags = document.getElementById('detailSkillsTags');
+  const btnDetailRewind = document.getElementById('btnDetailRewind');
+  const btnDetailCompact = document.getElementById('btnDetailCompact');
+  const btnDetailExportBot = document.getElementById('btnDetailExportBot');
+  const btnDetailClear = document.getElementById('btnDetailClear');
+
   // Approval modal elements
   const approvalModal = document.getElementById('approvalModal');
   const approvalToolName = document.getElementById('approvalToolName');
@@ -809,6 +833,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (currentSessionId) localStorage.setItem(SESSION_KEY, currentSessionId);
     else localStorage.removeItem(SESSION_KEY);
     refreshSessions();
+    refreshDetailPanel();
   }
 
   function persistAgent() {
@@ -816,6 +841,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     else localStorage.removeItem(AGENT_KEY);
     refreshBots();
     refreshTokenBadge();
+    refreshDetailPanel();
   }
 
   // Restore saved session + bot (validated against live lists in boot)
@@ -907,13 +933,181 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnCollapseSidebar.onclick = () => toggleSidebar(true);
   }
 
-  // Global Keyboard Shortcut: Cmd+B or Ctrl+B toggles sidebar
+  // Global Keyboard Shortcut: Cmd+B or Ctrl+B toggles sidebar; Cmd+I or Ctrl+I toggles bot details
   window.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
       e.preventDefault();
       toggleSidebar();
+    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') {
+      e.preventDefault();
+      toggleDetailPanel();
     }
   });
+
+  // Slide-out Detail Inspector (OpenBot / Grok Bot Parity)
+  function toggleDetailPanel(forceState) {
+    if (!detailPanel) return;
+    const shouldHide = forceState !== undefined ? !forceState : !detailPanel.classList.contains('hidden');
+    detailPanel.classList.toggle('hidden', shouldHide);
+    if (btnToggleDetail) {
+      btnToggleDetail.classList.toggle('active', !shouldHide);
+    }
+    if (!shouldHide) {
+      refreshDetailPanel();
+    }
+  }
+
+  function closeDetailPanel() {
+    toggleDetailPanel(false);
+  }
+
+  if (btnToggleDetail) {
+    btnToggleDetail.onclick = () => toggleDetailPanel();
+  }
+  if (btnCloseDetail) {
+    btnCloseDetail.onclick = closeDetailPanel;
+  }
+  if (badgeActiveBot) {
+    badgeActiveBot.style.cursor = 'pointer';
+    badgeActiveBot.onclick = () => toggleDetailPanel();
+  }
+
+  async function refreshDetailPanel() {
+    if (!detailPanel || detailPanel.classList.contains('hidden')) return;
+
+    try {
+      // 1. Active Persona
+      const agents = await client.getAgents();
+      const current = agents.find((a) => a.id === activeAgentId);
+      if (current) {
+        if (detailBotAvatar) detailBotAvatar.textContent = current.kind === 'ROOM' ? '👥' : '⚡';
+        if (detailBotName) detailBotName.textContent = current.name;
+        if (detailBotRole) detailBotRole.textContent = current.role || 'Autonomous Specialist';
+        if (detailBotModelCode) detailBotModelCode.textContent = current.model || badgeModel?.textContent || 'stealth/crouton-alpha';
+        if (detailBotPromptPreview) detailBotPromptPreview.textContent = current.systemPrompt || 'Standard clean-room coding instructions.';
+      } else {
+        if (detailBotAvatar) detailBotAvatar.textContent = '🤖';
+        if (detailBotName) detailBotName.textContent = 'OpenSand Assistant';
+        if (detailBotRole) detailBotRole.textContent = 'Universal Clean-Room Coding Agent';
+        if (detailBotModelCode) detailBotModelCode.textContent = badgeModel?.textContent || 'stealth/crouton-alpha';
+        if (detailBotPromptPreview) {
+          detailBotPromptPreview.textContent = 'Default Assistant System Prompt:\nYou are OpenSand, a local-first, universal clean-room coding agent.\nAdhere strictly to AGENTS.md rules: ground before action, surgical edits, zero unverified assumptions, honest verification.';
+        }
+      }
+
+      // 2. Token Telemetry Gauge
+      const telemetry = await client.getTokenTelemetry(activeAgentId || undefined, currentSessionId || undefined);
+      if (telemetry) {
+        const used = telemetry.totalTokens || 0;
+        const max = telemetry.maxContextTokens || 1048576;
+        const pct = Math.min(100, Math.round((used / max) * 1000) / 10);
+        if (detailTokensUsed) detailTokensUsed.textContent = `${used.toLocaleString()} tokens`;
+        if (detailTokensMax) detailTokensMax.textContent = max.toLocaleString();
+        if (detailTokensPct) detailTokensPct.textContent = `${pct.toFixed(1)}%`;
+        if (detailMeterFill) {
+          detailMeterFill.style.width = `${Math.min(100, Math.max(0.75, pct))}%`;
+          if (pct > 80) {
+            detailMeterFill.style.background = 'var(--danger)';
+          } else if (pct > 50) {
+            detailMeterFill.style.background = 'var(--warning)';
+          } else {
+            detailMeterFill.style.background = 'var(--accent-gradient)';
+          }
+        }
+      }
+
+      // 3. Cognitive Memories & Habits
+      if (detailMemoriesList) {
+        try {
+          const memories = await client.listMemories();
+          if (memories && memories.length > 0) {
+            detailMemoriesList.innerHTML = '';
+            memories.slice(0, 5).forEach((m) => {
+              const div = document.createElement('div');
+              div.className = 'detail-memory-item';
+              div.textContent = m.content || m.fact || m.rule || (typeof m === 'string' ? m : JSON.stringify(m));
+              detailMemoriesList.appendChild(div);
+            });
+          } else {
+            detailMemoriesList.innerHTML = '<div class="detail-empty-text">No learned memories in this session yet.</div>';
+          }
+        } catch {
+          detailMemoriesList.innerHTML = '<div class="detail-empty-text">Memory storage idle.</div>';
+        }
+      }
+
+      // 4. Granted Skills
+      if (detailSkillsTags) {
+        try {
+          const skills = await client.listSkills();
+          if (skills && skills.length > 0) {
+            detailSkillsTags.innerHTML = '';
+            skills.slice(0, 10).forEach((s) => {
+              const chip = document.createElement('span');
+              chip.className = 'detail-skill-chip';
+              chip.textContent = s.name || s.id;
+              chip.title = s.description || '';
+              detailSkillsTags.appendChild(chip);
+            });
+          } else {
+            detailSkillsTags.innerHTML = `
+              <span class="detail-skill-chip">code-audit</span>
+              <span class="detail-skill-chip">architecture</span>
+              <span class="detail-skill-chip">debugging</span>
+            `;
+          }
+        } catch {
+          detailSkillsTags.innerHTML = `
+            <span class="detail-skill-chip">clean-room</span>
+            <span class="detail-skill-chip">verification</span>
+          `;
+        }
+      }
+    } catch (err) {
+      console.warn('Error refreshing detail panel:', err);
+    }
+  }
+
+  // Session Actions in Detail Panel
+  if (btnDetailRewind) {
+    btnDetailRewind.onclick = () => document.getElementById('btnOpenRollback')?.click();
+  }
+  if (btnDetailCompact) {
+    btnDetailCompact.onclick = () => document.getElementById('btnOpenCompact')?.click();
+  }
+  if (btnDetailClear) {
+    btnDetailClear.onclick = () => document.getElementById('btnMenuClearSessions')?.click();
+  }
+  if (btnDetailExportBot) {
+    btnDetailExportBot.onclick = async () => {
+      try {
+        const idToExport = activeAgentId || 'default-assistant';
+        let templateData;
+        try {
+          templateData = await client.exportAgentTemplate(idToExport);
+        } catch {
+          const agents = await client.getAgents();
+          const current = agents.find((a) => a.id === activeAgentId);
+          templateData = {
+            templateVersion: '1.0',
+            name: current?.name || 'OpenSand Assistant',
+            role: current?.role || 'Clean-Room Coding Agent',
+            systemPrompt: current?.systemPrompt || 'Standard clean-room coding system prompt.',
+            model: current?.model || badgeModel?.textContent || 'stealth/crouton-alpha',
+          };
+        }
+        const blob = new Blob([JSON.stringify(templateData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${(templateData.name || 'bot').toLowerCase().replace(/\s+/g, '-')}-template.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('Error exporting bot template:', err);
+      }
+    };
+  }
 
   initSidebarCollapse();
 
@@ -996,6 +1190,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         meterBar.style.backgroundColor = 'var(--warning)';
       } else {
         meterBar.style.backgroundColor = 'var(--accent)';
+      }
+    }
+
+    if (detailTokensUsed) {
+      detailTokensUsed.textContent = `${currentTokens.toLocaleString()} tokens`;
+      if (detailTokensMax) detailTokensMax.textContent = maxTokens.toLocaleString();
+      if (detailTokensPct) detailTokensPct.textContent = pctStr;
+      if (detailMeterFill) {
+        detailMeterFill.style.width = `${Math.min(100, Math.max(0.75, rawPct))}%`;
+        if (rawPct > 80) {
+          detailMeterFill.style.background = 'var(--danger)';
+        } else if (rawPct > 50) {
+          detailMeterFill.style.background = 'var(--warning)';
+        } else {
+          detailMeterFill.style.background = 'var(--accent-gradient)';
+        }
       }
     }
 
@@ -2363,9 +2573,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const div = document.createElement('div');
     div.className = `tool-line ${isRunning ? 'tool-line-running' : ''}`;
     div.dataset.toolName = name;
+    div._startTime = performance.now();
 
     const outInfo = formatToolOutputPayload(result);
     div._rawResult = outInfo.raw;
+
+    const lines = outInfo.display ? outInfo.display.split('\n') : [];
+    const needsFold = lines.length > 5;
 
     div.innerHTML = `
       <div class="tool-line-header">
@@ -2383,7 +2597,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             <span>Output Result:</span>
             <button class="btn-copy-tool-output" type="button">Copy Output</button>
           </div>
-          <pre class="tool-details-pre tool-result-pre">${escapeHtml(outInfo.display)}</pre>
+          <pre class="tool-details-pre tool-result-pre ${needsFold ? 'folded' : ''}">${escapeHtml(outInfo.display)}</pre>
+          ${needsFold ? `<button class="tool-fold-btn" type="button" data-lines="${lines.length}">▾ Show full output (${lines.length} lines)</button>` : ''}
         ` : ''}
       </div>
     `;
@@ -2394,10 +2609,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   function updateToolLineStatus(toolEl, status, result) {
     if (!toolEl) return;
     toolEl.classList.remove('tool-line-running');
+
+    let durationStr = '';
+    if (toolEl._startTime) {
+      const elapsed = Math.round(performance.now() - toolEl._startTime);
+      durationStr = elapsed < 1000 ? `${elapsed}ms` : `${(elapsed / 1000).toFixed(1)}s`;
+    }
+
     const badge = toolEl.querySelector('.tool-line-badge');
     if (badge) {
       const isError = status === 'error' || status === 'failed';
-      badge.textContent = isError ? 'Failed' : 'Done';
+      const label = isError ? 'Failed' : 'Done';
+      badge.innerHTML = `${label}${durationStr ? ` <span class="tool-duration">• ${durationStr}</span>` : ''}`;
       badge.className = `tool-line-badge ${isError ? 'badge-error' : 'badge-done'}`;
     }
     if (result !== undefined && result !== null) {
@@ -2406,17 +2629,50 @@ document.addEventListener('DOMContentLoaded', async () => {
       const details = toolEl.querySelector('.tool-line-details');
       if (details) {
         let resultPre = details.querySelector('.tool-result-pre');
+        let foldBtn = details.querySelector('.tool-fold-btn');
+        const lines = outInfo.display ? outInfo.display.split('\n') : [];
+        const needsFold = lines.length > 5;
+
         if (!resultPre) {
           const outHeader = document.createElement('div');
           outHeader.className = 'tool-details-header';
           outHeader.style.marginTop = '8px';
           outHeader.innerHTML = `<span>Output Result:</span><button class="btn-copy-tool-output" type="button">Copy Output</button>`;
           resultPre = document.createElement('pre');
-          resultPre.className = 'tool-details-pre tool-result-pre';
+          resultPre.className = `tool-details-pre tool-result-pre ${needsFold ? 'folded' : ''}`;
+          resultPre.textContent = outInfo.display;
           details.appendChild(outHeader);
           details.appendChild(resultPre);
+
+          if (needsFold) {
+            foldBtn = document.createElement('button');
+            foldBtn.className = 'tool-fold-btn';
+            foldBtn.type = 'button';
+            foldBtn.dataset.lines = lines.length;
+            foldBtn.textContent = `▾ Show full output (${lines.length} lines)`;
+            details.appendChild(foldBtn);
+          }
+        } else {
+          resultPre.textContent = outInfo.display;
+          if (needsFold) {
+            resultPre.classList.add('folded');
+            if (!foldBtn) {
+              foldBtn = document.createElement('button');
+              foldBtn.className = 'tool-fold-btn';
+              foldBtn.type = 'button';
+              foldBtn.dataset.lines = lines.length;
+              foldBtn.textContent = `▾ Show full output (${lines.length} lines)`;
+              details.appendChild(foldBtn);
+            } else {
+              foldBtn.dataset.lines = lines.length;
+              foldBtn.textContent = `▾ Show full output (${lines.length} lines)`;
+              foldBtn.classList.remove('hidden');
+            }
+          } else if (foldBtn) {
+            resultPre.classList.remove('folded');
+            foldBtn.classList.add('hidden');
+          }
         }
-        resultPre.textContent = outInfo.display;
       }
     }
   }
@@ -2505,6 +2761,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (details) {
         const isHidden = details.classList.toggle('hidden');
         if (toggle) toggle.textContent = isHidden ? '▶' : '▼';
+      }
+      return;
+    }
+
+    // 3.5 Tool fold output toggle
+    const foldBtn = e.target.closest('.tool-fold-btn');
+    if (foldBtn) {
+      e.stopPropagation();
+      const toolDetails = foldBtn.closest('.tool-line-details');
+      const resultPre = toolDetails ? toolDetails.querySelector('.tool-result-pre') : null;
+      if (resultPre) {
+        const isFolded = resultPre.classList.toggle('folded');
+        const lines = foldBtn.dataset.lines || '';
+        foldBtn.textContent = isFolded ? `▾ Show full output (${lines} lines)` : '▴ Collapse output';
       }
       return;
     }
@@ -2905,9 +3175,480 @@ document.addEventListener('DOMContentLoaded', async () => {
     return { msgDiv, body, thoughtEl, toolsEl, contentEl, actionsEl };
   }
 
+  // --- Staged Attachments Strip (OpenBot Parity) ---
+  const stagedAttachments = [];
+
+  function formatBytes(bytes) {
+    if (!bytes || bytes <= 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
+  function renderAttachmentStrip() {
+    if (!attachmentStrip) return;
+    if (stagedAttachments.length === 0) {
+      attachmentStrip.classList.add('hidden');
+      attachmentStrip.innerHTML = '';
+      return;
+    }
+
+    attachmentStrip.classList.remove('hidden');
+    attachmentStrip.innerHTML = '';
+
+    stagedAttachments.forEach((att, index) => {
+      const chip = document.createElement('div');
+      chip.className = 'attachment-chip';
+
+      let visual = '<span class="attachment-chip-icon">📄</span>';
+      if (att.previewUrl) {
+        visual = `<img src="${att.previewUrl}" class="attachment-thumb" alt="${escapeHtml(att.name)}" />`;
+      } else if (att.type?.includes('image')) {
+        visual = '<span class="attachment-chip-icon">🖼️</span>';
+      } else if (att.type?.includes('code') || att.name?.endsWith('.ts') || att.name?.endsWith('.js') || att.name?.endsWith('.py')) {
+        visual = '<span class="attachment-chip-icon">💻</span>';
+      }
+
+      chip.innerHTML = `
+        ${visual}
+        <div class="attachment-chip-meta">
+          <span class="attachment-chip-name" title="${escapeHtml(att.name)}">${escapeHtml(att.name)}</span>
+          <span class="attachment-chip-size">${formatBytes(att.size)}</span>
+        </div>
+        <button class="btn-remove-attachment" type="button" title="Remove attachment" data-index="${index}">&times;</button>
+      `;
+
+      chip.querySelector('.btn-remove-attachment').onclick = async (e) => {
+        e.stopPropagation();
+        const removed = stagedAttachments.splice(index, 1)[0];
+        if (removed?.previewUrl) {
+          try { URL.revokeObjectURL(removed.previewUrl); } catch {}
+        }
+        if (removed && removed.serverId) {
+          try {
+            await client.deleteAttachment(removed.serverId);
+          } catch {
+            // ignore
+          }
+        }
+        renderAttachmentStrip();
+      };
+
+      attachmentStrip.appendChild(chip);
+    });
+  }
+
+  async function addFileToStaged(file) {
+    if (!file) return;
+    const isImage = file.type && file.type.startsWith('image/');
+    let previewUrl = null;
+    if (isImage && typeof URL !== 'undefined' && URL.createObjectURL) {
+      try {
+        previewUrl = URL.createObjectURL(file);
+      } catch {
+        // ignore
+      }
+    }
+
+    const stagedItem = {
+      name: file.name,
+      size: file.size,
+      type: file.type || 'application/octet-stream',
+      localPath: file.path || file.name,
+      previewUrl,
+      serverId: null,
+    };
+
+    try {
+      const res = await client.stageAttachment(file.path || file.name);
+      if (res && res.id) {
+        stagedItem.serverId = res.id;
+      }
+    } catch (err) {
+      console.warn('Backend file staging note (local-first fallback):', err.message);
+    }
+
+    stagedAttachments.push(stagedItem);
+    renderAttachmentStrip();
+  }
+
+  // File Picker (No annoying alert dialogs!)
+  const fileAttachmentInput = document.getElementById('fileAttachmentInput');
+  const btnStageFile = document.getElementById('btnStageFile');
+  if (btnStageFile && fileAttachmentInput) {
+    btnStageFile.onclick = () => fileAttachmentInput.click();
+    fileAttachmentInput.onchange = async () => {
+      const files = Array.from(fileAttachmentInput.files || []);
+      for (const f of files) {
+        await addFileToStaged(f);
+      }
+      fileAttachmentInput.value = '';
+    };
+  }
+
+  // Drag and Drop files onto composer and chat window
+  ['dragenter', 'dragover'].forEach((eventName) => {
+    window.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      if (inputWrapper) inputWrapper.classList.add('drag-over');
+    }, false);
+  });
+
+  ['dragleave', 'dragend'].forEach((eventName) => {
+    window.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      if (inputWrapper && (!e.relatedTarget || e.relatedTarget === document.documentElement)) {
+        inputWrapper.classList.remove('drag-over');
+      }
+    }, false);
+  });
+
+  window.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    if (inputWrapper) inputWrapper.classList.remove('drag-over');
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files);
+      for (const f of files) {
+        await addFileToStaged(f);
+      }
+    }
+  }, false);
+
+  // --- Voice Dictation (Web Speech API) ---
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let dictationRecognition = null;
+  let isDictating = false;
+
+  if (btnDictate) {
+    if (!SpeechRecognition) {
+      btnDictate.title = 'Speech recognition not supported in this browser environment';
+      btnDictate.style.opacity = '0.5';
+    } else {
+      dictationRecognition = new SpeechRecognition();
+      dictationRecognition.continuous = true;
+      dictationRecognition.interimResults = true;
+      dictationRecognition.lang = 'en-US';
+
+      let basePrompt = '';
+
+      dictationRecognition.onstart = () => {
+        isDictating = true;
+        btnDictate.classList.add('recording');
+        const textSpan = btnDictate.querySelector('span');
+        if (textSpan) textSpan.textContent = 'Listening...';
+        basePrompt = promptInput.value;
+      };
+
+      dictationRecognition.onresult = (event) => {
+        let interim = '';
+        let final = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            final += event.results[i][0].transcript;
+          } else {
+            interim += event.results[i][0].transcript;
+          }
+        }
+        const separator = basePrompt && !basePrompt.endsWith(' ') ? ' ' : '';
+        promptInput.value = basePrompt + separator + final + interim;
+        promptInput.style.height = 'auto';
+        promptInput.style.height = Math.min(220, promptInput.scrollHeight) + 'px';
+      };
+
+      dictationRecognition.onerror = (err) => {
+        console.warn('Dictation error:', err);
+        stopDictation();
+      };
+
+      dictationRecognition.onend = () => {
+        stopDictation();
+      };
+
+      function stopDictation() {
+        isDictating = false;
+        btnDictate.classList.remove('recording');
+        const textSpan = btnDictate.querySelector('span');
+        if (textSpan) textSpan.textContent = 'Dictate';
+      }
+
+      btnDictate.onclick = () => {
+        if (isDictating) {
+          dictationRecognition.stop();
+          stopDictation();
+        } else {
+          try {
+            dictationRecognition.start();
+          } catch (e) {
+            console.error('Failed to start speech recognition:', e);
+          }
+        }
+      };
+    }
+  }
+
+  // --- Autocomplete Trigger Popover (/, @, #) ---
+  let triggerActiveIndex = 0;
+  let currentTriggerItems = [];
+  let currentTriggerStartPos = -1;
+
+  const DEFAULT_SLASH_COMMANDS = [
+    { icon: '🏗️', title: '/audit', desc: 'Conduct architectural & code health audit', tag: 'Command' },
+    { icon: '🧹', title: '/compact', desc: 'Auto-compact conversation history', tag: 'Command' },
+    { icon: '⏪', title: '/rewind', desc: 'Rollback previous conversation turn', tag: 'Command' },
+    { icon: '💡', title: '/btw', desc: 'Ask ephemeral side question without context clutter', tag: 'Command' },
+    { icon: '🧠', title: '/habits', desc: 'View learned cognitive rules & habits', tag: 'Command' },
+    { icon: '🗑️', title: '/clear', desc: 'Clear dialogue session history', tag: 'Command' },
+    { icon: '🩺', title: '/doctor', desc: 'Run harness preflight diagnostic health check', tag: 'Command' },
+  ];
+
+  async function updateTriggerSuggestions() {
+    if (!triggerPopover) return;
+    const text = promptInput.value;
+    const caret = promptInput.selectionStart;
+
+    const leftText = text.slice(0, caret);
+    const match = leftText.match(/(?:^|\s)([/@#])([a-zA-Z0-9_\-]*)$/);
+
+    if (!match) {
+      hideTriggerPopover();
+      return;
+    }
+
+    const triggerChar = match[1];
+    const query = match[2].toLowerCase();
+    currentTriggerStartPos = caret - match[0].length + (match[0].startsWith(' ') ? 1 : 0);
+
+    let items = [];
+
+    if (triggerChar === '/') {
+      const staticMatches = DEFAULT_SLASH_COMMANDS.filter((c) =>
+        c.title.toLowerCase().includes(query) || c.desc.toLowerCase().includes(query)
+      );
+      items.push(...staticMatches);
+      try {
+        const skills = await client.listSkills();
+        if (skills && Array.isArray(skills)) {
+          for (const s of skills) {
+            const name = s.name || s.id;
+            if (name.toLowerCase().includes(query)) {
+              items.push({
+                icon: '🧩',
+                title: `/${name}`,
+                desc: s.description || 'Modular recipe skill',
+                tag: 'Skill',
+              });
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    } else if (triggerChar === '@') {
+      items.push({
+        icon: '🤖',
+        title: '@Default Assistant',
+        desc: 'Universal clean-room coding assistant',
+        tag: 'Bot',
+        agentId: null,
+      });
+      try {
+        const agents = await client.getAgents();
+        if (agents && Array.isArray(agents)) {
+          for (const a of agents) {
+            if (a.name.toLowerCase().includes(query) || (a.role && a.role.toLowerCase().includes(query))) {
+              items.push({
+                icon: a.kind === 'ROOM' ? '👥' : '⚡',
+                title: `@${a.name}`,
+                desc: a.role || a.description || 'Specialist persona',
+                tag: a.kind === 'ROOM' ? 'Room' : 'Agent',
+                agentId: a.id,
+              });
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    } else if (triggerChar === '#') {
+      if (stagedAttachments.length > 0) {
+        for (const a of stagedAttachments) {
+          if (a.name.toLowerCase().includes(query)) {
+            items.push({
+              icon: '📎',
+              title: `#${a.name}`,
+              desc: `Staged attachment (${formatBytes(a.size)})`,
+              tag: 'Attachment',
+            });
+          }
+        }
+      }
+      try {
+        const atts = await client.listAttachments();
+        if (atts && Array.isArray(atts)) {
+          for (const a of atts) {
+            const fn = a.fileName || a.filename || a.id;
+            if (fn.toLowerCase().includes(query)) {
+              items.push({
+                icon: '📄',
+                title: `#${fn}`,
+                desc: a.localPath || 'Context file',
+                tag: 'File',
+              });
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (items.length === 0) {
+      hideTriggerPopover();
+      return;
+    }
+
+    currentTriggerItems = items;
+    triggerActiveIndex = Math.min(triggerActiveIndex, items.length - 1);
+    if (triggerActiveIndex < 0) triggerActiveIndex = 0;
+
+    renderTriggerPopover(items, triggerChar);
+  }
+
+  function renderTriggerPopover(items, triggerChar) {
+    if (!triggerPopover) return;
+    triggerPopover.innerHTML = '';
+
+    const header = document.createElement('div');
+    header.className = 'trigger-popover-header';
+    header.textContent = triggerChar === '/' ? 'Skills & Slash Commands' : triggerChar === '@' ? 'Mention / Switch Bot Persona' : 'Reference Files & Attachments';
+    triggerPopover.appendChild(header);
+
+    items.slice(0, 8).forEach((item, idx) => {
+      const el = document.createElement('div');
+      el.className = `trigger-item ${idx === triggerActiveIndex ? 'active' : ''}`;
+      el.innerHTML = `
+        <span class="trigger-item-icon">${item.icon}</span>
+        <div class="trigger-item-meta">
+          <span class="trigger-item-title">${escapeHtml(item.title)}</span>
+          <span class="trigger-item-desc">${escapeHtml(item.desc)}</span>
+        </div>
+        <span class="trigger-item-tag">${escapeHtml(item.tag)}</span>
+      `;
+
+      el.onclick = () => selectTriggerItem(idx);
+      el.onmouseenter = () => {
+        triggerActiveIndex = idx;
+        updateTriggerItemHighlight();
+      };
+      triggerPopover.appendChild(el);
+    });
+
+    triggerPopover.classList.remove('hidden');
+  }
+
+  function hideTriggerPopover() {
+    if (triggerPopover) {
+      triggerPopover.classList.add('hidden');
+      triggerPopover.innerHTML = '';
+    }
+    currentTriggerItems = [];
+    currentTriggerStartPos = -1;
+    triggerActiveIndex = 0;
+  }
+
+  function selectTriggerItem(index) {
+    const item = currentTriggerItems[index];
+    if (!item) return;
+
+    const text = promptInput.value;
+    const caret = promptInput.selectionStart;
+    const before = text.slice(0, currentTriggerStartPos);
+    const after = text.slice(caret);
+
+    if (item.tag === 'Command') {
+      if (item.title === '/compact') {
+        hideTriggerPopover();
+        promptInput.value = '';
+        document.getElementById('btnOpenCompact')?.click();
+        return;
+      }
+      if (item.title === '/rewind') {
+        hideTriggerPopover();
+        promptInput.value = '';
+        document.getElementById('btnOpenRollback')?.click();
+        return;
+      }
+      if (item.title === '/btw') {
+        hideTriggerPopover();
+        promptInput.value = '';
+        document.getElementById('btnOpenBtw')?.click();
+        return;
+      }
+      if (item.title === '/habits') {
+        hideTriggerPopover();
+        promptInput.value = '';
+        document.getElementById('btnViewLearnedRules')?.click();
+        return;
+      }
+      if (item.title === '/clear') {
+        hideTriggerPopover();
+        promptInput.value = '';
+        document.getElementById('btnMenuClearSessions')?.click();
+        return;
+      }
+    }
+
+    if (item.tag === 'Bot' || item.tag === 'Agent' || item.tag === 'Room') {
+      if (item.agentId !== undefined) {
+        activeAgentId = item.agentId;
+        badgeActiveBot.textContent = `${item.icon} ${item.title.replace(/^@/, '')}`;
+        persistAgent();
+      }
+    }
+
+    promptInput.value = before + item.title + ' ' + after;
+    const newPos = before.length + item.title.length + 1;
+    promptInput.setSelectionRange(newPos, newPos);
+
+    hideTriggerPopover();
+    promptInput.focus();
+  }
+
+  function updateTriggerItemHighlight() {
+    if (!triggerPopover) return;
+    const items = triggerPopover.querySelectorAll('.trigger-item');
+    items.forEach((item, idx) => {
+      if (idx === triggerActiveIndex) {
+        item.classList.add('active');
+        item.scrollIntoView({ block: 'nearest' });
+      } else {
+        item.classList.remove('active');
+      }
+    });
+  }
+
+  // Dismiss trigger popover when clicking outside
+  document.addEventListener('click', (e) => {
+    if (triggerPopover && !triggerPopover.classList.contains('hidden')) {
+      if (!triggerPopover.contains(e.target) && e.target !== promptInput) {
+        hideTriggerPopover();
+      }
+    }
+  });
+
   async function submitQuery() {
-    const q = promptInput.value.trim();
-    if (!q) return;
+    let q = promptInput.value.trim();
+    if (!q && stagedAttachments.length === 0) return;
+
+    if (stagedAttachments.length > 0) {
+      const attSummary = stagedAttachments
+        .map((a) => `[Attachment: ${a.name} (${formatBytes(a.size)}) - ${a.localPath || a.name}]`)
+        .join('\n');
+      q = q ? `${q}\n\n${attSummary}` : `Please inspect and process the attached context files:\n${attSummary}`;
+      stagedAttachments.length = 0;
+      renderAttachmentStrip();
+    }
 
     // Never block typing: queue follow-ups, send when the current reply finishes.
     if (turnBusy) {
@@ -2978,22 +3719,58 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
   }
 
-  // Esc stops generation
+  // Esc stops generation or closes detail panel / trigger popover
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && turnBusy) {
-      e.preventDefault();
-      client.cancelTurn().catch(() => {});
+    if (e.key === 'Escape') {
+      if (triggerPopover && !triggerPopover.classList.contains('hidden')) {
+        hideTriggerPopover();
+        return;
+      }
+      if (detailPanel && !detailPanel.classList.contains('hidden')) {
+        closeDetailPanel();
+        return;
+      }
+      if (turnBusy) {
+        e.preventDefault();
+        client.cancelTurn().catch(() => {});
+      }
     }
   });
 
-  // Auto-resize composer textarea
+  // Auto-resize composer textarea & update suggestions
   promptInput.addEventListener('input', () => {
     promptInput.style.height = 'auto';
     promptInput.style.height = Math.min(220, promptInput.scrollHeight) + 'px';
+    updateTriggerSuggestions();
   });
 
-  // Keyboard shortcut: Cmd/Ctrl+Enter or Enter sends
+  // Keyboard navigation for autocomplete & prompt submission
   promptInput.onkeydown = (e) => {
+    if (triggerPopover && !triggerPopover.classList.contains('hidden') && currentTriggerItems.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        triggerActiveIndex = (triggerActiveIndex + 1) % currentTriggerItems.length;
+        updateTriggerItemHighlight();
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        triggerActiveIndex = (triggerActiveIndex - 1 + currentTriggerItems.length) % currentTriggerItems.length;
+        updateTriggerItemHighlight();
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        selectTriggerItem(triggerActiveIndex);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        hideTriggerPopover();
+        return;
+      }
+    }
+
     if (e.key === 'Enter') {
       if (e.metaKey || e.ctrlKey || !e.shiftKey) {
         e.preventDefault();
@@ -3002,32 +3779,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   };
 
-  // Composer Attach Button & Safe Mode Toggle
-  const btnStageFile = document.getElementById('btnStageFile');
-  const fileAttachmentInput = document.getElementById('fileAttachmentInput');
-  if (btnStageFile && fileAttachmentInput) {
-    btnStageFile.onclick = () => fileAttachmentInput.click();
-    fileAttachmentInput.onchange = async () => {
-      const file = fileAttachmentInput.files && fileAttachmentInput.files[0];
-      if (!file) return;
-      try {
-        const filePath = file.path || file.name;
-        await client.stageAttachment(filePath);
-        await refreshAttachments();
-        alert(`File "${file.name}" staged successfully.`);
-      } catch (err) {
-        alert(`Error staging attachment: ${err.message}`);
-      } finally {
-        fileAttachmentInput.value = '';
-      }
-    };
-  }
-
   const btnToggleSafeMode = document.getElementById('btnToggleSafeMode');
   if (btnToggleSafeMode) {
     btnToggleSafeMode.onclick = async () => {
       try {
         const s = await client.getSettings();
+        const nextAutoApprove = !s.autoApprove;
+        await client.updateSettings({ autoApprove: nextAutoApprove });
+        await refreshSettings();
+      } catch (err) {
+        console.error('Error toggling safe mode:', err);
+      }
+    };
+  }
         const nextAutoApprove = !s.autoApprove;
         await client.updateSettings({ autoApprove: nextAutoApprove });
         await refreshSettings();

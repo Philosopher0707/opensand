@@ -116,6 +116,7 @@
             <button id="btnOpenRollback" class="btn btn-icon-sm" title="Rollback Turns">⏪ <span class="btn-text-sm">Rewind</span></button>
             <button id="btnOpenCompact" class="btn btn-icon-sm" title="Auto-Compact History">🧹 <span class="btn-text-sm">Compact</span></button>
             <button id="btnViewLearnedRules" class="btn btn-icon-sm" title="View Learned Rules">🧠 <span class="btn-text-sm">Habits</span></button>
+            <button id="btnToggleDetail" class="btn btn-icon-sm" title="Toggle Bot Profile & Details (Cmd+I)">ℹ️ <span class="btn-text-sm">Details</span></button>
           </div>
           <div class="topbar-status-group">
             <span class="badge badge-tokens" id="badgeTokens" title="Context Token Utilization">⚡ 0 tokens</span>
@@ -174,17 +175,24 @@
         </div>
 
         <footer class="input-panel">
-          <div class="input-wrapper">
+          <div class="input-wrapper" id="inputWrapper">
+            <!-- Autocomplete Trigger Popover (OpenBot Parity: / commands, @ bots, # files) -->
+            <div id="triggerPopover" class="trigger-popover hidden" role="listbox" aria-label="Suggestions"></div>
+            <!-- Attachment Strip (OpenBot Parity: staged files/images with preview chips & remove button) -->
+            <div id="attachmentStrip" class="attachment-strip hidden" role="list" aria-label="Staged Attachments"></div>
             <div class="input-textarea-row">
               <div id="queueIndicator" class="queue-indicator hidden"></div>
-              <textarea id="promptInput" placeholder="Ask OpenSand to code, inspect, or run commands... (Enter to send, Shift+Enter for a new line)" rows="1"></textarea>
+              <textarea id="promptInput" placeholder="Ask OpenSand to code, inspect, or run commands... (/ for skills, @ for bots, # for files)" rows="1"></textarea>
             </div>
             <div class="input-actions-bar">
               <div class="input-actions-left">
-                <button id="btnStageFile" class="btn-attach" title="Attach file or screenshot">
+                <button id="btnStageFile" class="btn-attach" type="button" title="Attach file or screenshot">
                   📎 <span>Attach</span>
                 </button>
-                <input type="file" id="fileAttachmentInput" class="hidden" />
+                <button id="btnDictate" class="btn-attach" type="button" title="Voice dictation (Click to speak)">
+                  🎙️ <span>Dictate</span>
+                </button>
+                <input type="file" id="fileAttachmentInput" class="hidden" multiple />
                 <span class="badge badge-model" id="composerModelBadge">Model</span>
               </div>
               <div class="input-actions-right">
@@ -496,6 +504,95 @@
         </div>
       </div>
     </main>
+
+    <!-- Slide-Out Bot Profile & Session Detail Inspector (OpenBot / Grok Bot Parity) -->
+    <aside class="detail-panel hidden" id="detailPanel" aria-label="Bot Profile and Session Details">
+      <div class="detail-header">
+        <div class="detail-header-title">
+          <span class="detail-header-icon">ℹ️</span>
+          <span>Bot Profile & Details</span>
+        </div>
+        <button id="btnCloseDetail" class="btn-icon-ghost" aria-label="Close details" title="Close (Esc)">&times;</button>
+      </div>
+
+      <div class="detail-body">
+        <!-- Active Persona Card -->
+        <section class="detail-section">
+          <div class="detail-section-title">Active Persona</div>
+          <div class="detail-bot-card">
+            <div class="detail-bot-header">
+              <div class="detail-bot-avatar" id="detailBotAvatar">🤖</div>
+              <div class="detail-bot-identity">
+                <div class="detail-bot-name" id="detailBotName">OpenSand Assistant</div>
+                <div class="detail-bot-role" id="detailBotRole">Autonomous Coding Agent</div>
+              </div>
+            </div>
+            <div class="detail-bot-model-tag" id="detailBotModelTag">
+              <span>Model:</span> <code id="detailBotModelCode">stealth/crouton-alpha</code>
+            </div>
+            <div class="detail-prompt-label">System Instructions:</div>
+            <div class="detail-prompt-preview" id="detailBotPromptPreview">
+              Loading instructions...
+            </div>
+          </div>
+        </section>
+
+        <!-- Context & Telemetry Gauge -->
+        <section class="detail-section">
+          <div class="detail-section-title">Context Window Utilization</div>
+          <div class="detail-telemetry-box">
+            <div class="detail-telemetry-row">
+              <span class="detail-telemetry-label">Used Tokens</span>
+              <span class="detail-telemetry-val" id="detailTokensUsed">0 tokens</span>
+            </div>
+            <div class="detail-meter-track">
+              <div class="detail-meter-fill" id="detailMeterFill" style="width: 0%"></div>
+            </div>
+            <div class="detail-telemetry-row detail-telemetry-sub">
+              <span>Context Limit: <strong id="detailTokensMax">1,048,576</strong></span>
+              <span id="detailTokensPct">0.0%</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Cognitive 7-Layer Memories -->
+        <section class="detail-section">
+          <div class="detail-section-title">Cognitive Memories & Habits</div>
+          <div class="detail-memories-list" id="detailMemoriesList">
+            <div class="detail-empty-text">No learned memories in this session yet.</div>
+          </div>
+        </section>
+
+        <!-- Granted Recipe Skills -->
+        <section class="detail-section">
+          <div class="detail-section-title">Granted Skills & Recipes</div>
+          <div class="detail-skills-tags" id="detailSkillsTags">
+            <span class="detail-skill-chip">code-review</span>
+            <span class="detail-skill-chip">architecture</span>
+            <span class="detail-skill-chip">debugging</span>
+          </div>
+        </section>
+
+        <!-- Session Actions -->
+        <section class="detail-section">
+          <div class="detail-section-title">Session Controls</div>
+          <div class="detail-actions-col">
+            <button id="btnDetailRewind" class="btn btn-secondary btn-block">
+              ⏪ Rewind Last Turn
+            </button>
+            <button id="btnDetailCompact" class="btn btn-secondary btn-block">
+              🧹 Auto-Compact Context
+            </button>
+            <button id="btnDetailExportBot" class="btn btn-secondary btn-block">
+              📤 Export Bot Template
+            </button>
+            <button id="btnDetailClear" class="btn btn-danger btn-block">
+              🗑️ Clear Session
+            </button>
+          </div>
+        </section>
+      </div>
+    </aside>
   </div>
 
   <!-- Tool Approval Modal Overlay -->
