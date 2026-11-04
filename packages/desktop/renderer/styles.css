@@ -1801,6 +1801,32 @@ textarea#promptInput {
   padding: 2px 8px;
 }
 
+.badge-model {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--accent);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+  padding: 2px 8px;
+}
+
+@media (max-width: 950px) {
+  .badge-model {
+    max-width: 120px;
+  }
+}
+
+@media (max-width: 750px) {
+  .badge-model {
+    display: none !important;
+  }
+}
+
 @media (max-width: 850px) {
   .badge-bot {
     display: none !important;

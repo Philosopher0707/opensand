@@ -834,18 +834,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   // --- REFRESH FUNCTIONS ---
 
   async function refreshSettings() {
-    const s = await client.getSettings();
-    badgeModel.textContent = s.model || 'Default';
-    badgeAutoApprove.textContent = s.autoApprove ? '⚡ Auto-Approve' : '🛡 Safe Mode';
-    badgeAutoApprove.className = s.autoApprove ? 'badge badge-warning' : 'badge badge-success';
+    try {
+      const s = await client.getSettings();
+      const modelName = s.model || 'Default';
 
-    const composerModelBadge = document.getElementById('composerModelBadge');
-    if (composerModelBadge) {
-      composerModelBadge.textContent = s.model || 'Default';
-    }
-    const composerAutoApproveText = document.getElementById('composerAutoApproveText');
-    if (composerAutoApproveText) {
-      composerAutoApproveText.textContent = s.autoApprove ? 'Auto-Approve' : 'Safe Mode';
+      if (badgeModel) {
+        badgeModel.textContent = modelName;
+        badgeModel.title = `Active Model: ${modelName} (${s.endpoint || ''})`;
+      }
+      if (badgeAutoApprove) {
+        badgeAutoApprove.textContent = s.autoApprove ? '⚡ Auto-Approve' : '🛡 Safe Mode';
+        badgeAutoApprove.className = s.autoApprove ? 'badge badge-warning' : 'badge badge-success';
+      }
+
+      const composerModelBadge = document.getElementById('composerModelBadge');
+      if (composerModelBadge) {
+        composerModelBadge.textContent = modelName;
+        composerModelBadge.title = `Active Model: ${modelName} (${s.endpoint || ''})`;
+      }
+      const composerAutoApproveText = document.getElementById('composerAutoApproveText');
+      if (composerAutoApproveText) {
+        composerAutoApproveText.textContent = s.autoApprove ? 'Auto-Approve' : 'Safe Mode';
+      }
+    } catch (err) {
+      console.error('Error refreshing settings:', err);
     }
   }
 
