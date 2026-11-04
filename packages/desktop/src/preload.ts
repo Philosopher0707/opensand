@@ -21,6 +21,10 @@ try {
         ipcRenderer.invoke('opensand:getSessions'),
       loadSession: (sessionId: string) =>
         ipcRenderer.invoke('opensand:loadSession', { sessionId }),
+      deleteSession: (sessionId: string) =>
+        ipcRenderer.invoke('opensand:deleteSession', { sessionId }),
+      clearAllSessions: () =>
+        ipcRenderer.invoke('opensand:clearAllSessions'),
       getSettings: () =>
         ipcRenderer.invoke('opensand:getSettings'),
       updateSettings: (settings: any) =>

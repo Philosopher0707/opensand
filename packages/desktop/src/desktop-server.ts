@@ -227,6 +227,28 @@ export class DesktopServer {
       return;
     }
 
+    // API: DELETE /api/sessions/:id (Delete individual session)
+    if (pathname.startsWith('/api/sessions/') && req.method === 'DELETE') {
+      const sessionId = pathname.replace('/api/sessions/', '');
+      if (!isValidId(sessionId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid sessionId format' }));
+        return;
+      }
+      const deleted = await this.bridge.deleteSession(sessionId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: deleted }));
+      return;
+    }
+
+    // API: DELETE /api/sessions (Clear all sessions)
+    if (pathname === '/api/sessions' && req.method === 'DELETE') {
+      const count = await this.bridge.clearAllSessions();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, count }));
+      return;
+    }
+
     // API: GET /api/settings
     if (pathname === '/api/settings' && req.method === 'GET') {
       const settings = this.bridge.getSettings();

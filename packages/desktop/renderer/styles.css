@@ -1153,6 +1153,190 @@ body {
   color: var(--text-code);
 }
 
+/* Chat Hygiene & Markdown Table System */
+.table-container {
+  margin: 12px 0;
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card);
+}
+
+.markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.markdown-table th {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-bottom: 2px solid var(--border-color);
+  padding: 8px 12px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+[data-theme="light"] .markdown-table th {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+.markdown-table td {
+  border-bottom: 1px solid var(--border-color-subtle);
+  padding: 8px 12px;
+  color: var(--text-main);
+}
+
+.markdown-table tr:last-child td {
+  border-bottom: none;
+}
+
+.markdown-table tr:hover td {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+[data-theme="light"] .markdown-table tr:hover td {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.task-list-item {
+  list-style-type: none !important;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: -16px;
+}
+
+.task-list-item input[type="checkbox"] {
+  accent-color: var(--accent);
+  cursor: default;
+}
+
+/* Message Hover Actions & Timestamps */
+.message-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.message:hover .message-actions {
+  opacity: 1;
+}
+
+.message-time {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.btn-msg-action {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.btn-msg-action:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="light"] .btn-msg-action:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* Floating Smart Scroll-to-Bottom Pill */
+.btn-scroll-bottom {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-card);
+  color: var(--accent);
+  border: 1px solid var(--border-color);
+  border-radius: 9999px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  z-index: 100;
+  transition: all 0.2s ease;
+}
+
+.btn-scroll-bottom:hover {
+  background: var(--bg-card-hover);
+  transform: translateX(-50%) translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+/* Session Deletion Action in Roster */
+.btn-delete-session {
+  opacity: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.session-channel-item:hover .btn-delete-session {
+  opacity: 0.6;
+}
+
+.session-channel-item .btn-delete-session:hover {
+  opacity: 1;
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.15);
+}
+
+/* Tool Copy Output Button */
+.btn-copy-tool-output {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-copy-tool-output:hover {
+  color: var(--text-main);
+  border-color: var(--accent);
+}
+
+.btn-copy-tool-output.copied {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+/* Thought Streaming Pulse */
+.thought-streaming .thought-label {
+  color: var(--accent);
+  animation: pulseThoughtText 1.5s infinite ease-in-out;
+}
+
+@keyframes pulseThoughtText {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
 /* World-Class Floating Composer Bar */
 .input-panel {
   padding: 8px 16px 16px 16px;

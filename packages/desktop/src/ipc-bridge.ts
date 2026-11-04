@@ -486,6 +486,41 @@ export class DesktopIpcBridge extends EventEmitter {
     return { events, transcript };
   }
 
+  public async deleteSession(sessionId: string): Promise<boolean> {
+    if (!sessionId || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
+      throw new Error(`Invalid sessionId: ${sessionId}`);
+    }
+    const sessionDir = path.join(this.baseDir, 'sessions', sessionId);
+    const resolvedSessionDir = path.resolve(sessionDir);
+    const expectedBase = path.resolve(path.join(this.baseDir, 'sessions'));
+    if (!resolvedSessionDir.startsWith(expectedBase)) {
+      throw new Error('Path traversal detected');
+    }
+
+    if (fs.existsSync(resolvedSessionDir)) {
+      fs.rmSync(resolvedSessionDir, { recursive: true, force: true });
+      return true;
+    }
+    return false;
+  }
+
+  public async clearAllSessions(): Promise<number> {
+    const sessionsDir = path.join(this.baseDir, 'sessions');
+    if (!fs.existsSync(sessionsDir)) {
+      return 0;
+    }
+    const entries = fs.readdirSync(sessionsDir, { withFileTypes: true });
+    let count = 0;
+    for (const ent of entries) {
+      if (ent.isDirectory()) {
+        const dirPath = path.join(sessionsDir, ent.name);
+        fs.rmSync(dirPath, { recursive: true, force: true });
+        count++;
+      }
+    }
+    return count;
+  }
+
   // Memory Store API (Grok Bot Parity)
   public async listMemories(filter?: {
     scope?: any;

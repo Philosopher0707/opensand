@@ -49,6 +49,8 @@ export interface OpenSandBridgeApi {
   approveTool: (approvalId: string, decision: ApprovalDecision) => Promise<{ success: boolean }>;
   getSessions: () => Promise<SessionSummary[]>;
   loadSession: (sessionId: string) => Promise<{ events: unknown[]; transcript: string }>;
+  deleteSession?: (sessionId: string) => Promise<{ success: boolean }>;
+  clearAllSessions?: () => Promise<{ success: boolean; count: number }>;
   getSettings: () => Promise<DesktopSettings>;
   updateSettings: (settings: Partial<DesktopSettings>) => Promise<DesktopSettings>;
   onEvent: (callback: (event: DesktopEvent) => void) => () => void;

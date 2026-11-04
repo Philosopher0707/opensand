@@ -92,6 +92,41 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     const sessions = JSON.parse(res3.body);
     assert.ok(Array.isArray(sessions));
 
+    // Test session management hygiene: Create, Load, Delete, and Clear
+    const testSessionDir = path.join(tmpDir, 'sessions', 'test-sess-1');
+    fs.mkdirSync(testSessionDir, { recursive: true });
+    fs.writeFileSync(path.join(testSessionDir, 'transcript.jsonl'), JSON.stringify({ role: 'user', content: 'hello' }) + '\n');
+    fs.writeFileSync(path.join(testSessionDir, 'transcript.txt'), 'hello transcript\n');
+
+    const reqLoadSess = new MockIncomingMessage('GET', '/api/sessions/test-sess-1');
+    const resLoadSess = new MockServerResponse();
+    await (server as any).handleRequest(reqLoadSess, resLoadSess);
+    assert.strictEqual(resLoadSess.statusCode, 200);
+    const loadedSess = JSON.parse(resLoadSess.body);
+    assert.strictEqual(loadedSess.events.length, 1);
+    assert.strictEqual(loadedSess.transcript, 'hello transcript\n');
+
+    // Test DELETE /api/sessions/:id
+    const reqDelSess = new MockIncomingMessage('DELETE', '/api/sessions/test-sess-1');
+    const resDelSess = new MockServerResponse();
+    await (server as any).handleRequest(reqDelSess, resDelSess);
+    assert.strictEqual(resDelSess.statusCode, 200);
+    const delResult = JSON.parse(resDelSess.body);
+    assert.strictEqual(delResult.success, true);
+    assert.strictEqual(fs.existsSync(testSessionDir), false);
+
+    // Test DELETE /api/sessions (clear all)
+    const testSessionDir2 = path.join(tmpDir, 'sessions', 'test-sess-2');
+    fs.mkdirSync(testSessionDir2, { recursive: true });
+    const reqClearSess = new MockIncomingMessage('DELETE', '/api/sessions');
+    const resClearSess = new MockServerResponse();
+    await (server as any).handleRequest(reqClearSess, resClearSess);
+    assert.strictEqual(resClearSess.statusCode, 200);
+    const clearResult = JSON.parse(resClearSess.body);
+    assert.strictEqual(clearResult.success, true);
+    assert.strictEqual(clearResult.count, 1);
+    assert.strictEqual(fs.existsSync(testSessionDir2), false);
+
     // Test POST /api/agents & GET /api/agents
     const reqCreateBot = new MockIncomingMessage('POST', '/api/agents');
     const resCreateBot = new MockServerResponse();

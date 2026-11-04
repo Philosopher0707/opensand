@@ -105,6 +105,14 @@ export class DesktopApp {
       return this.bridge.loadSession(sessionId);
     });
 
+    ipcMain.handle('opensand:deleteSession', async (_: any, { sessionId }: { sessionId: string }) => {
+      return this.bridge.deleteSession(sessionId);
+    });
+
+    ipcMain.handle('opensand:clearAllSessions', async () => {
+      return this.bridge.clearAllSessions();
+    });
+
     ipcMain.handle('opensand:getSettings', async () => {
       return this.bridge.getSettings();
     });

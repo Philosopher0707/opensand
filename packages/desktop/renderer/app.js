@@ -83,6 +83,22 @@ class OpenSandClient {
     return res.json();
   }
 
+  async deleteSession(sessionId) {
+    if (this.isElectron && window.opensand?.deleteSession) {
+      return window.opensand.deleteSession(sessionId);
+    }
+    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+    return res.json();
+  }
+
+  async clearAllSessions() {
+    if (this.isElectron && window.opensand?.clearAllSessions) {
+      return window.opensand.clearAllSessions();
+    }
+    const res = await fetch('/api/sessions', { method: 'DELETE' });
+    return res.json();
+  }
+
   async getSettings() {
     if (this.isElectron) {
       return window.opensand.getSettings();
@@ -743,6 +759,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let activeApprovalId = null;
   let currentAssistantMessage = null;
   let currentAssistantText = '';
+  let currentAssistantThought = '';
   let activeToolLines = [];
 
   // Theme Controller
@@ -949,9 +966,28 @@ document.addEventListener('DOMContentLoaded', async () => {
           </div>
           <div class="channel-line-2">
             <span class="channel-snippet">${escapeHtml(countSnippet)}</span>
+            <button class="btn-delete-session" title="Delete conversation" data-session-id="${escapeHtml(s.id)}">🗑️</button>
           </div>
         </div>
       `;
+      const btnDel = item.querySelector('.btn-delete-session');
+      if (btnDel) {
+        btnDel.onclick = async (e) => {
+          e.stopPropagation();
+          if (confirm(`Delete conversation "${title}"? This cannot be undone.`)) {
+            try {
+              await client.deleteSession(s.id);
+              if (currentSessionId === s.id) {
+                startNewSession();
+              } else {
+                refreshSessions();
+              }
+            } catch (err) {
+              alert(`Error deleting conversation: ${err.message}`);
+            }
+          }
+        };
+      }
       item.onclick = () => selectSession(s.id);
       sessionList.appendChild(item);
     }
@@ -1899,6 +1935,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let content = rawText;
 
+    // Handle unclosed fenced code block during streaming
+    const fenceMatches = content.match(/```/g);
+    if (fenceMatches && fenceMatches.length % 2 !== 0) {
+      content += '\n```';
+    }
+
     // 1. Extract <thinking> tags (both closed and unclosed streaming)
     content = content.replace(/<thinking>([\s\S]*?)(?:<\/thinking>|$)/gi, (match, thoughtText) => {
       const trimmed = thoughtText.trim();
@@ -1931,6 +1973,29 @@ document.addEventListener('DOMContentLoaded', async () => {
       return `\n%%CODE_BLOCK_${idx}%%\n`;
     });
 
+    // 2.5 Markdown Tables (| Header 1 | Header 2 |)
+    content = content.replace(/(?:^|\n)(\|[^\n]+\|\r?\n\|[-:\s|]+\|\r?\n(?:\|[^\n]+\|\r?\n?)*)/g, (match, tableText) => {
+      const lines = tableText.trim().split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) return match;
+      const parseRow = (line) => line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      const headers = parseRow(lines[0]);
+      const dataRows = lines.slice(2).map(parseRow);
+      let html = '<div class="table-container"><table class="markdown-table"><thead><tr>';
+      for (const h of headers) {
+        html += `<th>${escapeHtml(h)}</th>`;
+      }
+      html += '</tr></thead><tbody>';
+      for (const row of dataRows) {
+        html += '<tr>';
+        for (let i = 0; i < headers.length; i++) {
+          html += `<td>${escapeHtml(row[i] !== undefined ? row[i] : '')}</td>`;
+        }
+        html += '</tr>';
+      }
+      html += '</tbody></table></div>';
+      return `\n${html}\n`;
+    });
+
     // 3. Inline code `code`
     content = content.replace(/`([^`\n]+)`/g, (match, inlineCode) => {
       return `<code>${escapeHtml(inlineCode)}</code>`;
@@ -1948,7 +2013,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     content = content.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     content = content.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 
-    // 7. Unordered lists (- item or * item)
+    // 7. Task list items (- [ ] or - [x]) and Unordered lists (- item or * item)
+    content = content.replace(/^\s*[-*]\s+\[([ xX])\]\s+(.*)$/gim, (m, check, text) => {
+      const isChecked = check.toLowerCase() === 'x';
+      return `<li class="task-list-item"><input type="checkbox" disabled ${isChecked ? 'checked' : ''} /> <span>${text}</span></li>`;
+    });
     content = content.replace(/^\s*[-*]\s+(.*)$/gim, '<li>$1</li>');
     content = content.replace(/(<li>.*<\/li>)/gms, '<ul>$1</ul>');
     content = content.replace(/<\/ul>\s*<ul>/g, '');
@@ -1964,6 +2033,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Clean empty paragraphs and wrappers around block elements
     content = content.replace(/<p>\s*<\/p>/g, '');
     content = content.replace(/<p>\s*(<div class="thought-accordion">[\s\S]*?<\/div>)\s*<\/p>/g, '$1');
+    content = content.replace(/<p>\s*(<div class="table-container">[\s\S]*?<\/div>)\s*<\/p>/g, '$1');
     content = content.replace(/<p>\s*(<h2>.*?<\/h2>|<h3>.*?<\/h3>|<h4>.*?<\/h4>|<blockquote>.*?<\/blockquote>|<ul>.*?<\/ul>)\s*<\/p>/g, '$1');
 
     // 10. Re-insert code blocks
@@ -2016,6 +2086,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     return '';
   }
 
+  const MAX_TOOL_DOM_PREVIEW = 12000;
+
+  function formatToolOutputPayload(result) {
+    if (result === null || result === undefined) return { display: '', raw: '', isTruncated: false };
+    const raw = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+    const isTruncated = raw.length > MAX_TOOL_DOM_PREVIEW;
+    const display = isTruncated
+      ? raw.slice(0, MAX_TOOL_DOM_PREVIEW) + `\n\n[... Truncated for display hygiene: ${(raw.length - MAX_TOOL_DOM_PREVIEW).toLocaleString()} characters omitted. Click "Copy Output" to inspect in full. ...]`
+      : raw;
+    return { display, raw, isTruncated };
+  }
+
   function createToolLineElement(toolCall, status = 'running', result = null) {
     const name = toolCall.function?.name || toolCall.name || 'tool';
     let args = {};
@@ -2042,6 +2124,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     div.className = `tool-line ${isRunning ? 'tool-line-running' : ''}`;
     div.dataset.toolName = name;
 
+    const outInfo = formatToolOutputPayload(result);
+    div._rawResult = outInfo.raw;
+
     div.innerHTML = `
       <div class="tool-line-header">
         <span class="tool-line-toggle">▶</span>
@@ -2054,8 +2139,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div class="tool-details-header">Parameters:</div>
         <pre class="tool-details-pre">${escapeHtml(JSON.stringify(args, null, 2))}</pre>
         ${result !== null && result !== undefined ? `
-          <div class="tool-details-header" style="margin-top: 8px;">Output Result:</div>
-          <pre class="tool-details-pre tool-result-pre">${escapeHtml(typeof result === 'string' ? result : JSON.stringify(result, null, 2))}</pre>
+          <div class="tool-details-header" style="margin-top: 8px;">
+            <span>Output Result:</span>
+            <button class="btn-copy-tool-output" type="button">Copy Output</button>
+          </div>
+          <pre class="tool-details-pre tool-result-pre">${escapeHtml(outInfo.display)}</pre>
         ` : ''}
       </div>
     `;
@@ -2073,6 +2161,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       badge.className = `tool-line-badge ${isError ? 'badge-error' : 'badge-done'}`;
     }
     if (result !== undefined && result !== null) {
+      const outInfo = formatToolOutputPayload(result);
+      toolEl._rawResult = outInfo.raw;
       const details = toolEl.querySelector('.tool-line-details');
       if (details) {
         let resultPre = details.querySelector('.tool-result-pre');
@@ -2080,18 +2170,18 @@ document.addEventListener('DOMContentLoaded', async () => {
           const outHeader = document.createElement('div');
           outHeader.className = 'tool-details-header';
           outHeader.style.marginTop = '8px';
-          outHeader.textContent = 'Output Result:';
+          outHeader.innerHTML = `<span>Output Result:</span><button class="btn-copy-tool-output" type="button">Copy Output</button>`;
           resultPre = document.createElement('pre');
           resultPre.className = 'tool-details-pre tool-result-pre';
           details.appendChild(outHeader);
           details.appendChild(resultPre);
         }
-        resultPre.textContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+        resultPre.textContent = outInfo.display;
       }
     }
   }
 
-  // Delegated interactions for Code Copy, Thinking Accordion, and Tool Details
+  // Delegated interactions for Code Copy, Thinking Accordion, Tool Output Copy, Message Copy, and Tool Details
   chatContainer.addEventListener('click', (e) => {
     // 1. Copy code button
     const copyBtn = e.target.closest('.btn-copy-code');
@@ -2109,6 +2199,43 @@ document.addEventListener('DOMContentLoaded', async () => {
           }, 1500);
         }).catch(() => {
           copyBtn.textContent = 'Failed';
+        });
+      }
+      return;
+    }
+
+    // 1.5 Copy tool output button
+    const copyToolBtn = e.target.closest('.btn-copy-tool-output');
+    if (copyToolBtn) {
+      e.stopPropagation();
+      const toolLine = copyToolBtn.closest('.tool-line');
+      const rawText = toolLine?._rawResult || toolLine?.querySelector('.tool-result-pre')?.textContent || '';
+      if (rawText) {
+        navigator.clipboard.writeText(rawText).then(() => {
+          copyToolBtn.textContent = '✓ Copied!';
+          copyToolBtn.classList.add('copied');
+          setTimeout(() => {
+            copyToolBtn.textContent = 'Copy Output';
+            copyToolBtn.classList.remove('copied');
+          }, 1500);
+        });
+      }
+      return;
+    }
+
+    // 1.8 Copy message button
+    const copyMsgBtn = e.target.closest('.btn-copy-msg');
+    if (copyMsgBtn) {
+      e.stopPropagation();
+      const msg = copyMsgBtn.closest('.message');
+      const contentEl = msg?.querySelector('.message-content');
+      const textToCopy = msg?._rawContent || contentEl?.innerText || '';
+      if (textToCopy) {
+        navigator.clipboard.writeText(textToCopy).then(() => {
+          copyMsgBtn.textContent = '✓';
+          setTimeout(() => {
+            copyMsgBtn.textContent = '📋';
+          }, 1500);
         });
       }
       return;
@@ -2143,6 +2270,226 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // --- Smart Scrolling & Viewport Hygiene ---
+  const btnScrollBottom = document.getElementById('btnScrollBottom');
+
+  function isUserScrolledUp() {
+    const threshold = 80;
+    return (chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight) > threshold;
+  }
+
+  function smartScrollToBottom(force = false) {
+    const isUp = isUserScrolledUp();
+    if (btnScrollBottom) {
+      if (isUp) {
+        btnScrollBottom.classList.remove('hidden');
+      } else {
+        btnScrollBottom.classList.add('hidden');
+      }
+    }
+    if (force || !isUp) {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+  }
+
+  if (btnScrollBottom) {
+    btnScrollBottom.onclick = () => smartScrollToBottom(true);
+  }
+
+  chatContainer.addEventListener('scroll', () => {
+    if (btnScrollBottom) {
+      if (isUserScrolledUp()) {
+        btnScrollBottom.classList.remove('hidden');
+      } else {
+        btnScrollBottom.classList.add('hidden');
+      }
+    }
+  });
+
+  // --- Thought Process Renderer ---
+  function renderThoughtBlock(thoughtEl, thoughtText, isStreaming = false) {
+    if (!thoughtEl) return;
+    if (!thoughtText || !thoughtText.trim()) {
+      thoughtEl.innerHTML = '';
+      thoughtEl.classList.add('hidden');
+      return;
+    }
+    thoughtEl.classList.remove('hidden');
+
+    const trimmed = thoughtText.trim();
+    const words = trimmed.split(/\s+/).filter(Boolean).length;
+    const headerTitle = isStreaming ? `Thinking (${words} words)...` : `Thought process (${words} words)`;
+
+    const existingBody = thoughtEl.querySelector('.thought-body');
+    const wasExpanded = existingBody && !existingBody.classList.contains('hidden');
+    const shouldBeOpen = isStreaming || wasExpanded;
+
+    thoughtEl.innerHTML = `
+      <div class="thought-accordion ${isStreaming ? 'thought-streaming' : ''}">
+        <div class="thought-header">
+          <span class="thought-toggle">${shouldBeOpen ? '▼' : '▶'}</span>
+          <span class="thought-icon">${isStreaming ? '⏳' : '💭'}</span>
+          <span class="thought-label">${escapeHtml(headerTitle)}</span>
+        </div>
+        <div class="thought-body ${shouldBeOpen ? '' : 'hidden'}">${escapeHtml(trimmed)}</div>
+      </div>
+    `;
+  }
+
+  // --- Session History & Turn Reconstruction ---
+  function parseTranscriptTextFallback(transcriptText) {
+    if (!transcriptText || typeof transcriptText !== 'string') return [];
+    const turns = [];
+    const userQueryRegex = /<user_query>([\s\S]*?)<\/user_query>/gi;
+    let match;
+    const queries = [];
+    while ((match = userQueryRegex.exec(transcriptText)) !== null) {
+      queries.push({
+        query: match[1].trim(),
+        startIndex: match.index,
+        endIndex: userQueryRegex.lastIndex,
+      });
+    }
+
+    if (queries.length === 0) {
+      return [{ role: 'assistant', content: transcriptText.trim() }];
+    }
+
+    for (let i = 0; i < queries.length; i++) {
+      const q = queries[i];
+      turns.push({ role: 'user', content: q.query });
+
+      const assistantStart = q.endIndex;
+      const assistantEnd = (i + 1 < queries.length) ? queries[i + 1].startIndex : transcriptText.length;
+      let assistantSection = transcriptText.slice(assistantStart, assistantEnd).trim();
+      assistantSection = assistantSection.replace(/^assistant:\s*/i, '').trim();
+
+      if (assistantSection) {
+        turns.push({ role: 'assistant', content: assistantSection });
+      }
+    }
+
+    return turns;
+  }
+
+  function reconstructDialogueTurns(sessionData) {
+    const rawEvents = Array.isArray(sessionData)
+      ? sessionData
+      : (Array.isArray(sessionData?.events) ? sessionData.events : []);
+    const transcriptText = sessionData?.transcript || '';
+
+    if (rawEvents.length === 0 && transcriptText) {
+      return parseTranscriptTextFallback(transcriptText);
+    }
+
+    const turns = [];
+    let currentAssistantTurn = null;
+
+    for (const ev of rawEvents) {
+      if (!ev || typeof ev !== 'object') continue;
+
+      if (ev.role === 'user') {
+        if (currentAssistantTurn) {
+          turns.push(currentAssistantTurn);
+          currentAssistantTurn = null;
+        }
+        turns.push({
+          role: 'user',
+          content: ev.content || '',
+          timestamp: ev.timestamp || null,
+        });
+        continue;
+      }
+
+      if (ev.role === 'assistant') {
+        if (!currentAssistantTurn) {
+          currentAssistantTurn = {
+            role: 'assistant',
+            content: '',
+            thought: '',
+            toolCalls: [],
+            timestamp: ev.timestamp || null,
+          };
+        }
+
+        let content = ev.content || '';
+        if (content) {
+          const thinkingMatch = content.match(/<thinking>([\s\S]*?)<\/thinking>/i);
+          if (thinkingMatch) {
+            currentAssistantTurn.thought = (currentAssistantTurn.thought ? currentAssistantTurn.thought + '\n' : '') + thinkingMatch[1].trim();
+            content = content.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+          }
+          if (content) {
+            currentAssistantTurn.content = (currentAssistantTurn.content ? currentAssistantTurn.content + '\n\n' : '') + content;
+          }
+        }
+
+        if (ev.tool_calls && Array.isArray(ev.tool_calls)) {
+          for (const tc of ev.tool_calls) {
+            currentAssistantTurn.toolCalls.push({
+              id: tc.id,
+              name: tc.function?.name || tc.name,
+              args: tc.function?.arguments || tc.args,
+              status: 'running',
+              result: null,
+            });
+          }
+        }
+        continue;
+      }
+
+      if (ev.role === 'tool') {
+        if (!currentAssistantTurn) {
+          currentAssistantTurn = {
+            role: 'assistant',
+            content: '',
+            thought: '',
+            toolCalls: [],
+            timestamp: ev.timestamp || null,
+          };
+        }
+        const matched = currentAssistantTurn.toolCalls.find(tc => tc.id === ev.tool_call_id)
+          || currentAssistantTurn.toolCalls.find(tc => tc.status === 'running');
+        if (matched) {
+          matched.status = 'done';
+          matched.result = ev.result;
+        } else {
+          currentAssistantTurn.toolCalls.push({
+            id: ev.tool_call_id,
+            name: 'tool',
+            args: {},
+            status: 'done',
+            result: ev.result,
+          });
+        }
+        continue;
+      }
+
+      if (ev.type === 'thought' || ev.role === 'thought') {
+        if (!currentAssistantTurn) {
+          currentAssistantTurn = {
+            role: 'assistant',
+            content: '',
+            thought: '',
+            toolCalls: [],
+            timestamp: ev.timestamp || null,
+          };
+        }
+        const t = ev.data?.thought || ev.thought || '';
+        if (t) {
+          currentAssistantTurn.thought = (currentAssistantTurn.thought ? currentAssistantTurn.thought + '\n' : '') + t;
+        }
+        continue;
+      }
+    }
+
+    if (currentAssistantTurn) {
+      turns.push(currentAssistantTurn);
+    }
+
+    return turns;
+  }
+
   async function selectSession(sessionId) {
     currentSessionId = sessionId;
     switchView('chat');
@@ -2150,9 +2497,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     messageFeed.innerHTML = '';
     welcomeBanner.classList.add('hidden');
 
-    const history = await client.loadSession(sessionId);
-    for (const msg of history) {
-      appendMessage(msg.role, msg.content, msg.toolCalls);
+    try {
+      const sessionData = await client.loadSession(sessionId);
+      const turns = reconstructDialogueTurns(sessionData);
+      for (const turn of turns) {
+        appendMessage(turn.role, turn.content, turn.toolCalls, turn.thought, turn.timestamp);
+      }
+      smartScrollToBottom(true);
+    } catch (err) {
+      console.error('Error loading session:', err);
+      messageFeed.innerHTML = `<div class="message message-assistant"><div class="message-body" style="color: var(--danger)">Error loading session: ${escapeHtml(err.message)}</div></div>`;
     }
     refreshSessions();
   }
@@ -2217,16 +2571,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const btnMenuClearSessions = document.getElementById('btnMenuClearSessions');
   if (btnMenuClearSessions) {
-    btnMenuClearSessions.onclick = () => {
+    btnMenuClearSessions.onclick = async () => {
       if (accountPopup) accountPopup.classList.add('hidden');
-      startNewSession();
+      if (confirm('Are you sure you want to clear all conversation history? This will permanently delete all session records.')) {
+        try {
+          await client.clearAllSessions();
+          startNewSession();
+        } catch (err) {
+          alert(`Error clearing history: ${err.message}`);
+        }
+      }
     };
   }
 
-  function appendMessage(role, content, toolCalls = []) {
+  function appendMessage(role, content = '', toolCalls = [], thought = '', timestamp = null) {
     welcomeBanner.classList.add('hidden');
     const msgDiv = document.createElement('div');
     msgDiv.className = `message message-${role}`;
+    msgDiv._rawContent = content || '';
 
     const avatar = document.createElement('div');
     avatar.className = 'message-avatar';
@@ -2235,11 +2597,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     const body = document.createElement('div');
     body.className = 'message-body';
 
-    const contentEl = document.createElement('div');
-    contentEl.className = 'message-content';
+    const thoughtEl = document.createElement('div');
+    thoughtEl.className = 'message-thought-container';
 
     const toolsEl = document.createElement('div');
     toolsEl.className = 'message-tools-container';
+
+    const contentEl = document.createElement('div');
+    contentEl.className = 'message-content';
+
+    const actionsEl = document.createElement('div');
+    actionsEl.className = 'message-actions';
+
+    const timeLabel = document.createElement('span');
+    timeLabel.className = 'message-time';
+    const dateObj = timestamp ? new Date(timestamp) : new Date();
+    timeLabel.textContent = isNaN(dateObj.getTime()) ? '' : dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const btnCopy = document.createElement('button');
+    btnCopy.className = 'btn-msg-action btn-copy-msg';
+    btnCopy.title = 'Copy message';
+    btnCopy.textContent = '📋';
+
+    actionsEl.appendChild(timeLabel);
+    actionsEl.appendChild(btnCopy);
+
+    if (thought) {
+      renderThoughtBlock(thoughtEl, thought, false);
+    }
+
+    if (toolCalls && toolCalls.length > 0) {
+      for (const tc of toolCalls) {
+        const toolEl = createToolLineElement(tc, tc.status || 'done', tc.result);
+        toolsEl.appendChild(toolEl);
+      }
+    }
 
     if (content) {
       if (role === 'user') {
@@ -2249,22 +2641,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
 
-    if (toolCalls && toolCalls.length > 0) {
-      for (const tc of toolCalls) {
-        const toolEl = createToolLineElement(tc, 'done');
-        toolsEl.appendChild(toolEl);
-      }
+    if (role === 'assistant') {
+      body.appendChild(thoughtEl);
+      body.appendChild(toolsEl);
+      body.appendChild(contentEl);
+    } else {
+      body.appendChild(contentEl);
     }
-
-    body.appendChild(contentEl);
-    body.appendChild(toolsEl);
+    body.appendChild(actionsEl);
 
     msgDiv.appendChild(avatar);
     msgDiv.appendChild(body);
     messageFeed.appendChild(msgDiv);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
 
-    return { msgDiv, body, contentEl, toolsEl };
+    smartScrollToBottom();
+
+    return { msgDiv, body, thoughtEl, toolsEl, contentEl, actionsEl };
   }
 
   async function submitQuery() {
@@ -2282,6 +2674,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     currentAssistantMessage = appendMessage('assistant', '');
     currentAssistantText = '';
+    currentAssistantThought = '';
     activeToolLines = [];
 
     try {
@@ -2373,9 +2766,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (event.type === 'token' || event.type === 'text_delta') {
       const delta = event.data?.token || event.token || event.text || '';
       if (delta && currentAssistantMessage) {
+        if (currentAssistantThought && currentAssistantMessage.thoughtEl.querySelector('.thought-streaming')) {
+          renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, false);
+        }
         currentAssistantText += delta;
+        currentAssistantMessage.msgDiv._rawContent = currentAssistantText;
         currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+        smartScrollToBottom();
       }
     }
 
@@ -2383,20 +2780,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (event.type === 'thought') {
       const thought = event.data?.thought || event.thought || '';
       if (thought && currentAssistantMessage) {
-        currentAssistantText = `<thinking>${thought}</thinking>\n` + currentAssistantText;
-        currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+        currentAssistantThought += thought;
+        renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, true);
+        smartScrollToBottom();
       }
     }
 
     // Tool call started
     if (event.type === 'tool_call') {
       if (currentAssistantMessage) {
+        if (currentAssistantThought && currentAssistantMessage.thoughtEl.querySelector('.thought-streaming')) {
+          renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, false);
+        }
         const toolCall = event.data || event.toolCall || event;
         const toolEl = createToolLineElement(toolCall, 'running');
         currentAssistantMessage.toolsEl.appendChild(toolEl);
         activeToolLines.push(toolEl);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+        smartScrollToBottom();
       }
     }
 
@@ -2410,23 +2810,27 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (targetEl) {
         updateToolLineStatus(targetEl, 'done', result);
       }
-      chatContainer.scrollTop = chatContainer.scrollHeight;
+      smartScrollToBottom();
     }
 
     // Turn completed
     if (event.type === 'turn_complete') {
       if (currentAssistantMessage) {
+        if (currentAssistantThought) {
+          renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, false);
+        }
         const runningLines = currentAssistantMessage.toolsEl.querySelectorAll('.tool-line-running');
         runningLines.forEach((el) => updateToolLineStatus(el, 'done'));
 
         const response = event.data?.response || event.response;
         if (response && !currentAssistantText.trim()) {
           currentAssistantText = response;
+          currentAssistantMessage.msgDiv._rawContent = currentAssistantText;
           currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
         }
       }
       refreshTokenBadge();
-      chatContainer.scrollTop = chatContainer.scrollHeight;
+      smartScrollToBottom();
     }
 
     // Approval required
