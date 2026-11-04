@@ -55,6 +55,14 @@ class OpenSandClient {
     return res.json();
   }
 
+  async cancelTurn() {
+    if (this.isElectron && window.opensand?.cancelTurn) {
+      return window.opensand.cancelTurn();
+    }
+    const res = await fetch('/api/cancel', { method: 'POST' });
+    return res.json();
+  }
+
   async approveTool(approvalId, decision) {
     if (this.isElectron) {
       return window.opensand.approveTool(approvalId, decision);
@@ -776,6 +784,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // State
   let currentSessionId = null;
   let activeAgentId = null;
+  let turnBusy = false;
+  let queuedQueries = [];
   let activeApprovalId = null;
   let currentAssistantMessage = null;
   let currentAssistantText = '';
@@ -790,6 +800,53 @@ document.addEventListener('DOMContentLoaded', async () => {
     messagesCount: 0,
     toolScopeMode: 'auto',
   };
+
+  // Persist active session + bot across reloads (theme/sidebar already do this)
+  const SESSION_KEY = 'opensand-session-id';
+  const AGENT_KEY = 'opensand-agent-id';
+
+  function persistSession() {
+    if (currentSessionId) localStorage.setItem(SESSION_KEY, currentSessionId);
+    else localStorage.removeItem(SESSION_KEY);
+    refreshSessions();
+  }
+
+  function persistAgent() {
+    if (activeAgentId) localStorage.setItem(AGENT_KEY, activeAgentId);
+    else localStorage.removeItem(AGENT_KEY);
+    refreshBots();
+    refreshTokenBadge();
+  }
+
+  // Restore saved session + bot (validated against live lists in boot)
+  currentSessionId = localStorage.getItem(SESSION_KEY) || null;
+  activeAgentId = localStorage.getItem(AGENT_KEY) || null;
+
+  // --- Turn lifecycle helpers ---
+  const btnStop = document.getElementById('btnStop');
+  const queueIndicator = document.getElementById('queueIndicator');
+
+  function setTurnBusy(busy) {
+    turnBusy = busy;
+    if (btnSend) {
+      const label = btnSend.querySelector('span');
+      if (label) label.textContent = busy ? 'Queue' : 'Send';
+      else btnSend.textContent = busy ? 'Queue' : 'Send';
+      btnSend.title = busy ? 'Queue this message (sends when the current reply finishes)' : 'Send';
+    }
+    if (btnStop) btnStop.classList.toggle('hidden', !busy);
+    if (promptInput) promptInput.focus();
+  }
+
+  function updateQueueIndicator() {
+    if (!queueIndicator) return;
+    if (queuedQueries.length > 0) {
+      queueIndicator.textContent = queuedQueries.length === 1 ? '1 queued message' : `${queuedQueries.length} queued messages`;
+      queueIndicator.classList.remove('hidden');
+    } else {
+      queueIndicator.classList.add('hidden');
+    }
+  }
 
   // Theme Controller
   const btnToggleTheme = document.getElementById('btnToggleTheme');
@@ -1001,8 +1058,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     defaultItem.onclick = () => {
       activeAgentId = null;
       badgeActiveBot.textContent = '🤖 Default Assistant';
-      refreshBots();
-      refreshTokenBadge();
+      persistAgent();
     };
     botList.appendChild(defaultItem);
 
@@ -1023,8 +1079,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.target.closest('.btn-delete-bot')) return;
         activeAgentId = a.id;
         badgeActiveBot.textContent = `${icon} ${a.name}`;
-        refreshBots();
-        refreshTokenBadge();
+        persistAgent();
       };
 
       const delBtn = item.querySelector('.btn-delete-bot');
@@ -1039,6 +1094,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             refreshBots();
             refreshTokenBadge();
+            localStorage.removeItem(AGENT_KEY);
             refreshTemplates();
           }
         };
@@ -1144,6 +1200,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               await client.deleteSession(s.id);
               if (currentSessionId === s.id) {
                 startNewSession();
+                localStorage.removeItem(SESSION_KEY);
               } else {
                 refreshSessions();
               }
@@ -1569,6 +1626,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               }
               refreshBots();
               refreshTokenBadge();
+              localStorage.removeItem(AGENT_KEY);
               refreshTemplates();
             }
           };
@@ -2674,6 +2732,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function selectSession(sessionId) {
     currentSessionId = sessionId;
+    persistSession();
     switchView('chat');
     activeSessionTitle.textContent = `Session: ${sessionId}`;
     messageFeed.innerHTML = '';
@@ -2695,7 +2754,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function startNewSession() {
+    queuedQueries = [];
+    updateQueueIndicator();
     currentSessionId = null;
+    localStorage.removeItem(SESSION_KEY);
     activeSessionTitle.textContent = 'New Session';
     messageFeed.innerHTML = '';
     welcomeBanner.classList.remove('hidden');
@@ -2847,16 +2909,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     const q = promptInput.value.trim();
     if (!q) return;
 
+    // Never block typing: queue follow-ups, send when the current reply finishes.
+    if (turnBusy) {
+      queuedQueries.push(q);
+      promptInput.value = '';
+      promptInput.style.height = 'auto';
+      updateQueueIndicator();
+      promptInput.focus();
+      return;
+    }
+
     promptInput.value = '';
     promptInput.style.height = 'auto';
-    promptInput.disabled = true;
-    btnSend.disabled = true;
+    setTurnBusy(true);
     botStatusAvatar.textContent = '⏳';
     botStatusText.textContent = 'Thinking...';
 
     appendMessage('user', q);
 
     currentAssistantMessage = appendMessage('assistant', '');
+    currentAssistantMessage.contentEl.innerHTML = '<span class="typing-shimmer">Thinking…</span>';
     currentAssistantText = '';
     currentAssistantThought = '';
     activeToolLines = [];
@@ -2876,16 +2948,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (currentSessionId !== res.sessionId) {
           currentSessionId = res.sessionId;
           activeSessionTitle.textContent = `Session: ${currentSessionId}`;
-          refreshSessions();
+          persistSession();
         }
       }
     } catch (err) {
       if (currentAssistantMessage) {
+        if (!currentAssistantText) currentAssistantMessage.contentEl.innerHTML = '';
         currentAssistantMessage.contentEl.innerHTML += `<div style="color: var(--danger); margin-top: 8px;">Error: ${escapeHtml(err.message)}</div>`;
       }
-      promptInput.disabled = false;
-      btnSend.disabled = false;
-      promptInput.focus();
+      setTurnBusy(false);
+      queuedQueries = [];
+      updateQueueIndicator();
       botStatusAvatar.textContent = '⚡';
       botStatusText.textContent = 'Ready';
       activeTurnExtraChars = 0;
@@ -2894,6 +2967,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   btnSend.onclick = submitQuery;
+
+  if (btnStop) {
+    btnStop.onclick = async () => {
+      try {
+        await client.cancelTurn();
+      } catch (err) {
+        console.error('Error cancelling turn:', err);
+      }
+    };
+  }
+
+  // Esc stops generation
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && turnBusy) {
+      e.preventDefault();
+      client.cancelTurn().catch(() => {});
+    }
+  });
 
   // Auto-resize composer textarea
   promptInput.addEventListener('input', () => {
@@ -2950,6 +3041,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.prompt-chip').forEach((chip) => {
     chip.onclick = () => {
       promptInput.value = chip.dataset.query;
+      if (turnBusy) {
+        promptInput.focus();
+        return;
+      }
       submitQuery();
     };
   });
@@ -2961,7 +3056,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (sessId && currentSessionId !== sessId) {
         currentSessionId = sessId;
         activeSessionTitle.textContent = `Session: ${currentSessionId}`;
-        refreshSessions();
+        persistSession();
       }
     }
 
@@ -2969,6 +3064,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (event.type === 'token' || event.type === 'text_delta') {
       const delta = event.data?.token || event.token || event.text || '';
       if (delta && currentAssistantMessage) {
+        if (currentAssistantMessage.contentEl.querySelector('.typing-shimmer')) {
+          currentAssistantMessage.contentEl.innerHTML = '';
+        }
         if (currentAssistantThought && currentAssistantMessage.thoughtEl.querySelector('.thought-streaming')) {
           renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, false);
         }
@@ -3066,9 +3164,31 @@ document.addEventListener('DOMContentLoaded', async () => {
           currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
         }
       }
-      promptInput.disabled = false;
-      btnSend.disabled = false;
-      promptInput.focus();
+      setTurnBusy(false);
+      botStatusAvatar.textContent = '⚡';
+      botStatusText.textContent = 'Ready';
+      activeTurnExtraChars = 0;
+      refreshTokenBadge();
+      smartScrollToBottom();
+      if (queuedQueries.length > 0) {
+        const next = queuedQueries.shift();
+        updateQueueIndicator();
+        promptInput.value = next;
+        submitQuery();
+      }
+    }
+
+    // Turn cancelled (user pressed Stop / Esc)
+    if (event.type === 'turn_cancelled') {
+      if (currentAssistantMessage) {
+        if (!currentAssistantText.trim() && !currentAssistantThought.trim()) {
+          currentAssistantMessage.contentEl.innerHTML = '';
+        }
+        currentAssistantMessage.contentEl.innerHTML += `<div style="color: var(--text-muted); margin-top: 8px;">⏹ Stopped.</div>`;
+      }
+      setTurnBusy(false);
+      queuedQueries = [];
+      updateQueueIndicator();
       botStatusAvatar.textContent = '⚡';
       botStatusText.textContent = 'Ready';
       activeTurnExtraChars = 0;
@@ -3082,9 +3202,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (currentAssistantMessage) {
         currentAssistantMessage.contentEl.innerHTML += `<div style="color: var(--danger); margin-top: 8px;">Error: ${escapeHtml(errMsg)}</div>`;
       }
-      promptInput.disabled = false;
-      btnSend.disabled = false;
-      promptInput.focus();
+      setTurnBusy(false);
+      queuedQueries = [];
+      updateQueueIndicator();
       botStatusAvatar.textContent = '⚡';
       botStatusText.textContent = 'Ready';
       activeTurnExtraChars = 0;
@@ -3194,10 +3314,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Quick Tools
   btnQuickOcr.onclick = () => {
+    if (turnBusy) return;
     promptInput.value = 'Call recognize_screen_text and extract text from the screen.';
     submitQuery();
   };
   btnQuickWindow.onclick = () => {
+    if (turnBusy) return;
     promptInput.value = 'Call list_windows and show all open on-screen windows.';
     submitQuery();
   };
@@ -3658,7 +3780,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
   await refreshSettings();
   await refreshBots();
+  // Validate persisted bot against live list
+  if (activeAgentId) {
+    const liveAgents = await client.getAgents();
+    if (!liveAgents.some((a) => a.id === activeAgentId)) {
+      activeAgentId = null;
+      localStorage.removeItem(AGENT_KEY);
+    } else {
+      const picked = liveAgents.find((a) => a.id === activeAgentId);
+      badgeActiveBot.textContent = `${picked.kind === 'ROOM' ? '👥' : '⚡'} ${picked.name}`;
+    }
+  }
+  await refreshBots();
   await refreshTasks();
   await refreshSessions();
+  // Validate persisted session against live list, then restore it
+  if (currentSessionId) {
+    const liveSessions = await client.getSessions();
+    if (liveSessions.some((s) => s.id === currentSessionId)) {
+      await selectSession(currentSessionId);
+    } else {
+      currentSessionId = null;
+      localStorage.removeItem(SESSION_KEY);
+    }
+  }
+  setTurnBusy(false);
   await refreshTokenBadge();
 });

@@ -93,6 +93,10 @@ export class DesktopApp {
       return this.bridge.sendQuery(query, sessionId, agentId);
     });
 
+    ipcMain.handle('opensand:cancelTurn', async () => {
+      return this.bridge.cancelTurn();
+    });
+
     ipcMain.handle('opensand:approveTool', async (_: any, { approvalId, decision }: { approvalId: string; decision: ApprovalDecision }) => {
       return this.bridge.approveTool(approvalId, decision);
     });

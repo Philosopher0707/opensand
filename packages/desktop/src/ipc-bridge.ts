@@ -85,6 +85,7 @@ export class DesktopIpcBridge extends EventEmitter {
     resolve: (approved: boolean) => void;
   }> = new Map();
   private currentSessionId: string | null = null;
+  private activeAbortController: AbortController | null = null;
 
   constructor(options: IpcBridgeOptions = {}) {
     super();
@@ -324,16 +325,40 @@ export class DesktopIpcBridge extends EventEmitter {
 
     this.emitEvent('session_started', { sessionId: activeSessionId });
 
+    // Abort any turn still running on this coordinator (double-submit, stop-then-resend).
+    this.activeAbortController?.abort();
+    const abortController = new AbortController();
+    this.activeAbortController = abortController;
+
     // Run query asynchronously
-    coordinator.runTurn(query)
+    coordinator.runTurn(query, abortController.signal)
       .then((finalResponse) => {
+        if (this.activeAbortController === abortController) {
+          this.activeAbortController = null;
+        }
         this.emitEvent('turn_complete', { response: finalResponse });
       })
       .catch((err) => {
+        if (this.activeAbortController === abortController) {
+          this.activeAbortController = null;
+        }
+        if (err instanceof Error && err.name === 'AbortError') {
+          this.emitEvent('turn_cancelled', { message: 'Turn cancelled by user.' });
+          return;
+        }
         this.emitEvent('error', { message: err instanceof Error ? err.message : String(err) });
       });
 
     return { success: true, sessionId: activeSessionId };
+  }
+
+  public async cancelTurn(): Promise<{ success: boolean; cancelled: boolean }> {
+    if (!this.activeAbortController) {
+      return { success: true, cancelled: false };
+    }
+    this.activeAbortController.abort();
+    this.activeAbortController = null;
+    return { success: true, cancelled: true };
   }
 
   public async requestUserApproval(toolName: string, args: Record<string, unknown>): Promise<boolean> {

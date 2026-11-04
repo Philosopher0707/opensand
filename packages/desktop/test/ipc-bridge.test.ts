@@ -150,6 +150,54 @@ test('DesktopIpcBridge - preserves active coordinator and emits session_started 
   }
 });
 
+test('DesktopIpcBridge - cancelTurn aborts the active turn and is safe when idle', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-cancel-'));
+
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+
+    // Idle: reports no cancellation, does not throw
+    const idle = await bridge.cancelTurn();
+    assert.strictEqual(idle.success, true);
+    assert.strictEqual(idle.cancelled, false);
+
+    // Active: stub a coordinator whose runTurn honors the AbortSignal
+    const fakeCoordinator: any = {
+      sessionId: 'sess-cancel-test',
+      runTurn: async (_q: string, signal?: AbortSignal) => {
+        await new Promise((resolve, reject) => {
+          const onAbort = () => reject(new DOMException('Turn was cancelled by user', 'AbortError'));
+          if (signal?.aborted) return onAbort();
+          signal?.addEventListener('abort', onAbort, { once: true });
+          setTimeout(() => resolve('never'), 10000);
+        });
+        return 'never';
+      },
+    };
+    (bridge as any).coordinator = fakeCoordinator;
+    (bridge as any).currentSessionId = 'sess-cancel-test';
+    (bridge as any).activeAbortController = null;
+    // sendQuery creates the controller internally; emulate that here.
+    const controller = new AbortController();
+    (bridge as any).activeAbortController = controller;
+    let aborted = false;
+    fakeCoordinator.runTurn('x', controller.signal).catch((err: any) => {
+      aborted = err?.name === 'AbortError';
+    });
+    const active = await bridge.cancelTurn();
+    assert.strictEqual(active.success, true);
+    assert.strictEqual(active.cancelled, true);
+    await new Promise((r) => setTimeout(r, 10));
+    assert.strictEqual(aborted, true);
+
+    // Controller cleared: a second cancel is a no-op again
+    const idle2 = await bridge.cancelTurn();
+    assert.strictEqual(idle2.cancelled, false);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('DesktopIpcBridge - getTokenTelemetry calculates accurate context windows and handles agent model inheritance', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-telemetry-'));
 

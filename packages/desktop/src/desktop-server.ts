@@ -196,6 +196,14 @@ export class DesktopServer {
       return;
     }
 
+    // API: POST /api/cancel
+    if (pathname === '/api/cancel' && req.method === 'POST') {
+      const result = await this.bridge.cancelTurn();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
     // API: POST /api/approve
     if (pathname === '/api/approve' && req.method === 'POST') {
       const body = await this.readJsonBody(req);

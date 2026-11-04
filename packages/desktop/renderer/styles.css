@@ -2165,3 +2165,22 @@ textarea#promptInput {
   font-size: 10px;
   color: var(--text-muted);
 }
+
+/* Queued composer indicator */
+.queue-indicator {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 2px 4px 6px;
+}
+
+/* Streaming shimmer on the empty assistant bubble (first-token latency) */
+.typing-shimmer {
+  display: inline-block;
+  color: var(--text-muted);
+  font-size: 13px;
+  animation: typing-pulse 1.2s ease-in-out infinite;
+}
+@keyframes typing-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}

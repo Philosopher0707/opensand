@@ -176,7 +176,8 @@
         <footer class="input-panel">
           <div class="input-wrapper">
             <div class="input-textarea-row">
-              <textarea id="promptInput" placeholder="Ask OpenSand to code, inspect, or run commands..." rows="1"></textarea>
+              <div id="queueIndicator" class="queue-indicator hidden"></div>
+              <textarea id="promptInput" placeholder="Ask OpenSand to code, inspect, or run commands... (Enter to send, Shift+Enter for a new line)" rows="1"></textarea>
             </div>
             <div class="input-actions-bar">
               <div class="input-actions-left">
@@ -193,6 +194,10 @@
                 <button id="btnSend" class="btn btn-primary btn-sm">
                   <span>Send</span>
                   <kbd class="kbd-hint">⌘↵</kbd>
+                </button>
+                <button id="btnStop" class="btn btn-danger btn-sm hidden" title="Stop generating (Esc)">
+                  <span>Stop</span>
+                  <kbd class="kbd-hint">Esc</kbd>
                 </button>
               </div>
             </div>

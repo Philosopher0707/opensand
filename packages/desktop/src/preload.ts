@@ -17,6 +17,8 @@ try {
         ipcRenderer.invoke('opensand:sendQuery', { query, sessionId, agentId }),
       approveTool: (approvalId: string, decision: any) =>
         ipcRenderer.invoke('opensand:approveTool', { approvalId, decision }),
+      cancelTurn: () =>
+        ipcRenderer.invoke('opensand:cancelTurn'),
       getSessions: () =>
         ipcRenderer.invoke('opensand:getSessions'),
       loadSession: (sessionId: string) =>

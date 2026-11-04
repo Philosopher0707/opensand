@@ -36,6 +36,7 @@ export type DesktopEventType =
   | 'tool_result'
   | 'approval_required'
   | 'turn_complete'
+  | 'turn_cancelled'
   | 'error'
   | 'status'
   | 'sentinel';
@@ -48,6 +49,7 @@ export interface DesktopEvent {
 
 export interface OpenSandBridgeApi {
   sendQuery: (query: string, sessionId?: string, agentId?: string) => Promise<{ success: boolean; sessionId: string }>;
+  cancelTurn?: () => Promise<{ success: boolean; cancelled: boolean }>;
   approveTool: (approvalId: string, decision: ApprovalDecision) => Promise<{ success: boolean }>;
   getSessions: () => Promise<SessionSummary[]>;
   loadSession: (sessionId: string) => Promise<{ events: unknown[]; transcript: string }>;
