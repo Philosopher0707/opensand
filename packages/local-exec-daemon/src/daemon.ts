@@ -123,6 +123,20 @@ export class LocalExecDaemon {
   /**
    * Execute a tool through the daemon with active gate enforcement.
    */
+  /**
+   * Evaluate the fail-closed boundary policy for a would-be tool call.
+   * Exposed so the turn loop can gate BEFORE dispatch (so REQUIRE_APPROVAL
+   * reaches the user instead of returning permission_pending from the
+   * registry) and so policy is never bypassed by only checking exec_command.
+   */
+  evaluatePolicy(
+    tool: string,
+    args: Record<string, any>,
+    context?: { actor?: string; initiator?: 'user' | 'routine' | 'sentinel' | 'subagent' }
+  ): PolicyDecision {
+    return this.policy.evaluate({ tool, args, actor: context?.actor, initiator: context?.initiator });
+  }
+
   async executeTool(
     name: string,
     args: Record<string, any>,
@@ -130,11 +144,9 @@ export class LocalExecDaemon {
   ): Promise<ToolExecutionResult> {
     this.inflightCount++;
     try {
-      // Evaluate fail-closed boundary policy
-      const decision = this.policy.evaluate({
-        tool: name,
-        args,
-      });
+      // Evaluate fail-closed boundary policy (re-evaluated here as the
+      // authoritative second gate, independent of the coordinator's check)
+      const decision = this.policy.evaluate({ tool: name, args });
 
       if (decision.action === 'DENY') {
         return {
@@ -142,6 +154,20 @@ export class LocalExecDaemon {
           error: {
             code: 'POLICY_DENIED',
             message: `Policy Boundary Violation: ${decision.reason}`,
+          },
+        };
+      }
+
+      // REQUIRE_APPROVAL is enforced upstream by the turn loop (it prompts
+      // the user and passes approvalGranted). If execution reaches here
+      // without it, fail closed rather than silently running the tool.
+      if (decision.action === 'REQUIRE_APPROVAL' && !context?.approvalGranted) {
+        return {
+          status: 'permission_pending',
+          approvalId: context?.approvalId ?? `req-${Date.now()}`,
+          error: {
+            code: 'PERMISSION_REQUIRED',
+            message: `Policy requires approval: ${decision.reason}`,
           },
         };
       }

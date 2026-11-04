@@ -598,3 +598,140 @@ describe("AgentCoordinator Integration", () => {
     assert.ok(capturedToolCount > 0 && capturedToolCount <= 15);
   });
 });
+
+describe("AgentCoordinator Policy Boundary", () => {
+  let tempDir: string;
+  let daemon: LocalExecDaemon;
+
+  before(async () => {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-coord-policy-"));
+    daemon = new LocalExecDaemon({
+      stateDir: path.join(tempDir, "state"),
+      heartbeatIntervalMs: 200,
+    });
+    await daemon.start();
+  });
+
+  after(async () => {
+    await daemon.stop();
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  function makeToolClient(toolName: string, toolArgs: Record<string, unknown>) {
+    return new UniversalLLMClient({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      fetch: (async (_url: any, init: any): Promise<Response> => {
+        const payload = JSON.parse(init.body as string);
+        const messages = payload.messages;
+        const lastMsg = messages[messages.length - 1];
+        const encoder = new TextEncoder();
+        let chunks: string[] = [];
+        if (lastMsg.role === "tool") {
+          chunks = [
+            'data: ' + JSON.stringify({ choices: [{ delta: { content: "Done." } }] }) + '\n\n',
+            "data: [DONE]\n\n",
+          ];
+        } else {
+          chunks = [
+            'data: ' + JSON.stringify({
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: "call_policy_1",
+                        type: "function",
+                        function: { name: toolName, arguments: JSON.stringify(toolArgs) },
+                      },
+                    ],
+                  },
+                },
+              ],
+            }) + '\n\n',
+            "data: [DONE]\n\n",
+          ];
+        }
+        const stream = new ReadableStream({
+          start(controller) {
+            for (const c of chunks) controller.enqueue(encoder.encode(c));
+            controller.close();
+          },
+        });
+        return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      }) as any,
+    });
+  }
+
+  it("policy DENY hard-blocks read_file on /etc/shadow in the turn loop", async () => {
+    const client = makeToolClient("read_file", { path: "/etc/shadow" });
+    const coordinator = new AgentCoordinator({
+      llmClient: client,
+      daemon,
+      sessionsBaseDir: path.join(tempDir, "sessions-deny"),
+    });
+
+    const final = await coordinator.runTurn("read /etc/shadow");
+    assert.equal(final, "Done.");
+    const toolMsg = coordinator.history.find((m) => m.role === "tool");
+    assert.ok(toolMsg);
+    const result = JSON.parse(String(toolMsg.content));
+    assert.equal(result.status, "error");
+    assert.equal(result.error.code, "POLICY_DENIED");
+    assert.ok(result.error.message.includes("Policy Boundary Violation"));
+  });
+
+  it("policy REQUIRE_APPROVAL prompts the user for write_file (custom rule)", async () => {
+    const target = path.join(tempDir, "approved-out.txt");
+    daemon.policy.setRule({
+      id: "rule_approve_tmp_writes",
+      name: "Approve temp writes",
+      enabled: true,
+      action: "REQUIRE_APPROVAL",
+      conditions: { tools: ["write_file"], pathsPrefix: [tempDir] },
+    });
+    const client = makeToolClient("write_file", { path: target, content: "hello" });
+    let prompted = false;
+    const coordinator = new AgentCoordinator({
+      llmClient: client,
+      daemon,
+      sessionsBaseDir: path.join(tempDir, "sessions-approve"),
+      onApprovalRequired: async () => {
+        prompted = true;
+        return false;
+      },
+    });
+
+    await coordinator.runTurn("write the file");
+    assert.equal(prompted, true, "approval was requested");
+    const toolMsg = coordinator.history.find((m) => m.role === "tool");
+    const result = JSON.parse(String(toolMsg?.content));
+    assert.equal(result.error.code, "PERMISSION_DENIED");
+
+    const exists = await fs.stat(target).then(() => true).catch(() => false);
+    assert.equal(exists, false);
+
+    daemon.policy.deleteRule("rule_approve_tmp_writes");
+  });
+
+  it("policy ALLOW for list_directory runs without prompting", async () => {
+    const client = makeToolClient("list_directory", { path: tempDir });
+    let prompted = false;
+    const coordinator = new AgentCoordinator({
+      llmClient: client,
+      daemon,
+      sessionsBaseDir: path.join(tempDir, "sessions-allow"),
+      onApprovalRequired: async () => {
+        prompted = true;
+        return true;
+      },
+    });
+
+    await coordinator.runTurn("list the dir");
+    assert.equal(prompted, false);
+    const toolMsg = coordinator.history.find((m) => m.role === "tool");
+    const result = JSON.parse(String(toolMsg?.content));
+    assert.ok(Array.isArray(result.entries));
+  });
+});

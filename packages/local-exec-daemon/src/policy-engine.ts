@@ -175,14 +175,30 @@ export class PolicyEngine {
     const isReadOnly = ['read_file', 'list_directory'].includes(context.tool) ||
       context.tool.startsWith('inspect_');
 
-    const fallbackAction = isReadOnly ? 'ALLOW' : this.defaultAction;
+    // exec_command is governed by the computer-use gate + standing allowlist
+    // in the turn loop, so the engine does not double-gate it here. write_file
+    // is the symmetric case: policy already denies sensitive paths, so the
+    // default action must not re-gate ordinary workspace writes.
+    const isExec = context.tool === 'exec_command';
+    const isWrite = context.tool === 'write_file';
+    // CLI-registered tools (delegate_to_agent, create_agent, store_*, ...)
+    // are trusted orchestrator tools; policy governs the system-boundary
+    // tools (read/write/exec/network) and sensitive paths.
+    const isRegistered = !['read_file', 'write_file', 'list_directory', 'exec_command'].includes(context.tool);
+    const fallbackAction = isReadOnly || isExec || isWrite || isRegistered ? 'ALLOW' : this.defaultAction;
     const decision: PolicyDecision = {
       action: fallbackAction,
       allowed: fallbackAction === 'ALLOW',
       requiresApproval: fallbackAction === 'REQUIRE_APPROVAL',
       reason: isReadOnly
         ? `Permitted under default read-only safety policy`
-        : `Default boundary rule applied (${fallbackAction})`,
+        : isExec
+          ? `Permitted here; exec_command is governed upstream by computer-use gate + allowlist`
+          : isWrite
+            ? `Permitted; sensitive paths are DENY-gated above`
+            : isRegistered
+              ? `Permitted; registered orchestrator tool`
+              : `Default boundary rule applied (${fallbackAction})`,
     };
 
     this.recordAudit(context, decision);

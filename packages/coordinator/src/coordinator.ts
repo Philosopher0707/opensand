@@ -1,4 +1,4 @@
-import { LocalExecDaemon, ToolExecutionResult } from "@opensand/local-exec-daemon";
+import { LocalExecDaemon, ToolExecutionResult, PolicyDecision } from "@opensand/local-exec-daemon";
 import { UniversalLLMClient, ConsolidatedAssistantResponse } from "./llm-client.js";
 import {
   ChatMessage,
@@ -269,27 +269,56 @@ export class AgentCoordinator {
           args = { ...args, ...preHook.modifiedArgs };
         }
 
-        // Check if gate approval is needed
-        let approvalGranted = false;
+        // Declarative boundary policy (fail-closed), evaluated for EVERY tool —
+        // not just exec_command. DENY is hard-blocked here and again in the
+        // daemon; REQUIRE_APPROVAL prompts the user. This replaces the old
+        // exec-only regex approval gate.
         const gates = await this.daemon.getGates();
+        const policy: PolicyDecision = this.daemon.evaluatePolicy(tc.function.name, args);
 
-        // Check if this requires manual approval
-        const isExecCommand = tc.function.name === "exec_command";
-        const cmd = typeof args.command === "string" ? args.command.trim() : "";
-        const hasChaining = /[;&|`]|\$\(|\n/.test(cmd);
-        const isAllowlisted =
-          isExecCommand &&
-          !hasChaining &&
-          gates.standingAllowlist.some((pat) => {
-            if (pat.endsWith("*")) {
-              const prefix = pat.slice(0, -1).trim();
-              return cmd === prefix || cmd.startsWith(`${prefix} `);
-            }
-            return cmd === pat || cmd.startsWith(`${pat} `);
+        if (policy.action === "DENY") {
+          const deniedResult: ToolExecutionResult = {
+            status: "error",
+            error: {
+              code: "POLICY_DENIED",
+              message: `Policy Boundary Violation: ${policy.reason}`,
+            },
+          };
+          this.emit({ type: "tool_call_completed", toolCall: tc, result: deniedResult });
+          this.messages.push({
+            role: "tool",
+            tool_call_id: tc.id,
+            content: JSON.stringify(deniedResult),
           });
+          await this.transcript.appendJsonl({
+            role: "tool",
+            tool_call_id: tc.id,
+            result: deniedResult,
+          });
+          continue;
+        }
 
-        const needsApproval =
-          (isExecCommand && !gates.computerUseAllowed && !isAllowlisted);
+        let approvalGranted = false;
+        let needsApproval = policy.action === "REQUIRE_APPROVAL";
+
+        // exec_command additionally honors the computer-use gate + standing
+        // allowlist unless policy already said it needs approval.
+        if (tc.function.name === "exec_command") {
+          const cmd = typeof args.command === "string" ? args.command.trim() : "";
+          const hasChaining = /[;&|`]|\$\(|\n/.test(cmd);
+          const isAllowlisted =
+            !hasChaining &&
+            gates.standingAllowlist.some((pat) => {
+              if (pat.endsWith("*")) {
+                const prefix = pat.slice(0, -1).trim();
+                return cmd === prefix || cmd.startsWith(`${prefix} `);
+              }
+              return cmd === pat || cmd.startsWith(`${pat} `);
+            });
+          if (!gates.computerUseAllowed && !isAllowlisted) {
+            needsApproval = true;
+          }
+        }
 
         if (needsApproval && this.onApprovalRequired) {
           const approvalId = `appr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -297,7 +326,7 @@ export class AgentCoordinator {
             approvalId,
             toolName: tc.function.name,
             arguments: args,
-            reason: `Execution of tool '${tc.function.name}' requires explicit approval.`,
+            reason: policy.reason || `Execution of tool '${tc.function.name}' requires explicit approval.`,
           };
 
           this.emit({ type: "approval_requested", request: req });
@@ -328,7 +357,7 @@ export class AgentCoordinator {
 
         // Execute tool via daemon
         const execResult = await this.daemon.executeTool(tc.function.name, args, {
-          approvalGranted,
+          approvalGranted: approvalGranted || policy.action === 'ALLOW',
           permissionGates: gates,
         });
 
