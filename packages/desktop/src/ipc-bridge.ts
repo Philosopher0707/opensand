@@ -182,7 +182,18 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public updateSettings(partial: Partial<DesktopSettings>): DesktopSettings {
+    const modelChanged =
+      (partial.model !== undefined && partial.model !== this.settings.model) ||
+      (partial.endpoint !== undefined && partial.endpoint !== this.settings.endpoint) ||
+      (partial.apiKey !== undefined && partial.apiKey !== this.settings.apiKey) ||
+      (partial.provider !== undefined && partial.provider !== this.settings.provider) ||
+      (partial.maxContextTokens !== undefined && partial.maxContextTokens !== this.settings.maxContextTokens);
+
     this.settings = { ...this.settings, ...partial };
+    if (modelChanged) {
+      this.coordinator = null;
+      this.activeAgentId = undefined;
+    }
     this.saveSettings();
     this.emitEvent('status', { settings: this.settings });
     return { ...this.settings };
@@ -241,7 +252,7 @@ export class DesktopIpcBridge extends EventEmitter {
     if (agentId) {
       const agent = await this.agentStore.getAgent(agentId);
       if (agent) {
-        if (agent.model) targetModel = agent.model;
+        if (agent.model && agent.model !== 'default') targetModel = agent.model;
         if (agent.endpoint) targetEndpoint = agent.endpoint;
         customInstructions = agent.systemPrompt;
       }
@@ -782,21 +793,23 @@ export class DesktopIpcBridge extends EventEmitter {
     let activeEndpoint = this.settings.endpoint;
     if (agentId) {
       const agent = await this.agentStore.getAgent(agentId);
-      if (agent?.model) {
+      if (agent?.model && agent.model !== 'default') {
         activeModel = agent.model;
       }
       if (agent?.endpoint) {
         activeEndpoint = agent.endpoint;
       }
-    } else if (this.coordinator?.llmClient?.model) {
+    } else if (this.coordinator?.llmClient?.model && this.coordinator.llmClient.model !== 'default') {
       activeModel = this.coordinator.llmClient.model;
     }
 
-    const maxContextTokens =
-      this.settings.maxContextTokens ??
-      (this.coordinator && (!agentId || !this.coordinator.llmClient || this.coordinator.llmClient.model === activeModel)
-        ? this.coordinator.maxContextTokens
-        : await resolveModelContextWindow(activeModel, activeEndpoint, this.settings.apiKey));
+    let maxContextTokens = this.settings.maxContextTokens;
+    if (!maxContextTokens) {
+      maxContextTokens = await resolveModelContextWindow(activeModel, activeEndpoint, this.settings.apiKey);
+      if (this.coordinator && (!this.coordinator.llmClient || this.coordinator.llmClient.model === activeModel)) {
+        this.coordinator.maxContextTokens = maxContextTokens;
+      }
+    }
 
     const targetSessionId = sessionId || this.currentSessionId;
     if (this.coordinator && (!targetSessionId || this.coordinator.sessionId === targetSessionId)) {
@@ -813,8 +826,36 @@ export class DesktopIpcBridge extends EventEmitter {
     if (targetSessionId) {
       try {
         const sessDir = path.join(this.baseDir, 'sessions', targetSessionId);
+        const messagesPath = path.join(sessDir, 'messages.json');
         const txtPath = path.join(sessDir, 'transcript.txt');
         const jsonlPath = path.join(sessDir, 'transcript.jsonl');
+
+        if (fs.existsSync(messagesPath)) {
+          const raw = fs.readFileSync(messagesPath, 'utf8');
+          const messages = JSON.parse(raw);
+          if (Array.isArray(messages)) {
+            let totalChars = 0;
+            let turnsCount = 0;
+            for (const msg of messages) {
+              if (msg.role === 'user') turnsCount++;
+              if (msg.content) totalChars += msg.content.length;
+              if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+                for (const tc of msg.tool_calls) {
+                  totalChars += (tc.function?.name?.length || 0) + (tc.function?.arguments?.length || 0);
+                }
+              }
+            }
+            return {
+              estimatedTokens: Math.ceil(totalChars / 3.8),
+              maxContextTokens,
+              toolScopeMode: this.coordinator?.toolScopeMode || 'auto',
+              turnsCount,
+              messagesCount: messages.length,
+              model: activeModel,
+            };
+          }
+        }
+
         if (fs.existsSync(txtPath)) {
           const content = fs.readFileSync(txtPath, 'utf8');
           const estimatedTokens = Math.ceil(content.length / 3.8);

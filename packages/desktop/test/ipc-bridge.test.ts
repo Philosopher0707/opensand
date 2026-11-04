@@ -149,3 +149,83 @@ test('DesktopIpcBridge - preserves active coordinator and emits session_started 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('DesktopIpcBridge - getTokenTelemetry calculates accurate context windows and handles agent model inheritance', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-telemetry-'));
+
+  try {
+    const bridge = new DesktopIpcBridge({
+      baseDir: tmpDir,
+      defaultSettings: {
+        model: 'stealth/crouton-alpha',
+        endpoint: 'https://openrouter.ai/api/v1',
+      },
+    });
+
+    // Populate OpenRouter cache with crouton-alpha = 1,048,576
+    const cacheDir = path.join(tmpDir, 'cache');
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(cacheDir, 'openrouter-models.json'),
+      JSON.stringify({
+        timestamp: Date.now(),
+        models: [
+          { id: 'stealth/crouton-alpha', name: 'Crouton Alpha', context_length: 1048576 },
+          { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek Flash', context_length: 1048576 },
+        ],
+      }),
+      'utf8'
+    );
+
+    // Initial telemetry for default model
+    const t1 = await bridge.getTokenTelemetry();
+    assert.strictEqual(t1.model, 'stealth/crouton-alpha');
+    assert.strictEqual(t1.maxContextTokens, 1048576);
+
+    // Create an agent with model: "default"
+    const agentStore = (bridge as any).agentStore;
+    const a1 = await agentStore.createAgent({
+      name: 'Default Agent',
+      model: 'default',
+      systemPrompt: 'You are a test agent',
+    });
+
+    // Agent with model "default" should inherit stealth/crouton-alpha (1M tokens)
+    const tAgent = await bridge.getTokenTelemetry(a1.id);
+    assert.strictEqual(tAgent.model, 'stealth/crouton-alpha');
+    assert.strictEqual(tAgent.maxContextTokens, 1048576);
+
+    // Create an agent with a specific model: qwen3:8b (32,768 tokens)
+    const a2 = await agentStore.createAgent({
+      name: 'Qwen Agent',
+      model: 'qwen3:8b',
+      systemPrompt: 'You are qwen',
+    });
+    const tQwen = await bridge.getTokenTelemetry(a2.id);
+    assert.strictEqual(tQwen.model, 'qwen3:8b');
+    assert.strictEqual(tQwen.maxContextTokens, 32768);
+
+    // Update settings to claude-3-7-sonnet
+    bridge.updateSettings({ model: 'claude-3-7-sonnet-20250219' });
+    const tClaude = await bridge.getTokenTelemetry();
+    assert.strictEqual(tClaude.model, 'claude-3-7-sonnet-20250219');
+    assert.strictEqual(tClaude.maxContextTokens, 200000);
+
+    // Check disk session telemetry with messages.json
+    const sessDir = path.join(tmpDir, 'sessions', 'test-session-json');
+    fs.mkdirSync(sessDir, { recursive: true });
+    const sampleMessages = [
+      { role: 'system', content: 'You are helpful.' },
+      { role: 'user', content: 'Write a quick function.' },
+      { role: 'assistant', content: 'function hello() { return "world"; }' },
+    ];
+    fs.writeFileSync(path.join(sessDir, 'messages.json'), JSON.stringify(sampleMessages), 'utf8');
+
+    const tSession = await bridge.getTokenTelemetry(undefined, 'test-session-json');
+    assert.strictEqual(tSession.messagesCount, 3);
+    assert.strictEqual(tSession.turnsCount, 1);
+    assert.ok(tSession.estimatedTokens > 0);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

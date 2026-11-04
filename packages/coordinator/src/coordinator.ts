@@ -42,7 +42,7 @@ export class AgentCoordinator {
   public readonly sessionId: string;
   public readonly allowedTools?: string[];
   public readonly toolScopeMode: "core" | "auto" | "all";
-  public readonly maxContextTokens: number;
+  public maxContextTokens: number;
   public readonly vaultStore?: VaultStore;
   public readonly hookDispatcher: HookDispatcher;
 

@@ -781,6 +781,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentAssistantText = '';
   let currentAssistantThought = '';
   let activeToolLines = [];
+  let activeTurnExtraChars = 0;
+  let latestTelemetryData = {
+    estimatedTokens: 0,
+    maxContextTokens: 128000,
+    model: '',
+    turnsCount: 0,
+    messagesCount: 0,
+    toolScopeMode: 'auto',
+  };
 
   // Theme Controller
   const btnToggleTheme = document.getElementById('btnToggleTheme');
@@ -881,42 +890,77 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  function formatTokenCount(n) {
+    if (typeof n !== 'number' || isNaN(n)) return '0';
+    if (n >= 1_000_000) {
+      const val = n / 1_000_000;
+      return `${val >= 10 ? val.toFixed(1) : val.toFixed(2).replace(/\.?0+$/, '')}M`;
+    }
+    if (n >= 10_000) {
+      const val = n / 1_000;
+      return `${val.toFixed(1).replace(/\.0$/, '')}k`;
+    }
+    return n.toLocaleString();
+  }
+
+  function formatPercentage(current, max) {
+    if (!max || current <= 0) return '0%';
+    const rawPct = (current / max) * 100;
+    if (rawPct < 0.1) return '<0.1%';
+    if (rawPct < 10) return `${rawPct.toFixed(1)}%`;
+    return `${Math.min(100, Math.round(rawPct))}%`;
+  }
+
+  function updateTokenDisplay(current, max, model) {
+    if (!badgeTokens) return;
+    const currentTokens = Math.max(0, current || 0);
+    const maxTokens = Math.max(1, max || 128000);
+    const pctStr = formatPercentage(currentTokens, maxTokens);
+    const rawPct = (currentTokens / maxTokens) * 100;
+    const activeModelName = model || latestTelemetryData.model || badgeModel?.textContent || 'model';
+
+    badgeTokens.textContent = `⚡ ${formatTokenCount(currentTokens)} / ${formatTokenCount(maxTokens)} (${pctStr})`;
+    badgeTokens.title = `Context Window: ${currentTokens.toLocaleString()} / ${maxTokens.toLocaleString()} tokens (${pctStr}) for ${activeModelName}. Click to compact dialogue.`;
+    badgeTokens.className = 'badge badge-tokens';
+    if (rawPct > 80) {
+      badgeTokens.classList.add('danger');
+    } else if (rawPct > 50) {
+      badgeTokens.classList.add('warn');
+    }
+
+    const meterBar = document.getElementById('contextMeterProgress');
+    if (meterBar) {
+      const barWidth = currentTokens === 0 ? 0 : Math.min(100, Math.max(0.75, rawPct));
+      meterBar.style.width = `${barWidth}%`;
+      meterBar.title = `${currentTokens.toLocaleString()} / ${maxTokens.toLocaleString()} tokens used (${pctStr}) [${activeModelName}]`;
+      if (rawPct > 80) {
+        meterBar.style.backgroundColor = 'var(--danger)';
+      } else if (rawPct > 50) {
+        meterBar.style.backgroundColor = 'var(--warning)';
+      } else {
+        meterBar.style.backgroundColor = 'var(--accent)';
+      }
+    }
+
+    if (badgeModel && activeModelName && activeModelName !== 'Model') {
+      const shortName = activeModelName.includes('/') ? activeModelName.split('/').pop() : activeModelName;
+      badgeModel.textContent = shortName;
+      badgeModel.title = `Active Model: ${activeModelName}`;
+    }
+
+    const composerModelBadge = document.getElementById('composerModelBadge');
+    if (composerModelBadge) {
+      composerModelBadge.title = `Active Model: ${activeModelName} • Context Window: ${maxTokens.toLocaleString()} tokens`;
+    }
+  }
+
   async function refreshTokenBadge() {
     if (!badgeTokens) return;
     try {
       const data = await client.getTokenTelemetry(activeAgentId || undefined, currentSessionId || undefined);
       if (!data) return;
-      const current = data.estimatedTokens || 0;
-      const max = data.maxContextTokens || 128000;
-      const pct = Math.min(100, Math.max(0, Math.round((current / max) * 100)));
-      const model = data.model || badgeModel?.textContent || 'active model';
-
-      badgeTokens.textContent = `⚡ ${current.toLocaleString()} / ${max.toLocaleString()} tokens (${pct}%)`;
-      badgeTokens.title = `Context Window: ${current.toLocaleString()} / ${max.toLocaleString()} tokens (${pct}%) for ${model}. Click to compact dialogue.`;
-      badgeTokens.className = 'badge badge-tokens';
-      if (pct > 80) {
-        badgeTokens.classList.add('danger');
-      } else if (pct > 50) {
-        badgeTokens.classList.add('warn');
-      }
-
-      const meterBar = document.getElementById('contextMeterProgress');
-      if (meterBar) {
-        meterBar.style.width = `${pct}%`;
-        meterBar.title = `${current.toLocaleString()} / ${max.toLocaleString()} tokens used (${pct}%) [${model}]`;
-        if (pct > 80) {
-          meterBar.style.backgroundColor = 'var(--danger)';
-        } else if (pct > 50) {
-          meterBar.style.backgroundColor = 'var(--warning)';
-        } else {
-          meterBar.style.backgroundColor = 'var(--accent)';
-        }
-      }
-
-      const composerModelBadge = document.getElementById('composerModelBadge');
-      if (composerModelBadge) {
-        composerModelBadge.title = `Active Model: ${model} • Context Window: ${max.toLocaleString()} tokens`;
-      }
+      latestTelemetryData = data;
+      updateTokenDisplay(data.estimatedTokens, data.maxContextTokens, data.model);
     } catch {
       // Ignore
     }
@@ -928,9 +972,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const data = await client.getTokenTelemetry(activeAgentId || undefined, currentSessionId || undefined);
         if (!data) return;
         const modelInfo = data.model ? `\n• Active Model: ${data.model}` : '';
-        const pct = Math.min(100, Math.round(((data.estimatedTokens || 0) / (data.maxContextTokens || 1)) * 100));
+        const pctStr = formatPercentage(data.estimatedTokens || 0, data.maxContextTokens || 1);
         const confirmed = confirm(
-          `Current Context Footprint:${modelInfo}\n• Estimated Tokens: ${(data.estimatedTokens || 0).toLocaleString()} / ${(data.maxContextTokens || 0).toLocaleString()} (${pct}%)\n• Turns: ${data.turnsCount || 0}\n• Messages: ${data.messagesCount || 0}\n• Tool Scoping: ${data.toolScopeMode || 'auto'}\n\nCompact conversation history now?`
+          `Current Context Footprint:${modelInfo}\n• Estimated Tokens: ${(data.estimatedTokens || 0).toLocaleString()} / ${(data.maxContextTokens || 0).toLocaleString()} (${pctStr})\n• Turns: ${data.turnsCount || 0}\n• Messages: ${data.messagesCount || 0}\n• Tool Scoping: ${data.toolScopeMode || 'auto'}\n\nCompact conversation history now?`
         );
         if (confirmed) {
           await client.compactHistory(2);
@@ -2816,6 +2860,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentAssistantText = '';
     currentAssistantThought = '';
     activeToolLines = [];
+    activeTurnExtraChars = q.length;
+
+    // Immediately reflect the user's prompt in the token display
+    const userPromptDelta = Math.ceil(activeTurnExtraChars / 3.8);
+    updateTokenDisplay(
+      (latestTelemetryData.estimatedTokens || 0) + userPromptDelta,
+      latestTelemetryData.maxContextTokens,
+      latestTelemetryData.model
+    );
 
     try {
       const res = await client.sendQuery(q, currentSessionId, activeAgentId);
@@ -2830,12 +2883,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (currentAssistantMessage) {
         currentAssistantMessage.contentEl.innerHTML += `<div style="color: var(--danger); margin-top: 8px;">Error: ${escapeHtml(err.message)}</div>`;
       }
-    } finally {
       promptInput.disabled = false;
       btnSend.disabled = false;
       promptInput.focus();
       botStatusAvatar.textContent = '⚡';
       botStatusText.textContent = 'Ready';
+      activeTurnExtraChars = 0;
       refreshTokenBadge();
     }
   }
@@ -2923,6 +2976,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentAssistantMessage.msgDiv._rawContent = currentAssistantText;
         currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
         smartScrollToBottom();
+
+        botStatusAvatar.textContent = '✍️';
+        botStatusText.textContent = 'Generating...';
+
+        const totalLiveDelta = Math.ceil((activeTurnExtraChars + currentAssistantText.length) / 3.8);
+        updateTokenDisplay(
+          (latestTelemetryData.estimatedTokens || 0) + totalLiveDelta,
+          latestTelemetryData.maxContextTokens,
+          latestTelemetryData.model
+        );
       }
     }
 
@@ -2933,6 +2996,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentAssistantThought += thought;
         renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, true);
         smartScrollToBottom();
+        botStatusAvatar.textContent = '💭';
+        botStatusText.textContent = 'Thinking...';
       }
     }
 
@@ -2947,6 +3012,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentAssistantMessage.toolsEl.appendChild(toolEl);
         activeToolLines.push(toolEl);
         smartScrollToBottom();
+
+        const toolName = toolCall.name || toolCall.function?.name || 'tool';
+        botStatusAvatar.textContent = '⚙️';
+        botStatusText.textContent = `Running ${toolName}...`;
+
+        const argsStr = typeof toolCall.args === 'string' ? toolCall.args : JSON.stringify(toolCall.args || {});
+        activeTurnExtraChars += toolName.length + argsStr.length;
       }
     }
 
@@ -2961,6 +3033,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateToolLineStatus(targetEl, 'done', result);
       }
       smartScrollToBottom();
+
+      botStatusAvatar.textContent = '⏳';
+      botStatusText.textContent = 'Processing...';
+
+      if (typeof result === 'string') {
+        activeTurnExtraChars += result.length;
+      } else if (result) {
+        activeTurnExtraChars += JSON.stringify(result).length;
+      }
+      const totalLiveDelta = Math.ceil((activeTurnExtraChars + currentAssistantText.length) / 3.8);
+      updateTokenDisplay(
+        (latestTelemetryData.estimatedTokens || 0) + totalLiveDelta,
+        latestTelemetryData.maxContextTokens,
+        latestTelemetryData.model
+      );
     }
 
     // Turn completed
@@ -2979,6 +3066,28 @@ document.addEventListener('DOMContentLoaded', async () => {
           currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
         }
       }
+      promptInput.disabled = false;
+      btnSend.disabled = false;
+      promptInput.focus();
+      botStatusAvatar.textContent = '⚡';
+      botStatusText.textContent = 'Ready';
+      activeTurnExtraChars = 0;
+      refreshTokenBadge();
+      smartScrollToBottom();
+    }
+
+    // Error event
+    if (event.type === 'error') {
+      const errMsg = event.data?.message || event.message || 'Unknown error occurred';
+      if (currentAssistantMessage) {
+        currentAssistantMessage.contentEl.innerHTML += `<div style="color: var(--danger); margin-top: 8px;">Error: ${escapeHtml(errMsg)}</div>`;
+      }
+      promptInput.disabled = false;
+      btnSend.disabled = false;
+      promptInput.focus();
+      botStatusAvatar.textContent = '⚡';
+      botStatusText.textContent = 'Ready';
+      activeTurnExtraChars = 0;
       refreshTokenBadge();
       smartScrollToBottom();
     }
