@@ -101,6 +101,22 @@ export class AgentCoordinator {
   async runTurn(userQuery: string, signal?: AbortSignal): Promise<string> {
     if (!this.initialized) {
       this.initialized = true;
+
+      // Hydrate historical turns from disk if resuming an existing session
+      if (this.messages.length <= 1) {
+        const history = await this.transcript.loadHistory();
+        if (history.length > 0) {
+          const nonSystem = history.filter((m) => m.role !== "system");
+          const historicalSummary = history.find(
+            (m) => m.role === "system" && m.content?.includes("<historical_context_summary>")
+          );
+          if (historicalSummary) {
+            this.messages.splice(1, 0, historicalSummary);
+          }
+          this.messages.push(...nonSystem);
+        }
+      }
+
       await this.hookDispatcher.dispatchSessionStart({
         sessionId: this.sessionId,
         systemPrompt: this.messages[0]?.content ?? undefined,

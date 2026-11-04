@@ -29,6 +29,7 @@ export interface SessionSummary {
 }
 
 export type DesktopEventType =
+  | 'session_started'
   | 'token'
   | 'thought'
   | 'tool_call'
@@ -46,7 +47,7 @@ export interface DesktopEvent {
 }
 
 export interface OpenSandBridgeApi {
-  sendQuery: (query: string, sessionId?: string) => Promise<{ success: boolean; sessionId: string }>;
+  sendQuery: (query: string, sessionId?: string, agentId?: string) => Promise<{ success: boolean; sessionId: string }>;
   approveTool: (approvalId: string, decision: ApprovalDecision) => Promise<{ success: boolean }>;
   getSessions: () => Promise<SessionSummary[]>;
   loadSession: (sessionId: string) => Promise<{ events: unknown[]; transcript: string }>;

@@ -61,6 +61,69 @@ describe("AgentCoordinator Integration", () => {
     assert.equal(coordinator.history.length, 3); // system, user, assistant
   });
 
+  it("persists conversation history across new coordinator instances with the same sessionId", async () => {
+    const recordedPayloads: any[] = [];
+    const mockFetch = async (_url: any, init: any): Promise<Response> => {
+      const payload = JSON.parse(init.body as string);
+      recordedPayloads.push(payload);
+      const encoder = new TextEncoder();
+      const chunks = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "Echo: " + payload.messages[payload.messages.length - 1].content } }] })}\n\n`,
+        "data: [DONE]\n\n",
+      ];
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const c of chunks) controller.enqueue(encoder.encode(c));
+          controller.close();
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    };
+
+    const client = new UniversalLLMClient({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      fetch: mockFetch as any,
+    });
+
+    const persistentSessionId = "persistent-sess-001";
+    const sessionsDir = path.join(tempDir, "sessions");
+
+    // Turn 1 on coordinator instance 1
+    const coordinator1 = new AgentCoordinator({
+      sessionId: persistentSessionId,
+      llmClient: client,
+      daemon,
+      sessionsBaseDir: sessionsDir,
+    });
+    const res1 = await coordinator1.runTurn("First turn message");
+    assert.equal(res1, "Echo: First turn message");
+
+    // Turn 2 on a completely new coordinator instance 2 (simulating process restart or session reload)
+    const coordinator2 = new AgentCoordinator({
+      sessionId: persistentSessionId,
+      llmClient: client,
+      daemon,
+      sessionsBaseDir: sessionsDir,
+    });
+    const res2 = await coordinator2.runTurn("Second turn message");
+    assert.equal(res2, "Echo: Second turn message");
+
+    // Verify turn 2 LLM payload received turn 1 history!
+    assert.equal(recordedPayloads.length, 2);
+    const turn2Messages = recordedPayloads[1].messages;
+    assert.equal(turn2Messages[0].role, "system");
+    assert.equal(turn2Messages[1].role, "user");
+    assert.equal(turn2Messages[1].content, "First turn message");
+    assert.equal(turn2Messages[2].role, "assistant");
+    assert.equal(turn2Messages[2].content, "Echo: First turn message");
+    assert.equal(turn2Messages[3].role, "user");
+    assert.equal(turn2Messages[3].content, "Second turn message");
+  });
+
   it("executes multi-turn tool loops autonomously", async () => {
     const outputPath = path.join(tempDir, "output.txt");
 

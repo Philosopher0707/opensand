@@ -13,8 +13,8 @@ try {
 
   if (contextBridge && ipcRenderer) {
     contextBridge.exposeInMainWorld('opensand', {
-      sendQuery: (query: string, sessionId?: string) =>
-        ipcRenderer.invoke('opensand:sendQuery', { query, sessionId }),
+      sendQuery: (query: string, sessionId?: string, agentId?: string) =>
+        ipcRenderer.invoke('opensand:sendQuery', { query, sessionId, agentId }),
       approveTool: (approvalId: string, decision: any) =>
         ipcRenderer.invoke('opensand:approveTool', { approvalId, decision }),
       getSessions: () =>

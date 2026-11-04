@@ -89,8 +89,8 @@ export class DesktopApp {
   }
 
   private setupIpcHandlers(ipcMain: any): void {
-    ipcMain.handle('opensand:sendQuery', async (_: any, { query, sessionId }: { query: string; sessionId?: string }) => {
-      return this.bridge.sendQuery(query, sessionId);
+    ipcMain.handle('opensand:sendQuery', async (_: any, { query, sessionId, agentId }: { query: string; sessionId?: string; agentId?: string }) => {
+      return this.bridge.sendQuery(query, sessionId, agentId);
     });
 
     ipcMain.handle('opensand:approveTool', async (_: any, { approvalId, decision }: { approvalId: string; decision: ApprovalDecision }) => {

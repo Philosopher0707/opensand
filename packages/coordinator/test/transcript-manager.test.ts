@@ -73,5 +73,38 @@ describe("TranscriptManager", () => {
     await manager.writeHumanReadableTranscript(messages);
     const saved = await fs.readFile(path.join(manager.directory, "transcript.txt"), "utf-8");
     assert.equal(saved, formatted);
+
+    // Verify messages.json was saved and loadHistory() can hydrate
+    const hydrated = await manager.loadHistory();
+    assert.equal(hydrated.length, messages.length);
+    assert.equal(hydrated[1].role, "user");
+    assert.equal(hydrated[1].content, "list files in workspace");
+    assert.equal(hydrated[2].role, "assistant");
+    assert.equal(hydrated[2].tool_calls?.length, 1);
+  });
+
+  it("loads history by falling back to transcript.jsonl if messages.json is absent", async () => {
+    const fallbackSessionId = "fallback-session-456";
+    const fallbackManager = new TranscriptManager(fallbackSessionId, tempDir);
+
+    await fallbackManager.appendJsonl({ role: "user", content: "first question" });
+    await fallbackManager.appendJsonl({
+      role: "assistant",
+      content: null,
+      tool_calls: [{ id: "call_a", type: "function", function: { name: "test_tool", arguments: "{}" } }],
+    });
+    await fallbackManager.appendJsonl({ role: "tool", tool_call_id: "call_a", result: "tool output" });
+    await fallbackManager.appendJsonl({ role: "assistant", content: "final answer" });
+
+    const loaded = await fallbackManager.loadHistory();
+    assert.equal(loaded.length, 4);
+    assert.equal(loaded[0].role, "user");
+    assert.equal(loaded[0].content, "first question");
+    assert.equal(loaded[1].role, "assistant");
+    assert.equal(loaded[1].tool_calls?.[0].id, "call_a");
+    assert.equal(loaded[2].role, "tool");
+    assert.equal(loaded[2].content, "tool output");
+    assert.equal(loaded[3].role, "assistant");
+    assert.equal(loaded[3].content, "final answer");
   });
 });

@@ -79,6 +79,7 @@ export class DesktopIpcBridge extends EventEmitter {
   public attachmentManager: AttachmentManager;
   public webhookGateway: WebhookGateway;
   private coordinator: AgentCoordinator | null = null;
+  private activeAgentId?: string;
   private activeApprovals: Map<string, {
     request: ToolApprovalRequest;
     resolve: (approved: boolean) => void;
@@ -222,8 +223,16 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async createSessionCoordinator(sessionId?: string, agentId?: string): Promise<AgentCoordinator> {
-    const activeSessionId = sessionId || `session_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const activeSessionId = sessionId || this.currentSessionId || `session_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     this.currentSessionId = activeSessionId;
+
+    if (
+      this.coordinator &&
+      this.coordinator.sessionId === activeSessionId &&
+      this.activeAgentId === agentId
+    ) {
+      return this.coordinator;
+    }
 
     let targetModel = this.settings.model;
     let targetEndpoint = this.settings.endpoint;
@@ -288,6 +297,7 @@ export class DesktopIpcBridge extends EventEmitter {
     });
 
     this.coordinator = coordinator;
+    this.activeAgentId = agentId;
 
     // Auto-wire Sentinel Healer to session coordinator
     if (!workspaceSentinel.hasHealer()) {
@@ -300,6 +310,8 @@ export class DesktopIpcBridge extends EventEmitter {
   public async sendQuery(query: string, sessionId?: string, agentId?: string): Promise<{ success: boolean; sessionId: string }> {
     const coordinator = await this.createSessionCoordinator(sessionId, agentId);
     const activeSessionId = this.currentSessionId!;
+
+    this.emitEvent('session_started', { sessionId: activeSessionId });
 
     // Run query asynchronously
     coordinator.runTurn(query)
@@ -505,6 +517,10 @@ export class DesktopIpcBridge extends EventEmitter {
     }
 
     this.currentSessionId = sessionId;
+    if (this.coordinator && this.coordinator.sessionId !== sessionId) {
+      this.coordinator = null;
+      this.activeAgentId = undefined;
+    }
 
     return { events, transcript };
   }
@@ -520,6 +536,14 @@ export class DesktopIpcBridge extends EventEmitter {
       throw new Error('Path traversal detected');
     }
 
+    if (this.currentSessionId === sessionId) {
+      this.currentSessionId = null;
+    }
+    if (this.coordinator && this.coordinator.sessionId === sessionId) {
+      this.coordinator = null;
+      this.activeAgentId = undefined;
+    }
+
     if (fs.existsSync(resolvedSessionDir)) {
       fs.rmSync(resolvedSessionDir, { recursive: true, force: true });
       return true;
@@ -528,6 +552,10 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async clearAllSessions(): Promise<number> {
+    this.currentSessionId = null;
+    this.coordinator = null;
+    this.activeAgentId = undefined;
+
     const sessionsDir = path.join(this.baseDir, 'sessions');
     if (!fs.existsSync(sessionsDir)) {
       return 0;

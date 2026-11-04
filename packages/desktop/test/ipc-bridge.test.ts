@@ -118,3 +118,34 @@ test('DesktopIpcBridge - lists and loads session transcripts', async () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('DesktopIpcBridge - preserves active coordinator and emits session_started on query', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-persist-'));
+
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+
+    let startedSessionId: string | null = null;
+    bridge.on('event', (evt) => {
+      if (evt.type === 'session_started') {
+        startedSessionId = (evt.data as any)?.sessionId;
+      }
+    });
+
+    const coord1 = await bridge.createSessionCoordinator();
+    const sessId1 = coord1.sessionId;
+    assert.ok(sessId1);
+
+    // Calling createSessionCoordinator with same sessionId should reuse coordinator
+    const coord2 = await bridge.createSessionCoordinator(sessId1);
+    assert.strictEqual(coord1, coord2);
+
+    // sendQuery should emit session_started event with sessionId
+    const res = await bridge.sendQuery('Hello', sessId1);
+    assert.strictEqual(res.success, true);
+    assert.strictEqual(res.sessionId, sessId1);
+    assert.strictEqual(startedSessionId, sessId1);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

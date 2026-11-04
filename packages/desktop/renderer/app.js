@@ -2818,7 +2818,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     activeToolLines = [];
 
     try {
-      await client.sendQuery(q, currentSessionId, activeAgentId);
+      const res = await client.sendQuery(q, currentSessionId, activeAgentId);
+      if (res && res.sessionId) {
+        if (currentSessionId !== res.sessionId) {
+          currentSessionId = res.sessionId;
+          activeSessionTitle.textContent = `Session: ${currentSessionId}`;
+          refreshSessions();
+        }
+      }
     } catch (err) {
       if (currentAssistantMessage) {
         currentAssistantMessage.contentEl.innerHTML += `<div style="color: var(--danger); margin-top: 8px;">Error: ${escapeHtml(err.message)}</div>`;
@@ -2897,9 +2904,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Real-time Event Stream Handling
   client.onEvent((event) => {
     if (event.type === 'session_started') {
-      currentSessionId = event.sessionId;
-      activeSessionTitle.textContent = `Session: ${currentSessionId}`;
-      refreshSessions();
+      const sessId = event.data?.sessionId || event.sessionId;
+      if (sessId && currentSessionId !== sessId) {
+        currentSessionId = sessId;
+        activeSessionTitle.textContent = `Session: ${currentSessionId}`;
+        refreshSessions();
+      }
     }
 
     // Token delta stream
