@@ -145,6 +145,14 @@ class OpenSandClient {
     return res.json();
   }
 
+  async deleteAgent(id) {
+    if (this.isElectron && window.opensand?.deleteAgent) {
+      return window.opensand.deleteAgent(id);
+    }
+    const res = await fetch(`/api/agents/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    return res.json();
+  }
+
   async getTasks() {
     const res = await fetch('/api/tasks');
     return res.json();
@@ -940,7 +948,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const defaultItem = document.createElement('div');
     defaultItem.className = `bot-item ${activeAgentId === null ? 'active' : ''}`;
-    defaultItem.innerHTML = `<span class="bot-icon">🤖</span><span class="bot-name">Default Assistant</span>`;
+    defaultItem.innerHTML = `
+      <span class="bot-icon">🤖</span>
+      <div class="bot-item-info">
+        <span class="bot-item-name">Default Assistant</span>
+      </div>
+    `;
     defaultItem.onclick = () => {
       activeAgentId = null;
       badgeActiveBot.textContent = '🤖 Default Assistant';
@@ -953,14 +966,39 @@ document.addEventListener('DOMContentLoaded', async () => {
       const item = document.createElement('div');
       item.className = `bot-item ${activeAgentId === a.id ? 'active' : ''}`;
       const icon = a.kind === 'ROOM' ? '👥' : '⚡';
-      item.innerHTML = `<span class="bot-icon">${icon}</span><span class="bot-name">${escapeHtml(a.name)}</span>`;
+      item.innerHTML = `
+        <span class="bot-icon">${icon}</span>
+        <div class="bot-item-info">
+          <span class="bot-item-name">${escapeHtml(a.name)}</span>
+          ${a.role ? `<span class="bot-item-role">${escapeHtml(a.role)}</span>` : ''}
+        </div>
+        <button class="btn-delete-bot" title="Delete bot" data-bot-id="${escapeHtml(a.id)}">🗑️</button>
+      `;
       item.title = a.role || a.name;
-      item.onclick = () => {
+      item.onclick = (e) => {
+        if (e.target.closest('.btn-delete-bot')) return;
         activeAgentId = a.id;
         badgeActiveBot.textContent = `${icon} ${a.name}`;
         refreshBots();
         refreshTokenBadge();
       };
+
+      const delBtn = item.querySelector('.btn-delete-bot');
+      if (delBtn) {
+        delBtn.onclick = async (e) => {
+          e.stopPropagation();
+          if (confirm(`Are you sure you want to delete bot "${a.name}"?`)) {
+            await client.deleteAgent(a.id);
+            if (activeAgentId === a.id) {
+              activeAgentId = null;
+              badgeActiveBot.textContent = '🤖 Default Assistant';
+            }
+            refreshBots();
+            refreshTokenBadge();
+            refreshTemplates();
+          }
+        };
+      }
       botList.appendChild(item);
     }
   }
@@ -1465,6 +1503,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           </div>
           <div class="card-footer">
             <button class="btn btn-secondary btn-xs btn-export-agent">Export Template</button>
+            <button class="btn btn-ghost btn-xs btn-del-agent" style="color: var(--danger);">Delete Bot</button>
           </div>
         `;
 
@@ -1474,6 +1513,22 @@ document.addEventListener('DOMContentLoaded', async () => {
           const tpl = await client.exportAgentTemplate(a.id);
           exportTemplateJson.textContent = JSON.stringify(tpl, null, 2);
         };
+
+        const delBtn = card.querySelector('.btn-del-agent');
+        if (delBtn) {
+          delBtn.onclick = async () => {
+            if (confirm(`Are you sure you want to delete bot "${a.name}"?`)) {
+              await client.deleteAgent(a.id);
+              if (activeAgentId === a.id) {
+                activeAgentId = null;
+                badgeActiveBot.textContent = '🤖 Default Assistant';
+              }
+              refreshBots();
+              refreshTokenBadge();
+              refreshTemplates();
+            }
+          };
+        }
 
         grid.appendChild(card);
       }
@@ -2983,6 +3038,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     createBotModal.classList.add('hidden');
     refreshBots();
+    refreshTemplates();
   };
 
   // Task creation modal

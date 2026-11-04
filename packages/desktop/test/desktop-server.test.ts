@@ -311,6 +311,14 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     const importedAgent = JSON.parse(resImportTpl.body);
     assert.ok(importedAgent.id.startsWith('agent_imported_auditor_'));
 
+    // Test DELETE /api/agents/:id
+    const reqDeleteBot = new MockIncomingMessage('DELETE', `/api/agents/${importedAgent.id}`);
+    const resDeleteBot = new MockServerResponse();
+    await (server as any).handleRequest(reqDeleteBot, resDeleteBot);
+    assert.strictEqual(resDeleteBot.statusCode, 200);
+    const delBotResult = JSON.parse(resDeleteBot.body);
+    assert.strictEqual(delBotResult.success, true);
+
     // Test POST /api/compact (error boundary when no active session)
     const reqCompact = new MockIncomingMessage('POST', '/api/compact');
     const resCompact = new MockServerResponse();

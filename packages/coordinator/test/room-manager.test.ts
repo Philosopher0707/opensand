@@ -92,18 +92,30 @@ describe("RoomManager", () => {
       assert.strictEqual(fresh?.memberAgentIds.length, 3);
     });
 
-    it("deletes rooms cleanly", async () => {
+    it("deletes rooms cleanly and removes mirrored agent", async () => {
       const room = await roomManager.createRoom({
         name: "Temporary Team",
         description: "Ad-hoc working group",
         memberAgentIds: ["agent_temp"],
       });
 
+      const agentsBefore = await agentStore.listAgents();
+      const mirroredAgent = agentsBefore.find(
+        (a) => a.kind === "ROOM" && a.metadata?.roomId === room.roomId
+      );
+      assert.ok(mirroredAgent, "Mirrored agent should exist after room creation");
+
       const deleted = await roomManager.deleteRoom(room.roomId);
       assert.strictEqual(deleted, true);
 
       const found = await roomManager.getRoom(room.roomId);
       assert.strictEqual(found, null);
+
+      const agentsAfter = await agentStore.listAgents();
+      const mirroredAfter = agentsAfter.find(
+        (a) => a.kind === "ROOM" && a.metadata?.roomId === room.roomId
+      );
+      assert.strictEqual(mirroredAfter, undefined, "Mirrored agent should be removed on room deletion");
     });
   });
 

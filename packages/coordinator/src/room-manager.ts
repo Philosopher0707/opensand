@@ -149,17 +149,35 @@ export class RoomManager {
 
     // Mirror room as an agent record with kind: "ROOM" for 1:1 Grok Bot catalog parity
     try {
-      await this.agentStore.createAgent({
-        name: room.name,
-        role: `Room: ${room.name}`,
-        systemPrompt: `You are the room coordinator for "${room.name}". Description: ${room.description}. Member agents: ${room.memberAgentIds.join(", ")}.`,
-        kind: "ROOM",
-        metadata: {
-          roomId: room.roomId,
-          isRoom: true,
-          memberAgentIds: room.memberAgentIds,
-        },
-      });
+      const existingAgents = await this.agentStore.listAgents().catch(() => []);
+      const existing = existingAgents.find(
+        (a) => a.kind === "ROOM" && a.metadata?.roomId === room.roomId
+      );
+      if (existing) {
+        await this.agentStore.updateAgent(existing.id, {
+          name: room.name,
+          role: `Room: ${room.name}`,
+          systemPrompt: `You are the room coordinator for "${room.name}". Description: ${room.description}. Member agents: ${room.memberAgentIds.join(", ")}.`,
+          metadata: {
+            ...existing.metadata,
+            roomId: room.roomId,
+            isRoom: true,
+            memberAgentIds: room.memberAgentIds,
+          },
+        });
+      } else {
+        await this.agentStore.createAgent({
+          name: room.name,
+          role: `Room: ${room.name}`,
+          systemPrompt: `You are the room coordinator for "${room.name}". Description: ${room.description}. Member agents: ${room.memberAgentIds.join(", ")}.`,
+          kind: "ROOM",
+          metadata: {
+            roomId: room.roomId,
+            isRoom: true,
+            memberAgentIds: room.memberAgentIds,
+          },
+        });
+      }
     } catch {
       // Best-effort mirror
     }
@@ -240,6 +258,12 @@ export class RoomManager {
     const filePath = this.roomFilePath(roomId);
     try {
       await fs.unlink(filePath);
+      const allAgents = await this.agentStore.listAgents().catch(() => []);
+      for (const a of allAgents) {
+        if (a.kind === "ROOM" && a.metadata?.roomId === roomId) {
+          await this.agentStore.deleteAgent(a.id).catch(() => {});
+        }
+      }
       return true;
     } catch {
       return false;

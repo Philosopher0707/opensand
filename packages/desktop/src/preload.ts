@@ -25,6 +25,8 @@ try {
         ipcRenderer.invoke('opensand:deleteSession', { sessionId }),
       clearAllSessions: () =>
         ipcRenderer.invoke('opensand:clearAllSessions'),
+      deleteAgent: (id: string) =>
+        ipcRenderer.invoke('opensand:deleteAgent', { id }),
       getSettings: () =>
         ipcRenderer.invoke('opensand:getSettings'),
       updateSettings: (settings: any) =>

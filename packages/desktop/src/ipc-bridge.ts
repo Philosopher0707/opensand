@@ -393,6 +393,11 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async deleteAgent(id: string): Promise<boolean> {
+    const agent = await this.agentStore.getAgent(id);
+    if (!agent) return false;
+    if (agent.kind === 'ROOM' && typeof agent.metadata?.roomId === 'string') {
+      return this.roomManager.deleteRoom(agent.metadata.roomId);
+    }
     return this.agentStore.deleteAgent(id);
   }
 

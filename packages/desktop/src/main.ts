@@ -113,6 +113,10 @@ export class DesktopApp {
       return this.bridge.clearAllSessions();
     });
 
+    ipcMain.handle('opensand:deleteAgent', async (_: any, { id }: { id: string }) => {
+      return this.bridge.deleteAgent(id);
+    });
+
     ipcMain.handle('opensand:getSettings', async () => {
       return this.bridge.getSettings();
     });

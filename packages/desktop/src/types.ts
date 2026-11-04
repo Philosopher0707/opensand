@@ -52,6 +52,7 @@ export interface OpenSandBridgeApi {
   loadSession: (sessionId: string) => Promise<{ events: unknown[]; transcript: string }>;
   deleteSession?: (sessionId: string) => Promise<{ success: boolean }>;
   clearAllSessions?: () => Promise<{ success: boolean; count: number }>;
+  deleteAgent?: (id: string) => Promise<boolean>;
   getSettings: () => Promise<DesktopSettings>;
   updateSettings: (settings: Partial<DesktopSettings>) => Promise<DesktopSettings>;
   onEvent: (callback: (event: DesktopEvent) => void) => () => void;
