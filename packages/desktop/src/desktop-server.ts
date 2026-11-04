@@ -821,7 +821,9 @@ export class DesktopServer {
 
     // API: GET /api/tokens (Context Window & Token Telemetry)
     if (pathname === '/api/tokens' && req.method === 'GET') {
-      const telemetry = this.bridge.getTokenTelemetry();
+      const agentId = url.searchParams.get('agentId') || undefined;
+      const sessionId = url.searchParams.get('sessionId') || undefined;
+      const telemetry = await this.bridge.getTokenTelemetry(agentId, sessionId);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(telemetry));
       return;

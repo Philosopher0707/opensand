@@ -137,8 +137,8 @@ export function createDefaultRpcGateway(bridge: DesktopIpcBridge): RpcGateway {
     return await bridge.compactHistory(keep);
   });
 
-  gateway.register('aiserver.v1.GrokBotService', 'GetTokenTelemetry', async () => {
-    return bridge.getTokenTelemetry();
+  gateway.register('aiserver.v1.GrokBotService', 'GetTokenTelemetry', async (req) => {
+    return await bridge.getTokenTelemetry(req?.agentId, req?.sessionId);
   });
 
   gateway.register('aiserver.v1.GrokBotService', 'SubmitQuery', async (req) => {
@@ -256,7 +256,7 @@ export function createDefaultRpcGateway(bridge: DesktopIpcBridge): RpcGateway {
     const routines = await bridge.listRoutines();
     const tasks = await bridge.getTasks();
     const secrets = await bridge.listSecrets();
-    const telemetry = bridge.getTokenTelemetry();
+    const telemetry = await bridge.getTokenTelemetry();
     return {
       fleet: {
         agentsCount: agents.length,

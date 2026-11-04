@@ -5,6 +5,7 @@ export interface DesktopSettings {
   autoApprove: boolean;
   provider: 'openai' | 'anthropic';
   theme: 'dark' | 'light' | 'system';
+  maxContextTokens?: number;
 }
 
 export interface ToolApprovalRequest {
@@ -54,4 +55,12 @@ export interface OpenSandBridgeApi {
   getSettings: () => Promise<DesktopSettings>;
   updateSettings: (settings: Partial<DesktopSettings>) => Promise<DesktopSettings>;
   onEvent: (callback: (event: DesktopEvent) => void) => () => void;
+  getTokenTelemetry?: (agentId?: string, sessionId?: string) => Promise<{
+    estimatedTokens: number;
+    maxContextTokens: number;
+    toolScopeMode: string;
+    turnsCount: number;
+    messagesCount: number;
+    model: string;
+  }>;
 }

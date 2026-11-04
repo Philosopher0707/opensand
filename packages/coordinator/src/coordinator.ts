@@ -16,6 +16,7 @@ import {
   truncateToolOutput,
   foldHistoricalToolResults,
   selectActiveTools,
+  getModelMaxContextTokens,
 } from "./token-hygiene.js";
 
 export interface CoordinatorOptions {
@@ -58,7 +59,7 @@ export class AgentCoordinator {
     this.transcript = new TranscriptManager(this.sessionId, options.sessionsBaseDir);
     this.allowedTools = options.allowedTools;
     this.toolScopeMode = options.toolScopeMode ?? "auto";
-    this.maxContextTokens = options.maxContextTokens ?? 32000;
+    this.maxContextTokens = options.maxContextTokens ?? getModelMaxContextTokens(options.llmClient?.model);
     this.vaultStore = options.vaultStore;
     this.hookDispatcher = new HookDispatcher(options.hooks);
     this.onApprovalRequired = options.onApprovalRequired;

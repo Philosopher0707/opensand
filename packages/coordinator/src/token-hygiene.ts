@@ -229,3 +229,133 @@ export function selectActiveTools(
 
   return tools.filter((t) => activeToolNames.has(t.function.name));
 }
+
+/**
+ * Resolves the maximum context window size in tokens for a given model identifier.
+ * Accurately maps common model families (Gemini, Claude, DeepSeek, GPT-4o, Qwen, Llama, Mistral).
+ */
+export function getModelMaxContextTokens(modelName?: string): number {
+  if (!modelName) {
+    return 128000;
+  }
+  const name = modelName.toLowerCase().trim();
+
+  // 1. Google Gemini: 1,000,000 tokens
+  if (
+    name.includes("gemini-1.5") ||
+    name.includes("gemini-2.0") ||
+    name.includes("gemini-flash") ||
+    name.includes("gemini-pro") ||
+    name.includes("google/gemini")
+  ) {
+    return 1000000;
+  }
+  if (name.includes("gemini-1.0")) {
+    return 32768;
+  }
+
+  // 2. Anthropic Claude: 200,000 tokens
+  if (
+    name.includes("claude-3") ||
+    name.includes("claude-3-5") ||
+    name.includes("claude-3-7") ||
+    name.includes("claude-2.1") ||
+    name.includes("anthropic/claude")
+  ) {
+    return 200000;
+  }
+  if (name.includes("claude-2") || name.includes("claude-instant")) {
+    return 100000;
+  }
+  if (name.includes("claude")) {
+    return 200000;
+  }
+
+  // 3. DeepSeek models: 128,000 tokens
+  // e.g. deepseek/deepseek-v4.1-flash-1017, deepseek-chat, deepseek-coder, deepseek-r1
+  if (name.includes("deepseek")) {
+    return 128000;
+  }
+
+  // 4. OpenAI models
+  // gpt-4o, gpt-4o-mini, o1, o1-mini, o1-preview, o3-mini, chatgpt-4o-latest
+  if (
+    name.includes("gpt-4o") ||
+    name.includes("o1") ||
+    name.includes("o3") ||
+    name.includes("gpt-4-turbo") ||
+    name.includes("gpt-4-1106") ||
+    name.includes("gpt-4-0125")
+  ) {
+    return 128000;
+  }
+  if (name.includes("gpt-4-32k")) {
+    return 32768;
+  }
+  if (name.includes("gpt-4")) {
+    return 8192;
+  }
+  if (
+    name.includes("gpt-3.5-turbo-16k") ||
+    name.includes("gpt-3.5-turbo-0125") ||
+    name.includes("gpt-3.5-turbo-1106")
+  ) {
+    return 16384;
+  }
+  if (name.includes("gpt-3.5")) {
+    return 16384;
+  }
+
+  // 5. Qwen models
+  // Qwen 2.5 series (qwen2.5-coder, qwen2.5:32b, etc.) -> 128,000
+  if (name.includes("qwen2.5") || name.includes("qwen-2.5")) {
+    return 128000;
+  }
+  // Qwen 1 / 2 / 3 8B, local Ollama models (e.g. qwen3:8b, qwen:8b, qwen2:7b) -> 32,768
+  if (name.includes("qwen")) {
+    return 32768;
+  }
+
+  // 6. Meta Llama models
+  // Llama 3.1 / 3.2 / 3.3 -> 128,000
+  if (
+    name.includes("llama-3.1") ||
+    name.includes("llama3.1") ||
+    name.includes("llama-3.2") ||
+    name.includes("llama3.2") ||
+    name.includes("llama-3.3") ||
+    name.includes("llama3.3")
+  ) {
+    return 128000;
+  }
+  // Llama 3 (8k)
+  if (name.includes("llama-3") || name.includes("llama3")) {
+    return 8192;
+  }
+  // Llama 2 (4k)
+  if (name.includes("llama-2") || name.includes("llama2")) {
+    return 4096;
+  }
+
+  // 7. Mistral / Codestral
+  if (
+    name.includes("mistral-large") ||
+    name.includes("codestral") ||
+    name.includes("mistral-small") ||
+    name.includes("mistral-nemo") ||
+    name.includes("open-mistral-nemo")
+  ) {
+    return 128000;
+  }
+  if (name.includes("mistral") || name.includes("mixtral")) {
+    return 32768;
+  }
+
+  // 8. Cohere Command R / Command R+
+  if (name.includes("command-r")) {
+    return 128000;
+  }
+
+  // Fallback default: standard 128,000
+  return 128000;
+}

@@ -29,6 +29,8 @@ try {
         ipcRenderer.invoke('opensand:getSettings'),
       updateSettings: (settings: any) =>
         ipcRenderer.invoke('opensand:updateSettings', settings),
+      getTokenTelemetry: (agentId?: string, sessionId?: string) =>
+        ipcRenderer.invoke('opensand:getTokenTelemetry', { agentId, sessionId }),
       onEvent: (callback: (event: any) => void) => {
         const handler = (_: any, event: any) => callback(event);
         ipcRenderer.on('opensand:event', handler);

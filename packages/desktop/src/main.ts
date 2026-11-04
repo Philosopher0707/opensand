@@ -120,6 +120,10 @@ export class DesktopApp {
     ipcMain.handle('opensand:updateSettings', async (_: any, settings: Partial<DesktopSettings>) => {
       return this.bridge.updateSettings(settings);
     });
+
+    ipcMain.handle('opensand:getTokenTelemetry', async (_: any, { agentId, sessionId }: { agentId?: string; sessionId?: string } = {}) => {
+      return this.bridge.getTokenTelemetry(agentId, sessionId);
+    });
   }
 
   private setupTray(): void {

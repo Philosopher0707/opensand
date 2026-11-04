@@ -119,6 +119,18 @@ class OpenSandClient {
     return res.json();
   }
 
+  async getTokenTelemetry(agentId, sessionId) {
+    if (this.isElectron && window.opensand?.getTokenTelemetry) {
+      return window.opensand.getTokenTelemetry(agentId, sessionId);
+    }
+    const params = new URLSearchParams();
+    if (agentId) params.set('agentId', agentId);
+    if (sessionId) params.set('sessionId', sessionId);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetch(`/api/tokens${qs}`);
+    return res.json();
+  }
+
   async getAgents() {
     const res = await fetch('/api/agents');
     return res.json();
@@ -864,14 +876,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function refreshTokenBadge() {
     if (!badgeTokens) return;
     try {
-      const res = await fetch('/api/tokens');
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await client.getTokenTelemetry(activeAgentId || undefined, currentSessionId || undefined);
+      if (!data) return;
       const current = data.estimatedTokens || 0;
-      const max = data.maxContextTokens || 32000;
+      const max = data.maxContextTokens || 128000;
       const pct = Math.min(100, Math.max(0, Math.round((current / max) * 100)));
+      const model = data.model || badgeModel?.textContent || 'active model';
 
       badgeTokens.textContent = `⚡ ${current.toLocaleString()} / ${max.toLocaleString()} tokens (${pct}%)`;
+      badgeTokens.title = `Context Window: ${current.toLocaleString()} / ${max.toLocaleString()} tokens (${pct}%) for ${model}. Click to compact dialogue.`;
       badgeTokens.className = 'badge badge-tokens';
       if (pct > 80) {
         badgeTokens.classList.add('danger');
@@ -882,6 +895,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const meterBar = document.getElementById('contextMeterProgress');
       if (meterBar) {
         meterBar.style.width = `${pct}%`;
+        meterBar.title = `${current.toLocaleString()} / ${max.toLocaleString()} tokens used (${pct}%) [${model}]`;
         if (pct > 80) {
           meterBar.style.backgroundColor = 'var(--danger)';
         } else if (pct > 50) {
@@ -890,6 +904,11 @@ document.addEventListener('DOMContentLoaded', async () => {
           meterBar.style.backgroundColor = 'var(--accent)';
         }
       }
+
+      const composerModelBadge = document.getElementById('composerModelBadge');
+      if (composerModelBadge) {
+        composerModelBadge.title = `Active Model: ${model} • Context Window: ${max.toLocaleString()} tokens`;
+      }
     } catch {
       // Ignore
     }
@@ -897,15 +916,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (badgeTokens) {
     badgeTokens.addEventListener('click', async () => {
-      const res = await fetch('/api/tokens');
-      if (!res.ok) return;
-      const data = await res.json();
-      const confirmed = confirm(
-        `Current Context Footprint:\n• Estimated Tokens: ${data.estimatedTokens.toLocaleString()} / ${data.maxContextTokens.toLocaleString()}\n• Turns: ${data.turnsCount}\n• Messages: ${data.messagesCount}\n• Tool Scoping: ${data.toolScopeMode}\n\nCompact conversation history now?`
-      );
-      if (confirmed) {
-        await client.compactHistory(2);
-        await refreshTokenBadge();
+      try {
+        const data = await client.getTokenTelemetry(activeAgentId || undefined, currentSessionId || undefined);
+        if (!data) return;
+        const modelInfo = data.model ? `\n• Active Model: ${data.model}` : '';
+        const pct = Math.min(100, Math.round(((data.estimatedTokens || 0) / (data.maxContextTokens || 1)) * 100));
+        const confirmed = confirm(
+          `Current Context Footprint:${modelInfo}\n• Estimated Tokens: ${(data.estimatedTokens || 0).toLocaleString()} / ${(data.maxContextTokens || 0).toLocaleString()} (${pct}%)\n• Turns: ${data.turnsCount || 0}\n• Messages: ${data.messagesCount || 0}\n• Tool Scoping: ${data.toolScopeMode || 'auto'}\n\nCompact conversation history now?`
+        );
+        if (confirmed) {
+          await client.compactHistory(2);
+          await refreshTokenBadge();
+        }
+      } catch {
+        // Ignore
       }
     });
   }
@@ -921,6 +945,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       activeAgentId = null;
       badgeActiveBot.textContent = '🤖 Default Assistant';
       refreshBots();
+      refreshTokenBadge();
     };
     botList.appendChild(defaultItem);
 
@@ -934,6 +959,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         activeAgentId = a.id;
         badgeActiveBot.textContent = `${icon} ${a.name}`;
         refreshBots();
+        refreshTokenBadge();
       };
       botList.appendChild(item);
     }
@@ -2566,6 +2592,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       messageFeed.innerHTML = `<div class="message message-assistant"><div class="message-body" style="color: var(--danger)">Error loading session: ${escapeHtml(err.message)}</div></div>`;
     }
     refreshSessions();
+    refreshTokenBadge();
   }
 
   function startNewSession() {
@@ -2575,6 +2602,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     welcomeBanner.classList.remove('hidden');
     switchView('chat');
     refreshSessions();
+    refreshTokenBadge();
     if (promptInput) {
       promptInput.value = '';
       promptInput.focus();
@@ -3020,6 +3048,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     settingsModal.classList.add('hidden');
     await refreshSettings();
+    await refreshTokenBadge();
   };
 
   // --- BTW Ephemeral Side Question Modal ---
@@ -3091,6 +3120,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         rollbackStatusBox.classList.remove('hidden');
         if (currentSessionId) {
           await selectSession(currentSessionId);
+        } else {
+          await refreshTokenBadge();
         }
       } catch (err) {
         rollbackStatusBox.textContent = `Error: ${err.message}`;
@@ -3130,6 +3161,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         compactResultBox.classList.remove('hidden');
         if (currentSessionId) {
           await selectSession(currentSessionId);
+        } else {
+          await refreshTokenBadge();
         }
       } catch (err) {
         compactResultBox.textContent = `Error: ${err.message}`;

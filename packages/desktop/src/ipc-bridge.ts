@@ -47,6 +47,7 @@ import {
   WebhookDispatchResult,
   createSelfReflectiveCodingGraph,
   CodingGraphState,
+  getModelMaxContextTokens,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -238,12 +239,15 @@ export class DesktopIpcBridge extends EventEmitter {
     const memoryContext = await this.memoryStore.getPromptMemoryContext(agentId);
     const skillsContext = agentId ? await this.skillStore.formatSkillsPrompt(agentId) : '';
 
+    const maxTokens = this.settings.maxContextTokens ?? getModelMaxContextTokens(targetModel);
+
     const coordinator = new AgentCoordinator({
       llmClient,
       daemon: this.daemon,
       sessionId: activeSessionId,
       vaultStore: this.vaultStore,
       sessionsBaseDir: path.join(this.baseDir, 'sessions'),
+      maxContextTokens: maxTokens,
       systemPromptContext: {
         userInstructions: customInstructions,
         learnedRules,
@@ -483,6 +487,8 @@ export class DesktopIpcBridge extends EventEmitter {
       transcript = fs.readFileSync(txtPath, 'utf8');
     }
 
+    this.currentSessionId = sessionId;
+
     return { events, transcript };
   }
 
@@ -716,28 +722,88 @@ export class DesktopIpcBridge extends EventEmitter {
     return this.coordinator.compactHistory({ keepRecentTurns });
   }
 
-  public getTokenTelemetry(): {
+  public async getTokenTelemetry(
+    agentId?: string,
+    sessionId?: string
+  ): Promise<{
     estimatedTokens: number;
     maxContextTokens: number;
     toolScopeMode: string;
     turnsCount: number;
     messagesCount: number;
-  } {
-    if (!this.coordinator) {
+    model: string;
+  }> {
+    let activeModel = this.settings.model;
+    if (agentId) {
+      const agent = await this.agentStore.getAgent(agentId);
+      if (agent?.model) {
+        activeModel = agent.model;
+      }
+    } else if (this.coordinator?.llmClient?.model) {
+      activeModel = this.coordinator.llmClient.model;
+    }
+
+    const maxContextTokens =
+      this.settings.maxContextTokens ??
+      (this.coordinator && (!agentId || !this.coordinator.llmClient || this.coordinator.llmClient.model === activeModel)
+        ? this.coordinator.maxContextTokens
+        : getModelMaxContextTokens(activeModel));
+
+    const targetSessionId = sessionId || this.currentSessionId;
+    if (this.coordinator && (!targetSessionId || this.coordinator.sessionId === targetSessionId)) {
       return {
-        estimatedTokens: 0,
-        maxContextTokens: 32000,
-        toolScopeMode: 'auto',
-        turnsCount: 0,
-        messagesCount: 0,
+        estimatedTokens: this.coordinator.estimateTokens(),
+        maxContextTokens,
+        toolScopeMode: this.coordinator.toolScopeMode,
+        turnsCount: this.coordinator.history.filter((m) => m.role === 'user').length,
+        messagesCount: this.coordinator.history.length,
+        model: activeModel,
       };
     }
+
+    if (targetSessionId) {
+      try {
+        const sessDir = path.join(this.baseDir, 'sessions', targetSessionId);
+        const txtPath = path.join(sessDir, 'transcript.txt');
+        const jsonlPath = path.join(sessDir, 'transcript.jsonl');
+        if (fs.existsSync(txtPath)) {
+          const content = fs.readFileSync(txtPath, 'utf8');
+          const estimatedTokens = Math.ceil(content.length / 3.8);
+          let messagesCount = 0;
+          let turnsCount = 0;
+          if (fs.existsSync(jsonlPath)) {
+            const lines = fs.readFileSync(jsonlPath, 'utf8').trim().split('\n').filter(Boolean);
+            messagesCount = lines.length;
+            for (const line of lines) {
+              try {
+                const parsed = JSON.parse(line);
+                if (parsed.role === 'user' || parsed.type === 'user_message') turnsCount++;
+              } catch {
+                // Ignore parse errors
+              }
+            }
+          }
+          return {
+            estimatedTokens,
+            maxContextTokens,
+            toolScopeMode: this.coordinator?.toolScopeMode || 'auto',
+            turnsCount,
+            messagesCount,
+            model: activeModel,
+          };
+        }
+      } catch {
+        // Fall back to empty
+      }
+    }
+
     return {
-      estimatedTokens: this.coordinator.estimateTokens(),
-      maxContextTokens: this.coordinator.maxContextTokens,
-      toolScopeMode: this.coordinator.toolScopeMode,
-      turnsCount: this.coordinator.history.filter((m) => m.role === 'user').length,
-      messagesCount: this.coordinator.history.length,
+      estimatedTokens: 0,
+      maxContextTokens,
+      toolScopeMode: this.coordinator?.toolScopeMode || 'auto',
+      turnsCount: 0,
+      messagesCount: 0,
+      model: activeModel,
     };
   }
 

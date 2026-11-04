@@ -321,7 +321,7 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     assert.strictEqual(resCompact.statusCode, 400);
     assert.ok(JSON.parse(resCompact.body).error.includes('No active conversation coordinator'));
 
-    // Test Token Telemetry API: GET /api/tokens
+    // Test Token Telemetry API: GET /api/tokens (Model-aware dynamic context limit)
     const reqTokens = new MockIncomingMessage('GET', '/api/tokens');
     const resTokens = new MockServerResponse();
     await (server as any).handleRequest(reqTokens, resTokens);
@@ -330,6 +330,45 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     assert.strictEqual(typeof tokenData.estimatedTokens, 'number');
     assert.strictEqual(typeof tokenData.maxContextTokens, 'number');
     assert.strictEqual(tokenData.toolScopeMode, 'auto');
+
+    // Dynamic model context window verification: Claude (200k)
+    (server as any).bridge.updateSettings({ model: 'claude-3-5-sonnet-20241022' });
+    const reqClaude = new MockIncomingMessage('GET', '/api/tokens');
+    const resClaude = new MockServerResponse();
+    await (server as any).handleRequest(reqClaude, resClaude);
+    const claudeData = JSON.parse(resClaude.body);
+    assert.strictEqual(claudeData.maxContextTokens, 200000);
+    assert.strictEqual(claudeData.model, 'claude-3-5-sonnet-20241022');
+
+    // Dynamic model context window verification: DeepSeek (128k)
+    (server as any).bridge.updateSettings({ model: 'deepseek/deepseek-v4.1-flash-1017' });
+    const reqDeepseek = new MockIncomingMessage('GET', '/api/tokens');
+    const resDeepseek = new MockServerResponse();
+    await (server as any).handleRequest(reqDeepseek, resDeepseek);
+    const deepseekData = JSON.parse(resDeepseek.body);
+    assert.strictEqual(deepseekData.maxContextTokens, 128000);
+    assert.strictEqual(deepseekData.model, 'deepseek/deepseek-v4.1-flash-1017');
+
+    // Dynamic model context window verification: Qwen 8B (32,768)
+    (server as any).bridge.updateSettings({ model: 'qwen3:8b' });
+    const reqQwen = new MockIncomingMessage('GET', '/api/tokens');
+    const resQwen = new MockServerResponse();
+    await (server as any).handleRequest(reqQwen, resQwen);
+    const qwenData = JSON.parse(resQwen.body);
+    assert.strictEqual(qwenData.maxContextTokens, 32768);
+
+    // Dynamic agent model override verification: Gemini (1,000,000)
+    const testAgent = await (server as any).bridge.agentStore.createAgent({
+      name: 'Gemini Researcher',
+      role: 'Research',
+      model: 'google/gemini-2.0-flash',
+    });
+    const reqAgentTokens = new MockIncomingMessage('GET', `/api/tokens?agentId=${testAgent.id}`);
+    const resAgentTokens = new MockServerResponse();
+    await (server as any).handleRequest(reqAgentTokens, resAgentTokens);
+    const agentTokenData = JSON.parse(resAgentTokens.body);
+    assert.strictEqual(agentTokenData.maxContextTokens, 1000000);
+    assert.strictEqual(agentTokenData.model, 'google/gemini-2.0-flash');
 
     // Test Sentinel API: POST /api/sentinels
     const reqStartWatcher = new MockIncomingMessage('POST', '/api/sentinels');

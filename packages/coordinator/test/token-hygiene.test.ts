@@ -4,6 +4,7 @@ import {
   truncateToolOutput,
   foldHistoricalToolResults,
   selectActiveTools,
+  getModelMaxContextTokens,
   CORE_TOOL_NAMES,
 } from "../src/token-hygiene.js";
 import { ChatMessage } from "../src/types.js";
@@ -129,5 +130,40 @@ describe("Token Efficiency & Hygiene System", () => {
     // When mode is 'all', all tools are returned
     const allTools = selectActiveTools(mockTools, "any prompt", "all");
     assert.strictEqual(allTools.length, mockTools.length);
+  });
+
+  it("resolves dynamic maxContextTokens accurately per model family", () => {
+    // DeepSeek family (128,000)
+    assert.strictEqual(getModelMaxContextTokens("deepseek/deepseek-v4.1-flash-1017"), 128000);
+    assert.strictEqual(getModelMaxContextTokens("deepseek-chat"), 128000);
+    assert.strictEqual(getModelMaxContextTokens("deepseek-reasoner"), 128000);
+
+    // Claude family (200,000)
+    assert.strictEqual(getModelMaxContextTokens("claude-3-5-sonnet-20241022"), 200000);
+    assert.strictEqual(getModelMaxContextTokens("anthropic/claude-3.7-sonnet"), 200000);
+    assert.strictEqual(getModelMaxContextTokens("claude-3-haiku"), 200000);
+
+    // Gemini family (1,000,000)
+    assert.strictEqual(getModelMaxContextTokens("gemini-1.5-pro"), 1000000);
+    assert.strictEqual(getModelMaxContextTokens("gemini-2.0-flash"), 1000000);
+    assert.strictEqual(getModelMaxContextTokens("google/gemini-2.5-flash"), 1000000);
+
+    // OpenAI modern (128,000)
+    assert.strictEqual(getModelMaxContextTokens("gpt-4o"), 128000);
+    assert.strictEqual(getModelMaxContextTokens("gpt-4o-mini"), 128000);
+    assert.strictEqual(getModelMaxContextTokens("o1"), 128000);
+    assert.strictEqual(getModelMaxContextTokens("o3-mini"), 128000);
+
+    // Qwen family (32,768 for 8B, 128,000 for 2.5)
+    assert.strictEqual(getModelMaxContextTokens("qwen3:8b"), 32768);
+    assert.strictEqual(getModelMaxContextTokens("qwen2.5-coder:32b"), 128000);
+
+    // Llama family (128,000 for 3.1+, 8,192 for 3)
+    assert.strictEqual(getModelMaxContextTokens("llama-3.1-8b"), 128000);
+    assert.strictEqual(getModelMaxContextTokens("llama-3-8b"), 8192);
+
+    // Fallbacks
+    assert.strictEqual(getModelMaxContextTokens(""), 128000);
+    assert.strictEqual(getModelMaxContextTokens(undefined), 128000);
   });
 });
