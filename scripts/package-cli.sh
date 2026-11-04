@@ -26,10 +26,16 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const relativeCandidate = resolve(__dirname, '../../packages/cli/dist/src/cli-app.js');
+// Development fallback: a checkout at ~/dev/opensand/packages/cli/dist/src/cli-app.js.
+// The packaged binary never relies on this; it is here so an unbundled
+// `dist/bin/opensand` still runs on the author's own machine.
 const homeCandidate = resolve(process.env.HOME || '', 'dev/opensand/packages/cli/dist/src/cli-app.js');
-
-const target = existsSync(relativeCandidate) ? relativeCandidate : homeCandidate;
-const { runCli } = await import(target);
+const candidate = existsSync(relativeCandidate) ? relativeCandidate : homeCandidate;
+if (!existsSync(candidate)) {
+  console.error('OpenSand: cannot locate cli-app.js (tried ' + relativeCandidate + ' and ' + homeCandidate + '). Run `pnpm run build` first.');
+  process.exit(1);
+}
+const { runCli } = await import(candidate);
 
 runCli(process.argv.slice(2)).catch((err) => {
   console.error('\nOpenSand Fatal Error:', err.message);

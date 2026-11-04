@@ -328,3 +328,12 @@ pnpm test
 node packages/desktop/dist/src/desktop-server.js
 # Access at http://127.0.0.1:3456 in your browser
 ```
+
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the workflow rules
+(stage by explicit path, check for in-progress work, verify before
+concluding), and the package layout. CI runs `pnpm run build` and
+`pnpm run test` on every push and pull request to `main`. The
+pre-commit hook (`scripts/pre-commit.sh`) runs build + tests and
+refuses blanket staging.
