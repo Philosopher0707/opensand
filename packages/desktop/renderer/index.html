@@ -596,7 +596,11 @@
   </div>
 
   <!-- Tool Approval Modal Overlay -->
-  <div class="modal-overlay hidden" id="approvalModal">
+  
+    <!-- Pending Approval Queue (inline cards, one per approval) -->
+    <div id="approvalQueue" class="approval-queue hidden" aria-live="polite"></div>
+
+    <div class="modal-overlay hidden" id="approvalModal">
     <div class="modal-card">
       <div class="modal-header">
         <span class="modal-alert-icon">⚠️</span>
@@ -1214,6 +1218,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

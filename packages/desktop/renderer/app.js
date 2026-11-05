@@ -823,6 +823,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let turnBusy = false;
   let queuedQueries = [];
   let activeApprovalId = null;
+  const pendingApprovals = new Map(); // approvalId -> { toolName, args, reason }
   let currentAssistantMessage = null;
   let currentAssistantText = '';
   let currentAssistantThought = '';
@@ -2532,6 +2533,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     return content;
   }
 
+  // Incremental render cache: renderMarkdown is O(n^2) on long streams because
+  // it re-parses the whole text per token. Cache by text length + tail hash so
+  // unchanged prefix blocks are not re-parsed.
+  const __mdCache = new Map();
+  function __mdKey(text) {
+    const head = text.slice(0, 512);
+    const tail = text.slice(-512);
+    return `${text.length}:${head}:${tail}`;
+  }
+  function renderMarkdownCached(text) {
+    const key = __mdKey(text);
+    const hit = __mdCache.get(key);
+    if (hit) return hit;
+    // Bound the cache: keep the last 32 entries
+    if (__mdCache.size > 32) {
+      const firstKey = __mdCache.keys().next().value;
+      __mdCache.delete(firstKey);
+    }
+    const out = renderMarkdown(text);
+    __mdCache.set(key, out);
+    return out;
+  }
+
   // Tool Line Rhythm Component (OpenBot parity)
   function inferToolIcon(name) {
     const n = (name || '').toLowerCase();
@@ -3208,6 +3232,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     msgDiv.appendChild(body);
     messageFeed.appendChild(msgDiv);
 
+    // Virtualize: keep the DOM bounded. Older messages are removed from
+    // the DOM but remain in session storage (re-rendered on selectSession
+    // if the user scrolls back — a simple cap is the interim fix).
+    const MAX_DOM_MESSAGES = 100;
+    while (messageFeed.children.length > MAX_DOM_MESSAGES) {
+      const first = messageFeed.firstElementChild;
+      if (first) messageFeed.removeChild(first);
+    }
+
     smartScrollToBottom();
 
     return { msgDiv, body, thoughtEl, toolsEl, contentEl, actionsEl };
@@ -3868,7 +3901,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         currentAssistantText += delta;
         currentAssistantMessage.msgDiv._rawContent = currentAssistantText;
-        currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
+        // Incremental: only re-render the trailing block for the new delta.
+        // The cache avoids re-parsing an unchanged prefix on every token.
+        const prevLen = currentAssistantMessage.msgDiv._mdLen || 0;
+        if (currentAssistantText.length - prevLen < 200 && currentAssistantMessage.contentEl.innerHTML) {
+          // For small deltas, append the new tail as plain text (rendered safely)
+          // instead of a full markdown re-parse. Full render resumes on turn_complete.
+          const tail = currentAssistantText.slice(prevLen);
+          const tailEl = document.createTextNode(tail);
+          currentAssistantMessage.contentEl.appendChild(tailEl);
+        } else {
+          currentAssistantMessage.contentEl.innerHTML = renderMarkdownCached(currentAssistantText);
+        }
+        currentAssistantMessage.msgDiv._mdLen = currentAssistantText.length;
         smartScrollToBottom();
 
         botStatusAvatar.textContent = '✍️';
@@ -3951,6 +3996,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Turn completed
     if (event.type === 'turn_complete') {
       if (currentAssistantMessage) {
+        // Force a final full render so the streamed tail is markdown-formatted.
+        if (currentAssistantText) {
+          currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
+          currentAssistantMessage.msgDiv._mdLen = 0;
+        }
         const shimmer = currentAssistantMessage.contentEl.querySelector('.typing-shimmer');
         if (shimmer) shimmer.remove();
         if (currentAssistantThought) {
@@ -4016,21 +4066,25 @@ document.addEventListener('DOMContentLoaded', async () => {
       smartScrollToBottom();
     }
 
-    // Approval required
+    // Approval required — queued, never clobbered. Each approval gets its
+    // own inline card; the legacy modal is only a fallback.
     if (event.type === 'approval_required') {
-      activeApprovalId = event.approvalId || event.data?.approvalId;
       const d = event.data || {};
       const req = event.request || d.request || d;
-      approvalToolName.textContent = req.toolName || req.tool || 'Tool';
-      approvalArgsBox.textContent = JSON.stringify(req.args || req.arguments || req.params || {}, null, 2);
-      const reasonEl = document.getElementById('approvalReason');
-      if (reasonEl) {
-        const reason = req.reason || d.reason;
-        reasonEl.textContent = reason ? String(reason) : '';
-        reasonEl.style.display = reason ? '' : 'none';
-        reasonEl.parentElement.style.display = reason ? '' : 'none';
+      const approvalId = event.approvalId || d.approvalId;
+      const toolName = req.toolName || req.tool || 'Tool';
+      const args = req.args || req.arguments || req.params || {};
+      const reason = req.reason || d.reason || '';
+
+      pendingApprovals.set(approvalId, { toolName, args, reason });
+      renderApprovalQueue();
+
+      // Keep modal in sync for any test/legacy consumers
+      activeApprovalId = approvalId;
+      if (approvalToolName) {
+        approvalToolName.textContent = toolName;
+        approvalArgsBox.textContent = JSON.stringify(args, null, 2);
       }
-      approvalModal.classList.remove('hidden');
     }
 
     // Sentinel diagnostic log
@@ -4045,24 +4099,103 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Approvals
+  function renderApprovalQueue() {
+    const queue = document.getElementById('approvalQueue');
+    if (!queue) {
+      if (pendingApprovals.size > 0) {
+        const first = pendingApprovals.entries().next().value;
+        if (first) {
+          const [id, req] = first;
+          activeApprovalId = id;
+          if (approvalToolName) approvalToolName.textContent = req.toolName;
+          if (approvalArgsBox) approvalArgsBox.textContent = JSON.stringify(req.args, null, 2);
+          const reasonEl = document.getElementById('approvalReason');
+          if (reasonEl) {
+            reasonEl.textContent = req.reason || '';
+            reasonEl.style.display = req.reason ? '' : 'none';
+            if (reasonEl.parentElement) reasonEl.parentElement.style.display = req.reason ? '' : 'none';
+          }
+          approvalModal.classList.remove('hidden');
+        }
+      } else {
+        approvalModal.classList.add('hidden');
+      }
+      return;
+    }
+
+    queue.innerHTML = '';
+    queue.classList.toggle('hidden', pendingApprovals.size === 0);
+
+    for (const [id, req] of pendingApprovals) {
+      const card = document.createElement('div');
+      card.className = 'approval-card';
+      card.dataset.approvalId = id;
+      card.setAttribute('role', 'alertdialog');
+
+      const title = document.createElement('div');
+      title.className = 'approval-card-tool';
+      title.textContent = `Tool: ${req.toolName}`;
+      card.appendChild(title);
+
+      if (req.reason) {
+        const reasonEl = document.createElement('div');
+        reasonEl.className = 'approval-card-reason';
+        reasonEl.textContent = req.reason;
+        card.appendChild(reasonEl);
+      }
+
+      const argsPre = document.createElement('pre');
+      argsPre.className = 'approval-args-box';
+      argsPre.textContent = JSON.stringify(req.args, null, 2);
+      card.appendChild(argsPre);
+
+      const actions = document.createElement('div');
+      actions.className = 'approval-card-actions';
+
+      const mkBtn = (label, action, cls) => {
+        const b = document.createElement('button');
+        b.className = `btn btn-sm ${cls}`;
+        b.textContent = label;
+        b.onclick = async () => {
+          pendingApprovals.delete(id);
+          renderApprovalQueue();
+          await client.approveTool(id, { action });
+        };
+        actions.appendChild(b);
+      };
+      mkBtn('Approve Once', 'approve_once', 'btn-primary');
+      mkBtn('Always Allow', 'always_allow', 'btn-secondary');
+      mkBtn('Reject', 'reject', 'btn-ghost');
+
+      card.appendChild(actions);
+      queue.appendChild(card);
+    }
+  }
+
+  // Approvals (legacy modal buttons delegate to the queue entry)
   btnApproveOnce.onclick = async () => {
     if (!activeApprovalId) return;
+    pendingApprovals.delete(activeApprovalId);
     approvalModal.classList.add('hidden');
+    renderApprovalQueue();
     await client.approveTool(activeApprovalId, { action: 'approve_once' });
     activeApprovalId = null;
   };
 
   btnAlwaysAllow.onclick = async () => {
     if (!activeApprovalId) return;
+    pendingApprovals.delete(activeApprovalId);
     approvalModal.classList.add('hidden');
+    renderApprovalQueue();
     await client.approveTool(activeApprovalId, { action: 'always_allow' });
     activeApprovalId = null;
   };
 
   btnRejectTool.onclick = async () => {
     if (!activeApprovalId) return;
+    pendingApprovals.delete(activeApprovalId);
     approvalModal.classList.add('hidden');
+    renderApprovalQueue();
     await client.approveTool(activeApprovalId, { action: 'reject' });
     activeApprovalId = null;
   };

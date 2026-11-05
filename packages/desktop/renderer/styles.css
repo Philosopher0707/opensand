@@ -2668,3 +2668,23 @@ textarea#promptInput {
   -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
   mask-image: linear-gradient(180deg, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
 }
+
+/* Approval queue + inline cards */
+.approval-queue {
+  margin: 0 24px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.approval-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.approval-card-tool { font-weight: 600; }
+.approval-card-reason { color: var(--text-muted); font-size: 13px; }
+.approval-card-actions { display: flex; gap: 8px; }
