@@ -56,6 +56,9 @@ import {
   resolveModelContextWindow,
   defaultOpenRouterCatalog,
   AnthropicClient,
+  ConnectorManager,
+  ConnectorProviderId,
+  ConnectorState,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -83,6 +86,7 @@ export class DesktopIpcBridge extends EventEmitter {
   public roomManager: RoomManager;
   public attachmentManager: AttachmentManager;
   public webhookGateway: WebhookGateway;
+  public connectorManager: ConnectorManager;
   private coordinator: AgentCoordinator | null = null;
   private activeAgentId?: string;
   private coordinatorMap: Map<string, AgentCoordinator> = new Map();
@@ -153,6 +157,9 @@ export class DesktopIpcBridge extends EventEmitter {
       storageDir: path.join(this.baseDir, 'webhooks'),
       routineEngine: this.routineEngine,
     });
+    this.connectorManager = new ConnectorManager({
+      storagePath: path.join(this.baseDir, 'connectors.json'),
+    });
 
     // Initialize Orchestrator Meta-Tools
     registerOrchestratorTools({
@@ -166,6 +173,7 @@ export class DesktopIpcBridge extends EventEmitter {
       routineEngine: this.routineEngine,
       roomManager: this.roomManager,
       attachmentManager: this.attachmentManager,
+      connectorManager: this.connectorManager,
       defaultEndpoint: this.settings.endpoint,
       defaultModel: this.settings.model,
       defaultApiKey: this.settings.apiKey,
@@ -1198,5 +1206,38 @@ export class DesktopIpcBridge extends EventEmitter {
       trace,
       completed: true,
     };
+  }
+
+  // --- 3rd-Party OAuth Connectors (Slack, Linear, GitHub App) ---
+
+  public listConnectors(): ConnectorState[] {
+    return this.connectorManager.listConnectors();
+  }
+
+  public getConnector(id: ConnectorProviderId): ConnectorState | undefined {
+    return this.connectorManager.getConnector(id);
+  }
+
+  public initiateOAuth(id: ConnectorProviderId, redirectUri?: string): { authUrl: string; state: string; providerId: ConnectorProviderId } {
+    return this.connectorManager.initiateOAuth(id, redirectUri);
+  }
+
+  public async completeOAuth(id: ConnectorProviderId, code: string, state?: string): Promise<ConnectorState> {
+    return this.connectorManager.completeOAuth(id, code, state);
+  }
+
+  public async configureConnectorToken(
+    id: ConnectorProviderId,
+    input: { token: string; account?: string; clientId?: string; clientSecret?: string; metadata?: Record<string, string> }
+  ): Promise<ConnectorState> {
+    return this.connectorManager.configureToken(id, input);
+  }
+
+  public async disconnectConnector(id: ConnectorProviderId): Promise<boolean> {
+    return this.connectorManager.disconnect(id);
+  }
+
+  public async testConnector(id: ConnectorProviderId): Promise<{ ok: boolean; message: string; account?: string }> {
+    return this.connectorManager.testConnection(id);
   }
 }

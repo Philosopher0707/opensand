@@ -26,6 +26,61 @@
 </div>\n`;
     });
 
+    // 1.5 Extract [connect-app]{...} markers (OpenBot & Grok Bot Parity)
+    const connectCards = [];
+    content = content.replace(/\[connect-app\](\{[^}]+\})\s*([^\n]*)/g, (match, rawJson, trailingMsg) => {
+      try {
+        const data = JSON.parse(rawJson);
+        const serverId = escapeHtml(data.serverId || 'app');
+        const title = escapeHtml(data.title || serverId);
+        const msg = escapeHtml(trailingMsg || data.message || `Connect ${title} to enable this tool.`);
+        
+        let brandIcon = '🔌';
+        let brandColor = '#3b82f6';
+        if (serverId === 'slack') {
+          brandIcon = '💬';
+          brandColor = '#4A154B';
+        } else if (serverId === 'linear') {
+          brandIcon = '📐';
+          brandColor = '#5E6AD2';
+        } else if (serverId === 'github') {
+          brandIcon = '🐙';
+          brandColor = '#24292e';
+        }
+
+        const idx = connectCards.length;
+        connectCards.push(`
+<div class="connect-app-card" data-connect-app="${serverId}" data-title="${title}">
+  <div class="connect-card-header">
+    <div class="connect-card-icon" style="background-color: ${brandColor};">${brandIcon}</div>
+    <div class="connect-card-meta">
+      <div class="connect-card-title">Connect ${title}</div>
+      <div class="connect-card-subtitle">${msg}</div>
+    </div>
+    <span class="connect-card-badge badge-pending">Required</span>
+  </div>
+  <div class="connect-card-body">
+    <div class="connect-card-actions">
+      <button class="btn btn-primary btn-sm btn-connect-oauth" type="button" data-server="${serverId}" data-title="${title}">
+        Connect ${title}
+      </button>
+      <button class="btn btn-secondary btn-sm btn-connect-manual-toggle" type="button" data-server="${serverId}">
+        Enter Token…
+      </button>
+    </div>
+    <div class="connect-manual-form hidden" id="manualForm_${serverId}">
+      <input type="password" class="input-text input-sm connect-token-input" placeholder="Paste ${title} Token / API Key" />
+      <button class="btn btn-primary btn-sm btn-save-token" type="button" data-server="${serverId}">Save</button>
+    </div>
+    <div class="connect-card-status-message hidden" role="status"></div>
+  </div>
+</div>`);
+        return `\n%%CONNECT_CARD_${idx}%%\n`;
+      } catch {
+        return match;
+      }
+    });
+
     // 2. Fenced code blocks ```lang\ncode\n```
     const codeBlocks = [];
     content = content.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
@@ -116,9 +171,12 @@
     content = content.replace(/<p>\s*(<div class="table-container">[\s\S]*?<\/div>)\s*<\/p>/g, '$1');
     content = content.replace(/<p>\s*(<h2>.*?<\/h2>|<h3>.*?<\/h3>|<h4>.*?<\/h4>|<blockquote>.*?<\/blockquote>|<ul>.*?<\/ul>)\s*<\/p>/g, '$1');
 
-    // 10. Re-insert code blocks
+    // 10. Re-insert code blocks and connect cards
     codeBlocks.forEach((blockHtml, i) => {
       content = content.replace(new RegExp(`<p>\\s*%%CODE_BLOCK_${i}%%\\s*<\\/p>|%%CODE_BLOCK_${i}%%`, 'g'), blockHtml);
+    });
+    connectCards.forEach((cardHtml, i) => {
+      content = content.replace(new RegExp(`<p>\\s*%%CONNECT_CARD_${i}%%\\s*<\\/p>|%%CONNECT_CARD_${i}%%`, 'g'), cardHtml);
     });
 
     return content;

@@ -519,6 +519,40 @@ class OpenSandClient {
     });
     return res.json();
   }
+
+  // --- 3rd-Party OAuth Connectors (Slack, Linear, GitHub App) ---
+  async getConnectors() {
+    const res = await fetch('/api/connectors');
+    return res.json();
+  }
+
+  async getConnector(id) {
+    const res = await fetch(`/api/connectors/${id}`);
+    return res.json();
+  }
+
+  async connectApp(id, data = {}) {
+    const res = await fetch(`/api/connectors/${id}/connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  }
+
+  async disconnectApp(id) {
+    const res = await fetch(`/api/connectors/${id}/disconnect`, {
+      method: 'POST',
+    });
+    return res.json();
+  }
+
+  async testConnector(id) {
+    const res = await fetch(`/api/connectors/${id}/test`, {
+      method: 'POST',
+    });
+    return res.json();
+  }
 }
 
 // UI Controller
@@ -540,6 +574,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     graphs: document.getElementById('viewGraphs'),
     boundaries: document.getElementById('viewBoundaries'),
     webhooks: document.getElementById('viewWebhooks'),
+    connectors: document.getElementById('viewConnectors'),
   };
 
   let currentView = 'chat';
@@ -557,6 +592,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     memories: '🧠 7-Layer Discrete Fact Memory',
     webhooks: '⚡ Inbound Proactive Webhooks',
     attachments: '📎 Staged Context Attachments',
+    connectors: '🔌 3rd-Party App OAuth Connectors',
   };
 
   function switchView(viewName) {
@@ -570,7 +606,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       } else if (navTarget === 'skills') {
         btn.classList.toggle('active', ['skills', 'memories', 'routines', 'vault'].includes(viewName));
       } else if (navTarget === 'boundaries') {
-        btn.classList.toggle('active', ['boundaries', 'webhooks', 'attachments', 'graphs', 'rooms'].includes(viewName));
+        btn.classList.toggle('active', ['boundaries', 'webhooks', 'connectors', 'attachments', 'graphs', 'rooms'].includes(viewName));
       }
     });
 
@@ -609,6 +645,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (viewName === 'graphs') refreshGraphs();
     if (viewName === 'boundaries') refreshBoundaries();
     if (viewName === 'webhooks') refreshWebhooks();
+    if (viewName === 'connectors') refreshConnectors();
   }
 
   footerNavBtns.forEach((btn) => {
@@ -2255,6 +2292,163 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // --- 3rd-Party OAuth Connectors (Slack, Linear, GitHub App) ---
+  async function refreshConnectors() {
+    const grid = document.getElementById('connectorsCardGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    let connectors = [];
+    try {
+      connectors = await client.getConnectors();
+    } catch (err) {
+      grid.innerHTML = `<div style="grid-column: 1/-1; color: var(--danger); font-size: 13px;">Failed to load connectors: ${escapeHtml(err.message)}</div>`;
+      return;
+    }
+
+    if (!Array.isArray(connectors) || connectors.length === 0) {
+      grid.innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 13px;">No connectors available.</div>`;
+      return;
+    }
+
+    for (const conn of connectors) {
+      const card = document.createElement('div');
+      card.className = 'connector-dashboard-card';
+
+      const isConnected = conn.status === 'connected';
+      const isConnecting = conn.status === 'connecting';
+      const statusBadgeClass = isConnected ? 'badge-connected' : isConnecting ? 'badge-pending' : 'badge-disconnected';
+      const statusLabel = isConnected ? 'Connected' : isConnecting ? 'Connecting…' : 'Disconnected';
+
+      const scopesPills = (conn.scopes || []).map(s => `<span class="connector-scope-pill">${escapeHtml(s)}</span>`).join('');
+
+      card.innerHTML = `
+        <div class="connect-card-header">
+          <div class="connect-card-icon" style="background-color: ${conn.brandColor || '#3b82f6'};">${conn.icon || '🔌'}</div>
+          <div class="connect-card-meta">
+            <div class="connect-card-title">${escapeHtml(conn.name)}</div>
+            <div class="connect-card-subtitle">${escapeHtml(conn.description)}</div>
+          </div>
+          <span class="connect-card-badge ${statusBadgeClass}">${statusLabel}</span>
+        </div>
+
+        <div style="font-size: 12px; color: var(--text-muted);">
+          ${isConnected ? `<strong>Account:</strong> <span style="color: var(--accent); font-weight: 500;">${escapeHtml(conn.account || 'Authorized')}</span> • <span style="font-size: 11px;">Connected ${new Date(conn.connectedAt || Date.now()).toLocaleDateString()}</span>` : '<em>Not connected</em>'}
+        </div>
+
+        <div class="connector-scopes-list">
+          ${scopesPills}
+        </div>
+
+        <div class="card-footer" style="margin-top: auto; display: flex; flex-wrap: wrap; gap: 8px;">
+          ${!isConnected ? `
+            <button class="btn btn-primary btn-sm btn-dash-oauth" data-id="${conn.id}" data-name="${escapeHtml(conn.name)}">
+              Connect via OAuth
+            </button>
+            <button class="btn btn-secondary btn-sm btn-dash-config-token" data-id="${conn.id}" data-name="${escapeHtml(conn.name)}">
+              Enter Token
+            </button>
+          ` : `
+            <button class="btn btn-secondary btn-sm btn-dash-test" data-id="${conn.id}">
+              Test Connection
+            </button>
+            <button class="btn btn-secondary btn-sm btn-dash-config-token" data-id="${conn.id}" data-name="${escapeHtml(conn.name)}">
+              Update Credential
+            </button>
+            <button class="btn btn-ghost btn-sm btn-dash-disconnect" data-id="${conn.id}" style="color: var(--danger);">
+              Disconnect
+            </button>
+          `}
+        </div>
+      `;
+
+      // Wire OAuth button
+      const oauthBtn = card.querySelector('.btn-dash-oauth');
+      if (oauthBtn) {
+        oauthBtn.onclick = async () => {
+          oauthBtn.disabled = true;
+          oauthBtn.textContent = 'Opening…';
+          try {
+            const flow = await client.connectApp(conn.id);
+            if (flow.authUrl) {
+              window.open(flow.authUrl, '_blank');
+              // Poll for completion
+              const pollInterval = setInterval(async () => {
+                const updated = await client.getConnector(conn.id);
+                if (updated && updated.status === 'connected') {
+                  clearInterval(pollInterval);
+                  refreshConnectors();
+                }
+              }, 1500);
+              setTimeout(() => clearInterval(pollInterval), 60000);
+            }
+          } catch (err) {
+            alert(`Failed to initiate OAuth for ${conn.name}: ${err.message}`);
+          } finally {
+            oauthBtn.disabled = false;
+            oauthBtn.textContent = 'Connect via OAuth';
+          }
+        };
+      }
+
+      // Wire Config Token button
+      const configTokenBtn = card.querySelector('.btn-dash-config-token');
+      if (configTokenBtn) {
+        configTokenBtn.onclick = () => {
+          openConfigureConnectorModal(conn.id, conn.name, conn.account || '');
+        };
+      }
+
+      // Wire Test button
+      const testBtn = card.querySelector('.btn-dash-test');
+      if (testBtn) {
+        testBtn.onclick = async () => {
+          testBtn.disabled = true;
+          testBtn.textContent = 'Testing…';
+          try {
+            const res = await client.testConnector(conn.id);
+            alert(res.message || (res.ok ? 'Connection verified!' : 'Connection check failed.'));
+          } catch (err) {
+            alert(`Test failed: ${err.message}`);
+          } finally {
+            testBtn.disabled = false;
+            testBtn.textContent = 'Test Connection';
+          }
+        };
+      }
+
+      // Wire Disconnect button
+      const disconnectBtn = card.querySelector('.btn-dash-disconnect');
+      if (disconnectBtn) {
+        disconnectBtn.onclick = async () => {
+          if (confirm(`Disconnect ${conn.name}? Agents will no longer be able to access this service.`)) {
+            await client.disconnectApp(conn.id);
+            refreshConnectors();
+          }
+        };
+      }
+
+      grid.appendChild(card);
+    }
+  }
+
+  function openConfigureConnectorModal(id, name, currentAccount = '') {
+    const modal = document.getElementById('configureConnectorModal');
+    if (!modal) return;
+    document.getElementById('configureConnectorId').value = id;
+    document.getElementById('configureConnectorModalTitle').textContent = `Configure ${name} Integration`;
+    document.getElementById('configureConnectorAccount').value = currentAccount;
+    document.getElementById('configureConnectorToken').value = '';
+    
+    let hint = `Your credentials are encrypted locally on disk and never logged.`;
+    if (id === 'slack') hint = `Enter Slack Bot User OAuth Token (starts with xoxb-) or User Token (xoxp-).`;
+    else if (id === 'linear') hint = `Enter Linear Personal API Key (starts with lin_api_).`;
+    else if (id === 'github') hint = `Enter GitHub Personal Access Token (ghp_) or GitHub App Installation Token.`;
+    document.getElementById('configureConnectorHint').textContent = hint;
+
+    modal.classList.remove('hidden');
+  }
+
   // --- MODAL DIALOG CONTROLLERS ---
 
   // Room creation
@@ -2836,6 +3030,123 @@ document.addEventListener('DOMContentLoaded', async () => {
         const isFolded = resultPre.classList.toggle('folded');
         const lines = foldBtn.dataset.lines || '';
         foldBtn.textContent = isFolded ? `▾ Show full output (${lines} lines)` : '▴ Collapse output';
+      }
+      return;
+    }
+
+    // 4. Connect Card OAuth Button (OpenBot & Grok Bot Parity)
+    const connectOAuthBtn = e.target.closest('.btn-connect-oauth');
+    if (connectOAuthBtn) {
+      e.stopPropagation();
+      const card = connectOAuthBtn.closest('.connect-app-card');
+      const serverId = connectOAuthBtn.dataset.server;
+      const title = connectOAuthBtn.dataset.title;
+      connectOAuthBtn.disabled = true;
+      connectOAuthBtn.textContent = `Waiting for ${title}…`;
+
+      const statusMsg = card?.querySelector('.connect-card-status-message');
+      if (statusMsg) {
+        statusMsg.classList.remove('hidden');
+        statusMsg.textContent = 'Finish in the tab that opened, then return here.';
+      }
+
+      try {
+        client.connectApp(serverId).then((flow) => {
+          if (flow && flow.authUrl) {
+            window.open(flow.authUrl, '_blank');
+            const pollInterval = setInterval(async () => {
+              const updated = await client.getConnector(serverId);
+              if (updated && updated.status === 'connected') {
+                clearInterval(pollInterval);
+                const badge = card?.querySelector('.connect-card-badge');
+                if (badge) {
+                  badge.className = 'connect-card-badge badge-connected';
+                  badge.textContent = 'Connected';
+                }
+                const actions = card?.querySelector('.connect-card-actions');
+                if (actions) {
+                  actions.innerHTML = `
+                    <span class="connect-card-status-message" style="color: #10b981; font-weight: 500;">✓ ${escapeHtml(title)} is connected (${escapeHtml(updated.account || 'Authorized')})</span>
+                    <button class="btn btn-primary btn-sm btn-carry-on" type="button" data-app="${escapeHtml(title)}">Continue Task ▶</button>
+                  `;
+                }
+              }
+            }, 1500);
+            setTimeout(() => clearInterval(pollInterval), 60000);
+          }
+        }).catch((err) => {
+          if (statusMsg) {
+            statusMsg.style.color = 'var(--danger)';
+            statusMsg.textContent = `Error: ${err.message}`;
+          }
+          connectOAuthBtn.disabled = false;
+          connectOAuthBtn.textContent = `Connect ${title}`;
+        });
+      } catch (err) {
+        connectOAuthBtn.disabled = false;
+        connectOAuthBtn.textContent = `Connect ${title}`;
+      }
+      return;
+    }
+
+    // 5. Connect Card Manual Token Toggle
+    const connectManualToggle = e.target.closest('.btn-connect-manual-toggle');
+    if (connectManualToggle) {
+      e.stopPropagation();
+      const card = connectManualToggle.closest('.connect-app-card');
+      const form = card?.querySelector('.connect-manual-form');
+      if (form) form.classList.toggle('hidden');
+      return;
+    }
+
+    // 6. Connect Card Save Token Button
+    const saveTokenBtn = e.target.closest('.btn-save-token');
+    if (saveTokenBtn) {
+      e.stopPropagation();
+      const card = saveTokenBtn.closest('.connect-app-card');
+      const serverId = saveTokenBtn.dataset.server;
+      const input = card?.querySelector('.connect-token-input');
+      const token = input ? input.value.trim() : '';
+      if (!token) {
+        input?.focus();
+        return;
+      }
+      saveTokenBtn.disabled = true;
+      saveTokenBtn.textContent = 'Saving…';
+      client.connectApp(serverId, { token }).then((res) => {
+        const title = card?.dataset.title || serverId;
+        const badge = card?.querySelector('.connect-card-badge');
+        if (badge) {
+          badge.className = 'connect-card-badge badge-connected';
+          badge.textContent = 'Connected';
+        }
+        const actions = card?.querySelector('.connect-card-actions');
+        if (actions) {
+          actions.innerHTML = `
+            <span class="connect-card-status-message" style="color: #10b981; font-weight: 500;">✓ ${escapeHtml(title)} is connected (${escapeHtml(res.account || 'Authorized')})</span>
+            <button class="btn btn-primary btn-sm btn-carry-on" type="button" data-app="${escapeHtml(title)}">Continue Task ▶</button>
+          `;
+        }
+        const form = card?.querySelector('.connect-manual-form');
+        if (form) form.classList.add('hidden');
+      }).catch((err) => {
+        alert(`Failed to save credential: ${err.message}`);
+        saveTokenBtn.disabled = false;
+        saveTokenBtn.textContent = 'Save';
+      });
+      return;
+    }
+
+    // 7. Connect Card Carry-On Button
+    const carryOnBtn = e.target.closest('.btn-carry-on');
+    if (carryOnBtn) {
+      e.stopPropagation();
+      const appName = carryOnBtn.dataset.app || 'The app';
+      carryOnBtn.disabled = true;
+      carryOnBtn.textContent = 'Continuing…';
+      if (promptInput) {
+        promptInput.value = `${appName} is now connected. Please continue the task.`;
+        submitTurn();
       }
       return;
     }
@@ -4848,6 +5159,48 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       createWebhookModal.classList.add('hidden');
       refreshWebhooks();
+    };
+  }
+
+  // --- Configure Connector Modal Controls ---
+  const configureConnectorModal = document.getElementById('configureConnectorModal');
+  const btnCloseConfigureConnector = document.getElementById('btnCloseConfigureConnector');
+  const btnCancelConfigureConnector = document.getElementById('btnCancelConfigureConnector');
+  const btnSaveConnectorConfig = document.getElementById('btnSaveConnectorConfig');
+  const btnRefreshConnectors = document.getElementById('btnRefreshConnectors');
+
+  if (btnRefreshConnectors) {
+    btnRefreshConnectors.onclick = () => refreshConnectors();
+  }
+  if (btnCloseConfigureConnector && configureConnectorModal) {
+    btnCloseConfigureConnector.onclick = () => configureConnectorModal.classList.add('hidden');
+  }
+  if (btnCancelConfigureConnector && configureConnectorModal) {
+    btnCancelConfigureConnector.onclick = () => configureConnectorModal.classList.add('hidden');
+  }
+  if (btnSaveConnectorConfig && configureConnectorModal) {
+    btnSaveConnectorConfig.onclick = async () => {
+      const id = document.getElementById('configureConnectorId').value;
+      const account = document.getElementById('configureConnectorAccount').value.trim();
+      const token = document.getElementById('configureConnectorToken').value.trim();
+
+      if (!token) {
+        alert('Please enter a token or API key.');
+        return;
+      }
+
+      btnSaveConnectorConfig.disabled = true;
+      btnSaveConnectorConfig.textContent = 'Saving…';
+      try {
+        await client.connectApp(id, { token, account });
+        configureConnectorModal.classList.add('hidden');
+        refreshConnectors();
+      } catch (err) {
+        alert(`Failed to save credential: ${err.message}`);
+      } finally {
+        btnSaveConnectorConfig.disabled = false;
+        btnSaveConnectorConfig.textContent = 'Save & Connect';
+      }
     };
   }
 

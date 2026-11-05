@@ -265,6 +265,7 @@
           <div class="subnav-tabs" data-group="connections">
             <button class="subnav-tab" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
             <button class="subnav-tab" data-view="webhooks">⚡ Inbound Webhooks</button>
+            <button class="subnav-tab" data-view="connectors">🔌 3rd-Party Connectors</button>
             <button class="subnav-tab" data-view="attachments">📎 Context Files</button>
             <button class="subnav-tab" data-view="graphs">🕸️ Agent Graphs</button>
             <button class="subnav-tab active" data-view="rooms">👥 Team Rooms</button>
@@ -387,6 +388,7 @@
           <div class="subnav-tabs" data-group="connections">
             <button class="subnav-tab" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
             <button class="subnav-tab" data-view="webhooks">⚡ Inbound Webhooks</button>
+            <button class="subnav-tab" data-view="connectors">🔌 3rd-Party Connectors</button>
             <button class="subnav-tab active" data-view="attachments">📎 Context Files</button>
             <button class="subnav-tab" data-view="graphs">🕸️ Agent Graphs</button>
             <button class="subnav-tab" data-view="rooms">👥 Team Rooms</button>
@@ -466,6 +468,7 @@
           <div class="subnav-tabs" data-group="connections">
             <button class="subnav-tab" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
             <button class="subnav-tab" data-view="webhooks">⚡ Inbound Webhooks</button>
+            <button class="subnav-tab" data-view="connectors">🔌 3rd-Party Connectors</button>
             <button class="subnav-tab" data-view="attachments">📎 Context Files</button>
             <button class="subnav-tab active" data-view="graphs">🕸️ Agent Graphs</button>
             <button class="subnav-tab" data-view="rooms">👥 Team Rooms</button>
@@ -496,6 +499,7 @@
           <div class="subnav-tabs" data-group="connections">
             <button class="subnav-tab active" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
             <button class="subnav-tab" data-view="webhooks">⚡ Inbound Webhooks</button>
+            <button class="subnav-tab" data-view="connectors">🔌 3rd-Party Connectors</button>
             <button class="subnav-tab" data-view="attachments">📎 Context Files</button>
             <button class="subnav-tab" data-view="graphs">🕸️ Agent Graphs</button>
             <button class="subnav-tab" data-view="rooms">👥 Team Rooms</button>
@@ -526,6 +530,7 @@
           <div class="subnav-tabs" data-group="connections">
             <button class="subnav-tab" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
             <button class="subnav-tab active" data-view="webhooks">⚡ Inbound Webhooks</button>
+            <button class="subnav-tab" data-view="connectors">🔌 3rd-Party Connectors</button>
             <button class="subnav-tab" data-view="attachments">📎 Context Files</button>
             <button class="subnav-tab" data-view="graphs">🕸️ Agent Graphs</button>
             <button class="subnav-tab" data-view="rooms">👥 Team Rooms</button>
@@ -546,6 +551,31 @@
           <div class="sidebar-section-title" style="margin-top: 20px;">Webhook Delivery History</div>
           <div class="sentinel-feed" id="webhooksDeliveriesFeed">
             <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- View 13: 3rd-Party OAuth Connectors View -->
+      <div id="viewConnectors" class="view-panel hidden">
+        <div class="dashboard-container">
+          <div class="subnav-tabs" data-group="connections">
+            <button class="subnav-tab" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
+            <button class="subnav-tab" data-view="webhooks">⚡ Inbound Webhooks</button>
+            <button class="subnav-tab active" data-view="connectors">🔌 3rd-Party Connectors</button>
+            <button class="subnav-tab" data-view="attachments">📎 Context Files</button>
+            <button class="subnav-tab" data-view="graphs">🕸️ Agent Graphs</button>
+            <button class="subnav-tab" data-view="rooms">👥 Team Rooms</button>
+          </div>
+          <div class="dashboard-header">
+            <div>
+              <div class="dashboard-title">🔌 3rd-Party App OAuth Connectors (/connections parity)</div>
+              <div class="dashboard-subtitle">Connect Slack, Linear, and GitHub App integrations to empower agents to collaborate across work tools.</div>
+            </div>
+            <button id="btnRefreshConnectors" class="btn btn-secondary">↻ Refresh</button>
+          </div>
+
+          <div class="card-grid" id="connectorsCardGrid">
+            <!-- Rendered dynamically: Slack, Linear, GitHub App connect cards -->
           </div>
         </div>
       </div>
@@ -1260,6 +1290,32 @@
       </div>
       <div class="modal-actions">
         <button id="btnSaveWebhook" class="btn btn-primary">Register Webhook</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Configure Connector Credentials Modal -->
+  <div class="modal-overlay hidden" id="configureConnectorModal">
+    <div class="modal-card" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 id="configureConnectorModalTitle">Configure Connector</h3>
+        <button class="modal-close" id="btnCloseConfigureConnector">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="configureConnectorId" value="" />
+        <div class="form-group">
+          <label id="configureConnectorAccountLabel">Account / Workspace Name</label>
+          <input type="text" id="configureConnectorAccount" class="form-control" placeholder="e.g. acme-workspace or personal" />
+        </div>
+        <div class="form-group">
+          <label id="configureConnectorTokenLabel">Token / API Key / Secret</label>
+          <input type="password" id="configureConnectorToken" class="form-control" placeholder="Paste credential here" />
+          <div class="form-hint" id="configureConnectorHint">Your credentials are encrypted locally on disk (mode 0600) and never logged.</div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="btnCancelConfigureConnector">Cancel</button>
+        <button class="btn btn-primary" id="btnSaveConnectorConfig">Save & Connect</button>
       </div>
     </div>
   </div>

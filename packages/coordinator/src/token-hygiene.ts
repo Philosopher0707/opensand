@@ -160,6 +160,11 @@ export const TOOL_CAPABILITY_HINTS: Record<string, string[]> = {
   inspect_active_app: ["vision"],
   show_notification: ["vision"],
   discover_tools: ["discovery"],
+  show_app_access: ["connectors"],
+  list_connectors: ["connectors"],
+  slack_post_message: ["connectors", "slack"],
+  linear_create_issue: ["connectors", "linear"],
+  github_app_action: ["connectors", "github"],
 };
 
 /** Rough per-tool prompt-token cost (name + description + params). */
@@ -185,12 +190,17 @@ export const CORE_TOOL_NAMES = new Set([
   "list_agents",
   "delegate_to_agent",
   "discover_tools",
+  "show_app_access",
 ]);
 
 /**
  * Keyword-based category activation mappings for adaptive tool scoping.
  */
 const TOOL_CATEGORY_PATTERNS: Array<{ pattern: RegExp; toolNames: string[] }> = [
+  {
+    pattern: /\b(slack|linear|github|oauth|connector|connect|integration)\b/i,
+    toolNames: ["show_app_access", "list_connectors", "slack_post_message", "linear_create_issue", "github_app_action"],
+  },
   {
     pattern: /\b(task|todo|milestone|backlog)\b/i,
     toolNames: ["create_agent_task", "list_agent_tasks", "update_agent_task", "delete_agent_task"],

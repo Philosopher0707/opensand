@@ -29,3 +29,4 @@ export * from "./webhook-gateway.js";
 export * from "./coordinator.js";
 export * from "./model-resolution.js";
 export * from "./tool-parallelism.js";
+export * from "./connectors.js";

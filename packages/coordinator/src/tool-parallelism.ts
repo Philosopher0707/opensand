@@ -35,6 +35,8 @@ const PARALLEL_SAFE_TOOLS = new Set<string>([
   "vault_list_credentials",
   "recall_memories",
   "get_agent_tail",
+  "show_app_access",
+  "list_connectors",
 ]);
 
 

@@ -3153,3 +3153,143 @@ textarea#promptInput {
 .turn-text-block {
   margin: 6px 0;
 }
+
+/* --- 3RD-PARTY OAUTH CONNECTORS (Slack, Linear, GitHub App) --- */
+
+.connect-app-card {
+  margin: 12px 0;
+  max-width: 680px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.connect-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.connect-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.connect-card-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.connect-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.connect-card-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.connect-card-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 12px;
+  text-transform: capitalize;
+}
+
+.connect-card-badge.badge-connected {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.connect-card-badge.badge-pending {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.connect-card-badge.badge-disconnected {
+  background: rgba(107, 114, 128, 0.15);
+  color: #9ca3af;
+  border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+.connect-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.connect-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.connect-manual-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.connect-token-input {
+  flex: 1;
+  min-width: 220px;
+}
+
+.connect-card-status-message {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Dashboard connector card */
+.connector-dashboard-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.connector-dashboard-card:hover {
+  border-color: #3f3f46;
+}
+
+.connector-scopes-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.connector-scope-pill {
+  font-size: 10px;
+  font-family: monospace;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  padding: 2px 6px;
+  border-radius: 4px;
+}

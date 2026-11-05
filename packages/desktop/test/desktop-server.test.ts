@@ -461,6 +461,81 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     assert.strictEqual(resRpcAnalytics.statusCode, 200);
     assert.strictEqual(JSON.parse(resRpcAnalytics.body).recorded, true);
 
+    // Test 3rd-Party OAuth Connectors API: GET /api/connectors
+    const reqConnectors = new MockIncomingMessage('GET', '/api/connectors');
+    const resConnectors = new MockServerResponse();
+    await (server as any).handleRequest(reqConnectors, resConnectors);
+    assert.strictEqual(resConnectors.statusCode, 200);
+    const connectorsList = JSON.parse(resConnectors.body);
+    assert.ok(Array.isArray(connectorsList));
+    assert.strictEqual(connectorsList.length, 3);
+    const connectorIds = connectorsList.map((c: any) => c.id);
+    assert.ok(connectorIds.includes('slack'));
+    assert.ok(connectorIds.includes('linear'));
+    assert.ok(connectorIds.includes('github'));
+
+    // Test Connector API: GET /api/connectors/slack
+    const reqSlackConn = new MockIncomingMessage('GET', '/api/connectors/slack');
+    const resSlackConn = new MockServerResponse();
+    await (server as any).handleRequest(reqSlackConn, resSlackConn);
+    assert.strictEqual(resSlackConn.statusCode, 200);
+    const slackConn = JSON.parse(resSlackConn.body);
+    assert.strictEqual(slackConn.id, 'slack');
+    assert.strictEqual(slackConn.status, 'disconnected');
+
+    // Test Connector API: POST /api/connectors/linear/connect (initiate OAuth)
+    const reqLinearOAuth = new MockIncomingMessage('POST', '/api/connectors/linear/connect');
+    const resLinearOAuth = new MockServerResponse();
+    const linearOAuthPromise = (server as any).handleRequest(reqLinearOAuth, resLinearOAuth);
+    reqLinearOAuth.emit('data', JSON.stringify({}));
+    reqLinearOAuth.emit('end');
+    await linearOAuthPromise;
+    assert.strictEqual(resLinearOAuth.statusCode, 200);
+    const linearFlow = JSON.parse(resLinearOAuth.body);
+    assert.strictEqual(linearFlow.providerId, 'linear');
+    assert.ok(linearFlow.authUrl.includes('linear.app/oauth/authorize'));
+    assert.ok(linearFlow.state);
+
+    // Test Connector API: POST /api/connectors/slack/connect (token configuration)
+    const reqSlackToken = new MockIncomingMessage('POST', '/api/connectors/slack/connect');
+    const resSlackToken = new MockServerResponse();
+    const slackTokenPromise = (server as any).handleRequest(reqSlackToken, resSlackToken);
+    reqSlackToken.emit('data', JSON.stringify({ token: 'xoxb-test-token', account: 'Acme Slack' }));
+    reqSlackToken.emit('end');
+    await slackTokenPromise;
+    assert.strictEqual(resSlackToken.statusCode, 200);
+    const slackConnected = JSON.parse(resSlackToken.body);
+    assert.strictEqual(slackConnected.status, 'connected');
+    assert.strictEqual(slackConnected.account, 'Acme Slack');
+
+    // Test Connector API: POST /api/connectors/slack/test
+    const reqSlackTest = new MockIncomingMessage('POST', '/api/connectors/slack/test');
+    const resSlackTest = new MockServerResponse();
+    const slackTestPromise = (server as any).handleRequest(reqSlackTest, resSlackTest);
+    reqSlackTest.emit('data', JSON.stringify({}));
+    reqSlackTest.emit('end');
+    await slackTestPromise;
+    assert.strictEqual(resSlackTest.statusCode, 200);
+    const slackTestResult = JSON.parse(resSlackTest.body);
+    assert.strictEqual(slackTestResult.ok, true);
+    assert.strictEqual(slackTestResult.account, 'Acme Slack');
+
+    // Test Connector API: POST /api/connectors/slack/disconnect
+    const reqSlackDisc = new MockIncomingMessage('POST', '/api/connectors/slack/disconnect');
+    const resSlackDisc = new MockServerResponse();
+    const slackDiscPromise = (server as any).handleRequest(reqSlackDisc, resSlackDisc);
+    reqSlackDisc.emit('data', JSON.stringify({}));
+    reqSlackDisc.emit('end');
+    await slackDiscPromise;
+    assert.strictEqual(resSlackDisc.statusCode, 200);
+    assert.strictEqual(JSON.parse(resSlackDisc.body).success, true);
+
+    // Verify Slack is now disconnected
+    const reqSlackAfter = new MockIncomingMessage('GET', '/api/connectors/slack');
+    const resSlackAfter = new MockServerResponse();
+    await (server as any).handleRequest(reqSlackAfter, resSlackAfter);
+    assert.strictEqual(JSON.parse(resSlackAfter.body).status, 'disconnected');
+
     // Test static renderer syntax validation
     const appJsPath = path.join(__dirname, '../../renderer/app.js');
     assert.doesNotThrow(() => {

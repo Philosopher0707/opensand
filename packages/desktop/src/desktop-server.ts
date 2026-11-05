@@ -1035,6 +1035,78 @@ export class DesktopServer {
       return;
     }
 
+    // API: GET /api/connectors (3rd-Party OAuth Connectors)
+    if (pathname === '/api/connectors' && req.method === 'GET') {
+      const list = this.bridge.listConnectors();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(list));
+      return;
+    }
+
+    // API: GET /api/connectors/:id
+    if (pathname.startsWith('/api/connectors/') && !pathname.includes('/', 17) && req.method === 'GET') {
+      const id = pathname.replace('/api/connectors/', '') as any;
+      const conn = this.bridge.getConnector(id);
+      if (!conn) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: `Connector not found: ${id}` }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(conn));
+      return;
+    }
+
+    // API: POST /api/connectors/:id/connect
+    if (pathname.startsWith('/api/connectors/') && pathname.endsWith('/connect') && req.method === 'POST') {
+      const id = pathname.replace('/api/connectors/', '').replace('/connect', '') as any;
+      const body = await this.readJsonBody(req);
+      if (body.token) {
+        const result = await this.bridge.configureConnectorToken(id, body);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
+      if (body.code) {
+        const result = await this.bridge.completeOAuth(id, body.code, body.state);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
+      const flow = this.bridge.initiateOAuth(id, body.redirectUri);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(flow));
+      return;
+    }
+
+    // API: POST /api/connectors/:id/callback
+    if (pathname.startsWith('/api/connectors/') && pathname.endsWith('/callback') && req.method === 'POST') {
+      const id = pathname.replace('/api/connectors/', '').replace('/callback', '') as any;
+      const body = await this.readJsonBody(req);
+      const result = await this.bridge.completeOAuth(id, body.code || 'mock_code', body.state);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    // API: POST /api/connectors/:id/disconnect
+    if (pathname.startsWith('/api/connectors/') && pathname.endsWith('/disconnect') && req.method === 'POST') {
+      const id = pathname.replace('/api/connectors/', '').replace('/disconnect', '') as any;
+      const ok = await this.bridge.disconnectConnector(id);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: ok, id }));
+      return;
+    }
+
+    // API: POST /api/connectors/:id/test
+    if (pathname.startsWith('/api/connectors/') && pathname.endsWith('/test') && req.method === 'POST') {
+      const id = pathname.replace('/api/connectors/', '').replace('/test', '') as any;
+      const result = await this.bridge.testConnector(id);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
     // Serve static files from renderer/
     let filePath = path.join(this.rendererDir, pathname === '/' ? 'index.html' : pathname);
     const resolvedPath = path.resolve(filePath);
