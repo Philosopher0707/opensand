@@ -26,6 +26,16 @@ class OpenSandClient {
         // Ignore parse error
       }
     };
+    sse.onerror = () => {
+      // If server connection drops while turnBusy was true, verify server health
+      if (typeof turnBusy !== 'undefined' && turnBusy) {
+        fetch('/api/settings').then((res) => {
+          if (res.ok && typeof forceResetTurnState === 'function') {
+            forceResetTurnState('Connection re-established with server.');
+          }
+        }).catch(() => {});
+      }
+    };
   }
 
   dispatch(event) {
@@ -872,6 +882,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       queueIndicator.classList.add('hidden');
     }
+  }
+
+  function forceResetTurnState(reason = '') {
+    setTurnBusy(false);
+    if (currentAssistantMessage) {
+      const shimmer = currentAssistantMessage.contentEl.querySelector('.typing-shimmer');
+      if (shimmer) shimmer.remove();
+      if (reason && !currentAssistantText.trim() && !currentAssistantThought.trim()) {
+        currentAssistantMessage.contentEl.innerHTML = `<div style="color: var(--text-muted); margin-top: 8px;">⏹ ${escapeHtml(reason)}</div>`;
+      }
+      const runningLines = currentAssistantMessage.toolsEl.querySelectorAll('.tool-line-running');
+      runningLines.forEach((el) => updateToolLineStatus(el, 'failed'));
+    }
+    queuedQueries = [];
+    updateQueueIndicator();
+    if (botStatusAvatar) botStatusAvatar.textContent = '⚡';
+    if (botStatusText) botStatusText.textContent = 'Ready';
+    activeTurnExtraChars = 0;
+    refreshTokenBadge();
+    smartScrollToBottom();
   }
 
   // Theme Controller
@@ -2391,8 +2421,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       content += '\n```';
     }
 
-    // 1. Extract <thinking> tags (both closed and unclosed streaming)
-    content = content.replace(/<thinking>([\s\S]*?)(?:<\/thinking>|$)/gi, (match, thoughtText) => {
+    // 1. Extract <thinking> and <think> tags (both closed and unclosed streaming)
+    content = content.replace(/<(?:thinking|think)>([\s\S]*?)(?:<\/(?:thinking|think)>|$)/gi, (match, thoughtText) => {
       const trimmed = thoughtText.trim();
       if (!trimmed) return '';
       return `\n<div class="thought-accordion">
@@ -2924,10 +2954,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         let content = ev.content || '';
         if (content) {
-          const thinkingMatch = content.match(/<thinking>([\s\S]*?)<\/thinking>/i);
+          const thinkingMatch = content.match(/<(?:thinking|think)>([\s\S]*?)<\/(?:thinking|think)>/i);
           if (thinkingMatch) {
             currentAssistantTurn.thought = (currentAssistantTurn.thought ? currentAssistantTurn.thought + '\n' : '') + thinkingMatch[1].trim();
-            content = content.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+            content = content.replace(/<(?:thinking|think)>[\s\S]*?<\/(?:thinking|think)>/gi, '').trim();
           }
           if (content) {
             currentAssistantTurn.content = (currentAssistantTurn.content ? currentAssistantTurn.content + '\n\n' : '') + content;
@@ -3001,6 +3031,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   async function selectSession(sessionId) {
+    forceResetTurnState();
     currentSessionId = sessionId;
     persistSession();
     switchView('chat');
@@ -3024,8 +3055,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function startNewSession() {
-    queuedQueries = [];
-    updateQueueIndicator();
+    forceResetTurnState();
     currentSessionId = null;
     localStorage.removeItem(SESSION_KEY);
     activeSessionTitle.textContent = 'New Session';
@@ -3716,6 +3746,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       } catch (err) {
         console.error('Error cancelling turn:', err);
       }
+      forceResetTurnState('Turn stopped by user.');
     };
   }
 
@@ -3733,6 +3764,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (turnBusy) {
         e.preventDefault();
         client.cancelTurn().catch(() => {});
+        forceResetTurnState('Turn stopped by user.');
       }
     }
   });
@@ -3855,6 +3887,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (event.type === 'thought') {
       const thought = event.data?.thought || event.thought || '';
       if (thought && currentAssistantMessage) {
+        const shimmer = currentAssistantMessage.contentEl.querySelector('.typing-shimmer');
+        if (shimmer) shimmer.remove();
         currentAssistantThought += thought;
         renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, true);
         smartScrollToBottom();
@@ -3866,6 +3900,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Tool call started
     if (event.type === 'tool_call') {
       if (currentAssistantMessage) {
+        const shimmer = currentAssistantMessage.contentEl.querySelector('.typing-shimmer');
+        if (shimmer) shimmer.remove();
         if (currentAssistantThought && currentAssistantMessage.thoughtEl.querySelector('.thought-streaming')) {
           renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, false);
         }
@@ -3915,6 +3951,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Turn completed
     if (event.type === 'turn_complete') {
       if (currentAssistantMessage) {
+        const shimmer = currentAssistantMessage.contentEl.querySelector('.typing-shimmer');
+        if (shimmer) shimmer.remove();
         if (currentAssistantThought) {
           renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, false);
         }
@@ -3926,6 +3964,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           currentAssistantText = response;
           currentAssistantMessage.msgDiv._rawContent = currentAssistantText;
           currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
+        } else if (!currentAssistantText.trim() && !currentAssistantThought.trim() && !currentAssistantMessage.toolsEl.children.length) {
+          currentAssistantMessage.contentEl.innerHTML = '<span style="color: var(--text-muted);">(Turn completed)</span>';
         }
       }
       setTurnBusy(false);

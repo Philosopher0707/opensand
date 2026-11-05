@@ -364,8 +364,16 @@ export class DesktopIpcBridge extends EventEmitter {
       onEvent: (event: TurnEvent) => {
         if (event.type === 'text_delta') {
           this.emitEvent('token', { token: event.text });
+        } else if (event.type === 'thought_delta') {
+          this.emitEvent('thought', { thought: event.text });
         } else if (event.type === 'tool_call_started') {
-          this.emitEvent('tool_call', { name: event.toolCall.function.name, args: JSON.parse(event.toolCall.function.arguments || '{}') });
+          let parsedArgs = {};
+          try {
+            parsedArgs = event.toolCall.function.arguments ? JSON.parse(event.toolCall.function.arguments) : {};
+          } catch {
+            parsedArgs = { raw: event.toolCall.function.arguments };
+          }
+          this.emitEvent('tool_call', { name: event.toolCall.function.name, args: parsedArgs });
         } else if (event.type === 'tool_call_completed') {
           this.emitEvent('tool_result', { name: event.toolCall.function.name, result: event.result.output });
         } else if (event.type === 'turn_completed') {
