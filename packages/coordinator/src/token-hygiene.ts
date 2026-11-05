@@ -165,6 +165,8 @@ export const TOOL_CAPABILITY_HINTS: Record<string, string[]> = {
   slack_post_message: ["connectors", "slack"],
   linear_create_issue: ["connectors", "linear"],
   github_app_action: ["connectors", "github"],
+  list_gallery_templates: ["templates", "gallery"],
+  install_gallery_template: ["templates", "gallery"],
 };
 
 /** Rough per-tool prompt-token cost (name + description + params). */
@@ -254,8 +256,8 @@ const TOOL_CATEGORY_PATTERNS: Array<{ pattern: RegExp; toolNames: string[] }> = 
     toolNames: ["stage_attachment", "list_attachments", "delete_attachment"],
   },
   {
-    pattern: /\b(template|export_template|import_template)\b/i,
-    toolNames: ["export_agent_template", "import_agent_template"],
+    pattern: /\b(template|export_template|import_template|gallery|persona_store|agent_store|marketplace)\b/i,
+    toolNames: ["export_agent_template", "import_agent_template", "list_gallery_templates", "install_gallery_template"],
   },
   {
     pattern: /\b(ocr|screen|window|capture|vision)\b/i,

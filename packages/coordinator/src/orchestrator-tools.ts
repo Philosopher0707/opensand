@@ -24,6 +24,12 @@ import {
   ConnectorProviderId,
   OAUTH_PROVIDERS,
 } from "./connectors.js";
+import {
+  TemplateGallery,
+  defaultTemplateGallery,
+  GalleryTemplateItem,
+  TemplateCategory,
+} from "./template-gallery.js";
 import { GitHubClient, GitHubActions } from "./github-client.js";
 import { SlackClient, LinearClient } from "./provider-clients.js";
 
@@ -41,6 +47,7 @@ export interface RegisterOrchestratorToolsOptions {
   workspaceSentinel?: WorkspaceSentinel;
   attachmentManager?: AttachmentManager;
   connectorManager?: ConnectorManager;
+  templateGallery?: TemplateGallery;
   /** Injectable GitHub client; defaults to one built from ambient credentials. */
   githubClient?: GitHubActions;
   /** Injectable Slack client; defaults to one built from ambient credentials. */
@@ -68,6 +75,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   workspaceSentinel: WorkspaceSentinel;
   attachmentManager: AttachmentManager;
   connectorManager: ConnectorManager;
+  templateGallery: TemplateGallery;
 } {
   const { daemon } = options;
   const store = options.store ?? new AgentStore();
@@ -84,6 +92,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   }
   const attachmentManager = options.attachmentManager ?? new AttachmentManager();
   const connectorManager = options.connectorManager ?? defaultConnectorManager;
+  const templateGallery = options.templateGallery ?? defaultTemplateGallery;
   const githubClient = options.githubClient ?? new GitHubClient();
   const slackClient = options.slackClient ?? new SlackClient({
     storedToken: connectorManager.getRawCredentials("slack")?.token ?? null,
@@ -2321,5 +2330,83 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
     },
   });
 
-  return { store, taskStore, habitExtractor, memoryStore, vaultStore, skillStore, routineEngine, roomManager, gitManager, workspaceSentinel, attachmentManager, connectorManager };
+  // 53. Tool: list_gallery_templates
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "list_gallery_templates",
+        description: "Browse the Community Agent Store & Template Gallery. Returns curated and community agent personas filtered by category, tag, or search keywords.",
+        parameters: {
+          type: "object",
+          properties: {
+            category: {
+              type: "string",
+              enum: ["engineering", "security", "product", "research", "all"],
+              description: "Filter templates by functional domain.",
+            },
+            query: {
+              type: "string",
+              description: "Search keywords matching name, description, role, or tags.",
+            },
+            tag: {
+              type: "string",
+              description: "Filter by specific skill tag (e.g. code-review, docker, linear, security).",
+            },
+          },
+        },
+      },
+    },
+    handler: async (args) => {
+      const items = await templateGallery.listTemplates({
+        category: args.category as any,
+        query: args.query,
+        tag: args.tag,
+      });
+      return JSON.stringify({
+        status: "success",
+        total: items.length,
+        templates: items,
+      }, null, 2);
+    },
+  });
+
+  // 54. Tool: install_gallery_template
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "install_gallery_template",
+        description: "Install a community agent persona from the Template Gallery into the local active agent fleet.",
+        parameters: {
+          type: "object",
+          properties: {
+            template_id: {
+              type: "string",
+              description: "The unique slug identifier of the template to install (e.g. 'code-reviewer', 'security-auditor', 'linear-master').",
+            },
+          },
+          required: ["template_id"],
+        },
+      },
+    },
+    handler: async (args) => {
+      try {
+        const res = await templateGallery.installTemplate(args.template_id, store);
+        return JSON.stringify({
+          status: "success",
+          message: `Successfully installed "${res.template.name}" into local agent fleet.`,
+          agent: res.agent,
+          template: res.template,
+        }, null, 2);
+      } catch (err: any) {
+        return JSON.stringify({
+          status: "error",
+          message: err.message,
+        }, null, 2);
+      }
+    },
+  });
+
+  return { store, taskStore, habitExtractor, memoryStore, vaultStore, skillStore, routineEngine, roomManager, gitManager, workspaceSentinel, attachmentManager, connectorManager, templateGallery };
 }

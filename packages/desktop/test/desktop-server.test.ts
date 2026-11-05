@@ -536,6 +536,77 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     await (server as any).handleRequest(reqSlackAfter, resSlackAfter);
     assert.strictEqual(JSON.parse(resSlackAfter.body).status, 'disconnected');
 
+    // Test Community Agent Store & Template Gallery API: GET /api/gallery/templates
+    const reqGallery = new MockIncomingMessage('GET', '/api/gallery/templates');
+    const resGallery = new MockServerResponse();
+    await (server as any).handleRequest(reqGallery, resGallery);
+    assert.strictEqual(resGallery.statusCode, 200);
+    const galleryItems = JSON.parse(resGallery.body);
+    assert.ok(Array.isArray(galleryItems));
+    assert.strictEqual(galleryItems.length, 8);
+    const hasReviewer = galleryItems.some((t: any) => t.id === 'code-reviewer');
+    assert.strictEqual(hasReviewer, true);
+
+    // Test Gallery API: GET /api/gallery/templates/code-reviewer
+    const reqReviewer = new MockIncomingMessage('GET', '/api/gallery/templates/code-reviewer');
+    const resReviewer = new MockServerResponse();
+    await (server as any).handleRequest(reqReviewer, resReviewer);
+    assert.strictEqual(resReviewer.statusCode, 200);
+    const reviewerData = JSON.parse(resReviewer.body);
+    assert.strictEqual(reviewerData.id, 'code-reviewer');
+    assert.strictEqual(reviewerData.name, 'Code Reviewer & PR Auditor');
+
+    // Test Gallery API: POST /api/gallery/templates/code-reviewer/install
+    const reqInstall = new MockIncomingMessage('POST', '/api/gallery/templates/code-reviewer/install');
+    const resInstall = new MockServerResponse();
+    const installPromise = (server as any).handleRequest(reqInstall, resInstall);
+    reqInstall.emit('data', JSON.stringify({}));
+    reqInstall.emit('end');
+    await installPromise;
+    assert.strictEqual(resInstall.statusCode, 200);
+    const installResult = JSON.parse(resInstall.body);
+    assert.ok(installResult.agent);
+    assert.strictEqual(installResult.agent.name, 'Code Reviewer & PR Auditor');
+
+    // Test Gallery API: POST /api/gallery/templates/publish
+    const reqPublish = new MockIncomingMessage('POST', '/api/gallery/templates/publish');
+    const resPublish = new MockServerResponse();
+    const publishPromise = (server as any).handleRequest(reqPublish, resPublish);
+    reqPublish.emit('data', JSON.stringify({
+      id: 'my-custom-bot',
+      name: 'Custom Bot',
+      role: 'Custom Bot Specialist',
+      description: 'A custom community template.',
+      systemPrompt: 'Assist with custom bot duties.',
+      category: 'engineering',
+      allowedTools: ['read_file'],
+      author: 'Tester',
+      version: '1.0.0',
+      icon: '🤖',
+      recommendedModel: 'anthropic/claude-sonnet',
+      tags: ['custom', 'test'],
+    }));
+    reqPublish.emit('end');
+    await publishPromise;
+    assert.strictEqual(resPublish.statusCode, 201);
+    const publishedItem = JSON.parse(resPublish.body);
+    assert.strictEqual(publishedItem.id, 'my-custom-bot');
+    assert.strictEqual(publishedItem.isCommunity, true);
+
+    // Test Gallery API: DELETE /api/gallery/templates/my-custom-bot
+    const reqDelCustom = new MockIncomingMessage('DELETE', '/api/gallery/templates/my-custom-bot');
+    const resDelCustom = new MockServerResponse();
+    await (server as any).handleRequest(reqDelCustom, resDelCustom);
+    assert.strictEqual(resDelCustom.statusCode, 200);
+    assert.strictEqual(JSON.parse(resDelCustom.body).success, true);
+
+    // Test Gallery API: DELETE /api/gallery/templates/code-reviewer (Curated protected)
+    const reqDelCurated = new MockIncomingMessage('DELETE', '/api/gallery/templates/code-reviewer');
+    const resDelCurated = new MockServerResponse();
+    await (server as any).handleRequest(reqDelCurated, resDelCurated);
+    assert.strictEqual(resDelCurated.statusCode, 200);
+    assert.strictEqual(JSON.parse(resDelCurated.body).success, false);
+
     // Test static renderer syntax validation
     const appJsPath = path.join(__dirname, '../../renderer/app.js');
     assert.doesNotThrow(() => {

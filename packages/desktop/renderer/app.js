@@ -553,6 +553,39 @@ class OpenSandClient {
     });
     return res.json();
   }
+
+  // --- Community Agent Store & Template Gallery ---
+  async getGalleryTemplates(params = {}) {
+    const q = new URLSearchParams();
+    if (params.category && params.category !== 'all') q.set('category', params.category);
+    if (params.query) q.set('query', params.query);
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    const res = await fetch(`/api/gallery/templates${qs}`);
+    return res.json();
+  }
+
+  async getGalleryTemplate(id) {
+    const res = await fetch(`/api/gallery/templates/${encodeURIComponent(id)}`);
+    return res.json();
+  }
+
+  async installGalleryTemplate(id) {
+    const res = await fetch(`/api/gallery/templates/${encodeURIComponent(id)}/install`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    return res.json();
+  }
+
+  async publishGalleryTemplate(data) {
+    const res = await fetch('/api/gallery/templates/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  }
 }
 
 // UI Controller
@@ -570,6 +603,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     memories: document.getElementById('viewMemories'),
     attachments: document.getElementById('viewAttachments'),
     templates: document.getElementById('viewTemplates'),
+    gallery: document.getElementById('viewGallery'),
     sentinel: document.getElementById('viewSentinel'),
     graphs: document.getElementById('viewGraphs'),
     boundaries: document.getElementById('viewBoundaries'),
@@ -587,6 +621,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     routines: '⏱ Scheduled Background Routines',
     skills: '🧩 Modular Recipe Skills Library',
     templates: '🤖 Bots & Personas',
+    gallery: '🏪 Community Agent Store & Template Gallery',
     boundaries: '🚧 Fail-Closed Policy Boundaries',
     vault: '🔐 Local Encrypted Secrets Vault',
     memories: '🧠 7-Layer Discrete Fact Memory',
@@ -602,7 +637,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     footerNavBtns.forEach((btn) => {
       const navTarget = btn.dataset.view;
       if (navTarget === 'templates') {
-        btn.classList.toggle('active', viewName === 'templates');
+        btn.classList.toggle('active', ['templates', 'gallery'].includes(viewName));
       } else if (navTarget === 'skills') {
         btn.classList.toggle('active', ['skills', 'memories', 'routines', 'vault'].includes(viewName));
       } else if (navTarget === 'boundaries') {
@@ -641,6 +676,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (viewName === 'memories') refreshMemories();
     if (viewName === 'attachments') refreshAttachments();
     if (viewName === 'templates') refreshTemplates();
+    if (viewName === 'gallery') refreshGallery();
     if (viewName === 'sentinel') refreshSentinel();
     if (viewName === 'graphs') refreshGraphs();
     if (viewName === 'boundaries') refreshBoundaries();
@@ -1950,6 +1986,327 @@ document.addEventListener('DOMContentLoaded', async () => {
         grid.appendChild(card);
       }
     }
+  }
+
+  // --- COMMUNITY AGENT STORE & TEMPLATE GALLERY ---
+  let currentGalleryCategory = 'all';
+  let currentGallerySearch = '';
+  let gallerySearchDebounceTimer = null;
+
+  function getCategoryEmoji(cat) {
+    switch (cat) {
+      case 'engineering': return '🛠️';
+      case 'security': return '🛡️';
+      case 'product': return '📐';
+      case 'research': return '🔬';
+      case 'community': return '🌐';
+      default: return '🤖';
+    }
+  }
+
+  async function refreshGallery(category = currentGalleryCategory, query = currentGallerySearch) {
+    const grid = document.getElementById('galleryCardGrid');
+    if (!grid) return;
+
+    grid.innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 13px;">Loading community templates…</div>`;
+
+    try {
+      const templates = await client.getGalleryTemplates({
+        category: category !== 'all' ? category : undefined,
+        query: query ? query : undefined,
+      });
+
+      if (!Array.isArray(templates) || templates.length === 0) {
+        grid.innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 13px;">No agent templates found matching criteria. Try adjusting filters or search terms.</div>`;
+        return;
+      }
+
+      grid.innerHTML = '';
+
+      for (const tpl of templates) {
+        const card = document.createElement('div');
+        card.className = 'gallery-template-card';
+        const icon = getCategoryEmoji(tpl.category);
+        const tagsHtml = (tpl.tags || [])
+          .slice(0, 4)
+          .map((tg) => `<span class="gallery-tag-pill">#${escapeHtml(tg)}</span>`)
+          .join('');
+
+        card.innerHTML = `
+          <div class="gallery-card-top">
+            <div class="gallery-card-icon">${icon}</div>
+            <div class="gallery-card-info">
+              <div class="gallery-card-title">${escapeHtml(tpl.name)}</div>
+              <div class="gallery-card-role">${escapeHtml(tpl.role || tpl.category)}</div>
+            </div>
+          </div>
+          <div class="gallery-card-desc">${escapeHtml(tpl.description || '')}</div>
+          <div class="gallery-card-tags">
+            ${tagsHtml}
+          </div>
+          <div class="gallery-card-meta">
+            <span class="gallery-stat">⭐ ${(tpl.rating || 5.0).toFixed(1)}</span>
+            <span class="gallery-stat">📥 ${(tpl.downloads || 0).toLocaleString()}</span>
+            <span class="gallery-stat">👤 ${escapeHtml(tpl.author || 'Official')}</span>
+            <span class="badge ${tpl.isCurated ? 'badge-success' : ''}">${tpl.isCurated ? 'Official' : 'Community'}</span>
+          </div>
+          <div class="gallery-card-actions">
+            <button class="btn btn-secondary btn-xs btn-preview-tpl" style="flex: 1;">Preview</button>
+            ${
+              tpl.installed
+                ? `<button class="btn btn-ghost btn-xs" disabled style="flex: 1; color: var(--success); font-weight: 600;">Installed ✓</button>`
+                : `<button class="btn btn-primary btn-xs btn-install-tpl" style="flex: 1;">Install to Fleet</button>`
+            }
+          </div>
+        `;
+
+        // Wire Preview
+        const previewBtn = card.querySelector('.btn-preview-tpl');
+        if (previewBtn) {
+          previewBtn.onclick = () => openTemplatePreviewModal(tpl.id);
+        }
+
+        // Wire Install
+        const installBtn = card.querySelector('.btn-install-tpl');
+        if (installBtn) {
+          installBtn.onclick = async () => {
+            installBtn.disabled = true;
+            installBtn.textContent = 'Installing…';
+            try {
+              const res = await client.installGalleryTemplate(tpl.id);
+              if (res.agent) {
+                await refreshBots();
+                await refreshTemplates();
+                await refreshGallery();
+              }
+            } catch (err) {
+              alert(`Failed to install template: ${err.message}`);
+              installBtn.disabled = false;
+              installBtn.textContent = 'Install to Fleet';
+            }
+          };
+        }
+
+        grid.appendChild(card);
+      }
+    } catch (err) {
+      grid.innerHTML = `<div style="grid-column: 1/-1; color: var(--danger); font-size: 13px;">Error loading template store: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  async function openTemplatePreviewModal(templateId) {
+    const modal = document.getElementById('templatePreviewModal');
+    if (!modal) return;
+
+    try {
+      const full = await client.getGalleryTemplate(templateId);
+      if (!full) return;
+
+      const meta = full.metadata || {};
+      const icon = getCategoryEmoji(meta.category);
+
+      document.getElementById('previewModalIcon').textContent = icon;
+      document.getElementById('previewModalTitle').textContent = full.name;
+      document.getElementById('previewModalRole').textContent = full.role || meta.category;
+      document.getElementById('previewModalDesc').textContent = meta.description || '';
+
+      const metaContainer = document.getElementById('previewModalMeta');
+      metaContainer.innerHTML = `
+        <span class="badge badge-bot">${escapeHtml(meta.category || 'General')}</span>
+        <span class="badge">Model: ${escapeHtml(full.model || 'default')}</span>
+        <span class="badge">Author: ${escapeHtml(meta.author || 'Official')}</span>
+        <span class="badge">v${escapeHtml(meta.version || '1.0.0')}</span>
+        <span class="badge">⭐ ${(meta.rating || 5.0).toFixed(1)}</span>
+        <span class="badge">📥 ${(meta.downloads || 0).toLocaleString()} DLs</span>
+      `;
+
+      const toolsContainer = document.getElementById('previewModalTools');
+      toolsContainer.innerHTML = '';
+      if (Array.isArray(full.allowedTools) && full.allowedTools.length > 0) {
+        full.allowedTools.forEach((tl) => {
+          const pill = document.createElement('span');
+          pill.className = 'badge';
+          pill.textContent = tl;
+          toolsContainer.appendChild(pill);
+        });
+      } else {
+        toolsContainer.innerHTML = '<span style="font-size: 12px; color: var(--text-muted);">All available workspace tools</span>';
+      }
+
+      const tasksList = document.getElementById('previewModalTasks');
+      tasksList.innerHTML = '';
+      if (Array.isArray(full.suggestedTasks) && full.suggestedTasks.length > 0) {
+        full.suggestedTasks.forEach((st) => {
+          const li = document.createElement('li');
+          li.textContent = st;
+          tasksList.appendChild(li);
+        });
+      } else {
+        tasksList.innerHTML = '<li>General domain engineering tasks and workflows</li>';
+      }
+
+      document.getElementById('previewModalPrompt').textContent = full.systemPrompt || '';
+
+      const installBtn = document.getElementById('btnInstallFromPreview');
+      if (installBtn) {
+        if (meta.installed) {
+          installBtn.disabled = true;
+          installBtn.textContent = 'Already Installed in Fleet';
+        } else {
+          installBtn.disabled = false;
+          installBtn.textContent = 'Install to Local Fleet';
+          installBtn.onclick = async () => {
+            installBtn.disabled = true;
+            installBtn.textContent = 'Installing…';
+            try {
+              await client.installGalleryTemplate(templateId);
+              modal.classList.add('hidden');
+              await refreshBots();
+              await refreshTemplates();
+              await refreshGallery();
+            } catch (err) {
+              alert(`Failed to install template: ${err.message}`);
+              installBtn.disabled = false;
+              installBtn.textContent = 'Install to Local Fleet';
+            }
+          };
+        }
+      }
+
+      modal.classList.remove('hidden');
+    } catch (err) {
+      alert(`Could not load template preview: ${err.message}`);
+    }
+  }
+
+  // Gallery search & category chip listeners
+  const gallerySearchInput = document.getElementById('gallerySearchInput');
+  if (gallerySearchInput) {
+    gallerySearchInput.addEventListener('input', (e) => {
+      clearTimeout(gallerySearchDebounceTimer);
+      gallerySearchDebounceTimer = setTimeout(() => {
+        currentGallerySearch = e.target.value.trim();
+        refreshGallery(currentGalleryCategory, currentGallerySearch);
+      }, 250);
+    });
+  }
+
+  const galleryCategoryChips = document.getElementById('galleryCategoryChips');
+  if (galleryCategoryChips) {
+    galleryCategoryChips.querySelectorAll('.category-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        galleryCategoryChips.querySelectorAll('.category-chip').forEach((c) => c.classList.remove('active'));
+        chip.classList.add('active');
+        currentGalleryCategory = chip.dataset.category || 'all';
+        refreshGallery(currentGalleryCategory, currentGallerySearch);
+      });
+    });
+  }
+
+  const btnRefreshGallery = document.getElementById('btnRefreshGallery');
+  if (btnRefreshGallery) {
+    btnRefreshGallery.onclick = () => refreshGallery(currentGalleryCategory, currentGallerySearch);
+  }
+
+  // Template preview modal close
+  const templatePreviewModal = document.getElementById('templatePreviewModal');
+  const btnClosePreviewModal = document.getElementById('btnClosePreviewModal');
+  const btnCancelPreviewModal = document.getElementById('btnCancelPreviewModal');
+  if (btnClosePreviewModal && templatePreviewModal) {
+    btnClosePreviewModal.onclick = () => templatePreviewModal.classList.add('hidden');
+  }
+  if (btnCancelPreviewModal && templatePreviewModal) {
+    btnCancelPreviewModal.onclick = () => templatePreviewModal.classList.add('hidden');
+  }
+
+  // Publish template modal controls
+  const publishTemplateModal = document.getElementById('publishTemplateModal');
+  const btnOpenPublishTemplate = document.getElementById('btnOpenPublishTemplate');
+  const btnClosePublishModal = document.getElementById('btnClosePublishModal');
+  const btnCancelPublishModal = document.getElementById('btnCancelPublishModal');
+  const btnSubmitPublish = document.getElementById('btnSubmitPublish');
+  const publishAgentSelect = document.getElementById('publishAgentSelect');
+  const publishCategory = document.getElementById('publishCategory');
+  const publishTags = document.getElementById('publishTags');
+  const publishAuthor = document.getElementById('publishAuthor');
+
+  if (btnOpenPublishTemplate && publishTemplateModal) {
+    btnOpenPublishTemplate.onclick = async () => {
+      if (publishAgentSelect) {
+        publishAgentSelect.innerHTML = '';
+        const agents = await client.getAgents();
+        const publishable = (agents || []).filter((a) => a.kind !== 'ROOM');
+        if (publishable.length === 0) {
+          alert('No local agent personas found. Create an agent persona before publishing to the gallery.');
+          return;
+        }
+        publishable.forEach((a) => {
+          const opt = document.createElement('option');
+          opt.value = a.id;
+          opt.textContent = `${a.name} (${a.role})`;
+          publishAgentSelect.appendChild(opt);
+        });
+      }
+      if (publishTags) publishTags.value = '';
+      publishTemplateModal.classList.remove('hidden');
+    };
+  }
+
+  if (btnClosePublishModal && publishTemplateModal) {
+    btnClosePublishModal.onclick = () => publishTemplateModal.classList.add('hidden');
+  }
+  if (btnCancelPublishModal && publishTemplateModal) {
+    btnCancelPublishModal.onclick = () => publishTemplateModal.classList.add('hidden');
+  }
+
+  if (btnSubmitPublish && publishTemplateModal) {
+    btnSubmitPublish.onclick = async () => {
+      const agentId = publishAgentSelect?.value;
+      if (!agentId) {
+        alert('Please select an agent persona to publish.');
+        return;
+      }
+      const agents = await client.getAgents();
+      const agent = (agents || []).find((a) => a.id === agentId);
+      if (!agent) {
+        alert('Selected agent persona not found.');
+        return;
+      }
+
+      const slug = agent.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || agent.id;
+      const category = publishCategory?.value || 'engineering';
+      const tags = (publishTags?.value || '')
+        .split(',')
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean);
+      const author = publishAuthor?.value.trim() || 'Community Contributor';
+
+      btnSubmitPublish.disabled = true;
+      btnSubmitPublish.textContent = 'Publishing…';
+
+      try {
+        await client.publishGalleryTemplate({
+          id: slug,
+          name: agent.name,
+          role: agent.role,
+          systemPrompt: agent.systemPrompt,
+          allowedTools: agent.allowedTools,
+          model: agent.model,
+          category,
+          tags,
+          author,
+          description: `${agent.role}: ${agent.systemPrompt.slice(0, 160)}...`,
+        });
+
+        publishTemplateModal.classList.add('hidden');
+        await refreshGallery();
+      } catch (err) {
+        alert(`Failed to publish template: ${err.message}`);
+      } finally {
+        btnSubmitPublish.disabled = false;
+        btnSubmitPublish.textContent = 'Publish to Gallery';
+      }
+    };
   }
 
   // --- SENTINEL VIEW CONTROLLER ---

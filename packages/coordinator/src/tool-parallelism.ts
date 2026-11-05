@@ -37,6 +37,7 @@ const PARALLEL_SAFE_TOOLS = new Set<string>([
   "get_agent_tail",
   "show_app_access",
   "list_connectors",
+  "list_gallery_templates",
 ]);
 
 

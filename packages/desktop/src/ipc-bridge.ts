@@ -59,6 +59,9 @@ import {
   ConnectorManager,
   ConnectorProviderId,
   ConnectorState,
+  TemplateGallery,
+  GalleryTemplateItem,
+  GalleryQueryOptions,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -87,6 +90,7 @@ export class DesktopIpcBridge extends EventEmitter {
   public attachmentManager: AttachmentManager;
   public webhookGateway: WebhookGateway;
   public connectorManager: ConnectorManager;
+  public templateGallery: TemplateGallery;
   private coordinator: AgentCoordinator | null = null;
   private activeAgentId?: string;
   private coordinatorMap: Map<string, AgentCoordinator> = new Map();
@@ -160,6 +164,10 @@ export class DesktopIpcBridge extends EventEmitter {
     this.connectorManager = new ConnectorManager({
       storagePath: path.join(this.baseDir, 'connectors.json'),
     });
+    this.templateGallery = new TemplateGallery({
+      storagePath: path.join(this.baseDir, 'gallery_templates.json'),
+      agentStore: this.agentStore,
+    });
 
     // Initialize Orchestrator Meta-Tools
     registerOrchestratorTools({
@@ -174,6 +182,7 @@ export class DesktopIpcBridge extends EventEmitter {
       roomManager: this.roomManager,
       attachmentManager: this.attachmentManager,
       connectorManager: this.connectorManager,
+      templateGallery: this.templateGallery,
       defaultEndpoint: this.settings.endpoint,
       defaultModel: this.settings.model,
       defaultApiKey: this.settings.apiKey,
@@ -1239,5 +1248,29 @@ export class DesktopIpcBridge extends EventEmitter {
 
   public async testConnector(id: ConnectorProviderId): Promise<{ ok: boolean; message: string; account?: string }> {
     return this.connectorManager.testConnection(id);
+  }
+
+  // --- Community Agent Store & Template Gallery ---
+
+  public async listGalleryTemplates(options?: GalleryQueryOptions): Promise<GalleryTemplateItem[]> {
+    return this.templateGallery.listTemplates(options);
+  }
+
+  public getGalleryTemplate(id: string): GalleryTemplateItem | undefined {
+    return this.templateGallery.getTemplate(id);
+  }
+
+  public async installGalleryTemplate(id: string): Promise<{ agent: AgentRecord; template: GalleryTemplateItem }> {
+    return this.templateGallery.installTemplate(id, this.agentStore);
+  }
+
+  public async publishGalleryTemplate(
+    input: Omit<GalleryTemplateItem, 'createdAtMs' | 'updatedAtMs' | 'isCommunity' | 'downloads' | 'stars'>
+  ): Promise<GalleryTemplateItem> {
+    return this.templateGallery.publishTemplate(input);
+  }
+
+  public async deleteGalleryTemplate(id: string): Promise<boolean> {
+    return this.templateGallery.deleteTemplate(id);
   }
 }

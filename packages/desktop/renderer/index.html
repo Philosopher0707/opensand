@@ -413,6 +413,10 @@
       <!-- View 8: Agent Templates View -->
       <div id="viewTemplates" class="view-panel hidden">
         <div class="dashboard-container">
+          <div class="subnav-tabs" data-group="bots">
+            <button class="subnav-tab active" data-view="templates">🤖 Local Personas</button>
+            <button class="subnav-tab" data-view="gallery">🏪 Community Agent Store</button>
+          </div>
           <div class="dashboard-header">
             <div>
               <div class="dashboard-title">🤖 Bots & Personas</div>
@@ -436,6 +440,45 @@
 
           <div class="sidebar-section-title" style="margin-top: 10px;">Available Agent Personas for Template Generation</div>
           <div class="card-grid" id="templateAgentsGrid">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- View 14: Community Agent Store & Template Gallery -->
+      <div id="viewGallery" class="view-panel hidden">
+        <div class="dashboard-container">
+          <div class="subnav-tabs" data-group="bots">
+            <button class="subnav-tab" data-view="templates">🤖 Local Personas</button>
+            <button class="subnav-tab active" data-view="gallery">🏪 Community Agent Store</button>
+          </div>
+          <div class="dashboard-header">
+            <div>
+              <div class="dashboard-title">🏪 Community Agent Store & Template Gallery</div>
+              <div class="dashboard-subtitle">Browse, preview, and one-click install battle-tested specialist agent personas into your local fleet.</div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button id="btnOpenPublishTemplate" class="btn btn-secondary">Publish Local Agent</button>
+              <button id="btnRefreshGallery" class="btn btn-secondary">↻ Refresh</button>
+            </div>
+          </div>
+
+          <!-- Gallery Filters & Search Bar -->
+          <div class="gallery-controls-bar">
+            <div class="gallery-search-box">
+              <input type="text" id="gallerySearchInput" class="input-text" placeholder="Search templates by role, tool, tag, or author…" />
+            </div>
+            <div class="gallery-category-chips" id="galleryCategoryChips">
+              <button class="category-chip active" data-category="all">All Domains</button>
+              <button class="category-chip" data-category="engineering">🛠️ Engineering</button>
+              <button class="category-chip" data-category="security">🛡️ Security</button>
+              <button class="category-chip" data-category="product">📐 Product</button>
+              <button class="category-chip" data-category="research">🔬 Research</button>
+            </div>
+          </div>
+
+          <!-- Gallery Grid -->
+          <div class="card-grid" id="galleryCardGrid">
             <!-- Rendered dynamically -->
           </div>
         </div>
@@ -1318,6 +1361,84 @@
       <div class="modal-actions">
         <button class="btn btn-secondary" id="btnCancelConfigureConnector">Cancel</button>
         <button class="btn btn-primary" id="btnSaveConnectorConfig">Save & Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Template Preview Modal -->
+  <div class="modal-overlay hidden" id="templatePreviewModal">
+    <div class="modal-card" style="max-width: 640px; max-height: 85vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span id="previewModalIcon" style="font-size: 24px;">🤖</span>
+          <div>
+            <h3 id="previewModalTitle" style="margin: 0;">Template Name</h3>
+            <div id="previewModalRole" style="font-size: 12px; color: var(--text-muted);">Role Title</div>
+          </div>
+        </div>
+        <button class="modal-close" id="btnClosePreviewModal">&times;</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; display: flex; flex-direction: column; gap: 14px;">
+        <div id="previewModalMeta" style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px;">
+          <!-- Category, Model, Author, Version pills -->
+        </div>
+        <div>
+          <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Description</label>
+          <div id="previewModalDesc" style="font-size: 13px; line-height: 1.5; margin-top: 4px; color: var(--text-main);"></div>
+        </div>
+        <div>
+          <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Curated Tool Whitelist</label>
+          <div id="previewModalTools" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;"></div>
+        </div>
+        <div>
+          <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Starter Tasks</label>
+          <ul id="previewModalTasks" style="margin: 4px 0 0 16px; font-size: 12px; color: var(--text-muted); line-height: 1.6;"></ul>
+        </div>
+        <div>
+          <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">System Prompt</label>
+          <pre id="previewModalPrompt" class="sentinel-output-box" style="margin-top: 4px; max-height: 180px; overflow-y: auto; white-space: pre-wrap; font-size: 11px;"></pre>
+        </div>
+      </div>
+      <div class="modal-actions" style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: auto;">
+        <button class="btn btn-secondary" id="btnCancelPreviewModal">Close</button>
+        <button class="btn btn-primary" id="btnInstallFromPreview">Install to Local Fleet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Publish Local Agent to Community Gallery Modal -->
+  <div class="modal-overlay hidden" id="publishTemplateModal">
+    <div class="modal-card" style="max-width: 520px;">
+      <div class="modal-header">
+        <h3>Publish Agent to Community Gallery</h3>
+        <button class="modal-close" id="btnClosePublishModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="publishAgentSelect">Select Local Agent</label>
+          <select id="publishAgentSelect" class="form-control"></select>
+        </div>
+        <div class="form-group">
+          <label for="publishCategory">Category</label>
+          <select id="publishCategory" class="form-control">
+            <option value="engineering">🛠️ Engineering</option>
+            <option value="security">🛡️ Security</option>
+            <option value="product">📐 Product</option>
+            <option value="research">🔬 Research</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="publishTags">Tags (comma-separated)</label>
+          <input type="text" id="publishTags" class="form-control" placeholder="e.g. testing, fast-api, automation" />
+        </div>
+        <div class="form-group">
+          <label for="publishAuthor">Author / Contributor Handle</label>
+          <input type="text" id="publishAuthor" class="form-control" placeholder="e.g. @yourname or Community" value="Local User" />
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="btnCancelPublishModal">Cancel</button>
+        <button class="btn btn-primary" id="btnSubmitPublish">Publish to Gallery</button>
       </div>
     </div>
   </div>

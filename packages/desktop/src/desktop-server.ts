@@ -1107,6 +1107,68 @@ export class DesktopServer {
       return;
     }
 
+    // API: GET /api/gallery/templates (Community Agent Store & Template Gallery)
+    if (pathname === '/api/gallery/templates' && req.method === 'GET') {
+      const category = (url.searchParams.get('category') as any) || undefined;
+      const query = url.searchParams.get('query') || undefined;
+      const tag = url.searchParams.get('tag') || undefined;
+      const templates = await this.bridge.listGalleryTemplates({ category, query, tag });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(templates));
+      return;
+    }
+
+    // API: POST /api/gallery/templates/publish
+    if (pathname === '/api/gallery/templates/publish' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      if (!body.id || !body.name || !body.systemPrompt) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing required fields: id, name, systemPrompt' }));
+        return;
+      }
+      const item = await this.bridge.publishGalleryTemplate(body);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(item));
+      return;
+    }
+
+    // API: POST /api/gallery/templates/:id/install
+    if (pathname.startsWith('/api/gallery/templates/') && pathname.endsWith('/install') && req.method === 'POST') {
+      const id = pathname.replace('/api/gallery/templates/', '').replace('/install', '');
+      try {
+        const result = await this.bridge.installGalleryTemplate(id);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err: any) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
+    // API: GET /api/gallery/templates/:id
+    if (pathname.startsWith('/api/gallery/templates/') && req.method === 'GET') {
+      const id = pathname.replace('/api/gallery/templates/', '');
+      const tpl = this.bridge.getGalleryTemplate(id);
+      if (!tpl) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: `Template not found: ${id}` }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(tpl));
+      return;
+    }
+
+    // API: DELETE /api/gallery/templates/:id
+    if (pathname.startsWith('/api/gallery/templates/') && req.method === 'DELETE') {
+      const id = pathname.replace('/api/gallery/templates/', '');
+      const deleted = await this.bridge.deleteGalleryTemplate(id);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: deleted, id }));
+      return;
+    }
+
     // Serve static files from renderer/
     let filePath = path.join(this.rendererDir, pathname === '/' ? 'index.html' : pathname);
     const resolvedPath = path.resolve(filePath);
