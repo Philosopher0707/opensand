@@ -72,6 +72,29 @@ Examples:
   const config = parseCliArgs(argv);
   const ui = new TerminalUI();
 
+  if (argv[0] === "retention" || argv[0] === "prune") {
+    const { evaluateRetention, pruneSessions } = await import("@opensand/coordinator");
+    const sub = argv[1] || "status";
+    if (sub === "status" || sub === "dry-run") {
+      const { kept, removed } = await evaluateRetention();
+      console.log(`Sessions: ${kept.length} kept, ${removed.length} over policy (keep 30, age 90d, keep-recent 7d)`);
+      for (const c of removed.slice(0, 10)) {
+        console.log(`  over: ${c.sessionId} (${new Date(c.mtimeMs).toISOString().slice(0, 10)})`);
+      }
+      if (removed.length > 10) console.log(`  ... and ${removed.length - 10} more`);
+      if (sub === "status") {
+        console.log("Run 'opensand retention prune' to delete the over-policy sessions.");
+      }
+    } else if (sub === "prune") {
+      const { removed } = await pruneSessions();
+      console.log(`Pruned ${removed.length} session directories.`);
+      for (const c of removed.slice(0, 10)) {
+        console.log(`  removed: ${c.sessionId}`);
+      }
+    }
+    process.exit(0);
+  }
+
   if (argv[0] === "doctor" || argv.includes("--doctor")) {
     console.log(`\n\x1b[1m=== OpenSand System Doctor & Environment Preflight ===\x1b[0m\n`);
     const { probes, allCriticalPassed } = await runDoctorProbes({

@@ -735,3 +735,60 @@ describe("AgentCoordinator Policy Boundary", () => {
     assert.ok(Array.isArray(result.entries));
   });
 });
+
+
+describe("Retention (planRetention / pruneSessions)", () => {
+  it("keeps the N most recent and removes older ones", async () => {
+    const { mkdtemp, writeFile, mkdir, readdir } = await import("node:fs/promises");
+    const { default: os } = await import("node:os");
+    const { default: path } = await import("node:path");
+    const { planRetention, pruneSessions, evaluateRetention } = await import("../src/transcript-manager.js");
+
+    const now = Date.now();
+    const mk = (id: string, ageDays: number) => ({ sessionId: id, dir: `/tmp/${id}`, mtimeMs: now - ageDays * 24 * 3600 * 1000, sizeBytes: 100 });
+
+    const candidates = [mk("s1", 1), mk("s2", 5), mk("s3", 100), mk("s4", 200), mk("s5", 300)];
+    const { removed, kept } = planRetention(candidates, { maxSessions: 2, maxAgeDays: 90, keepRecentDays: 7 }, now);
+
+    // s3..s5 are already >90 days old; s1/s2 kept (count + recent)
+    assert.ok(kept.some((c: any) => c.sessionId === "s1"));
+    assert.ok(kept.some((c: any) => c.sessionId === "s2"));
+    assert.ok(removed.some((c: any) => c.sessionId === "s3"));
+    assert.ok(removed.some((c: any) => c.sessionId === "s5"));
+  });
+
+  it("never removes sessions inside the keep-recent window even if over count", async () => {
+    const { planRetention } = await import("../src/transcript-manager.js");
+    const now = Date.now();
+    const mk = (id: string, ageDays: number) => ({ sessionId: id, dir: `/tmp/${id}`, mtimeMs: now - ageDays * 24 * 3600 * 1000, sizeBytes: 100 });
+    const candidates = [mk("recent1", 1), mk("recent2", 2), mk("old", 400)];
+    const { removed, kept } = planRetention(candidates, { maxSessions: 1, maxAgeDays: 90, keepRecentDays: 7 }, now);
+    // recent2 is over maxSessions=1 but within keep window, so kept
+    assert.ok(kept.some((c: any) => c.sessionId === "recent1"));
+    assert.ok(kept.some((c: any) => c.sessionId === "recent2"));
+    assert.ok(removed.some((c: any) => c.sessionId === "old"));
+  });
+
+  it("pruneSessions deletes only over-policy dirs on disk", async () => {
+    const { mkdtemp, mkdir, writeFile, readdir } = await import("node:fs/promises");
+    const { default: os } = await import("node:os");
+    const { default: path } = await import("node:path");
+    const { pruneSessions } = await import("../src/transcript-manager.js");
+
+    const base = await mkdtemp(path.join(os.tmpdir(), "opensand-retention-"));
+    const now = Date.now();
+    for (let i = 0; i < 5; i++) {
+      const dir = path.join(base, `sess_${i}`);
+      await mkdir(dir, { recursive: true });
+      await writeFile(path.join(dir, "transcript.jsonl"), "x\n", "utf-8");
+      const ageMs = (i < 2 ? 1 : 200) * 24 * 3600 * 1000;
+      const { utimes } = await import("node:fs/promises");
+      await utimes(dir, new Date(now - ageMs), new Date(now - ageMs));
+    }
+    const { removed } = await pruneSessions(base, { maxSessions: 2, maxAgeDays: 90, keepRecentDays: 7 }, now);
+    const remaining = await readdir(base);
+    assert.strictEqual(removed.length, 3);
+    assert.strictEqual(remaining.length, 2);
+    await import("node:fs/promises").then((fs2) => fs2.rm(base, { recursive: true, force: true }));
+  });
+});

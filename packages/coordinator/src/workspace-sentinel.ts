@@ -153,7 +153,10 @@ export class WorkspaceSentinel extends EventEmitter {
     this.activeWatchers.set(id, { config, ac });
 
     // Launch background fs watch loop
-    this.launchWatchLoop(config, ac.signal).catch(() => {});
+    this.launchWatchLoop(config, ac.signal).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error(`[sentinel] watch loop for ${id} died:`, err instanceof Error ? err.message : err);
+    });
 
     return config;
   }
@@ -175,8 +178,13 @@ export class WorkspaceSentinel extends EventEmitter {
 
         this.handleFileChange(config, filename);
       }
-    } catch {
-      // Watcher terminated or abort signal fired
+    } catch (err) {
+      // AbortSignal termination is expected; anything else is a real failure.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!/abort/i.test(msg)) {
+        // eslint-disable-next-line no-console
+        console.error(`[sentinel] watch loop for ${config.id} exited:`, msg);
+      }
     }
   }
 
@@ -237,8 +245,10 @@ export class WorkspaceSentinel extends EventEmitter {
         if (healResult.healed) {
           logEvent.status = "healed";
         }
-      } catch {
-        // Healing failed
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error(`[sentinel] healing failed for ${logEvent.id}:`, err instanceof Error ? (err as Error).message : err);
+        logEvent.errorMessage = `Healing failed: ${err instanceof Error ? err.message : String(err)}`;
       }
     }
 

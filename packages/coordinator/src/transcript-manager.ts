@@ -164,3 +164,110 @@ export class TranscriptManager {
     await this.saveMessages(messages);
   }
 }
+
+export interface RetentionPolicy {
+  /** Keep the N most recent sessions (by mtime). Default 30. */
+  maxSessions?: number;
+  /** Remove sessions untouched for longer than this. Default 90 days. */
+  maxAgeDays?: number;
+  /** Keep sessions modified within this window regardless of count. Default 7 days. */
+  keepRecentDays?: number;
+}
+
+export interface RetentionCandidate {
+  sessionId: string;
+  dir: string;
+  mtimeMs: number;
+  sizeBytes: number;
+}
+
+export interface RetentionResult {
+  removed: RetentionCandidate[];
+  kept: RetentionCandidate[];
+  totalSizeBytes: number;
+}
+
+/**
+ * Totally pure retention planner: given the session directory listing,
+ * decide which directories to remove. Kept separate from I/O so it is
+ * fully unit-testable without touching the filesystem.
+ */
+export function planRetention(
+  candidates: RetentionCandidate[],
+  policy: RetentionPolicy = {},
+  nowMs: number = Date.now()
+): { removed: RetentionCandidate[]; kept: RetentionCandidate[] } {
+  const maxSessions = policy.maxSessions ?? 30;
+  const maxAgeDays = policy.maxAgeDays ?? 90;
+  const keepRecentDays = policy.keepRecentDays ?? 7;
+
+  const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
+  const keepRecentMs = keepRecentDays * 24 * 60 * 60 * 1000;
+
+  // Most recent first
+  const sorted = [...candidates].sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  const removed: RetentionCandidate[] = [];
+  const kept: RetentionCandidate[] = [];
+
+  sorted.forEach((c, idx) => {
+    const tooOld = nowMs - c.mtimeMs > maxAgeMs;
+    const tooMany = idx >= maxSessions;
+    const withinKeepWindow = nowMs - c.mtimeMs <= keepRecentMs;
+
+    if ((tooOld || tooMany) && !withinKeepWindow) {
+      removed.push(c);
+    } else {
+      kept.push(c);
+    }
+  });
+
+  return { removed, kept };
+}
+
+/** Scan the sessions directory and evaluate the retention policy. */
+export async function evaluateRetention(
+  sessionsBaseDir?: string,
+  policy: RetentionPolicy = {},
+  nowMs: number = Date.now()
+): Promise<RetentionResult> {
+  const baseDir = sessionsBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
+  let entries: string[] = [];
+  try {
+    entries = await fs.readdir(baseDir);
+  } catch {
+    return { removed: [], kept: [], totalSizeBytes: 0 };
+  }
+
+  const candidates: RetentionCandidate[] = [];
+  for (const name of entries) {
+    const dir = path.join(baseDir, name);
+    try {
+      const stat = await fs.stat(dir);
+      if (!stat.isDirectory()) continue;
+      candidates.push({ sessionId: name, dir, mtimeMs: stat.mtimeMs, sizeBytes: stat.size });
+    } catch {
+      // Ignore unreadable entries
+    }
+  }
+
+  const { removed, kept } = planRetention(candidates, policy, nowMs);
+  const totalSizeBytes = candidates.reduce((sum, c) => sum + c.sizeBytes, 0);
+  return { removed, kept, totalSizeBytes };
+}
+
+/**
+ * Prune old sessions per policy. Returns what was removed.
+ * Never removes a session modified within keepRecentDays (default 7).
+ */
+export async function pruneSessions(
+  sessionsBaseDir?: string,
+  policy: RetentionPolicy = {},
+  nowMs: number = Date.now()
+): Promise<RetentionResult> {
+  const result = await evaluateRetention(sessionsBaseDir, policy, nowMs);
+  for (const c of result.removed) {
+    await fs.rm(c.dir, { recursive: true, force: true });
+  }
+  return result;
+}

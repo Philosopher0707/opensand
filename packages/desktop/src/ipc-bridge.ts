@@ -176,7 +176,9 @@ export class DesktopIpcBridge extends EventEmitter {
       daemon: this.daemon,
       configPath: path.join(this.baseDir, 'mcp.json'),
     });
-    this.mcpManager.startAll().catch(() => {});
+    this.mcpManager.startAll().catch((err) => {
+      console.error("[ipc-bridge] MCP startAll failed:", err instanceof Error ? err.message : err);
+    });
 
     // Forward Workspace Sentinel events to UI clients
     workspaceSentinel.on('diagnostic', (event: SentinelDiagnosticEvent) => {
@@ -186,7 +188,9 @@ export class DesktopIpcBridge extends EventEmitter {
     // Initialize OpenRouter model catalog cache
     defaultOpenRouterCatalog.initCacheDir(path.join(this.baseDir, 'cache'));
     if (this.settings.endpoint?.includes('openrouter.ai')) {
-      defaultOpenRouterCatalog.fetchModels(this.settings.endpoint, this.settings.apiKey).catch(() => {});
+      defaultOpenRouterCatalog.fetchModels(this.settings.endpoint, this.settings.apiKey).catch((err) => {
+        console.error("[ipc-bridge] OpenRouter catalog fetch failed:", err instanceof Error ? err.message : err);
+      });
     }
   }
 
@@ -208,7 +212,9 @@ export class DesktopIpcBridge extends EventEmitter {
       // write it to config.json.
       this.vaultStore
         ?.putSecret({ name: 'default-api-key', value: partial.apiKey, description: 'API key from settings UI' })
-        .catch(() => {});
+        .catch((err) => {
+          console.error("[ipc-bridge] vault putSecret failed:", err instanceof Error ? err.message : err);
+        });
     }
     if (modelChanged) {
       this.coordinator = null;

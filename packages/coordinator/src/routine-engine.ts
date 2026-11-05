@@ -378,6 +378,8 @@ export class RoutineEngine {
       status = "error";
       errorMsg = err instanceof Error ? err.message : String(err);
       result = `Execution failed: ${errorMsg}`;
+      // eslint-disable-next-line no-console
+      console.error(`[routine-engine] routine ${routineId} executor failed:`, errorMsg);
     }
 
     // Auto-scrub output with VaultStore if available
@@ -460,8 +462,15 @@ export class RoutineEngine {
         if (routine.nextRunAtMs && routine.nextRunAtMs <= now) {
           try {
             await this.triggerRoutine(routine.routineId);
-          } catch {
-            // Error logged inside triggerRoutine, keep ticker resilient
+          } catch (err) {
+            // triggerRoutine logs to the execution log for executor errors;
+            // this covers throw-before-entry (routine vanished, save failed).
+            // Keep the ticker resilient but NEVER silent.
+            // eslint-disable-next-line no-console
+            console.error(
+              `[routine-engine] tick failed for ${routine.routineId}:`,
+              err instanceof Error ? err.message : err
+            );
           }
         }
       }
@@ -476,7 +485,10 @@ export class RoutineEngine {
   start(intervalMs = 15000): void {
     if (this.timer) return;
     this.timer = setInterval(() => {
-      this.tick().catch(() => {});
+      this.tick().catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error("[routine-engine] tick cycle failed:", err instanceof Error ? err.message : err);
+      });
     }, intervalMs);
     // Unref so ticker does not block process shutdown
     this.timer.unref();

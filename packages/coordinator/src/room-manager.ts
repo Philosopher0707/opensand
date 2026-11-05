@@ -149,7 +149,11 @@ export class RoomManager {
 
     // Mirror room as an agent record with kind: "ROOM" for 1:1 Grok Bot catalog parity
     try {
-      const existingAgents = await this.agentStore.listAgents().catch(() => []);
+      const existingAgents = await this.agentStore.listAgents().catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error("[room-manager] listAgents failed:", err instanceof Error ? err.message : err);
+        return [];
+      });
       const existing = existingAgents.find(
         (a) => a.kind === "ROOM" && a.metadata?.roomId === room.roomId
       );
@@ -178,8 +182,9 @@ export class RoomManager {
           },
         });
       }
-    } catch {
-      // Best-effort mirror
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(`[room-manager] room agent mirror failed for ${room.roomId}:`, err instanceof Error ? err.message : err);
     }
 
     return room;

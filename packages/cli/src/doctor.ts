@@ -206,7 +206,40 @@ export async function runDoctorProbes(options: {
     });
   }
 
-  // Probe 8: Tool Registry Verification (61 Tools)
+  // Probe 8: Session Retention (warn when sessions are unbounded)
+  try {
+    const { evaluateRetention } = await import("@opensand/coordinator");
+    const baseSessions = path.join(baseDir, "sessions");
+    const { kept, removed } = await evaluateRetention(baseSessions, {});
+    const total = kept.length + removed.length;
+    if (removed.length > 0) {
+      probes.push({
+        category: "Storage",
+        name: "Session Retention",
+        passed: true,
+        status: "warn",
+        message: `${total} session directories (${removed.length} over policy: keep 30, age 90d). Run 'opensand retention prune' to clean up.`,
+      });
+    } else {
+      probes.push({
+        category: "Storage",
+        name: "Session Retention",
+        passed: true,
+        status: "ok",
+        message: `${total} session directories within retention policy`,
+      });
+    }
+  } catch (err: any) {
+    probes.push({
+      category: "Storage",
+      name: "Session Retention",
+      passed: true,
+      status: "warn",
+      message: `Retention probe failed: ${err.message}`,
+    });
+  }
+
+  // Probe 9: Tool Registry Verification (61 Tools)
   try {
     const daemon = new LocalExecDaemon();
     await daemon.start();
