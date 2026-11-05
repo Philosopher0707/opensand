@@ -11,6 +11,16 @@ export interface DiffRecord {
   text: string;
 }
 
+/** One tab in the canvas strip — one open file or artifact. */
+export interface ArtifactTab {
+  key: string;
+  title: string;
+  filePath: string;
+  language: string;
+  active: boolean;
+  hasDiff: boolean;
+}
+
 export interface ArtifactCanvasState {
   isOpen: boolean;
   isFullscreen: boolean;
@@ -23,6 +33,8 @@ export interface ArtifactCanvasState {
 }
 
 export interface ArtifactOptions {
+  /** Override the tab identity. Defaults to filePath, then title. */
+  key?: string;
   title?: string;
   language?: string;
   content?: string;
@@ -37,6 +49,7 @@ export interface ArtifactCanvasElements {
   iconEl?: HTMLElement | null;
   titleEl?: HTMLElement | null;
   badgeEl?: HTMLElement | null;
+  tabStripEl?: HTMLElement | null;
   tabCodeBtn?: HTMLButtonElement | null;
   tabPreviewBtn?: HTMLButtonElement | null;
   tabDiffBtn?: HTMLButtonElement | null;
@@ -60,8 +73,17 @@ export interface ArtifactCanvasElements {
 
 export interface ArtifactCanvasController {
   getState: () => ArtifactCanvasState;
+  /** Snapshot of the open tabs, in strip order. */
+  getTabs: () => ArtifactTab[];
   openArtifact: (artifact?: ArtifactOptions) => void;
+  /** Close every tab and hide the canvas. */
   closeArtifact: () => void;
+  /** Close one tab by key; activates a neighbour when the active tab closes. */
+  closeTab: (key: string) => void;
+  /** Focus a tab by key. */
+  selectTab: (key: string) => void;
+  /** Cycle tabs; -1 for previous, +1 for next. Wraps around. */
+  nextTab: (delta: number) => void;
   toggleCanvas: () => void;
   switchTab: (tabName: 'code' | 'preview' | 'diff') => void;
   setFullscreen: (isFullscreen: boolean) => void;

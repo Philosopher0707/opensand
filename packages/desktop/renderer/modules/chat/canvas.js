@@ -179,6 +179,7 @@ export function createArtifactCanvas(options = {}) {
     iconEl,
     titleEl,
     badgeEl,
+    tabStripEl,
     tabCodeBtn,
     tabPreviewBtn,
     tabDiffBtn,
@@ -200,7 +201,13 @@ export function createArtifactCanvas(options = {}) {
     onStateChange,
   } = options;
 
-  let state = {
+  // Tabs are keyed by identity: the absolute path when the artifact came from a
+  // file, otherwise the title. Writing a file twice must update its tab in place
+  // rather than open a second copy, so the key is derived from the path.
+  const tabs = [];
+  let activeKey = null;
+
+  const EMPTY_STATE = {
     isOpen: false,
     isFullscreen: false,
     activeTab: 'code', // 'code' | 'preview' | 'diff'
@@ -211,7 +218,144 @@ export function createArtifactCanvas(options = {}) {
     filePath: '',
   };
 
+  // `state` is a live view of the active tab. Keeping the name means every
+  // renderer below keeps working; what changed is that the values now come from
+  // the tab rather than from a single slot that each open overwrote.
+  let state = { ...EMPTY_STATE };
+
+  // Key precedence: explicit key, then file path, then title.
+  // Path-keyed tabs update in place (one tab per file). Title-keyed artifacts —
+  // a working-tree diff, say — deliberately replace themselves rather than piling
+  // up. Callers that need several distinct instances of the same title (code
+  // snippets) pass an explicit `key`.
+  function keyFor(artifact) {
+    if (artifact.key && String(artifact.key).trim()) {
+      return String(artifact.key);
+    }
+    if (artifact.filePath && String(artifact.filePath).trim()) {
+      return String(artifact.filePath);
+    }
+    return String(artifact.title || 'Artifact');
+  }
+
+  function syncStateFromActiveTab() {
+    const tab = tabs.find((t) => t.key === activeKey);
+    if (!tab) {
+      state = { ...EMPTY_STATE, isOpen: tabs.length > 0 ? state.isOpen : false };
+      return;
+    }
+    state.title = tab.title;
+    state.language = tab.language;
+    state.content = tab.content;
+    state.diff = tab.diff;
+    state.filePath = tab.filePath;
+    state.activeTab = tab.activeTab;
+  }
+
+  function activeTab() {
+    return tabs.find((t) => t.key === activeKey) || null;
+  }
+
+  function selectTab(key) {
+    if (!tabs.some((t) => t.key === key)) return;
+    activeKey = key;
+    syncStateFromActiveTab();
+    renderCodePane();
+    if (state.activeTab === 'preview') renderPreviewPane();
+    if (state.activeTab === 'diff') renderDiffPane();
+    updateUi();
+  }
+
+  function closeTab(key) {
+    const idx = tabs.findIndex((t) => t.key === key);
+    if (idx === -1) return;
+    tabs.splice(idx, 1);
+
+    if (tabs.length === 0) {
+      activeKey = null;
+      syncStateFromActiveTab();
+      state.isOpen = false;
+      updateUi();
+      return;
+    }
+    if (activeKey === key) {
+      // Browser behaviour: prefer the tab that shifted into this position.
+      const next = tabs[Math.min(idx, tabs.length - 1)];
+      activeKey = next.key;
+    }
+    syncStateFromActiveTab();
+    renderCodePane();
+    if (state.activeTab === 'preview') renderPreviewPane();
+    if (state.activeTab === 'diff') renderDiffPane();
+    updateUi();
+  }
+
+  function closeAllTabs() {
+    tabs.length = 0;
+    activeKey = null;
+    syncStateFromActiveTab();
+    state.isOpen = false;
+    updateUi();
+  }
+
+  function nextTab(delta) {
+    if (tabs.length < 2) return;
+    const idx = tabs.findIndex((t) => t.key === activeKey);
+    const next = (idx + delta + tabs.length) % tabs.length;
+    selectTab(tabs[next].key);
+  }
+
+  function getTabs() {
+    return tabs.map((t) => ({
+      key: t.key,
+      title: t.title,
+      filePath: t.filePath,
+      language: t.language,
+      active: t.key === activeKey,
+      hasDiff: Boolean(t.diff && t.diff.trim()),
+    }));
+  }
+
+  /** Render the tab strip. Called from updateUi so it never goes stale. */
+  function renderTabStrip() {
+    if (!tabStripEl) return;
+    if (typeof document === 'undefined' || !document.createElement) return;
+    tabStripEl.innerHTML = '';
+    for (const t of tabs) {
+      const tabEl = document.createElement('div');
+      tabEl.className = `canvas-file-tab${t.key === activeKey ? ' active' : ''}`;
+      tabEl.dataset.key = t.key;
+      tabEl.title = t.filePath || t.title;
+      tabEl.setAttribute('role', 'tab');
+      tabEl.setAttribute('aria-selected', t.key === activeKey ? 'true' : 'false');
+
+      const iconEl2 = document.createElement('span');
+      iconEl2.className = 'canvas-file-tab-icon';
+      iconEl2.textContent = resolveLanguageMeta(t.language).icon;
+
+      const labelEl = document.createElement('span');
+      labelEl.className = 'canvas-file-tab-label';
+      labelEl.textContent = t.title;
+
+      const closeEl = document.createElement('button');
+      closeEl.className = 'canvas-file-tab-close';
+      closeEl.type = 'button';
+      closeEl.dataset.closeKey = t.key;
+      closeEl.title = 'Close tab';
+      closeEl.textContent = '\u2715';
+
+      tabEl.appendChild(iconEl2);
+      tabEl.appendChild(labelEl);
+      tabEl.appendChild(closeEl);
+      tabStripEl.appendChild(tabEl);
+    }
+  }
+
   function updateUi() {
+    // Render the strip first: it is independent of the rest of the chrome, and
+    // gating it behind canvasEl meant it never rendered in a stripped-down host.
+    renderTabStrip();
+
     if (!canvasEl) return;
 
     if (state.isOpen) {
@@ -265,6 +409,9 @@ export function createArtifactCanvas(options = {}) {
   function switchTab(tabName) {
     if (tabName !== 'code' && tabName !== 'preview' && tabName !== 'diff') return;
     state.activeTab = tabName;
+    // Remember the view per tab, so returning to a tab restores its tab kind.
+    const tab = activeTab();
+    if (tab) tab.activeTab = tabName;
 
     if (tabName === 'preview') {
       renderPreviewPane();
@@ -348,25 +495,45 @@ export function createArtifactCanvas(options = {}) {
   }
 
   function openArtifact(artifact = {}) {
-    state.title = artifact.title || 'Artifact';
-    state.language = artifact.language || 'text';
-    state.content = artifact.content || '';
-    state.diff = artifact.diff || '';
-    state.filePath = artifact.filePath || '';
-    state.isOpen = true;
+    const key = keyFor(artifact);
 
     // Pick smart default tab:
     // If diff is explicit, open on diff
     // Else if previewable (e.g. html/svg/md), open on preview if autoPreview requested
     // Otherwise open code
+    let defaultTab = 'code';
     if (artifact.defaultTab === 'diff' || (artifact.diff && !artifact.content)) {
-      state.activeTab = 'diff';
+      defaultTab = 'diff';
     } else if (artifact.autoPreview || artifact.defaultTab === 'preview') {
-      const meta = resolveLanguageMeta(state.language);
-      state.activeTab = meta.previewable ? 'preview' : 'code';
-    } else {
-      state.activeTab = 'code';
+      const meta = resolveLanguageMeta(artifact.language || 'text');
+      defaultTab = meta.previewable ? 'preview' : 'code';
     }
+
+    const existing = tabs.find((t) => t.key === key);
+    if (existing) {
+      // Same file again: update it in place and focus it. This is what makes
+      // an agent editing one file repeatedly behave like one tab, not N tabs.
+      existing.title = artifact.title || existing.title;
+      existing.language = artifact.language || existing.language;
+      existing.content = artifact.content !== undefined ? artifact.content : existing.content;
+      if (artifact.diff !== undefined) existing.diff = artifact.diff;
+      existing.activeTab = defaultTab;
+      activeKey = key;
+    } else {
+      tabs.push({
+        key,
+        title: artifact.title || 'Artifact',
+        language: artifact.language || 'text',
+        content: artifact.content || '',
+        diff: artifact.diff || '',
+        filePath: artifact.filePath || '',
+        activeTab: defaultTab,
+      });
+      activeKey = key;
+    }
+
+    state.isOpen = true;
+    syncStateFromActiveTab();
 
     renderCodePane();
     if (state.activeTab === 'preview') renderPreviewPane();
@@ -375,9 +542,9 @@ export function createArtifactCanvas(options = {}) {
     updateUi();
   }
 
+  /** Close the whole canvas: every tab. Kept under the old name for callers. */
   function closeArtifact() {
-    state.isOpen = false;
-    updateUi();
+    closeAllTabs();
   }
 
   function toggleCanvas() {
@@ -456,10 +623,39 @@ export function createArtifactCanvas(options = {}) {
   if (closeBtn) closeBtn.addEventListener('click', closeArtifact);
   if (toggleBtn) toggleBtn.addEventListener('click', toggleCanvas);
 
+  // Tab strip: one delegated listener, since the strip is re-rendered on change.
+  if (tabStripEl && typeof tabStripEl.addEventListener === 'function') {
+    tabStripEl.addEventListener('click', (ev) => {
+      const closeHit = ev.target && ev.target.closest ? ev.target.closest('[data-close-key]') : null;
+      if (closeHit) {
+        ev.stopPropagation();
+        closeTab(closeHit.dataset.closeKey);
+        return;
+      }
+      const tabHit = ev.target && ev.target.closest ? ev.target.closest('.canvas-file-tab') : null;
+      if (tabHit && tabHit.dataset.key) {
+        selectTab(tabHit.dataset.key);
+      }
+    });
+    // Middle-click closes, as in a browser.
+    tabStripEl.addEventListener('auxclick', (ev) => {
+      if (ev.button !== 1) return;
+      const tabHit = ev.target && ev.target.closest ? ev.target.closest('.canvas-file-tab') : null;
+      if (tabHit && tabHit.dataset.key) {
+        ev.preventDefault();
+        closeTab(tabHit.dataset.key);
+      }
+    });
+  }
+
   return {
     getState: () => ({ ...state }),
+    getTabs,
     openArtifact,
     closeArtifact,
+    closeTab,
+    selectTab,
+    nextTab,
     toggleCanvas,
     switchTab,
     setFullscreen,

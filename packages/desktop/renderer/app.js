@@ -735,6 +735,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     canvasEl: artifactCanvasEl,
     iconEl: document.getElementById('canvasIcon'),
     titleEl: document.getElementById('canvasTitle'),
+    tabStripEl: document.getElementById('canvasTabStrip'),
     badgeEl: document.getElementById('canvasTypeBadge'),
     tabCodeBtn: document.getElementById('canvasTabCode'),
     tabPreviewBtn: document.getElementById('canvasTabPreview'),
@@ -2925,6 +2926,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const lang = openCanvasBtn.dataset.lang || 'text';
       if (codeText && artifactCanvas) {
         artifactCanvas.openArtifact({
+          // Snippets share a title, so give each its own tab instead of letting
+          // them overwrite one another.
+          key: `snippet:${lang}:${Date.now()}`,
           title: `${lang.toUpperCase()} Snippet`,
           language: lang,
           content: codeText,

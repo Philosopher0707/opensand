@@ -2771,6 +2771,104 @@ textarea#promptInput {
   border-left: none;
 }
 
+.canvas-tab-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.18);
+  padding: 0 4px;
+  flex-shrink: 0;
+  scrollbar-width: thin;
+}
+
+.canvas-tab-strip::-webkit-scrollbar {
+  height: 3px;
+}
+
+.canvas-tab-strip::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 2px;
+}
+
+.canvas-file-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px 7px 10px;
+  max-width: 190px;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  border-right: 1px solid var(--border-color);
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  transition: background 0.12s ease, color 0.12s ease;
+  flex-shrink: 0;
+}
+
+.canvas-file-tab:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+}
+
+.canvas-file-tab.active {
+  background: var(--bg-card);
+  color: var(--text-main);
+}
+
+/* Browser convention: the active tab is marked by a line, not just fill. */
+.canvas-file-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: var(--accent, #7c9cf5);
+}
+
+.canvas-file-tab-icon {
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.canvas-file-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.canvas-file-tab-close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 3px;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+/* Show the close affordance on hover or on the active tab, as browsers do. */
+.canvas-file-tab:hover .canvas-file-tab-close,
+.canvas-file-tab.active .canvas-file-tab-close {
+  opacity: 0.65;
+}
+
+.canvas-file-tab-close:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .canvas-header {
   display: flex;
   align-items: center;
