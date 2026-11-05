@@ -2634,7 +2634,89 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
         }
       }
+      const group = toolEl.parentElement?.closest('.tool-activity-group');
+      if (group && group._groupController) {
+        group._groupController.updateGroup();
+      }
     }
+  }
+
+  function createToolGroupElement(initialToolEl = null) {
+    const groupDiv = document.createElement('div');
+    groupDiv.className = 'tool-activity-group';
+    groupDiv._tools = [];
+
+    const summary = document.createElement('div');
+    summary.className = 'tool-group-summary';
+    summary.innerHTML = `
+      <div class="tool-group-summary-left">
+        <span class="tool-group-chevron">▶</span>
+        <span class="tool-group-icon">⚙️</span>
+        <span class="tool-group-label">Running tool operation...</span>
+      </div>
+      <div class="tool-group-summary-right">
+        <span class="tool-group-status tool-line-badge badge-running">Running</span>
+      </div>
+    `;
+
+    const itemsContainer = document.createElement('div');
+    itemsContainer.className = 'tool-group-items hidden';
+
+    summary.addEventListener('click', () => {
+      const isHidden = itemsContainer.classList.contains('hidden');
+      itemsContainer.classList.toggle('hidden', !isHidden);
+      groupDiv.classList.toggle('tool-group-expanded', isHidden);
+    });
+
+    groupDiv.appendChild(summary);
+    groupDiv.appendChild(itemsContainer);
+
+    function updateGroup() {
+      const count = groupDiv._tools.length;
+      const names = Array.from(new Set(groupDiv._tools.map(t => t.dataset.toolName || 'tool'))).join(', ');
+      const hasRunning = groupDiv._tools.some(t => t.classList.contains('tool-line-running'));
+      const hasFailed = groupDiv._tools.some(t => t.querySelector('.badge-error'));
+
+      const labelEl = summary.querySelector('.tool-group-label');
+      const statusEl = summary.querySelector('.tool-group-status');
+
+      if (labelEl) {
+        labelEl.textContent = count === 1 ? `1 tool operation (${names})` : `${count} tool operations (${names})`;
+      }
+
+      if (statusEl) {
+        if (hasRunning) {
+          statusEl.textContent = 'Running';
+          statusEl.className = 'tool-group-status tool-line-badge badge-running';
+        } else if (hasFailed) {
+          statusEl.textContent = 'Issues';
+          statusEl.className = 'tool-group-status tool-line-badge badge-error';
+        } else {
+          statusEl.textContent = 'All Done';
+          statusEl.className = 'tool-group-status tool-line-badge badge-done';
+        }
+      }
+    }
+
+    function addTool(toolEl) {
+      groupDiv._tools.push(toolEl);
+      itemsContainer.appendChild(toolEl);
+      updateGroup();
+    }
+
+    const controller = {
+      element: groupDiv,
+      addTool,
+      updateGroup,
+      tools: groupDiv._tools,
+    };
+    groupDiv._groupController = controller;
+
+    if (initialToolEl) {
+      addTool(initialToolEl);
+    }
+
+    return controller;
   }
 
   // Delegated interactions for Code Copy, Open in Canvas, Thinking Accordion, Tool Output Copy, Message Copy, and Tool Details
@@ -2897,9 +2979,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             content: '',
             thought: '',
             toolCalls: [],
+            blocks: [],
             timestamp: ev.timestamp || null,
           };
         }
+        if (!currentAssistantTurn.blocks) currentAssistantTurn.blocks = [];
 
         let content = ev.content || '';
         if (content) {
@@ -2910,19 +2994,24 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
           if (content) {
             currentAssistantTurn.content = (currentAssistantTurn.content ? currentAssistantTurn.content + '\n\n' : '') + content;
+            currentAssistantTurn.blocks.push({ type: 'text', content });
           }
         }
 
-        if (ev.tool_calls && Array.isArray(ev.tool_calls)) {
+        if (ev.tool_calls && Array.isArray(ev.tool_calls) && ev.tool_calls.length > 0) {
+          const callItems = [];
           for (const tc of ev.tool_calls) {
-            currentAssistantTurn.toolCalls.push({
+            const item = {
               id: tc.id,
               name: tc.function?.name || tc.name,
               args: tc.function?.arguments || tc.args,
               status: 'running',
               result: null,
-            });
+            };
+            currentAssistantTurn.toolCalls.push(item);
+            callItems.push(item);
           }
+          currentAssistantTurn.blocks.push({ type: 'tools', toolCalls: callItems });
         }
         continue;
       }
@@ -2992,7 +3081,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const sessionData = await client.loadSession(sessionId);
       const turns = reconstructDialogueTurns(sessionData);
       for (const turn of turns) {
-        appendMessage(turn.role, turn.content, turn.toolCalls, turn.thought, turn.timestamp);
+        appendMessage(turn.role, turn.content, turn.toolCalls, turn.thought, turn.timestamp, turn.blocks);
       }
       smartScrollToBottom(true);
     } catch (err) {
@@ -3079,7 +3168,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
   }
 
-  function appendMessage(role, content = '', toolCalls = [], thought = '', timestamp = null) {
+  function appendMessage(role, content = '', toolCalls = [], thought = '', timestamp = null, blocks = null) {
     welcomeBanner.classList.add('hidden');
     const msgDiv = document.createElement('div');
     msgDiv.className = `message message-${role}`;
@@ -3121,27 +3210,53 @@ document.addEventListener('DOMContentLoaded', async () => {
       renderThoughtBlock(thoughtEl, thought, false);
     }
 
-    if (toolCalls && toolCalls.length > 0) {
-      for (const tc of toolCalls) {
-        const toolEl = createToolLineElement(tc, tc.status || 'done', tc.result);
-        toolsEl.appendChild(toolEl);
-      }
-    }
-
-    if (content) {
-      if (role === 'user') {
-        contentEl.textContent = content;
-      } else {
-        contentEl.innerHTML = renderMarkdown(content);
-      }
-    }
-
-    if (role === 'assistant') {
-      body.appendChild(thoughtEl);
-      body.appendChild(toolsEl);
+    if (role === 'user') {
+      if (content) contentEl.textContent = content;
       body.appendChild(contentEl);
     } else {
-      body.appendChild(contentEl);
+      body.appendChild(thoughtEl);
+
+      // If structured interleaved blocks are provided, render them in sequence:
+      if (blocks && Array.isArray(blocks) && blocks.length > 0) {
+        for (const b of blocks) {
+          if (b.type === 'text' && b.content) {
+            const textEl = document.createElement('div');
+            textEl.className = 'message-content turn-text-block';
+            textEl.innerHTML = renderMarkdown(b.content);
+            body.appendChild(textEl);
+          } else if (b.type === 'tools' && Array.isArray(b.toolCalls) && b.toolCalls.length > 0) {
+            if (b.toolCalls.length === 1) {
+              const tc = b.toolCalls[0];
+              const toolEl = createToolLineElement(tc, tc.status || 'done', tc.result);
+              body.appendChild(toolEl);
+            } else {
+              const group = createToolGroupElement();
+              for (const tc of b.toolCalls) {
+                const toolEl = createToolLineElement(tc, tc.status || 'done', tc.result);
+                group.addTool(toolEl);
+              }
+              body.appendChild(group.element);
+            }
+          }
+        }
+      } else {
+        if (toolCalls && toolCalls.length > 0) {
+          if (toolCalls.length === 1) {
+            toolsEl.appendChild(createToolLineElement(toolCalls[0], toolCalls[0].status || 'done', toolCalls[0].result));
+          } else {
+            const group = createToolGroupElement();
+            for (const tc of toolCalls) {
+              group.addTool(createToolLineElement(tc, tc.status || 'done', tc.result));
+            }
+            toolsEl.appendChild(group.element);
+          }
+          body.appendChild(toolsEl);
+        }
+        if (content) {
+          contentEl.innerHTML = renderMarkdown(content);
+        }
+        body.appendChild(contentEl);
+      }
     }
     body.appendChild(actionsEl);
 
@@ -3160,7 +3275,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     smartScrollToBottom();
 
-    return { msgDiv, body, thoughtEl, toolsEl, contentEl, actionsEl };
+    return {
+      msgDiv,
+      body,
+      thoughtEl,
+      toolsEl,
+      contentEl,
+      actionsEl,
+      activeTextBlock: null,
+      activeToolGroup: null,
+      currentSegmentText: '',
+    };
   }
 
   // --- Staged Attachments Strip (OpenBot Parity) ---
@@ -3820,27 +3945,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (event.type === 'token' || event.type === 'text_delta') {
       const delta = event.data?.token || event.token || event.text || '';
       if (delta && currentAssistantMessage) {
-        if (currentAssistantMessage.contentEl.querySelector('.typing-shimmer')) {
-          currentAssistantMessage.contentEl.innerHTML = '';
-        }
+        const shimmer = currentAssistantMessage.msgDiv.querySelector('.typing-shimmer');
+        if (shimmer) shimmer.remove();
         if (currentAssistantThought && currentAssistantMessage.thoughtEl.querySelector('.thought-streaming')) {
           renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, false);
         }
-        currentAssistantText += delta;
-        currentAssistantMessage.msgDiv._rawContent = currentAssistantText;
-        // Incremental: only re-render the trailing block for the new delta.
-        // The cache avoids re-parsing an unchanged prefix on every token.
-        const prevLen = currentAssistantMessage.msgDiv._mdLen || 0;
-        if (currentAssistantText.length - prevLen < 200 && currentAssistantMessage.contentEl.innerHTML) {
-          // For small deltas, append the new tail as plain text (rendered safely)
-          // instead of a full markdown re-parse. Full render resumes on turn_complete.
-          const tail = currentAssistantText.slice(prevLen);
-          const tailEl = document.createTextNode(tail);
-          currentAssistantMessage.contentEl.appendChild(tailEl);
-        } else {
-          currentAssistantMessage.contentEl.innerHTML = renderMarkdownCached(currentAssistantText);
+
+        // If tools were previously running, close the active group so text appears BELOW the tools!
+        if (currentAssistantMessage.activeToolGroup) {
+          currentAssistantMessage.activeToolGroup = null;
         }
-        currentAssistantMessage.msgDiv._mdLen = currentAssistantText.length;
+
+        // Ensure we have an active text block in the chronological flow
+        if (!currentAssistantMessage.activeTextBlock) {
+          const textBlock = document.createElement('div');
+          textBlock.className = 'message-content turn-text-block';
+          currentAssistantMessage.body.insertBefore(textBlock, currentAssistantMessage.actionsEl);
+          currentAssistantMessage.activeTextBlock = textBlock;
+          currentAssistantMessage.contentEl = textBlock;
+          currentAssistantMessage.currentSegmentText = '';
+        }
+
+        currentAssistantText += delta;
+        currentAssistantMessage.currentSegmentText = (currentAssistantMessage.currentSegmentText || '') + delta;
+        currentAssistantMessage.msgDiv._rawContent = currentAssistantText;
+
+        // Incremental: only re-render the trailing block for the new delta.
+        const prevLen = currentAssistantMessage.activeTextBlock._mdLen || 0;
+        const curSegLen = currentAssistantMessage.currentSegmentText.length;
+        if (curSegLen - prevLen < 200 && currentAssistantMessage.activeTextBlock.innerHTML) {
+          const tail = currentAssistantMessage.currentSegmentText.slice(prevLen);
+          currentAssistantMessage.activeTextBlock.appendChild(document.createTextNode(tail));
+        } else {
+          currentAssistantMessage.activeTextBlock.innerHTML = renderMarkdownCached(currentAssistantMessage.currentSegmentText);
+        }
+        currentAssistantMessage.activeTextBlock._mdLen = curSegLen;
         smartScrollToBottom();
 
         botStatusAvatar.textContent = '✍️';
@@ -3859,7 +3998,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (event.type === 'thought') {
       const thought = event.data?.thought || event.thought || '';
       if (thought && currentAssistantMessage) {
-        const shimmer = currentAssistantMessage.contentEl.querySelector('.typing-shimmer');
+        const shimmer = currentAssistantMessage.msgDiv.querySelector('.typing-shimmer');
         if (shimmer) shimmer.remove();
         currentAssistantThought += thought;
         renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, true);
@@ -3872,15 +4011,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Tool call started
     if (event.type === 'tool_call') {
       if (currentAssistantMessage) {
-        const shimmer = currentAssistantMessage.contentEl.querySelector('.typing-shimmer');
+        const shimmer = currentAssistantMessage.msgDiv.querySelector('.typing-shimmer');
         if (shimmer) shimmer.remove();
         if (currentAssistantThought && currentAssistantMessage.thoughtEl.querySelector('.thought-streaming')) {
           renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, false);
         }
+
+        // Finalize preceding text block with full markdown parse
+        if (currentAssistantMessage.activeTextBlock && currentAssistantMessage.currentSegmentText) {
+          currentAssistantMessage.activeTextBlock.innerHTML = renderMarkdown(currentAssistantMessage.currentSegmentText);
+          currentAssistantMessage.activeTextBlock = null;
+          currentAssistantMessage.currentSegmentText = '';
+        }
+
         const toolCall = event.data || event.toolCall || event;
         const toolEl = createToolLineElement(toolCall, 'running');
-        currentAssistantMessage.toolsEl.appendChild(toolEl);
         activeToolLines.push(toolEl);
+
+        // Group adjacent tool calls into a single collapsible activity container (OpenBot parity)
+        if (!currentAssistantMessage.activeToolGroup) {
+          currentAssistantMessage.activeToolGroup = createToolGroupElement(toolEl);
+          currentAssistantMessage.body.insertBefore(currentAssistantMessage.activeToolGroup.element, currentAssistantMessage.actionsEl);
+        } else {
+          currentAssistantMessage.activeToolGroup.addTool(toolEl);
+        }
         smartScrollToBottom();
 
         const toolName = toolCall.name || toolCall.function?.name || 'tool';
@@ -3906,7 +4060,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const result = event.data?.result !== undefined ? event.data.result : event.result;
       const targetEl = activeToolLines.find(el => el.classList.contains('tool-line-running') && (!toolName || el.dataset.toolName === toolName))
         || activeToolLines.find(el => el.classList.contains('tool-line-running'))
-        || (currentAssistantMessage && currentAssistantMessage.toolsEl.querySelector('.tool-line-running'));
+        || (currentAssistantMessage && currentAssistantMessage.msgDiv.querySelector('.tool-line-running'));
       if (targetEl) {
         updateToolLineStatus(targetEl, 'done', result);
       }
@@ -3973,26 +4127,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Turn completed
     if (event.type === 'turn_complete') {
       if (currentAssistantMessage) {
-        // Force a final full render so the streamed tail is markdown-formatted.
-        if (currentAssistantText) {
+        // Finalize active text block or content element
+        if (currentAssistantMessage.activeTextBlock && currentAssistantMessage.currentSegmentText) {
+          currentAssistantMessage.activeTextBlock.innerHTML = renderMarkdown(currentAssistantMessage.currentSegmentText);
+          currentAssistantMessage.activeTextBlock._mdLen = 0;
+        } else if (currentAssistantMessage.contentEl && currentAssistantText) {
           currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
           currentAssistantMessage.msgDiv._mdLen = 0;
         }
-        const shimmer = currentAssistantMessage.contentEl.querySelector('.typing-shimmer');
+        const shimmer = currentAssistantMessage.msgDiv.querySelector('.typing-shimmer');
         if (shimmer) shimmer.remove();
         if (currentAssistantThought) {
           renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, false);
         }
-        const runningLines = currentAssistantMessage.toolsEl.querySelectorAll('.tool-line-running');
+        const runningLines = currentAssistantMessage.msgDiv.querySelectorAll('.tool-line-running');
         runningLines.forEach((el) => updateToolLineStatus(el, 'done'));
 
         const response = event.data?.response || event.response;
         if (response && !currentAssistantText.trim()) {
           currentAssistantText = response;
           currentAssistantMessage.msgDiv._rawContent = currentAssistantText;
-          currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
-        } else if (!currentAssistantText.trim() && !currentAssistantThought.trim() && !currentAssistantMessage.toolsEl.children.length) {
-          currentAssistantMessage.contentEl.innerHTML = '<span style="color: var(--text-muted);">(Turn completed)</span>';
+          if (currentAssistantMessage.contentEl) {
+            currentAssistantMessage.contentEl.innerHTML = renderMarkdown(currentAssistantText);
+          }
+        } else if (!currentAssistantText.trim() && !currentAssistantThought.trim() && !activeToolLines.length) {
+          if (currentAssistantMessage.contentEl) {
+            currentAssistantMessage.contentEl.innerHTML = '<span style="color: var(--text-muted);">(Turn completed)</span>';
+          }
         }
       }
       setTurnBusy(false);

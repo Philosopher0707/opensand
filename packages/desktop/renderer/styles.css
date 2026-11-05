@@ -3081,3 +3081,75 @@ textarea#promptInput {
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* --- TOOL ACTIVITY GROUP (OpenBot & Grok Bot Parity) --- */
+
+.tool-activity-group {
+  margin: 8px 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+}
+
+.tool-group-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: background 0.15s ease;
+}
+
+.tool-group-summary:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-main);
+}
+
+.tool-group-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.tool-group-label {
+  font-weight: 500;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-group-chevron {
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  display: inline-block;
+}
+
+.tool-activity-group.tool-group-expanded .tool-group-chevron {
+  transform: rotate(90deg);
+}
+
+.tool-group-items {
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border-color-subtle);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.tool-group-items.hidden {
+  display: none !important;
+}
+
+.turn-text-block {
+  margin: 6px 0;
+}
