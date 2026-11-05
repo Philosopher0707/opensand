@@ -25,6 +25,7 @@ import {
   OAUTH_PROVIDERS,
 } from "./connectors.js";
 import { GitHubClient, GitHubActions } from "./github-client.js";
+import { SlackClient, LinearClient } from "./provider-clients.js";
 
 export interface RegisterOrchestratorToolsOptions {
   daemon: LocalExecDaemon;
@@ -42,6 +43,10 @@ export interface RegisterOrchestratorToolsOptions {
   connectorManager?: ConnectorManager;
   /** Injectable GitHub client; defaults to one built from ambient credentials. */
   githubClient?: GitHubActions;
+  /** Injectable Slack client; defaults to one built from ambient credentials. */
+  slackClient?: SlackClient;
+  /** Injectable Linear client; defaults to one built from ambient credentials. */
+  linearClient?: LinearClient;
   coordinator?: AgentCoordinator;
   defaultEndpoint?: string;
   defaultModel?: string;
@@ -80,6 +85,12 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   const attachmentManager = options.attachmentManager ?? new AttachmentManager();
   const connectorManager = options.connectorManager ?? defaultConnectorManager;
   const githubClient = options.githubClient ?? new GitHubClient();
+  const slackClient = options.slackClient ?? new SlackClient({
+    storedToken: connectorManager.getRawCredentials("slack")?.token ?? null,
+  });
+  const linearClient = options.linearClient ?? new LinearClient({
+    storedToken: connectorManager.getRawCredentials("linear")?.token ?? null,
+  });
   const sessionsBaseDir = options.sessionsBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
   const habitExtractor = options.habitExtractor ?? new HabitExtractor({ sessionsDir: sessionsBaseDir });
 
@@ -1902,6 +1913,71 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         }, null, 2);
       }
 
+      // Slack and Linear are wired to real clients too, so readiness is a property
+      // of the credential, not of the OAuth store.
+      if (appId === "slack") {
+        if (!slackClient.isConnected()) {
+          const msg = args.message || `Connecting your Slack workspace is required to enable this capability.`;
+          return connectAppRefusal({
+            serverId: appId,
+            title: provider.name,
+            message: msg,
+            reason: "connect",
+            blocked: true,
+          });
+        }
+        const who = await slackClient.authTest();
+        if ((who as { ok?: boolean }).ok === false) {
+          return JSON.stringify({
+            status: "error",
+            app: appId,
+            name: provider.name,
+            message: (who as { message?: string }).message,
+          }, null, 2);
+        }
+        const ident = who as { team: string; user: string; url?: string };
+        return JSON.stringify({
+          status: "ready",
+          app: appId,
+          name: provider.name,
+          account: ident.team,
+          user: ident.user,
+          url: ident.url,
+          capability: "live — calls the Slack Web API",
+        }, null, 2);
+      }
+
+      if (appId === "linear") {
+        if (!linearClient.isConnected()) {
+          const msg = args.message || `Connecting your Linear workspace is required to enable this capability.`;
+          return connectAppRefusal({
+            serverId: appId,
+            title: provider.name,
+            message: msg,
+            reason: "connect",
+            blocked: true,
+          });
+        }
+        const who = await linearClient.viewer();
+        if ((who as { ok?: boolean }).ok === false) {
+          return JSON.stringify({
+            status: "error",
+            app: appId,
+            name: provider.name,
+            message: (who as { message?: string }).message,
+          }, null, 2);
+        }
+        const viewer = who as { name: string; email: string };
+        return JSON.stringify({
+          status: "ready",
+          app: appId,
+          name: provider.name,
+          account: viewer.name,
+          email: viewer.email,
+          capability: "live — calls the Linear GraphQL API",
+        }, null, 2);
+      }
+
       const conn = connectorManager.getConnector(appId);
       if (!conn || conn.status !== "connected") {
         const msg = args.message || `Please connect your ${provider.name} account to enable this capability.`;
@@ -1920,9 +1996,6 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         account: conn.account,
         connectedAt: conn.connectedAt,
         scopes: conn.scopes,
-        // Slack and Linear are not wired to real APIs yet; say so rather than
-        // implying a working integration.
-        capability: "recorded only — not yet wired to the provider API",
       }, null, 2);
     },
   });
@@ -1954,10 +2027,27 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
             credentialSource: live ? "gh / GITHUB_TOKEN / GH_TOKEN" : "none",
           };
         }
+        if (c.id === "slack") {
+          const live = slackClient.isConnected();
+          return {
+            ...c,
+            status: live ? "connected" : "disconnected",
+            capability: live ? "live" : "needs credentials",
+            credentialSource: live ? "token / SLACK_BOT_TOKEN / store" : "none",
+          };
+        }
+        if (c.id === "linear") {
+          const live = linearClient.isConnected();
+          return {
+            ...c,
+            status: live ? "connected" : "disconnected",
+            capability: live ? "live" : "needs credentials",
+            credentialSource: live ? "key / LINEAR_API_KEY / store" : "none",
+          };
+        }
         return {
           ...c,
           status: c.status === "connected" ? "connected" : "disconnected",
-          capability: c.status === "connected" ? "recorded only" : "needs credentials",
         };
       });
       return JSON.stringify({
@@ -1991,8 +2081,9 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       },
     },
     handler: async (args) => {
-      const conn = connectorManager.getConnector("slack");
-      if (!conn || conn.status !== "connected") {
+      // Credentials come from the client; the connector store only records state.
+      // The previous implementation invented `ts` from Date.now() and never sent.
+      if (!slackClient.isConnected()) {
         return connectAppRefusal({
           serverId: "slack",
           title: "Slack",
@@ -2001,14 +2092,29 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           blocked: true,
         });
       }
+
+      const posted = await slackClient.postMessage(String(args.channel), String(args.text));
+      if ((posted as { ok?: boolean }).ok === false) {
+        const err = posted as { message?: string; status?: number; code?: string; refused?: boolean };
+        return JSON.stringify({
+          status: "error",
+          ok: false,
+          channel: args.channel,
+          http_status: err.status,
+          slack_error: err.code,
+          refused: err.refused ?? false,
+          message: err.message,
+        }, null, 2);
+      }
+
+      const ok = posted as { ts: string; channel: string; permalink?: string };
       return JSON.stringify({
         status: "success",
         ok: true,
-        channel: args.channel,
-        text: args.text,
-        account: conn.account || "Slack Bot",
-        ts: (Date.now() / 1000).toFixed(6),
-        message: `Message posted successfully to ${args.channel}.`,
+        channel: ok.channel,
+        ts: ok.ts,
+        permalink: ok.permalink,
+        message: `Posted to ${ok.channel}.`,
       }, null, 2);
     },
   });
@@ -2045,8 +2151,10 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       },
     },
     handler: async (args) => {
-      const conn = connectorManager.getConnector("linear");
-      if (!conn || conn.status !== "connected") {
+      // The previous implementation invented an identifier (ENG-437) and a URL
+      // with Math.random(). Team keys are now resolved against the workspace and
+      // the issue is created through Linear's GraphQL API.
+      if (!linearClient.isConnected()) {
         return connectAppRefusal({
           serverId: "linear",
           title: "Linear",
@@ -2055,19 +2163,28 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           blocked: true,
         });
       }
-      const team = args.team_key || "ENG";
-      const issueId = `${team}-${Math.floor(100 + Math.random() * 900)}`;
+
+      const created = await linearClient.createIssue({
+        title: String(args.title ?? ""),
+        teamKey: typeof args.team_key === "string" ? args.team_key : undefined,
+        description: typeof args.description === "string" ? args.description : undefined,
+        priority: typeof args.priority === "number" ? args.priority : undefined,
+      });
+      if ((created as { ok?: boolean }).ok === false) {
+        const err = created as { message?: string; status?: number; refused?: boolean };
+        return JSON.stringify({
+          status: "error",
+          ok: false,
+          http_status: err.status,
+          refused: err.refused ?? false,
+          message: err.message,
+        }, null, 2);
+      }
+      const issue = created as { id: string; identifier: string; title: string; url: string };
       return JSON.stringify({
         status: "success",
         ok: true,
-        issue: {
-          id: issueId,
-          title: args.title,
-          team: team,
-          description: args.description || "",
-          priority: args.priority ?? 2,
-          url: `https://linear.app/workspace/issue/${issueId}`,
-        },
+        issue,
       }, null, 2);
     },
   });

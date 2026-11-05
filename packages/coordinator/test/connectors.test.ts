@@ -145,12 +145,37 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
       createIssue: async () => ({ number: 1, html_url: "https://example/1", state: "open" }),
       commentOnIssue: async () => ({ id: 1, html_url: "https://example/c/1" }),
     };
+
+    // Slack and Linear are wired to real clients too, so the test injects fakes
+    // rather than relying on a stored token string meaning "connected".
+    let slackConnected = false;
+    let linearConnected = false;
+    const fakeSlack = {
+      isConnected: () => slackConnected,
+      postMessage: async (channel: string, _text: string) => ({
+        ts: "1793852553.000100",
+        channel,
+      }),
+      authTest: async () => ({ team: "Dev Team", team_id: "T1", user: "bot", user_id: "U1" }),
+    };
+    const fakeLinear = {
+      isConnected: () => linearConnected,
+      viewer: async () => ({ id: "u1", name: "Dev", email: "dev@example.com" }),
+      createIssue: async (input: { title: string; teamKey?: string }) => ({
+        id: "issue-1",
+        identifier: "ENG-1",
+        title: input.title,
+        url: "https://linear.app/dev/issue/ENG-1",
+      }),
+    };
     const daemon = new LocalExecDaemon({ stateDir: path.join(tmpDir, "daemon-state") });
 
     registerOrchestratorTools({
       daemon,
       connectorManager: manager,
       githubClient: fakeGitHub,
+      slackClient: fakeSlack as never,
+      linearClient: fakeLinear as never,
     });
 
     // 1. show_app_access when disconnected
@@ -168,12 +193,9 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
     assert.ok(slackRes.output.includes(CONNECT_APP_MARKER));
     assert.ok(slackRes.output.includes('"serverId":"slack"'));
 
-    // 3. Connect Slack via token and re-execute
-    await manager.configureToken("slack", {
-      token: "xoxb-mock-token",
-      account: "Dev Team",
-    });
-
+    // 3. With a live client, slack_post_message reports the ts the API returned.
+    //    Previously this asserted a ts derived from Date.now().
+    slackConnected = true;
     const slackConnectedRes = await daemon.executeTool("slack_post_message", {
       channel: "#dev-alerts",
       text: "Deployment complete",
@@ -182,12 +204,11 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
     assert.strictEqual(parsedSlack.status, "success");
     assert.strictEqual(parsedSlack.ok, true);
     assert.strictEqual(parsedSlack.channel, "#dev-alerts");
+    assert.strictEqual(parsedSlack.ts, "1793852553.000100");
 
-    // 4. Connect Linear via token and create issue
-    await manager.configureToken("linear", {
-      token: "lin_api_mock",
-      account: "Linear Workspace",
-    });
+    // 4. linear_create_issue returns the identifier the API assigned.
+    //    Previously this asserted an invented one (ENG-<random 100-999>).
+    linearConnected = true;
     const linearRes = await daemon.executeTool("linear_create_issue", {
       title: "Investigate telemetry latency",
       team_key: "ENG",
@@ -195,7 +216,7 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
     const parsedLinear = JSON.parse(linearRes.output);
     assert.strictEqual(parsedLinear.status, "success");
     assert.strictEqual(parsedLinear.issue.title, "Investigate telemetry latency");
-    assert.strictEqual(parsedLinear.issue.team, "ENG");
+    assert.strictEqual(parsedLinear.issue.identifier, "ENG-1");
 
     // 5. With a live client, github_app_action reports what the client returned.
     //    Previously this asserted a fabricated success from a mock token.
