@@ -387,3 +387,29 @@ test('DesktopIpcBridge - approval reason is optional and tolerated when absent',
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+
+test('DesktopIpcBridge - coordinator map is keyed by (sessionId, agentId)', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-coordmap-'));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    bridge.updateSettings({ autoApprove: true, model: 'test-coordmap-model' });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const c1 = await bridge.createSessionCoordinator('sess-A', undefined);
+    const c2 = await bridge.createSessionCoordinator('sess-A', undefined);
+    assert.strictEqual(c1, c2, 'same (session, default) must reuse the coordinator');
+
+    const c3 = await bridge.createSessionCoordinator('sess-B', undefined);
+    assert.notStrictEqual(c1, c3, 'different session must get a different coordinator');
+
+    const c4 = await bridge.createSessionCoordinator('sess-A', 'agent-1');
+    assert.notStrictEqual(c1, c4, 'different agent on same session must differ');
+
+    assert.strictEqual(bridge.getCoordinatorFor('sess-A', undefined), c1);
+    assert.strictEqual(bridge.getCoordinatorFor('sess-B', undefined), c3);
+    assert.strictEqual(bridge.getCoordinatorFor('sess-A', 'agent-1'), c4);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

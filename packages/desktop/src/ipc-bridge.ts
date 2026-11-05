@@ -85,6 +85,7 @@ export class DesktopIpcBridge extends EventEmitter {
   public webhookGateway: WebhookGateway;
   private coordinator: AgentCoordinator | null = null;
   private activeAgentId?: string;
+  private coordinatorMap: Map<string, AgentCoordinator> = new Map();
   private activeApprovals: Map<string, {
     request: ToolApprovalRequest;
     resolve: (approved: boolean) => void;
@@ -307,9 +308,24 @@ export class DesktopIpcBridge extends EventEmitter {
     return this.coordinator;
   }
 
+  public getCoordinatorFor(sessionId: string, agentId?: string): AgentCoordinator | null {
+    return this.coordinatorMap.get(this.coordinatorKey(sessionId, agentId)) ?? null;
+  }
+
+  private coordinatorKey(sessionId: string, agentId?: string): string {
+    return `${sessionId}:${agentId ?? 'default'}`;
+  }
+
   public async createSessionCoordinator(sessionId?: string, agentId?: string): Promise<AgentCoordinator> {
     await this.ensureApiKeyResolved();
     const activeSessionId = sessionId || this.currentSessionId || `session_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const mapKey = this.coordinatorKey(activeSessionId, agentId);
+    const existing = this.coordinatorMap.get(mapKey);
+    if (existing) {
+      this.coordinator = existing;
+      this.activeAgentId = agentId;
+      return existing;
+    }
     this.currentSessionId = activeSessionId;
 
     if (
@@ -391,6 +407,7 @@ export class DesktopIpcBridge extends EventEmitter {
     });
 
     this.coordinator = coordinator;
+    this.coordinatorMap.set(mapKey, coordinator);
     this.activeAgentId = agentId;
 
     // Auto-wire Sentinel Healer to session coordinator
