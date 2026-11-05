@@ -122,6 +122,13 @@
   }
 
 
+  const __mdCache = new Map();
+  function __mdKey(text) {
+    const head = text.slice(0, 512);
+    const tail = text.slice(-512);
+    return `${text.length}:${head}:${tail}`;
+  }
+
   function renderMarkdownCached(text) {
     const key = __mdKey(text);
     const hit = __mdCache.get(key);
@@ -131,7 +138,10 @@
       const firstKey = __mdCache.keys().next().value;
       __mdCache.delete(firstKey);
     }
-
+    const out = renderMarkdown(text);
+    __mdCache.set(key, out);
+    return out;
+  }
 
   function escapeHtml(str) {
     if (!str) return '';
