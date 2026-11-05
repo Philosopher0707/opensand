@@ -3,7 +3,12 @@ import * as assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { DesktopServer } from '../src/desktop-server.js';
 
 // Hermetic mock for IncomingMessage
@@ -455,6 +460,12 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     await rpcAnalyticsPromise;
     assert.strictEqual(resRpcAnalytics.statusCode, 200);
     assert.strictEqual(JSON.parse(resRpcAnalytics.body).recorded, true);
+
+    // Test static renderer syntax validation
+    const appJsPath = path.join(__dirname, '../../renderer/app.js');
+    assert.doesNotThrow(() => {
+      execSync(`node --check "${appJsPath}"`);
+    }, 'renderer/app.js must be valid JavaScript syntax');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

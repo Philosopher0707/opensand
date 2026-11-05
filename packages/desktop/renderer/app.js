@@ -3824,14 +3824,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     };
   }
-        const nextAutoApprove = !s.autoApprove;
-        await client.updateSettings({ autoApprove: nextAutoApprove });
-        await refreshSettings();
-      } catch (err) {
-        console.error('Error toggling safe mode:', err);
-      }
-    };
-  }
 
   // Quick Prompt Chips
   document.querySelectorAll('.prompt-chip').forEach((chip) => {
