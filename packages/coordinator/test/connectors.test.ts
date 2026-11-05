@@ -122,11 +122,35 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
 
   it("executes connector tools in orchestrator and handles connect refusals", async () => {
     const manager = new ConnectorManager({ storagePath: path.join(tmpDir, "conn-orch.json") });
+
+    // Stands in for a connected GitHub. The point of these assertions is the
+    // wiring: what the client returns is what the tool reports, verbatim.
+    let githubConnected = false;
+    const fakeGitHub = {
+      isConnected: () => githubConnected,
+      getViewer: async () => ({ login: "octo-org", id: 1, name: null, scopes: ["repo"] }),
+      getRepo: async (repo: string) => ({
+        full_name: repo,
+        private: false,
+        default_branch: "main",
+        description: null,
+        html_url: `https://github.com/${repo}`,
+        pushed_at: null,
+        open_issues_count: 0,
+      }),
+      listIssues: async () => [],
+      getPullRequest: async () => {
+        throw new Error("not used");
+      },
+      createIssue: async () => ({ number: 1, html_url: "https://example/1", state: "open" }),
+      commentOnIssue: async () => ({ id: 1, html_url: "https://example/c/1" }),
+    };
     const daemon = new LocalExecDaemon({ stateDir: path.join(tmpDir, "daemon-state") });
 
     registerOrchestratorTools({
       daemon,
       connectorManager: manager,
+      githubClient: fakeGitHub,
     });
 
     // 1. show_app_access when disconnected
@@ -173,20 +197,18 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
     assert.strictEqual(parsedLinear.issue.title, "Investigate telemetry latency");
     assert.strictEqual(parsedLinear.issue.team, "ENG");
 
-    // 5. Connect GitHub App via token and perform action
-    await manager.configureToken("github", {
-      token: "ghp_mock",
-      account: "octo-org",
-    });
+    // 5. With a live client, github_app_action reports what the client returned.
+    //    Previously this asserted a fabricated success from a mock token.
+    githubConnected = true;
     const githubRes = await daemon.executeTool("github_app_action", {
-      action: "create_issue",
+      action: "get_repo",
       repo: "acme/repo",
-      title: "Bug in auth flow",
     });
     const parsedGithub = JSON.parse(githubRes.output);
     assert.strictEqual(parsedGithub.status, "success");
-    assert.strictEqual(parsedGithub.action, "create_issue");
+    assert.strictEqual(parsedGithub.action, "get_repo");
     assert.strictEqual(parsedGithub.repo, "acme/repo");
+    assert.strictEqual(parsedGithub.result.full_name, "acme/repo");
 
     // Cleanup
     fs.rmSync(tmpDir, { recursive: true, force: true });

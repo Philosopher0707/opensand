@@ -30,3 +30,4 @@ export * from "./coordinator.js";
 export * from "./model-resolution.js";
 export * from "./tool-parallelism.js";
 export * from "./connectors.js";
+export * from "./github-client.js";

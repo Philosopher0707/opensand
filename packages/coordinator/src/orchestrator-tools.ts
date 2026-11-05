@@ -24,6 +24,7 @@ import {
   ConnectorProviderId,
   OAUTH_PROVIDERS,
 } from "./connectors.js";
+import { GitHubClient, GitHubActions } from "./github-client.js";
 
 export interface RegisterOrchestratorToolsOptions {
   daemon: LocalExecDaemon;
@@ -39,6 +40,8 @@ export interface RegisterOrchestratorToolsOptions {
   workspaceSentinel?: WorkspaceSentinel;
   attachmentManager?: AttachmentManager;
   connectorManager?: ConnectorManager;
+  /** Injectable GitHub client; defaults to one built from ambient credentials. */
+  githubClient?: GitHubActions;
   coordinator?: AgentCoordinator;
   defaultEndpoint?: string;
   defaultModel?: string;
@@ -76,6 +79,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   }
   const attachmentManager = options.attachmentManager ?? new AttachmentManager();
   const connectorManager = options.connectorManager ?? defaultConnectorManager;
+  const githubClient = options.githubClient ?? new GitHubClient();
   const sessionsBaseDir = options.sessionsBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
   const habitExtractor = options.habitExtractor ?? new HabitExtractor({ sessionsDir: sessionsBaseDir });
 
@@ -1864,6 +1868,40 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       if (!provider) {
         return JSON.stringify({ status: "error", message: `Unknown application: ${args.app_id}` });
       }
+      // GitHub is wired to a real client, so its readiness is a property of the
+      // credential lookup, not of the OAuth store. Reporting the store here made
+      // this tool say "not connected" while github_app_action worked.
+      if (appId === "github") {
+        const gh = githubClient;
+        if (!gh.isConnected()) {
+          const msg = args.message || `Connecting GitHub is required to enable this capability.`;
+          return connectAppRefusal({
+            serverId: appId,
+            title: provider.name,
+            message: msg,
+            reason: "connect",
+            blocked: true,
+          });
+        }
+        const viewer = await gh.getViewer();
+        if ((viewer as { ok?: boolean }).ok === false) {
+          return JSON.stringify({
+            status: "error",
+            app: appId,
+            name: provider.name,
+            message: (viewer as { message?: string }).message,
+          }, null, 2);
+        }
+        return JSON.stringify({
+          status: "ready",
+          app: appId,
+          name: provider.name,
+          account: (viewer as { login: string }).login,
+          scopes: (viewer as { scopes: string[] }).scopes,
+          capability: "live — calls the GitHub REST API",
+        }, null, 2);
+      }
+
       const conn = connectorManager.getConnector(appId);
       if (!conn || conn.status !== "connected") {
         const msg = args.message || `Please connect your ${provider.name} account to enable this capability.`;
@@ -1882,6 +1920,9 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         account: conn.account,
         connectedAt: conn.connectedAt,
         scopes: conn.scopes,
+        // Slack and Linear are not wired to real APIs yet; say so rather than
+        // implying a working integration.
+        capability: "recorded only — not yet wired to the provider API",
       }, null, 2);
     },
   });
@@ -1901,9 +1942,27 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
     },
     handler: async () => {
       const list = connectorManager.listConnectors();
+      // Annotate each entry with whether it can actually reach the provider, so
+      // "connected" in this list is never mistaken for "the integration works".
+      const annotated = list.map((c) => {
+        if (c.id === "github") {
+          const live = githubClient.isConnected();
+          return {
+            ...c,
+            status: live ? "connected" : "disconnected",
+            capability: live ? "live" : "needs credentials",
+            credentialSource: live ? "gh / GITHUB_TOKEN / GH_TOKEN" : "none",
+          };
+        }
+        return {
+          ...c,
+          status: c.status === "connected" ? "connected" : "disconnected",
+          capability: c.status === "connected" ? "recorded only" : "needs credentials",
+        };
+      });
       return JSON.stringify({
         status: "success",
-        connectors: list,
+        connectors: annotated,
       }, null, 2);
     },
   });
@@ -2025,7 +2084,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           properties: {
             action: {
               type: "string",
-              enum: ["create_issue", "get_pr", "list_issues", "get_repo"],
+              enum: ["create_issue", "get_pr", "list_issues", "get_repo", "comment"],
               description: "Action to perform on GitHub.",
             },
             repo: {
@@ -2050,28 +2109,97 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       },
     },
     handler: async (args) => {
-      const conn = connectorManager.getConnector("github");
-      if (!conn || conn.status !== "connected") {
+      // Credentials come from the client, not from the connector store: the store
+      // records OAuth *state*, and reporting it as a live connection was how this
+      // tool previously returned success without contacting GitHub at all.
+      const client = githubClient;
+      if (!client.isConnected()) {
         return connectAppRefusal({
           serverId: "github",
           title: "GitHub App",
-          message: `Connecting your GitHub App is required to interact with ${args.repo}.`,
+          message: `Connecting GitHub is required to interact with ${args.repo}.`,
           reason: "connect",
           blocked: true,
         });
       }
+
+      const action = String(args.action);
+      const repo = String(args.repo);
+      if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+        return JSON.stringify({
+          status: "error",
+          ok: false,
+          message: `repo must be 'owner/name', got ${JSON.stringify(repo)}.`,
+        }, null, 2);
+      }
+
+      let result: unknown;
+      switch (action) {
+        case "get_repo":
+          result = await client.getRepo(repo);
+          break;
+        case "list_issues": {
+          const limit = typeof args.limit === "number" ? args.limit : undefined;
+          result = await client.listIssues(repo, { limit });
+          break;
+        }
+        case "get_pr": {
+          const n = Number(args.issue_number);
+          if (!Number.isInteger(n) || n <= 0) {
+            return JSON.stringify({
+              status: "error",
+              ok: false,
+              message: "get_pr requires a positive integer issue_number.",
+            }, null, 2);
+          }
+          result = await client.getPullRequest(repo, n);
+          break;
+        }
+        case "create_issue": {
+          const created = await client.createIssue(repo, String(args.title ?? ""), args.body as string | undefined);
+          result = created;
+          break;
+        }
+        case "comment": {
+          const n = Number(args.issue_number);
+          if (!Number.isInteger(n) || n <= 0) {
+            return JSON.stringify({
+              status: "error",
+              ok: false,
+              message: "comment requires a positive integer issue_number.",
+            }, null, 2);
+          }
+          result = await client.commentOnIssue(repo, n, String(args.body ?? ""));
+          break;
+        }
+        default:
+          return JSON.stringify({
+            status: "error",
+            ok: false,
+            message: `Unsupported action ${JSON.stringify(action)}.`,
+          }, null, 2);
+      }
+
+      // Surface API errors as errors. No branch here synthesises a success.
+      const asError = result as { ok?: boolean; message?: string; status?: number; unauthorized?: boolean };
+      if (asError && asError.ok === false) {
+        return JSON.stringify({
+          status: "error",
+          ok: false,
+          action,
+          repo,
+          http_status: asError.status,
+          unauthorized: asError.unauthorized ?? false,
+          message: asError.message,
+        }, null, 2);
+      }
+
       return JSON.stringify({
         status: "success",
         ok: true,
-        action: args.action,
-        repo: args.repo,
-        result: {
-          account: conn.account || "github-app",
-          target: args.repo,
-          number: args.issue_number || 42,
-          html_url: `https://github.com/${args.repo}/issues/${args.issue_number || 42}`,
-          summary: `GitHub App successfully executed ${args.action} on ${args.repo}.`,
-        },
+        action,
+        repo,
+        result,
       }, null, 2);
     },
   });
