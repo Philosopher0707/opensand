@@ -16,6 +16,8 @@ import {
   truncateToolOutput,
   foldHistoricalToolResults,
   selectActiveTools,
+  selectActiveToolsForModel,
+  recommendToolScopeMode,
   getModelMaxContextTokens,
 } from "./token-hygiene.js";
 
@@ -47,6 +49,7 @@ export class AgentCoordinator {
   public readonly hookDispatcher: HookDispatcher;
 
   private messages: ChatMessage[] = [];
+  private declaredCapabilities = new Set<string>();
   private onApprovalRequired?: ApprovalHandler;
   private eventListeners: Set<TurnEventListener> = new Set();
   private maxTurnIterations: number;
@@ -58,8 +61,8 @@ export class AgentCoordinator {
     this.sessionId = options.sessionId ?? `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     this.transcript = new TranscriptManager(this.sessionId, options.sessionsBaseDir);
     this.allowedTools = options.allowedTools;
-    this.toolScopeMode = options.toolScopeMode ?? "auto";
     this.maxContextTokens = options.maxContextTokens ?? getModelMaxContextTokens(options.llmClient?.model);
+    this.toolScopeMode = options.toolScopeMode ?? recommendToolScopeMode(options.llmClient?.model, this.maxContextTokens);
     this.vaultStore = options.vaultStore;
     this.hookDispatcher = new HookDispatcher(options.hooks);
     this.onApprovalRequired = options.onApprovalRequired;
@@ -149,6 +152,9 @@ export class AgentCoordinator {
       let toolDefs = this.daemon.getToolDefinitions();
       if (this.allowedTools && this.allowedTools.length > 0) {
         toolDefs = toolDefs.filter((d) => this.allowedTools!.includes(d.function.name));
+      } else if (this.declaredCapabilities.size > 0) {
+        // Model has declared capabilities (via discover_tools) — scope by them
+        toolDefs = selectActiveToolsForModel(toolDefs, [...this.declaredCapabilities]);
       } else {
         toolDefs = selectActiveTools(toolDefs, userQuery, this.toolScopeMode);
       }
@@ -368,6 +374,32 @@ export class AgentCoordinator {
           headCharacters: 10000,
           tailCharacters: 5000,
         });
+
+        // Model-driven scoping: if the model called discover_tools, harvest
+        // the capabilities it declared so the NEXT loop iteration widens
+        // the visible toolset instead of staying keyword-scoped.
+        if (tc.function.name === "discover_tools") {
+          try {
+            const parsed = JSON.parse(String(execResult.output ?? ""));
+            const caps = Array.isArray(parsed.capabilities) ? parsed.capabilities : [];
+            for (const c of caps) {
+              if (typeof c === "string" && c.trim()) {
+                this.declaredCapabilities.add(c.toLowerCase().trim());
+              }
+            }
+            // Per-tool declaration: model may also have named tools directly
+            const named = Array.isArray(parsed.tools)
+              ? parsed.tools.filter((t: any) => t?.capabilities).flatMap((t: any) => t.capabilities)
+              : [];
+            for (const c of named) {
+              if (typeof c === "string" && c.trim()) {
+                this.declaredCapabilities.add(c.toLowerCase().trim());
+              }
+            }
+          } catch {
+            // discover_tools output is not JSON — ignore
+          }
+        }
 
         this.emit({ type: "tool_call_completed", toolCall: tc, result: execResult });
         this.messages.push({

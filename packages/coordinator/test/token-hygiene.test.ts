@@ -4,6 +4,8 @@ import {
   truncateToolOutput,
   foldHistoricalToolResults,
   selectActiveTools,
+  selectActiveToolsForModel,
+  recommendToolScopeMode,
   getModelMaxContextTokens,
   CORE_TOOL_NAMES,
 } from "../src/token-hygiene.js";
@@ -166,4 +168,42 @@ describe("Token Efficiency & Hygiene System", () => {
     assert.strictEqual(getModelMaxContextTokens(""), 128000);
     assert.strictEqual(getModelMaxContextTokens(undefined), 128000);
   });
+
+
+  it("selectActiveToolsForModel scopes by declared capabilities, always keeping discover_tools", () => {
+    const emptyParams = { type: "object" as const, properties: {} };
+    const mockTools: ToolDefinition[] = [
+      { type: "function", function: { name: "exec_command", description: "exec", parameters: emptyParams } },
+      { type: "function", function: { name: "discover_tools", description: "discover", parameters: emptyParams } },
+      { type: "function", function: { name: "vault_store_secret", description: "vault", parameters: emptyParams } },
+      { type: "function", function: { name: "create_routine", description: "routine", parameters: emptyParams } },
+      { type: "function", function: { name: "recognize_screen_text", description: "ocr", parameters: emptyParams } },
+    ];
+
+    // Model declares vault + routines (not vision)
+    const scoped = selectActiveToolsForModel(mockTools, ["vault", "routines"]);
+    const names = scoped.map((t) => t.function.name);
+    assert.ok(names.includes("exec_command"), "core must be present");
+    assert.ok(names.includes("discover_tools"), "discover_tools must always be present");
+    assert.ok(names.includes("vault_store_secret"));
+    assert.ok(names.includes("create_routine"));
+    assert.ok(!names.includes("recognize_screen_text"), "vision must be hidden when not declared");
+
+    // Case-insensitive and trimmed
+    const scoped2 = selectActiveToolsForModel(mockTools, ["  Vision "]);
+    assert.ok(scoped2.some((t) => t.function.name === "recognize_screen_text"));
+    assert.ok(!scoped2.some((t) => t.function.name === "vault_store_secret"));
+  });
+
+  it("recommendToolScopeMode defaults cloud models to all, local/small to auto", () => {
+    assert.strictEqual(recommendToolScopeMode("gpt-4o", 128000), "all");
+    assert.strictEqual(recommendToolScopeMode("claude-3-5-sonnet", 200000), "all");
+    assert.strictEqual(recommendToolScopeMode("qwen3:8b", 32768), "auto");
+    assert.strictEqual(recommendToolScopeMode("llama-3-8b", 8192), "auto");
+  });
+
+  it("CORE_TOOL_NAMES always includes discover_tools", () => {
+    assert.ok(CORE_TOOL_NAMES.has("discover_tools"));
+  });
+
 });

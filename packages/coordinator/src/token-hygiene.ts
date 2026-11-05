@@ -109,6 +109,67 @@ export function foldHistoricalToolResults(
 }
 
 /**
+ * Per-tool capability hint used by the model-driven scope selector.
+ * The model declares which capabilities it needs per turn via
+ * `selectActiveToolsForModel()`; it never sees hidden tools it cannot call.
+ * Keys not listed default to CORE.
+ */
+export const TOOL_CAPABILITY_HINTS: Record<string, string[]> = {
+  create_agent_task: ["tasks"],
+  list_agent_tasks: ["tasks"],
+  update_agent_task: ["tasks"],
+  delete_agent_task: ["tasks"],
+  recall_memories: ["memory"],
+  store_memory: ["memory"],
+  update_memory: ["memory"],
+  forget_memory: ["memory"],
+  import_memory: ["memory"],
+  vault_list_secrets: ["vault"],
+  vault_store_secret: ["vault"],
+  vault_delete_secret: ["vault"],
+  vault_list_credentials: ["vault"],
+  vault_store_credential: ["vault"],
+  vault_delete_credential: ["vault"],
+  list_skills: ["skills"],
+  add_skill: ["skills"],
+  mount_skill: ["skills"],
+  unmount_skill: ["skills"],
+  delete_skill: ["skills"],
+  create_routine: ["routines"],
+  list_routines: ["routines"],
+  set_routine_enabled: ["routines"],
+  trigger_routine: ["routines"],
+  delete_routine: ["routines"],
+  get_routine_logs: ["routines"],
+  create_room: ["rooms"],
+  list_rooms: ["rooms"],
+  set_room_members: ["rooms"],
+  run_room_discussion: ["rooms"],
+  delete_room: ["rooms"],
+  start_workspace_watcher: ["sentinel"],
+  list_workspace_watchers: ["sentinel"],
+  stop_workspace_watcher: ["sentinel"],
+  stage_attachment: ["attachments"],
+  list_attachments: ["attachments"],
+  delete_attachment: ["attachments"],
+  export_agent_template: ["templates"],
+  import_agent_template: ["templates"],
+  recognize_screen_text: ["vision"],
+  capture_window: ["vision"],
+  list_windows: ["vision"],
+  inspect_active_app: ["vision"],
+  show_notification: ["vision"],
+  discover_tools: ["discovery"],
+};
+
+/** Rough per-tool prompt-token cost (name + description + params). */
+export function estimateToolCost(tool: ToolDefinition): number {
+  const fn = tool.function;
+  const params = JSON.stringify(fn.parameters?.properties ?? {});
+  return Math.ceil((fn.name.length + fn.description.length + params.length) / 3.8);
+}
+
+/**
  * Core coding tools active in every conversation.
  */
 export const CORE_TOOL_NAMES = new Set([
@@ -123,6 +184,7 @@ export const CORE_TOOL_NAMES = new Set([
   "create_agent",
   "list_agents",
   "delegate_to_agent",
+  "discover_tools",
 ]);
 
 /**
@@ -200,8 +262,14 @@ const TOOL_CATEGORY_PATTERNS: Array<{ pattern: RegExp; toolNames: string[] }> = 
 /**
  * Filter tool definitions adaptively to minimize prompt token overhead.
  * - 'core': only essential file/command tools (~11 tools vs 61 tools, ~83% token savings)
- * - 'auto': core tools + any tools dynamically relevant to the query/context
+ * - 'auto': core tools + keyword-hinted categories + model-declared capabilities
  * - 'all': all registered tools
+ *
+ * The model-driven path is selectActiveToolsForModel(): it takes the
+ * capabilities the model declared (from discover_tools, which lists every
+ * tool with its capability hint) and includes those categories without
+ * keyword guessing. Keyword patterns remain only as a legacy hint for
+ * 'auto' callers that pass a query; they never gate discover_tools itself.
  */
 export function selectActiveTools(
   tools: ToolDefinition[],
@@ -216,7 +284,7 @@ export function selectActiveTools(
     return tools.filter((t) => CORE_TOOL_NAMES.has(t.function.name));
   }
 
-  // Mode is 'auto': start with core tools
+  // Mode is 'auto': core + keyword-hinted tools (legacy, kept for back-compat)
   const activeToolNames = new Set(CORE_TOOL_NAMES);
 
   for (const { pattern, toolNames } of TOOL_CATEGORY_PATTERNS) {
@@ -228,6 +296,36 @@ export function selectActiveTools(
   }
 
   return tools.filter((t) => activeToolNames.has(t.function.name));
+}
+
+/**
+ * Model-driven tool scoping. The model declares capabilities
+ * (e.g. ["vault", "routines"]) after inspecting discover_tools output;
+ * this returns CORE + those categories, and — critically — always
+ * includes discover_tools itself so the model can re-discover within
+ * the same turn instead of being trapped by a stale scope.
+ */
+export function selectActiveToolsForModel(
+  tools: ToolDefinition[],
+  capabilities: string[]
+): ToolDefinition[] {
+  if (!tools || tools.length === 0) return tools;
+  const wanted = new Set(capabilities.map((c) => c.toLowerCase().trim()));
+  return tools.filter((t) => {
+    if (CORE_TOOL_NAMES.has(t.function.name)) return true;
+    const hints = TOOL_CAPABILITY_HINTS[t.function.name] ?? [];
+    return hints.some((h) => wanted.has(h));
+  });
+}
+
+/**
+ * Recommend a scope mode for a model without paying the full tool-schema
+ * cost when it isn't needed. Cloud models with >= 100k context default
+ * to 'all' (cheap); local/small models keep 'auto'/'core'.
+ */
+export function recommendToolScopeMode(modelName?: string, maxContextTokens?: number): "core" | "auto" | "all" {
+  const tokens = maxContextTokens ?? getModelMaxContextTokens(modelName);
+  return tokens >= 100000 ? "all" : "auto";
 }
 
 /**

@@ -15,6 +15,7 @@ import { WorkspaceSentinel, createAutonomousHealer } from "./workspace-sentinel.
 import { AttachmentManager } from "./attachment-manager.js";
 import { UniversalLLMClient } from "./llm-client.js";
 import { AgentCoordinator } from "./coordinator.js";
+import { TOOL_CAPABILITY_HINTS } from "./token-hygiene.js";
 
 export interface RegisterOrchestratorToolsOptions {
   daemon: LocalExecDaemon;
@@ -274,10 +275,16 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       const defs = daemon.getToolDefinitions();
       return JSON.stringify({
         totalTools: defs.length,
+        capabilities: [
+          "tasks", "memory", "vault", "skills", "routines",
+          "rooms", "sentinel", "attachments", "templates",
+          "vision", "discovery",
+        ],
         tools: defs.map((d) => ({
           name: d.function.name,
           description: d.function.description,
           parameters: Object.keys(d.function.parameters.properties || {}),
+          capabilities: TOOL_CAPABILITY_HINTS[d.function.name] ?? ["core"],
         })),
       }, null, 2);
     },
