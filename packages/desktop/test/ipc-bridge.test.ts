@@ -303,7 +303,14 @@ test('DesktopIpcBridge - config.json never stores the raw apiKey and is written 
 
     // And the key must have been vaulted (never written in plaintext)
     const vault = (bridge as any).vaultStore;
-    const secret = await vault.getSecret('default-api-key');
+    // updateSettings() vaults the key fire-and-forget, and a putSecret takes ~50ms
+    // on this machine — the same as the fixed sleep above, so this raced and
+    // flaked roughly one run in five. Poll for the write instead of guessing.
+    let secret = await vault.getSecret('default-api-key');
+    for (let i = 0; i < 100 && !secret; i += 1) {
+      await new Promise((r) => setTimeout(r, 20));
+      secret = await vault.getSecret('default-api-key');
+    }
     assert.ok(secret, 'default-api-key must be vaulted');
     assert.strictEqual(secret.value, 'sk-secret-12345');
   } finally {
@@ -322,11 +329,15 @@ test('DesktopIpcBridge - legacy plaintext apiKey in config.json is migrated to t
     );
 
     const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
-    await new Promise((r) => setTimeout(r, 100));
 
-    // Legacy key migrated to vault
+    // Legacy key migrated to vault. The migration is asynchronous, so poll for it
+    // rather than sleeping a fixed 100ms (same flake as the settings test above).
     const vault = (bridge as any).vaultStore;
-    const secret = await vault.getSecret('default-api-key');
+    let secret = await vault.getSecret('default-api-key');
+    for (let i = 0; i < 100 && !secret; i += 1) {
+      await new Promise((r) => setTimeout(r, 20));
+      secret = await vault.getSecret('default-api-key');
+    }
     assert.ok(secret, 'legacy key must be migrated to vault');
     assert.strictEqual(secret.value, 'sk-legacy-key');
 

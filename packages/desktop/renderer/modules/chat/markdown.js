@@ -1,6 +1,7 @@
 // markdown.js — XSS-hardened markdown renderer (extracted from app.js).
 // escape-first: every interpolation is escapeHtml'd; link schemes are allowlisted.
 
+import { highlightToHtml } from './highlight.js';
   function renderMarkdown(rawText) {
     if (!rawText) return '';
 
@@ -97,7 +98,7 @@
       <button class="btn-copy-code" type="button" data-code="${escapeHtml(cleanCode)}">Copy</button>
     </div>
   </div>
-  <pre><code class="language-${cleanLang}">${safeCode}</code></pre>
+  <pre><code class="language-${cleanLang}">${highlightToHtml(rawCode, cleanLang)}</code></pre>
 </div>`);
       return `\n%%CODE_BLOCK_${idx}%%\n`;
     });
@@ -213,5 +214,6 @@
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
+
 
 export { renderMarkdown, renderMarkdownCached, escapeHtml };

@@ -2,6 +2,8 @@
 // Supports split-pane code view with line numbers, sandboxed live preview, unified diffs,
 // fullscreen expansion, clipboard copy, and file download.
 
+import { highlightToHtml } from './highlight.js';
+
 /**
  * Maps language/extension identifiers to friendly labels and icons.
  */
@@ -197,6 +199,7 @@ export function createArtifactCanvas(options = {}) {
     closeBtn,
     toggleBtn,
     renderMarkdownFn,
+    highlightFn,
     escapeHtmlFn = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
     onStateChange,
   } = options;
@@ -429,9 +432,23 @@ export function createArtifactCanvas(options = {}) {
       lineNumbersEl.textContent = generateLineNumbers(state.content);
     }
     if (codeContentEl) {
-      codeContentEl.textContent = state.content;
+      // Highlighted output, not plain text: the pane previously rendered a single
+      // colour, so code in the canvas carried no structure at all.
+      const highlighted = highlighter(state.content, state.language);
+      if (highlighted !== null) {
+        codeContentEl.innerHTML = highlighted;
+      } else {
+        codeContentEl.textContent = state.content;
+      }
       codeContentEl.className = `canvas-code-content language-${state.language || 'text'}`;
     }
+  }
+
+  // Injectable so tests can assert the pane wiring without the highlighter's
+  // exact output; defaults to real highlighting.
+  function highlighter(src, lang) {
+    if (typeof highlightFn === 'function') return highlightFn(src, lang);
+    return highlightToHtml(src, lang);
   }
 
   function renderPreviewPane() {

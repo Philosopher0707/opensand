@@ -25,6 +25,28 @@
   --radius-md: 10px;
   --radius-lg: 14px;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+
+  /* Syntax colours — dark. Chosen for contrast against --bg-code (#121215). */
+  --tok-comment: #6b7a90;
+  --tok-string: #98c379;
+  --tok-number: #d19a66;
+  --tok-keyword: #c678dd;
+  --tok-type: #e5c07b;
+  --tok-function: #61afef;
+  --tok-property: #7dd3fc;
+  --tok-operator: #93a1b5;
+  --tok-punct: #8b98a9;
+  --tok-tag: #e06c75;
+  --tok-attr: #d19a66;
+  --tok-constant: #56b6c2;
+
+  /* Diff rows */
+  --diff-add-bg: rgba(16, 185, 129, 0.13);
+  --diff-add-fg: #6ee7b7;
+  --diff-del-bg: rgba(239, 68, 68, 0.13);
+  --diff-del-fg: #fca5a5;
+  --diff-meta-fg: #7dd3fc;
+  --diff-gutter-fg: #64748b;
 }
 
 [data-theme="light"] {
@@ -50,6 +72,27 @@
   --warning-soft: rgba(217, 119, 6, 0.1);
   --danger: #dc2626;
   --danger-soft: rgba(220, 38, 38, 0.1);
+
+  /* Syntax colours — light. Darkened against #f1f5f9 so nothing washes out. */
+  --tok-comment: #6b7280;
+  --tok-string: #047857;
+  --tok-number: #b45309;
+  --tok-keyword: #7c3aed;
+  --tok-type: #a16207;
+  --tok-function: #1d4ed8;
+  --tok-property: #0369a1;
+  --tok-operator: #475569;
+  --tok-punct: #64748b;
+  --tok-tag: #b91c1c;
+  --tok-attr: #b45309;
+  --tok-constant: #0e7490;
+
+  --diff-add-bg: rgba(5, 150, 105, 0.1);
+  --diff-add-fg: #047857;
+  --diff-del-bg: rgba(220, 38, 38, 0.1);
+  --diff-del-fg: #b91c1c;
+  --diff-meta-fg: #0369a1;
+  --diff-gutter-fg: #94a3b8;
 }
 
 * {
@@ -3047,6 +3090,36 @@ textarea#promptInput {
   color: var(--text-code, #e2e8f0);
 }
 
+/* ---------------------------------------------------------------------------
+   Syntax highlighting
+   Token classes are emitted by modules/chat/highlight.js. Colours come from the
+   theme variables above, so light and dark are both handled by one rule set.
+   --------------------------------------------------------------------------- */
+.tok-comment { color: var(--tok-comment); font-style: italic; }
+.tok-string { color: var(--tok-string); }
+.tok-number { color: var(--tok-number); }
+.tok-keyword { color: var(--tok-keyword); }
+.tok-type { color: var(--tok-type); }
+.tok-function { color: var(--tok-function); }
+.tok-property { color: var(--tok-property); }
+.tok-operator { color: var(--tok-operator); }
+.tok-punct { color: var(--tok-punct); }
+.tok-tag { color: var(--tok-tag); }
+.tok-attr { color: var(--tok-attr); }
+.tok-constant { color: var(--tok-constant); }
+
+/* The canvas code pane renders highlighted spans; keep the pre from adding its
+   own colour so tokens win. */
+.canvas-code-content code,
+.canvas-code-content {
+  color: var(--text-code);
+}
+
+/* Markdown code blocks in chat reuse the same token classes. */
+.code-block-wrapper pre code {
+  color: var(--text-code);
+}
+
 /* Preview Pane */
 .canvas-preview-pane {
   display: flex;
@@ -3151,22 +3224,30 @@ textarea#promptInput {
   font-weight: 600;
 }
 
+/* Hunk headers (@@ -1,2 +3,4 @@) in the theme's meta colour. */
+.diff-chunk-text {
+  color: var(--diff-meta-fg);
+  font-weight: 600;
+}
+
 .diff-row-add {
-  background: rgba(34, 197, 94, 0.12);
-  color: #86efac;
+  background: var(--diff-add-bg);
+  color: var(--diff-add-fg);
 }
 
 .diff-row-add .diff-marker {
-  color: #4ade80;
+  color: var(--diff-add-fg);
+  font-weight: 700;
 }
 
 .diff-row-del {
-  background: rgba(239, 68, 68, 0.12);
-  color: #fca5a5;
+  background: var(--diff-del-bg);
+  color: var(--diff-del-fg);
 }
 
 .diff-row-del .diff-marker {
-  color: #f87171;
+  color: var(--diff-del-fg);
+  font-weight: 700;
 }
 
 .diff-row-context {
