@@ -4,6 +4,7 @@
  */
 import { renderMarkdown, renderMarkdownCached, escapeHtml } from './modules/chat/markdown.js';
 import { createApprovalQueue } from './modules/chat/approval-queue.js';
+import { createArtifactCanvas } from './modules/chat/canvas.js';
 
 // Dual-mode backend client: native Electron IPC or local HTTP/SSE
 class OpenSandClient {
@@ -690,6 +691,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnDetailExportBot = document.getElementById('btnDetailExportBot');
   const btnDetailClear = document.getElementById('btnDetailClear');
 
+  // Artifact Canvas Elements (Side-by-Side Split View Parity)
+  const btnToggleCanvas = document.getElementById('btnToggleCanvas');
+  const artifactCanvasEl = document.getElementById('artifactCanvas');
+  const artifactCanvas = createArtifactCanvas({
+    canvasEl: artifactCanvasEl,
+    iconEl: document.getElementById('canvasIcon'),
+    titleEl: document.getElementById('canvasTitle'),
+    badgeEl: document.getElementById('canvasTypeBadge'),
+    tabCodeBtn: document.getElementById('canvasTabCode'),
+    tabPreviewBtn: document.getElementById('canvasTabPreview'),
+    tabDiffBtn: document.getElementById('canvasTabDiff'),
+    codePaneEl: document.getElementById('canvasCodePane'),
+    previewPaneEl: document.getElementById('canvasPreviewPane'),
+    diffPaneEl: document.getElementById('canvasDiffPane'),
+    codeContentEl: document.getElementById('canvasCodeContent'),
+    lineNumbersEl: document.getElementById('canvasLineNumbers'),
+    previewIframeEl: document.getElementById('canvasPreviewIframe'),
+    markdownPreviewEl: document.getElementById('canvasMarkdownPreview'),
+    diffContentEl: document.getElementById('canvasDiffContent'),
+    copyBtn: document.getElementById('btnCopyCanvas'),
+    downloadBtn: document.getElementById('btnDownloadCanvas'),
+    expandBtn: document.getElementById('btnExpandCanvas'),
+    closeBtn: document.getElementById('btnCloseCanvas'),
+    toggleBtn: btnToggleCanvas,
+    renderMarkdownFn: renderMarkdown,
+    escapeHtmlFn: escapeHtml,
+  });
+
   // Approval modal elements
   const approvalModal = document.getElementById('approvalModal');
   const approvalToolName = document.getElementById('approvalToolName');
@@ -968,7 +997,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnCollapseSidebar.onclick = () => toggleSidebar(true);
   }
 
-  // Global Keyboard Shortcut: Cmd+B or Ctrl+B toggles sidebar; Cmd+I or Ctrl+I toggles bot details
+  // Global Keyboard Shortcut: Cmd+B (sidebar), Cmd+I (details), Cmd+Shift+A (canvas)
   window.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
       e.preventDefault();
@@ -976,6 +1005,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') {
       e.preventDefault();
       toggleDetailPanel();
+    } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      artifactCanvas.toggleCanvas();
     }
   });
 
@@ -2605,9 +2637,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Delegated interactions for Code Copy, Thinking Accordion, Tool Output Copy, Message Copy, and Tool Details
+  // Delegated interactions for Code Copy, Open in Canvas, Thinking Accordion, Tool Output Copy, Message Copy, and Tool Details
   chatContainer.addEventListener('click', (e) => {
-    // 1. Copy code button
+    // 1. Open code in Canvas button (Grok Bot & OpenBot Parity)
+    const openCanvasBtn = e.target.closest('.btn-open-canvas');
+    if (openCanvasBtn) {
+      e.stopPropagation();
+      const codeBlock = openCanvasBtn.closest('.code-block-wrapper');
+      const codeEl = codeBlock ? codeBlock.querySelector('code') : null;
+      const codeText = codeEl ? codeEl.textContent : '';
+      const lang = openCanvasBtn.dataset.lang || 'text';
+      if (codeText && artifactCanvas) {
+        artifactCanvas.openArtifact({
+          title: `${lang.toUpperCase()} Snippet`,
+          language: lang,
+          content: codeText,
+          autoPreview: true,
+        });
+      }
+      return;
+    }
+
+    // 2. Copy code button
     const copyBtn = e.target.closest('.btn-copy-code');
     if (copyBtn) {
       e.stopPropagation();
@@ -3657,11 +3708,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
   }
 
-  // Esc stops generation or closes detail panel / trigger popover
+  // Esc stops generation or closes detail panel / trigger popover / artifact canvas
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       if (triggerPopover && !triggerPopover.classList.contains('hidden')) {
         hideTriggerPopover();
+        return;
+      }
+      if (artifactCanvas && artifactCanvas.getState().isOpen) {
+        if (artifactCanvas.getState().isFullscreen) {
+          artifactCanvas.setFullscreen(false);
+        } else {
+          artifactCanvas.closeArtifact();
+        }
         return;
       }
       if (detailPanel && !detailPanel.classList.contains('hidden')) {
@@ -3744,6 +3803,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
   });
 
+  const lastToolArgs = new Map();
+
   // Real-time Event Stream Handling
   client.onEvent((event) => {
     if (event.type === 'session_started') {
@@ -3823,6 +3884,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         smartScrollToBottom();
 
         const toolName = toolCall.name || toolCall.function?.name || 'tool';
+        let parsedArgs = {};
+        try {
+          parsedArgs = typeof toolCall.args === 'string' ? JSON.parse(toolCall.args) : (toolCall.args || {});
+        } catch {
+          parsedArgs = {};
+        }
+        lastToolArgs.set(toolName, parsedArgs);
+
         botStatusAvatar.textContent = '⚙️';
         botStatusText.textContent = `Running ${toolName}...`;
 
@@ -3845,6 +3914,48 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       botStatusAvatar.textContent = '⏳';
       botStatusText.textContent = 'Processing...';
+
+      // Auto-open Artifact Canvas on file write / edit / git_diff (Grok Bot & OpenBot Parity)
+      const callArgs = lastToolArgs.get(toolName) || {};
+      if (toolName === 'write_file' && callArgs.path && callArgs.content && artifactCanvas) {
+        const filePath = String(callArgs.path);
+        const fileName = filePath.split('/').pop() || 'file';
+        const ext = fileName.includes('.') ? fileName.split('.').pop() : 'text';
+        artifactCanvas.openArtifact({
+          title: fileName,
+          filePath,
+          language: ext,
+          content: String(callArgs.content),
+          autoPreview: true,
+        });
+      } else if (toolName === 'edit_file' && callArgs.path && artifactCanvas) {
+        const filePath = String(callArgs.path);
+        const fileName = filePath.split('/').pop() || 'file';
+        const ext = fileName.includes('.') ? fileName.split('.').pop() : 'text';
+        let diffPreview = '';
+        if (callArgs.target && callArgs.replacement !== undefined) {
+          diffPreview = `--- a/${fileName}\n+++ b/${fileName}\n@@ -1,1 +1,1 @@\n-${callArgs.target}\n+${callArgs.replacement}`;
+        }
+        artifactCanvas.openArtifact({
+          title: `${fileName} (edit)`,
+          filePath,
+          language: ext,
+          content: String(callArgs.replacement || ''),
+          diff: diffPreview,
+          defaultTab: diffPreview ? 'diff' : 'code',
+        });
+      } else if (toolName === 'git_diff' && result && artifactCanvas) {
+        const diffText = typeof result === 'string' ? result : (result.output || (typeof result === 'object' ? JSON.stringify(result, null, 2) : ''));
+        if (diffText && diffText.trim()) {
+          artifactCanvas.openArtifact({
+            title: 'Working Tree Diff',
+            language: 'diff',
+            content: diffText,
+            diff: diffText,
+            defaultTab: 'diff',
+          });
+        }
+      }
 
       if (typeof result === 'string') {
         activeTurnExtraChars += result.length;

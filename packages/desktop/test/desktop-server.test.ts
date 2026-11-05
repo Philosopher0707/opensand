@@ -476,6 +476,11 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     assert.doesNotThrow(() => {
       execSync(`node --input-type=module -e 'import "${appQueueJsPath}"'`);
     }, 'approval-queue.js module must be valid ES module syntax');
+
+    const canvasJsPath = path.join(__dirname, '../../renderer/modules/chat/canvas.js');
+    assert.doesNotThrow(() => {
+      execSync(`node --input-type=module -e 'import "${canvasJsPath}"'`);
+    }, 'canvas.js module must be valid ES module syntax');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

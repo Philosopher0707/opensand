@@ -37,7 +37,10 @@
 <div class="code-block-wrapper">
   <div class="code-block-header">
     <span class="code-lang">${cleanLang}</span>
-    <button class="btn-copy-code" type="button" data-code="${escapeHtml(cleanCode)}">Copy</button>
+    <div class="code-block-actions">
+      <button class="btn-open-canvas" type="button" data-lang="${cleanLang}" title="Open in Canvas">Canvas ⛶</button>
+      <button class="btn-copy-code" type="button" data-code="${escapeHtml(cleanCode)}">Copy</button>
+    </div>
   </div>
   <pre><code class="language-${cleanLang}">${safeCode}</code></pre>
 </div>`);

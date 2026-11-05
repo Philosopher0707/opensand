@@ -116,6 +116,7 @@
             <button id="btnOpenRollback" class="btn btn-icon-sm" title="Rollback Turns">⏪ <span class="btn-text-sm">Rewind</span></button>
             <button id="btnOpenCompact" class="btn btn-icon-sm" title="Auto-Compact History">🧹 <span class="btn-text-sm">Compact</span></button>
             <button id="btnViewLearnedRules" class="btn btn-icon-sm" title="View Learned Rules">🧠 <span class="btn-text-sm">Habits</span></button>
+            <button id="btnToggleCanvas" class="btn btn-icon-sm" title="Toggle Artifact Canvas (Cmd+Shift+A)">🖼️ <span class="btn-text-sm">Canvas</span></button>
             <button id="btnToggleDetail" class="btn btn-icon-sm" title="Toggle Bot Profile & Details (Cmd+I)">ℹ️ <span class="btn-text-sm">Details</span></button>
           </div>
           <div class="topbar-status-group">
@@ -129,88 +130,133 @@
         <div class="context-meter-progress" id="contextMeterProgress" style="width: 0%"></div>
       </div>
 
-      <!-- View 1: Chat View -->
+      <!-- View 1: Chat View with Side-by-Side Artifact Canvas (Grok Bot & OpenBot Parity) -->
       <div id="viewChat" class="view-panel">
-        <div class="chat-container" id="chatContainer">
-          <!-- OpenBot Hero Home State -->
-          <div class="welcome-banner" id="welcomeBanner">
-            <div class="hero-brand-tag">OPENSAND</div>
-            <h1 class="hero-greeting">What would you like to build today?</h1>
-            <p class="hero-subtitle">Local-first, universal clean-room coding agent.</p>
-            <div class="hero-prompt-grid">
-              <button class="hero-prompt-card prompt-chip" data-query="Conduct a comprehensive architectural and code health audit of this repository.">
-                <div class="card-icon">🏗️</div>
-                <div class="card-body">
-                  <div class="card-title">Code Health Audit</div>
-                  <div class="card-desc">Comprehensive architectural and quality review</div>
+        <div class="chat-workspace-layout" id="chatWorkspaceLayout">
+          <div class="chat-main-column" id="chatMainColumn">
+            <div class="chat-container" id="chatContainer">
+              <!-- OpenBot Hero Home State -->
+              <div class="welcome-banner" id="welcomeBanner">
+                <div class="hero-brand-tag">OPENSAND</div>
+                <h1 class="hero-greeting">What would you like to build today?</h1>
+                <p class="hero-subtitle">Local-first, universal clean-room coding agent.</p>
+                <div class="hero-prompt-grid">
+                  <button class="hero-prompt-card prompt-chip" data-query="Conduct a comprehensive architectural and code health audit of this repository.">
+                    <div class="card-icon">🏗️</div>
+                    <div class="card-body">
+                      <div class="card-title">Code Health Audit</div>
+                      <div class="card-desc">Comprehensive architectural and quality review</div>
+                    </div>
+                  </button>
+                  <button class="hero-prompt-card prompt-chip" data-query="Inspect the files in the current repository and summarize the structure.">
+                    <div class="card-icon">🔍</div>
+                    <div class="card-body">
+                      <div class="card-title">Inspect Repository</div>
+                      <div class="card-desc">Analyze codebase files, dependencies & tree</div>
+                    </div>
+                  </button>
+                  <button class="hero-prompt-card prompt-chip" data-query="Convene an agent graph cycle to plan and execute task decomposition.">
+                    <div class="card-icon">⚡</div>
+                    <div class="card-body">
+                      <div class="card-title">Agent Graph Cycles</div>
+                      <div class="card-desc">Autonomous cyclical planning and execution loops</div>
+                    </div>
+                  </button>
+                  <button class="hero-prompt-card prompt-chip" data-query="Audit active policy boundaries and workspace sentinel safety tripwires.">
+                    <div class="card-icon">🛡️</div>
+                    <div class="card-body">
+                      <div class="card-title">Security Sentinel</div>
+                      <div class="card-desc">Audit fail-closed boundaries & tripwires</div>
+                    </div>
+                  </button>
                 </div>
-              </button>
-              <button class="hero-prompt-card prompt-chip" data-query="Inspect the files in the current repository and summarize the structure.">
-                <div class="card-icon">🔍</div>
-                <div class="card-body">
-                  <div class="card-title">Inspect Repository</div>
-                  <div class="card-desc">Analyze codebase files, dependencies & tree</div>
-                </div>
-              </button>
-              <button class="hero-prompt-card prompt-chip" data-query="Convene an agent graph cycle to plan and execute task decomposition.">
-                <div class="card-icon">⚡</div>
-                <div class="card-body">
-                  <div class="card-title">Agent Graph Cycles</div>
-                  <div class="card-desc">Autonomous cyclical planning and execution loops</div>
-                </div>
-              </button>
-              <button class="hero-prompt-card prompt-chip" data-query="Audit active policy boundaries and workspace sentinel safety tripwires.">
-                <div class="card-icon">🛡️</div>
-                <div class="card-body">
-                  <div class="card-title">Security Sentinel</div>
-                  <div class="card-desc">Audit fail-closed boundaries & tripwires</div>
-                </div>
+              </div>
+              <div class="message-feed" id="messageFeed"></div>
+              <button id="btnScrollBottom" class="btn-scroll-bottom hidden" title="Scroll to latest messages">
+                <span>↓ Jump to latest</span>
               </button>
             </div>
-          </div>
-          <div class="message-feed" id="messageFeed"></div>
-          <button id="btnScrollBottom" class="btn-scroll-bottom hidden" title="Scroll to latest messages">
-            <span>↓ Jump to latest</span>
-          </button>
-        </div>
 
-        <footer class="input-panel">
-          <div class="input-wrapper" id="inputWrapper">
-            <!-- Autocomplete Trigger Popover (OpenBot Parity: / commands, @ bots, # files) -->
-            <div id="triggerPopover" class="trigger-popover hidden" role="listbox" aria-label="Suggestions"></div>
-            <!-- Attachment Strip (OpenBot Parity: staged files/images with preview chips & remove button) -->
-            <div id="attachmentStrip" class="attachment-strip hidden" role="list" aria-label="Staged Attachments"></div>
-            <div class="input-textarea-row">
-              <div id="queueIndicator" class="queue-indicator hidden"></div>
-              <textarea id="promptInput" placeholder="Ask OpenSand to code, inspect, or run commands... (/ for skills, @ for bots, # for files)" rows="1"></textarea>
-            </div>
-            <div class="input-actions-bar">
-              <div class="input-actions-left">
-                <button id="btnStageFile" class="btn-attach" type="button" title="Attach file or screenshot">
-                  📎 <span>Attach</span>
-                </button>
-                <button id="btnDictate" class="btn-attach" type="button" title="Voice dictation (Click to speak)">
-                  🎙️ <span>Dictate</span>
-                </button>
-                <input type="file" id="fileAttachmentInput" class="hidden" multiple />
-                <span class="badge badge-model" id="composerModelBadge">Model</span>
+            <footer class="input-panel">
+              <div class="input-wrapper" id="inputWrapper">
+                <!-- Autocomplete Trigger Popover (OpenBot Parity: / commands, @ bots, # files) -->
+                <div id="triggerPopover" class="trigger-popover hidden" role="listbox" aria-label="Suggestions"></div>
+                <!-- Attachment Strip (OpenBot Parity: staged files/images with preview chips & remove button) -->
+                <div id="attachmentStrip" class="attachment-strip hidden" role="list" aria-label="Staged Attachments"></div>
+                <div class="input-textarea-row">
+                  <div id="queueIndicator" class="queue-indicator hidden"></div>
+                  <textarea id="promptInput" placeholder="Ask OpenSand to code, inspect, or run commands... (/ for skills, @ for bots, # for files)" rows="1"></textarea>
+                </div>
+                <div class="input-actions-bar">
+                  <div class="input-actions-left">
+                    <button id="btnStageFile" class="btn-attach" type="button" title="Attach file or screenshot">
+                      📎 <span>Attach</span>
+                    </button>
+                    <button id="btnDictate" class="btn-attach" type="button" title="Voice dictation (Click to speak)">
+                      🎙️ <span>Dictate</span>
+                    </button>
+                    <input type="file" id="fileAttachmentInput" class="hidden" multiple />
+                    <span class="badge badge-model" id="composerModelBadge">Model</span>
+                  </div>
+                  <div class="input-actions-right">
+                    <button id="btnToggleSafeMode" class="btn-attach" title="Toggle Auto-Approval Mode">
+                      🛡️ <span id="composerAutoApproveText">Safe Mode</span>
+                    </button>
+                    <button id="btnSend" class="btn btn-primary btn-sm">
+                      <span>Send</span>
+                      <kbd class="kbd-hint">⌘↵</kbd>
+                    </button>
+                    <button id="btnStop" class="btn btn-danger btn-sm hidden" title="Stop generating (Esc)">
+                      <span>Stop</span>
+                      <kbd class="kbd-hint">Esc</kbd>
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div class="input-actions-right">
-                <button id="btnToggleSafeMode" class="btn-attach" title="Toggle Auto-Approval Mode">
-                  🛡️ <span id="composerAutoApproveText">Safe Mode</span>
-                </button>
-                <button id="btnSend" class="btn btn-primary btn-sm">
-                  <span>Send</span>
-                  <kbd class="kbd-hint">⌘↵</kbd>
-                </button>
-                <button id="btnStop" class="btn btn-danger btn-sm hidden" title="Stop generating (Esc)">
-                  <span>Stop</span>
-                  <kbd class="kbd-hint">Esc</kbd>
-                </button>
-              </div>
-            </div>
+            </footer>
           </div>
-        </footer>
+
+          <!-- Side-by-Side Artifact Canvas (Grok Bot & OpenBot Parity) -->
+          <aside class="artifact-canvas hidden" id="artifactCanvas" aria-label="Artifact Canvas">
+            <div class="canvas-header">
+              <div class="canvas-header-left">
+                <span class="canvas-icon" id="canvasIcon">📄</span>
+                <span class="canvas-title" id="canvasTitle" title="Artifact Title">Artifact</span>
+                <span class="badge badge-canvas" id="canvasTypeBadge">Code</span>
+              </div>
+              <div class="canvas-header-actions">
+                <div class="canvas-tab-group" id="canvasTabGroup">
+                  <button class="canvas-tab active" data-tab="code" id="canvasTabCode">Code</button>
+                  <button class="canvas-tab" data-tab="preview" id="canvasTabPreview">Preview</button>
+                  <button class="canvas-tab" data-tab="diff" id="canvasTabDiff">Diff</button>
+                </div>
+                <button class="btn-canvas-action" id="btnCopyCanvas" title="Copy Content">📋 <span class="canvas-action-text">Copy</span></button>
+                <button class="btn-canvas-action" id="btnDownloadCanvas" title="Download Artifact">💾</button>
+                <button class="btn-canvas-action" id="btnExpandCanvas" title="Toggle Fullscreen">⛶</button>
+                <button class="btn-canvas-action btn-close-canvas" id="btnCloseCanvas" title="Close Canvas (Esc)">✕</button>
+              </div>
+            </div>
+            <div class="canvas-body" id="canvasBody">
+              <!-- Code pane with line numbers -->
+              <div class="canvas-pane canvas-code-pane" id="canvasCodePane">
+                <div class="canvas-line-numbers" id="canvasLineNumbers" aria-hidden="true">1</div>
+                <pre class="canvas-code-pre"><code id="canvasCodeContent" class="canvas-code-content"></code></pre>
+              </div>
+              <!-- Preview pane (sandboxed iframe for HTML/SVG/web apps, formatted markdown preview) -->
+              <div class="canvas-pane canvas-preview-pane hidden" id="canvasPreviewPane">
+                <iframe id="canvasPreviewIframe" sandbox="allow-scripts" class="canvas-preview-iframe" title="Artifact Preview"></iframe>
+                <div id="canvasMarkdownPreview" class="canvas-markdown-preview hidden"></div>
+              </div>
+              <!-- Diff pane (unified file diff visualization) -->
+              <div class="canvas-pane canvas-diff-pane hidden" id="canvasDiffPane">
+                <div class="diff-viewer" id="canvasDiffViewer">
+                  <div class="diff-header" id="canvasDiffHeader">Unified Diff</div>
+                  <div class="diff-body" id="canvasDiffContent"></div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
       </div>
 
       <!-- View 2: Team Rooms View -->
