@@ -359,7 +359,7 @@ export class DesktopIpcBridge extends EventEmitter {
         if (this.settings.autoApprove) {
           return true;
         }
-        return this.requestUserApproval(req.toolName, req.arguments);
+        return this.requestUserApproval(req.toolName, req.arguments, req.reason);
       },
       onEvent: (event: TurnEvent) => {
         if (event.type === 'text_delta') {
@@ -438,7 +438,7 @@ export class DesktopIpcBridge extends EventEmitter {
     return { success: true, cancelled: true };
   }
 
-  public async requestUserApproval(toolName: string, args: Record<string, unknown>): Promise<boolean> {
+  public async requestUserApproval(toolName: string, args: Record<string, unknown>, reason?: string): Promise<boolean> {
     if (this.settings.autoApprove) {
       return true;
     }
@@ -448,6 +448,7 @@ export class DesktopIpcBridge extends EventEmitter {
       approvalId,
       toolName,
       args,
+      ...(reason ? { reason } : {}),
       timestamp: Date.now(),
     };
 

@@ -12,6 +12,7 @@ export interface ToolApprovalRequest {
   approvalId: string;
   toolName: string;
   args: Record<string, unknown>;
+  reason?: string;
   timestamp: number;
 }
 

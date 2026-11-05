@@ -74,13 +74,15 @@ class OpenSandClient {
   }
 
   async approveTool(approvalId, decision) {
+    // Normalize string decisions from legacy callers to the {action} contract
+    const payload = typeof decision === 'string' ? { action: decision } : decision;
     if (this.isElectron) {
-      return window.opensand.approveTool(approvalId, decision);
+      return window.opensand.approveTool(approvalId, payload);
     }
     const res = await fetch('/api/approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ approvalId, decision }),
+      body: JSON.stringify({ approvalId, decision: payload }),
     });
     return res.json();
   }
@@ -2439,7 +2441,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const codeBlocks = [];
     content = content.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
       const idx = codeBlocks.length;
-      const cleanLang = (lang || '').trim() || 'text';
+      const cleanLang = /^[a-zA-Z0-9_-]{1,20}$/.test((lang || '').trim()) ? (lang || '').trim() : 'text';
       const cleanCode = code.replace(/\n$/, '');
       const safeCode = escapeHtml(cleanCode);
       codeBlocks.push(`
@@ -2482,28 +2484,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // 4. Headings (###, ##, #)
-    content = content.replace(/^### (.*$)/gim, '<h4>$1</h4>');
-    content = content.replace(/^## (.*$)/gim, '<h3>$1</h3>');
-    content = content.replace(/^# (.*$)/gim, '<h2>$1</h2>');
+    content = content.replace(/^### (.*$)/gim, (m, t) => `<h4>${escapeHtml(t)}</h4>`);
+    content = content.replace(/^## (.*$)/gim, (m, t) => `<h3>${escapeHtml(t)}</h3>`);
+    content = content.replace(/^# (.*$)/gim, (m, t) => `<h2>${escapeHtml(t)}</h2>`);
 
     // 5. Blockquotes (> quote)
-    content = content.replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>');
+    content = content.replace(/^\> (.*$)/gim, (m, t) => `<blockquote>${escapeHtml(t)}</blockquote>`);
 
     // 6. Bold & Italics
-    content = content.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    content = content.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    content = content.replace(/\*\*([^*]+)\*\*/g, (m, t) => `<strong>${escapeHtml(t)}</strong>`);
+    content = content.replace(/\*([^*]+)\*/g, (m, t) => `<em>${escapeHtml(t)}</em>`);
 
     // 7. Task list items (- [ ] or - [x]) and Unordered lists (- item or * item)
     content = content.replace(/^\s*[-*]\s+\[([ xX])\]\s+(.*)$/gim, (m, check, text) => {
       const isChecked = check.toLowerCase() === 'x';
-      return `<li class="task-list-item"><input type="checkbox" disabled ${isChecked ? 'checked' : ''} /> <span>${text}</span></li>`;
+      return `<li class="task-list-item"><input type="checkbox" disabled ${isChecked ? 'checked' : ''} /> <span>${escapeHtml(text)}</span></li>`;
     });
-    content = content.replace(/^\s*[-*]\s+(.*)$/gim, '<li>$1</li>');
+    content = content.replace(/^\s*[-*]\s+(.*)$/gim, (m, t) => `<li>${escapeHtml(t)}</li>`);
     content = content.replace(/(<li>.*<\/li>)/gms, '<ul>$1</ul>');
     content = content.replace(/<\/ul>\s*<ul>/g, '');
 
     // 8. Markdown links [text](url)
-    content = content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    content = content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+      const trimmed = String(url).trim();
+      if (!/^(?:https?|mailto):/i.test(trimmed) && !trimmed.startsWith('#')) {
+        return escapeHtml(String(text));
+      }
+      return `<a href="${escapeHtml(trimmed)}" target="_blank" rel="noopener noreferrer">${escapeHtml(String(text))}</a>`;
+    });
 
     // 9. Line breaks: replace double newlines with paragraphs, single with <br>
     content = content.replace(/\n{2,}/g, '</p><p>');
@@ -4011,9 +4019,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Approval required
     if (event.type === 'approval_required') {
       activeApprovalId = event.approvalId || event.data?.approvalId;
-      const req = event.request || event.data?.request || {};
-      approvalToolName.textContent = req.tool || event.data?.toolName || 'Tool';
-      approvalArgsBox.textContent = JSON.stringify(req.params || req.args || event.data?.args || {}, null, 2);
+      const d = event.data || {};
+      const req = event.request || d.request || d;
+      approvalToolName.textContent = req.toolName || req.tool || 'Tool';
+      approvalArgsBox.textContent = JSON.stringify(req.args || req.arguments || req.params || {}, null, 2);
+      const reasonEl = document.getElementById('approvalReason');
+      if (reasonEl) {
+        const reason = req.reason || d.reason;
+        reasonEl.textContent = reason ? String(reason) : '';
+        reasonEl.style.display = reason ? '' : 'none';
+        reasonEl.parentElement.style.display = reason ? '' : 'none';
+      }
       approvalModal.classList.remove('hidden');
     }
 
@@ -4033,21 +4049,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   btnApproveOnce.onclick = async () => {
     if (!activeApprovalId) return;
     approvalModal.classList.add('hidden');
-    await client.approveTool(activeApprovalId, 'approve_once');
+    await client.approveTool(activeApprovalId, { action: 'approve_once' });
     activeApprovalId = null;
   };
 
   btnAlwaysAllow.onclick = async () => {
     if (!activeApprovalId) return;
     approvalModal.classList.add('hidden');
-    await client.approveTool(activeApprovalId, 'always_allow');
+    await client.approveTool(activeApprovalId, { action: 'always_allow' });
     activeApprovalId = null;
   };
 
   btnRejectTool.onclick = async () => {
     if (!activeApprovalId) return;
     approvalModal.classList.add('hidden');
-    await client.approveTool(activeApprovalId, 'reject');
+    await client.approveTool(activeApprovalId, { action: 'reject' });
     activeApprovalId = null;
   };
 

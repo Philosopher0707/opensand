@@ -342,3 +342,48 @@ test('DesktopIpcBridge - legacy plaintext apiKey in config.json is migrated to t
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+
+test('DesktopIpcBridge - approveTool accepts {action} decisions (string form normalized by renderer)', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-approval-'));
+
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    bridge.updateSettings({ autoApprove: false, model: 'test-approval-model' });
+
+    // Simulate coordinator path: request creates a pending approval with reason
+    const pending = (bridge as any).requestUserApproval('exec_command', { command: 'ls -la /tmp' }, 'Policy: destructive command requires approval');
+    await new Promise((r) => setTimeout(r, 10));
+
+    const activeApprovals: Map<string, { request: any; resolve: (v: boolean) => void }> = (bridge as any).activeApprovals;
+    assert.strictEqual(activeApprovals.size, 1);
+    const [approvalId, entry] = [...activeApprovals.entries()][0];
+    assert.strictEqual(entry.request.reason, 'Policy: destructive command requires approval');
+
+    // {action} form — the contract the renderer now sends
+    const result = await bridge.approveTool(approvalId, { action: 'approve_once' });
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(await pending, true);
+    assert.strictEqual(activeApprovals.size, 0);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('DesktopIpcBridge - approval reason is optional and tolerated when absent', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-approval-noreason-'));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    bridge.updateSettings({ autoApprove: false, model: 'test-approval-noreason' });
+    const pending = (bridge as any).requestUserApproval('read_file', { path: '/tmp/x.txt' });
+    await new Promise((r) => setTimeout(r, 10));
+    const activeApprovals: Map<string, { request: any; resolve: (v: boolean) => void }> = (bridge as any).activeApprovals;
+    const [approvalId] = [...activeApprovals.entries()][0];
+    assert.strictEqual(([...activeApprovals.values()][0].request as any).reason, undefined);
+    const result = await bridge.approveTool(approvalId, { action: 'reject' });
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(await pending, false);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
