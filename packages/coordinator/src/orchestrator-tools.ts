@@ -16,6 +16,7 @@ import { AttachmentManager } from "./attachment-manager.js";
 import { UniversalLLMClient } from "./llm-client.js";
 import { AgentCoordinator } from "./coordinator.js";
 import { TOOL_CAPABILITY_HINTS } from "./token-hygiene.js";
+import { resolveAgentModel } from "./model-resolution.js";
 
 export interface RegisterOrchestratorToolsOptions {
   daemon: LocalExecDaemon;
@@ -191,7 +192,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       // Create isolated LLM client for this subagent
       const subagentLlm = new UniversalLLMClient({
         baseUrl: agent.endpoint ?? options.defaultEndpoint ?? "http://127.0.0.1:11434/v1",
-        model: agent.model ?? options.defaultModel ?? "qwen3:8b",
+        model: resolveAgentModel(agent.model, options.defaultModel),
         apiKey: options.defaultApiKey,
       });
 

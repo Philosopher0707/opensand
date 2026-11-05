@@ -261,7 +261,7 @@ Examples:
     if (agent) {
       activeAgent = agent;
       userInstructions = agent.systemPrompt;
-      if (agent.model) config.model = agent.model;
+      if (agent.model && agent.model !== "default") config.model = agent.model;
       if (agent.endpoint) config.endpoint = agent.endpoint;
       ui.printInfo(`🤖 Activated Bot Persona from Agent Store: ${agent.name} (${agent.role})`);
     } else {
@@ -530,7 +530,11 @@ Available OpenSand REPL Commands:
           const agent = await agentStore.getAgent(query);
           if (agent) {
             activeAgent = agent;
-            coordinator = createCoordinator(agent.systemPrompt, agent.model, agent.endpoint);
+            coordinator = createCoordinator(
+              agent.systemPrompt,
+              agent.model && agent.model !== "default" ? agent.model : config.model,
+              agent.endpoint
+            );
             ui.printInfo(`Switched active persona to: 🤖 ${agent.name} (${agent.role})`);
           } else {
             ui.printError(`Agent '${query}' not found in Agent Store. Run /bots to inspect available agents.`);

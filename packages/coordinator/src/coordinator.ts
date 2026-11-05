@@ -1,4 +1,5 @@
 import { LocalExecDaemon, ToolExecutionResult, PolicyDecision } from "@opensand/local-exec-daemon";
+import { isParallelSafeTool } from "./tool-parallelism.js";
 import { UniversalLLMClient, ConsolidatedAssistantResponse } from "./llm-client.js";
 import {
   ChatMessage,
@@ -202,7 +203,20 @@ export class AgentCoordinator {
         return finalContent;
       }
 
-      // If the model called tools, execute each one
+      // Execute tool calls in model-declared order. Independent read-only
+      // tools may be collected into parallel batches; every other tool is a
+      // barrier and retains the sequential hook/policy/approval path.
+      const prepared: {
+        tc: (typeof assistantMsg.tool_calls)[number];
+        args?: Record<string, any>;
+        blockedResult?: ToolExecutionResult;
+        approvalGranted?: boolean;
+        execution?: {
+          gates: Awaited<ReturnType<LocalExecDaemon["getGates"]>>;
+          policy: PolicyDecision;
+          approvalGranted: boolean;
+        };
+      }[] = [];
       for (const tc of assistantMsg.tool_calls) {
         this.emit({ type: "tool_call_started", toolCall: tc });
 
@@ -215,11 +229,7 @@ export class AgentCoordinator {
               message: `Tool '${tc.function.name}' is not in this agent's authorized tools list: [${this.allowedTools.join(", ")}]`,
             },
           };
-          this.messages.push({
-            role: "tool",
-            tool_call_id: tc.id,
-            content: JSON.stringify(unauthorizedResult),
-          });
+          prepared.push({ tc, blockedResult: unauthorizedResult });
           continue;
         }
 
@@ -234,11 +244,7 @@ export class AgentCoordinator {
               message: `Malformed JSON tool arguments: ${err.message}`,
             },
           };
-          this.messages.push({
-            role: "tool",
-            tool_call_id: tc.id,
-            content: JSON.stringify(parseErrorResult),
-          });
+          prepared.push({ tc, blockedResult: parseErrorResult });
           continue;
         }
 
@@ -257,17 +263,7 @@ export class AgentCoordinator {
               message: preHook.reason || `Tool '${tc.function.name}' execution was denied by PreToolUse hook policy.`,
             },
           };
-          this.emit({ type: "tool_call_completed", toolCall: tc, result: hookDeniedResult });
-          this.messages.push({
-            role: "tool",
-            tool_call_id: tc.id,
-            content: JSON.stringify(hookDeniedResult),
-          });
-          await this.transcript.appendJsonl({
-            role: "tool",
-            tool_call_id: tc.id,
-            result: hookDeniedResult,
-          });
+          prepared.push({ tc, blockedResult: hookDeniedResult });
           continue;
         }
 
@@ -290,17 +286,7 @@ export class AgentCoordinator {
               message: `Policy Boundary Violation: ${policy.reason}`,
             },
           };
-          this.emit({ type: "tool_call_completed", toolCall: tc, result: deniedResult });
-          this.messages.push({
-            role: "tool",
-            tool_call_id: tc.id,
-            content: JSON.stringify(deniedResult),
-          });
-          await this.transcript.appendJsonl({
-            role: "tool",
-            tool_call_id: tc.id,
-            result: deniedResult,
-          });
+          prepared.push({ tc, blockedResult: deniedResult });
           continue;
         }
 
@@ -346,82 +332,72 @@ export class AgentCoordinator {
                 message: "Tool execution was rejected by user.",
               },
             };
-            this.emit({ type: "tool_call_completed", toolCall: tc, result: rejectedResult });
-            this.messages.push({
-              role: "tool",
-              tool_call_id: tc.id,
-              content: JSON.stringify(rejectedResult),
-            });
-            await this.transcript.appendJsonl({
-              role: "tool",
-              tool_call_id: tc.id,
-              result: rejectedResult,
-            });
+            prepared.push({ tc, blockedResult: rejectedResult });
             continue;
           }
         }
 
-        // Execute tool via daemon
-        const execResult = await this.daemon.executeTool(tc.function.name, args, {
-          approvalGranted: approvalGranted || policy.action === 'ALLOW',
-          permissionGates: gates,
-        });
-
-        const rawContent = JSON.stringify(execResult.output ?? execResult.error);
-        const safeContent = this.vaultStore ? this.vaultStore.redactText(rawContent) : rawContent;
-        const boundedContent = truncateToolOutput(safeContent, {
-          maxCharacters: 16000,
-          headCharacters: 10000,
-          tailCharacters: 5000,
-        });
-
-        // Model-driven scoping: if the model called discover_tools, harvest
-        // the capabilities it declared so the NEXT loop iteration widens
-        // the visible toolset instead of staying keyword-scoped.
-        if (tc.function.name === "discover_tools") {
-          try {
-            const parsed = JSON.parse(String(execResult.output ?? ""));
-            const caps = Array.isArray(parsed.capabilities) ? parsed.capabilities : [];
-            for (const c of caps) {
-              if (typeof c === "string" && c.trim()) {
-                this.declaredCapabilities.add(c.toLowerCase().trim());
-              }
-            }
-            // Per-tool declaration: model may also have named tools directly
-            const named = Array.isArray(parsed.tools)
-              ? parsed.tools.filter((t: any) => t?.capabilities).flatMap((t: any) => t.capabilities)
-              : [];
-            for (const c of named) {
-              if (typeof c === "string" && c.trim()) {
-                this.declaredCapabilities.add(c.toLowerCase().trim());
-              }
-            }
-          } catch {
-            // discover_tools output is not JSON — ignore
-          }
-        }
-
-        this.emit({ type: "tool_call_completed", toolCall: tc, result: execResult });
-        this.messages.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: boundedContent,
-        });
-
-        await this.transcript.appendJsonl({
-          role: "tool",
-          tool_call_id: tc.id,
-          result: execResult,
-        });
-
-        // Lifecycle Hook: PostToolUse
-        await this.hookDispatcher.dispatchPostToolUse({
-          sessionId: this.sessionId,
-          toolName: tc.function.name,
+        prepared.push({
+          tc,
           args,
-          result: execResult,
+          approvalGranted,
+          execution: { gates, policy, approvalGranted: approvalGranted || policy.action === 'ALLOW' },
         });
+        continue;
       }
+
+      // Preserve model-declared ordering for messages/events while allowing
+      // consecutive read-only calls in one Promise.all batch. Sequential
+      // barriers flush any preceding read-only batch.
+      let pendingParallel: typeof prepared = [];
+      const commitPrepared = async (
+        item: (typeof prepared)[number],
+        execResult: ToolExecutionResult,
+        isBlocked: boolean = false
+      ) => {
+        if (item.tc.function.name === "discover_tools") this.harvestDiscoverToolsOutput(execResult);
+        await this.commitToolResult(item.tc, item.args ?? {}, execResult, isBlocked);
+      };
+      const flushParallel = async () => {
+        if (pendingParallel.length === 0) return;
+        const batch = pendingParallel;
+        pendingParallel = [];
+        const results = await Promise.all(batch.map(async (item) => {
+          if (!item.execution || !item.args) {
+            return { status: "error" as const, error: { code: "TOOL_EXECUTION_NOT_PREPARED", message: "Tool execution was not prepared." } } satisfies ToolExecutionResult;
+          }
+          return this.daemon.executeTool(item.tc.function.name, item.args, {
+            approvalGranted: item.execution.approvalGranted,
+            permissionGates: item.execution.gates,
+          });
+        }));
+        for (let i = 0; i < batch.length; i++) {
+          await commitPrepared(batch[i], results[i]);
+        }
+      };
+
+      for (const item of prepared) {
+        // Blocked results are terminal and must be materialized, even when
+        // the tool itself is read-only. Never batch them with execution.
+        if (item.blockedResult) {
+          await flushParallel();
+          await commitPrepared(item, item.blockedResult, true);
+          continue;
+        }
+        if (!isParallelSafeTool(item.tc.function.name)) {
+          await flushParallel();
+          if (item.execution && item.args) {
+            const execResult = await this.daemon.executeTool(item.tc.function.name, item.args, {
+              approvalGranted: item.execution.approvalGranted,
+              permissionGates: item.execution.gates,
+            });
+            await commitPrepared(item, execResult);
+          }
+        } else {
+          pendingParallel.push(item);
+        }
+      }
+      await flushParallel();
 
       // Auto-compact if tool results pushed context above the safety limit
       if (this.estimateTokens() > this.maxContextTokens) {
@@ -440,6 +416,54 @@ export class AgentCoordinator {
       finalContent: fallbackMessage,
     });
     return fallbackMessage;
+  }
+
+  private harvestDiscoverToolsOutput(execResult: ToolExecutionResult): void {
+    try {
+      const parsed = JSON.parse(String(execResult.output ?? ""));
+      const caps = Array.isArray(parsed.capabilities) ? parsed.capabilities : [];
+      for (const c of caps) {
+        if (typeof c === "string" && c.trim()) {
+          this.declaredCapabilities.add(c.toLowerCase().trim());
+        }
+      }
+      const named = Array.isArray(parsed.tools)
+        ? parsed.tools.filter((t: any) => t?.capabilities).flatMap((t: any) => t.capabilities)
+        : [];
+      for (const c of named) {
+        if (typeof c === "string" && c.trim()) {
+          this.declaredCapabilities.add(c.toLowerCase().trim());
+        }
+      }
+    } catch {
+      // discover_tools output is not JSON — ignore
+    }
+  }
+
+  private async commitToolResult(
+    tc: { id: string; function: { name: string } },
+    args: Record<string, any>,
+    execResult: ToolExecutionResult,
+    isBlocked: boolean = false
+  ): Promise<void> {
+    const rawContent = isBlocked
+      ? JSON.stringify(execResult)
+      : JSON.stringify(execResult.output ?? execResult.error);
+    const safeContent = this.vaultStore ? this.vaultStore.redactText(rawContent) : rawContent;
+    const boundedContent = truncateToolOutput(safeContent, {
+      maxCharacters: 16000,
+      headCharacters: 10000,
+      tailCharacters: 5000,
+    });
+    this.emit({ type: "tool_call_completed", toolCall: tc as any, result: execResult });
+    this.messages.push({ role: "tool", tool_call_id: tc.id, content: boundedContent });
+    await this.transcript.appendJsonl({ role: "tool", tool_call_id: tc.id, result: execResult });
+    await this.hookDispatcher.dispatchPostToolUse({
+      sessionId: this.sessionId,
+      toolName: tc.function.name,
+      args,
+      result: execResult,
+    });
   }
 
   /**
