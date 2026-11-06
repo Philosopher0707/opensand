@@ -28,12 +28,33 @@ packages/
                         Messages reader, speech synthesis
   cli/                  Terminal REPL + one-shot runner, config, doctor
   desktop/              Electron app, HTTP/SSE server, renderer UI
-scripts/                Packaging (CLI bundle, macOS app), pre-commit hook
+scripts/                Packaging (CLI bundle, macOS app), pre-commit hook,
+                        opensand-desktop.sh supervisor (build + auto-restart)
 dist/                   Build output (gitignored)
 ```
 
 Runtime state (sessions, agents, vault, memories) lives in `~/.opensand/`,
-outside the repo.
+outside the repo. The provider API key lives in the encrypted vault as
+`default-api-key` (`~/.opensand/vault/`), never in `~/.opensand/config.json`
+(`0600`, sanitized). Settings API: `GET /api/settings` returns
+`apiKey: "********"` once the vault key is resolved at startup; a blank API
+key field on save means "keep the saved key".
+
+## Running the desktop server (no manual restarts)
+
+Use the supervisor instead of launching `node .../desktop-server.js` directly:
+
+```sh
+./scripts/opensand-desktop.sh          # build if needed, start, watch src/ (auto rebuild+restart)
+./scripts/opensand-desktop.sh --status
+./scripts/opensand-desktop.sh --restart
+./scripts/opensand-desktop.sh --stop
+```
+
+- Renderer-only edits (`packages/desktop/renderer/*`) need no restart — just refresh the browser.
+- TypeScript edits (`packages/*/src`) — the watcher rebuilds and restarts for you.
+- The old one-shot command `node packages/desktop/dist/src/desktop-server.js` still works
+  for debugging, but does not watch for changes.
 
 ## Workflow rules (enforced by tooling, not memory)
 

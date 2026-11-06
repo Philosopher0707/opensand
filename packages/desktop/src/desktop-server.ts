@@ -432,7 +432,7 @@ export class DesktopServer {
 
     // API: GET /api/settings
     if (pathname === '/api/settings' && req.method === 'GET') {
-      const settings = this.bridge.getSanitizedSettings();
+      const settings = await this.bridge.getSanitizedSettingsResolved();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(settings));
       return;
@@ -442,7 +442,7 @@ export class DesktopServer {
     if (pathname === '/api/settings' && req.method === 'POST') {
       const body = await this.readJsonBody(req);
       this.bridge.updateSettings(body);
-      const updated = this.bridge.getSanitizedSettings();
+      const updated = await this.bridge.getSanitizedSettingsResolved();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(updated));
       return;

@@ -236,7 +236,7 @@ When launching OpenSand, endpoints and API keys are automatically resolved throu
 
 1. **CLI Flags**: `--endpoint <url>`, `--model <name>`, `--api-key <key>`, `--bot <id>`
 2. **Environment Variables**: `$OPENSAND_ENDPOINT`, `$OPENSAND_MODEL`, `$OPENSAND_API_KEY`, `$OPENAI_API_KEY`
-3. **Persistent Config**: `~/.opensand/config.json` (saved via Desktop UI or CLI settings)
+3. **Persistent Config**: `~/.opensand/config.json` (saved via Desktop UI or CLI settings). The API key is **never** written to `config.json` — it lives in the encrypted vault as `default-api-key`; `config.json` is `0600` and sanitized. In the Settings UI, a blank API key field means "keep the saved key" (the field shows `Saved (leave blank to keep)`).
 4. **Local Ollama Auto-Detect**: If no cloud key is provided, OpenSand checks `http://127.0.0.1:11434/v1`. If available, it connects automatically with zero configuration.
 5. **Cloud Default**: `https://api.openai.com/v1` (reports actionable setup instructions if no API key is set).
 
@@ -324,10 +324,23 @@ pnpm test
 
 ### 3. Launch Desktop GUI
 ```bash
-# Start background web desktop server
-node packages/desktop/dist/src/desktop-server.js
+# Start the supervised desktop server (recommended, no manual restarts)
+./scripts/opensand-desktop.sh
+#   --status   show PID and recent log tail
+#   --restart  rebuild (if needed) and restart
+#   --stop     stop the server
 # Access at http://127.0.0.1:3456 in your browser
+# (single-run equivalent, no watcher):
+#   node packages/desktop/dist/src/desktop-server.js
 ```
+
+**No manual restarts:** renderer-only edits (`packages/desktop/renderer/*`)
+take effect on browser refresh — the server reads them from disk per request.
+TypeScript changes (`packages/*/src`) are picked up automatically: the
+supervisor rebuilds (`pnpm -r build`) and restarts when sources change.
+Run it in your terminal or via launchd; `GET /api/settings` resolves the
+vault API key at startup (`getSanitizedSettingsResolved()`), so Settings
+shows the saved state immediately after boot.
 
 ## Development
 
