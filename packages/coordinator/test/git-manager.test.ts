@@ -16,6 +16,13 @@ function gitEnv(): NodeJS.ProcessEnv {
   for (const k of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX", "GIT_CEILING_DIRECTORIES"]) {
     delete env[k];
   }
+  // Defense-in-depth: a temp fixture repo must never run the outer repo's
+  // hooks (e.g. via a template dir or global core.hooksPath config) nor
+  // pick up external config. Empty hooks path disables hook execution.
+  env["GIT_CONFIG_COUNT"] = "1";
+  env["GIT_CONFIG_KEY_0"] = "core.hooksPath";
+  env["GIT_CONFIG_VALUE_0"] = "/dev/null";
+  env["GIT_CONFIG_NOSYSTEM"] = "1";
   return env as NodeJS.ProcessEnv;
 }
 
@@ -26,14 +33,14 @@ describe("GitManager", () => {
   beforeEach(async () => {
     tempRepoDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-git-test-"));
     // Initialize temporary git repo
-    await execFileAsync("git", ["init", "-b", "main"], { cwd: tempRepoDir, env: gitEnv() });
+    await execFileAsync("git", ["init", "-b", "main", "--template="], { cwd: tempRepoDir, env: gitEnv() });
     await execFileAsync("git", ["config", "user.name", "Test User"], { cwd: tempRepoDir, env: gitEnv() });
     await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: tempRepoDir, env: gitEnv() });
 
     // Initial commit
     await fs.writeFile(path.join(tempRepoDir, "README.md"), "# Test Repo\n");
     await execFileAsync("git", ["add", "README.md"], { cwd: tempRepoDir, env: gitEnv() });
-    await execFileAsync("git", ["commit", "-m", "chore: initial commit"], { cwd: tempRepoDir, env: gitEnv() });
+    await execFileAsync("git", ["commit", "--no-verify", "-m", "chore: initial commit"], { cwd: tempRepoDir, env: gitEnv() });
 
     gitManager = new GitManager(tempRepoDir);
   });
@@ -82,6 +89,38 @@ describe("GitManager", () => {
     assert.strictEqual(statusAfter.isClean, true);
   });
 
+  it("does not leak ambient GIT_* env into the outer repository (hook safety)", async () => {
+    // Simulate the pre-commit hook environment: git sets GIT_DIR /
+    // GIT_INDEX_FILE to the enclosing repo. GitManager must strip them
+    // so its git calls target the temp repo, not the outer one.
+    const outerHead = (await execFileAsync("git", ["rev-parse", "HEAD"], {
+      cwd: process.cwd(),
+      env: gitEnv(),
+    })).stdout.trim();
+
+    // Stage a change in the temp repo FIRST (via safe gitEnv), then
+    // trigger autoCommit under leaked GIT_* env.
+    await fs.writeFile(path.join(tempRepoDir, "hook-safety.txt"), "leak check\n");
+
+    process.env.GIT_DIR = path.join(process.cwd(), ".git");
+    process.env.GIT_INDEX_FILE = path.join(process.cwd(), ".git", "index");
+    process.env.GIT_WORK_TREE = process.cwd();
+    try {
+      const commit = await gitManager.autoCommit("feat: hook-safety check");
+      assert.ok(commit.commitHash.length >= 7);
+    } finally {
+      delete process.env.GIT_DIR;
+      delete process.env.GIT_INDEX_FILE;
+      delete process.env.GIT_WORK_TREE;
+    }
+
+    const outerHeadAfter = (await execFileAsync("git", ["rev-parse", "HEAD"], {
+      cwd: process.cwd(),
+      env: gitEnv(),
+    })).stdout.trim();
+    assert.strictEqual(outerHeadAfter, outerHead, "outer repo HEAD must not move when GIT_* env leaks in");
+  });
+
   it("excludes sensitive secret files (.env, *.pem, *.key) from autoCommit staging", async () => {
     // Create a valid source file and sensitive files
     await fs.writeFile(path.join(tempRepoDir, "safe.ts"), "export const safe = true;\n");
@@ -109,7 +148,7 @@ describe("GitManager", () => {
       `export const key = "sk-1234567890123456789012345";\nconsole.log(key);\nconst val: any = 1;\n`
     );
     await execFileAsync("git", ["add", "-A"], { cwd: tempRepoDir, env: gitEnv() });
-    await execFileAsync("git", ["commit", "-m", "feat: auth updates"], { cwd: tempRepoDir, env: gitEnv() });
+    await execFileAsync("git", ["commit", "--no-verify", "-m", "feat: auth updates"], { cwd: tempRepoDir, env: gitEnv() });
 
     const review = await gitManager.reviewPullRequest("HEAD");
     assert.strictEqual(review.verdict, "CHANGES_REQUESTED");

@@ -6,12 +6,15 @@
 # Emergency override: OPENSAND_ALLOW_BLANKET=1 git commit ...
 set -euo pipefail
 
-# Strip ambient GIT_* variables so a nested `git commit` (e.g. from
-# coordinator's git-manager tests, or a sandboxed agent env that leaks
-# GIT_DIR/GIT_WORK_TREE) cannot re-enter this hook and recurse.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_CEILING_DIRECTORIES
-
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Determine the actual work tree we were invoked from. Prefer the current
+# working directory's repo when the script lives in a bare repo, so that
+# checks run in the same tree that is being committed (not in the bare dir
+# that the hook shim points at).
+TOP="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -n "$TOP" ]]; then
+  ROOT="$TOP"
+fi
 cd "$ROOT"
 
 # Fail closed if we cannot determine the repo

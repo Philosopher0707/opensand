@@ -77,17 +77,39 @@ export class GitManager {
     this.defaultCwd = defaultCwd ?? process.cwd();
   }
 
+  private gitSafeEnv(): NodeJS.ProcessEnv {
+    // Strip ambient GIT_* variables so a nested git invocation cannot
+    // re-target the enclosing repository (e.g. when tests run under the
+    // pre-commit hook, git sets GIT_DIR/GIT_INDEX_FILE; leaking them
+    // lets a temp-repo commit be written to the outer repo).
+    const env: Record<string, string | undefined> = {
+      ...(process.env as Record<string, string | undefined>),
+    };
+    for (const k of [
+      "GIT_DIR",
+      "GIT_WORK_TREE",
+      "GIT_INDEX_FILE",
+      "GIT_OBJECT_DIRECTORY",
+      "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+      "GIT_PREFIX",
+      "GIT_CEILING_DIRECTORIES",
+    ]) {
+      delete env[k];
+    }
+    return env as NodeJS.ProcessEnv;
+  }
+
   private async execGit(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> {
     return execFileAsync("git", ["--no-pager", ...args], {
       cwd: cwd ?? this.defaultCwd,
-      env: { ...process.env, CI: "true" },
+      env: { ...this.gitSafeEnv(), CI: "true" },
     });
   }
 
   private async execGh(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> {
     return execFileAsync("gh", args, {
       cwd: cwd ?? this.defaultCwd,
-      env: { ...process.env, CI: "true", NO_COLOR: "1" },
+      env: { ...this.gitSafeEnv(), CI: "true", NO_COLOR: "1" },
     });
   }
 
