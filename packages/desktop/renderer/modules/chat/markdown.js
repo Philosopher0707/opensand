@@ -14,17 +14,21 @@ import { highlightToHtml } from './highlight.js';
     }
 
     // 1. Extract <thinking> and <think> tags (both closed and unclosed streaming)
+    const thoughtBlocks = [];
     content = content.replace(/<(?:thinking|think)>([\s\S]*?)(?:<\/(?:thinking|think)>|$)/gi, (match, thoughtText) => {
       const trimmed = thoughtText.trim();
       if (!trimmed) return '';
-      return `\n<div class="thought-accordion">
+      const idx = thoughtBlocks.length;
+      thoughtBlocks.push(`
+<div class="thought-accordion">
   <div class="thought-header">
     <span class="thought-toggle">▶</span>
     <span class="thought-icon">💭</span>
     <span class="thought-label">Thinking Process</span>
   </div>
   <div class="thought-body hidden">${escapeHtml(trimmed)}</div>
-</div>\n`;
+</div>`);
+      return `\n%%THOUGHT_BLOCK_${idx}%%\n`;
     });
 
     // 1.5 Extract [connect-app]{...} markers (OpenBot & Grok Bot Parity)
@@ -88,7 +92,6 @@ import { highlightToHtml } from './highlight.js';
       const idx = codeBlocks.length;
       const cleanLang = /^[a-zA-Z0-9_-]{1,20}$/.test((lang || '').trim()) ? (lang || '').trim() : 'text';
       const cleanCode = code.replace(/\n$/, '');
-      const safeCode = escapeHtml(cleanCode);
       codeBlocks.push(`
 <div class="code-block-wrapper">
   <div class="code-block-header">
@@ -104,6 +107,7 @@ import { highlightToHtml } from './highlight.js';
     });
 
     // 2.5 Markdown Tables (| Header 1 | Header 2 |)
+    const tableBlocks = [];
     content = content.replace(/(?:^|\n)(\|[^\n]+\|\r?\n\|[-:\s|]+\|\r?\n(?:\|[^\n]+\|\r?\n?)*)/g, (match, tableText) => {
       const lines = tableText.trim().split(/\r?\n/).filter(Boolean);
       if (lines.length < 2) return match;
@@ -123,61 +127,77 @@ import { highlightToHtml } from './highlight.js';
         html += '</tr>';
       }
       html += '</tbody></table></div>';
-      return `\n${html}\n`;
+      const idx = tableBlocks.length;
+      tableBlocks.push(html);
+      return `\n%%TABLE_BLOCK_${idx}%%\n`;
     });
 
     // 3. Inline code `code`
+    const inlineCodes = [];
     content = content.replace(/`([^`\n]+)`/g, (match, inlineCode) => {
-      return `<code>${escapeHtml(inlineCode)}</code>`;
+      const idx = inlineCodes.length;
+      inlineCodes.push(`<code>${escapeHtml(inlineCode)}</code>`);
+      return `%%INLINE_CODE_${idx}%%`;
     });
 
-    // 4. Headings (###, ##, #)
-    content = content.replace(/^### (.*$)/gim, (m, t) => `<h4>${escapeHtml(t)}</h4>`);
-    content = content.replace(/^## (.*$)/gim, (m, t) => `<h3>${escapeHtml(t)}</h3>`);
-    content = content.replace(/^# (.*$)/gim, (m, t) => `<h2>${escapeHtml(t)}</h2>`);
+    // 4. Escape-first: sanitize all raw HTML in body text before block markup
+    content = escapeHtml(content);
 
-    // 5. Blockquotes (> quote)
-    content = content.replace(/^\> (.*$)/gim, (m, t) => `<blockquote>${escapeHtml(t)}</blockquote>`);
+    // 5. Headings (###, ##, #)
+    content = content.replace(/^### (.*$)/gim, '<h4>$1</h4>');
+    content = content.replace(/^## (.*$)/gim, '<h3>$1</h3>');
+    content = content.replace(/^# (.*$)/gim, '<h2>$1</h2>');
 
-    // 6. Bold & Italics
-    content = content.replace(/\*\*([^*]+)\*\*/g, (m, t) => `<strong>${escapeHtml(t)}</strong>`);
-    content = content.replace(/\*([^*]+)\*/g, (m, t) => `<em>${escapeHtml(t)}</em>`);
+    // 6. Blockquotes (> quote) - note '>' was sanitized to '&gt;'
+    content = content.replace(/^&gt; (.*$)/gim, '<blockquote>$1</blockquote>');
 
-    // 7. Task list items (- [ ] or - [x]) and Unordered lists (- item or * item)
+    // 7. Bold & Italics
+    content = content.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    content = content.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+    // 8. Task list items (- [ ] or - [x]) and Unordered lists (- item or * item)
     content = content.replace(/^\s*[-*]\s+\[([ xX])\]\s+(.*)$/gim, (m, check, text) => {
       const isChecked = check.toLowerCase() === 'x';
-      return `<li class="task-list-item"><input type="checkbox" disabled ${isChecked ? 'checked' : ''} /> <span>${escapeHtml(text)}</span></li>`;
+      return `<li class="task-list-item"><input type="checkbox" disabled ${isChecked ? 'checked' : ''} /> <span>${text}</span></li>`;
     });
-    content = content.replace(/^\s*[-*]\s+(.*)$/gim, (m, t) => `<li>${escapeHtml(t)}</li>`);
+    content = content.replace(/^\s*[-*]\s+(.*)$/gim, '<li>$1</li>');
     content = content.replace(/(<li>.*<\/li>)/gms, '<ul>$1</ul>');
     content = content.replace(/<\/ul>\s*<ul>/g, '');
 
-    // 8. Markdown links [text](url)
+    // 9. Markdown links [text](url)
     content = content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
-      const trimmed = String(url).trim();
+      const unescapedUrl = url.replace(/&amp;/g, '&');
+      const trimmed = String(unescapedUrl).trim();
       if (!/^(?:https?|mailto):/i.test(trimmed) && !trimmed.startsWith('#')) {
-        return escapeHtml(String(text));
+        return text;
       }
-      return `<a href="${escapeHtml(trimmed)}" target="_blank" rel="noopener noreferrer">${escapeHtml(String(text))}</a>`;
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`;
     });
 
-    // 9. Line breaks: replace double newlines with paragraphs, single with <br>
+    // 10. Line breaks: replace double newlines with paragraphs, single with <br>
     content = content.replace(/\n{2,}/g, '</p><p>');
     content = content.replace(/\n/g, '<br>');
     content = `<p>${content}</p>`;
 
     // Clean empty paragraphs and wrappers around block elements
     content = content.replace(/<p>\s*<\/p>/g, '');
-    content = content.replace(/<p>\s*(<div class="thought-accordion">[\s\S]*?<\/div>)\s*<\/p>/g, '$1');
-    content = content.replace(/<p>\s*(<div class="table-container">[\s\S]*?<\/div>)\s*<\/p>/g, '$1');
     content = content.replace(/<p>\s*(<h2>.*?<\/h2>|<h3>.*?<\/h3>|<h4>.*?<\/h4>|<blockquote>.*?<\/blockquote>|<ul>.*?<\/ul>)\s*<\/p>/g, '$1');
 
-    // 10. Re-insert code blocks and connect cards
+    // 11. Re-insert preserved placeholders
+    inlineCodes.forEach((inlineHtml, i) => {
+      content = content.replace(new RegExp(`%%INLINE_CODE_${i}%%`, 'g'), inlineHtml);
+    });
+    tableBlocks.forEach((tableHtml, i) => {
+      content = content.replace(new RegExp(`<p>\\s*%%TABLE_BLOCK_${i}%%\\s*<\\/p>|%%TABLE_BLOCK_${i}%%`, 'g'), tableHtml);
+    });
     codeBlocks.forEach((blockHtml, i) => {
       content = content.replace(new RegExp(`<p>\\s*%%CODE_BLOCK_${i}%%\\s*<\\/p>|%%CODE_BLOCK_${i}%%`, 'g'), blockHtml);
     });
     connectCards.forEach((cardHtml, i) => {
       content = content.replace(new RegExp(`<p>\\s*%%CONNECT_CARD_${i}%%\\s*<\\/p>|%%CONNECT_CARD_${i}%%`, 'g'), cardHtml);
+    });
+    thoughtBlocks.forEach((thoughtHtml, i) => {
+      content = content.replace(new RegExp(`<p>\\s*%%THOUGHT_BLOCK_${i}%%\\s*<\\/p>|%%THOUGHT_BLOCK_${i}%%`, 'g'), thoughtHtml);
     });
 
     return content;

@@ -196,15 +196,22 @@ export class WebhookGateway {
     }
   }
 
+  private safeCompare(a: string, b: string): boolean {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    const bufA = crypto.createHash('sha256').update(a).digest();
+    const bufB = crypto.createHash('sha256').update(b).digest();
+    return crypto.timingSafeEqual(bufA, bufB);
+  }
+
   private verifySignature(secret: string, payload: any, headers: Record<string, string>): boolean {
-    // 1. Check Bearer token or custom token header
+    // 1. Check Bearer token or custom token header with timing-safe comparison
     const authHeader = headers['authorization'] || headers['Authorization'] || '';
-    if (authHeader.startsWith('Bearer ') && authHeader.slice(7).trim() === secret) {
+    if (authHeader.startsWith('Bearer ') && this.safeCompare(authHeader.slice(7).trim(), secret)) {
       return true;
     }
 
     const customToken = headers['x-opensand-secret'] || headers['X-OpenSand-Secret'] || headers['x-webhook-token'];
-    if (customToken === secret) {
+    if (customToken && this.safeCompare(customToken, secret)) {
       return true;
     }
 
@@ -214,7 +221,7 @@ export class WebhookGateway {
       const rawPayload = typeof payload === 'string' ? payload : JSON.stringify(payload);
       const computed = 'sha256=' + crypto.createHmac('sha256', secret).update(rawPayload).digest('hex');
       try {
-        return crypto.timingSafeEqual(Buffer.from(hubSig), Buffer.from(computed));
+        return this.safeCompare(hubSig, computed);
       } catch {
         return false;
       }

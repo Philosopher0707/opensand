@@ -163,6 +163,7 @@ export class DesktopIpcBridge extends EventEmitter {
     });
     this.connectorManager = new ConnectorManager({
       storagePath: path.join(this.baseDir, 'connectors.json'),
+      vaultStore: this.vaultStore,
     });
     this.templateGallery = new TemplateGallery({
       storagePath: path.join(this.baseDir, 'gallery_templates.json'),

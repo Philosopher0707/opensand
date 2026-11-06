@@ -23,17 +23,29 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
 
     // Sanitize high-privilege credentials from child process inheritance by default
     const sanitizedEnv: Record<string, string | undefined> = { ...process.env };
-    const SENSITIVE_VARS = [
+    const SENSITIVE_VARS = new Set([
       "OPENSAND_API_KEY",
       "OPENAI_API_KEY",
       "ANTHROPIC_API_KEY",
+      "OPENROUTER_API_KEY",
       "GITHUB_PERSONAL_ACCESS_TOKEN",
+      "GITHUB_TOKEN",
+      "GH_TOKEN",
+      "SLACK_BOT_TOKEN",
+      "LINEAR_API_KEY",
+      "AWS_ACCESS_KEY_ID",
       "AWS_SECRET_ACCESS_KEY",
       "AWS_SESSION_TOKEN",
-    ];
-    for (const v of SENSITIVE_VARS) {
-      if (!input.env || !(v in input.env)) {
-        delete sanitizedEnv[v];
+      "SSH_AUTH_SOCK",
+      "OPENSAND_VAULT_PASSPHRASE",
+    ]);
+
+    for (const key of Object.keys(sanitizedEnv)) {
+      const isSensitive =
+        SENSITIVE_VARS.has(key) ||
+        (/(_API_KEY|_TOKEN|_SECRET|_PASSWORD|_PASSPHRASE)$/i.test(key) && !key.startsWith("npm_"));
+      if (isSensitive && (!input.env || !(key in input.env))) {
+        delete sanitizedEnv[key];
       }
     }
 

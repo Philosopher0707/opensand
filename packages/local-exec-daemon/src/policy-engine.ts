@@ -248,18 +248,20 @@ export class PolicyEngine {
 
     // Check Path filters (prefix & regex)
     const targetPath = (context.args.path || context.args.Path || context.args.filePath || '') as string;
+    const cmdStr = (context.args.command || context.args.CommandLine || context.args.cmd || '') as string;
+    const pathChecked = targetPath || (context.tool === 'exec_command' ? cmdStr : '');
 
     if (c.pathsPrefix && c.pathsPrefix.length > 0) {
-      if (!targetPath) return false;
-      const prefixMatch = c.pathsPrefix.some((prefix) => targetPath.startsWith(prefix) || targetPath.includes(prefix));
+      if (!pathChecked) return false;
+      const prefixMatch = c.pathsPrefix.some((prefix) => pathChecked.startsWith(prefix) || pathChecked.includes(prefix));
       if (!prefixMatch) return false;
     }
 
     if (c.pathsRegex && c.pathsRegex.length > 0) {
-      if (!targetPath) return false;
+      if (!pathChecked) return false;
       const regexMatch = c.pathsRegex.some((pattern) => {
         try {
-          return new RegExp(pattern, 'i').test(targetPath);
+          return new RegExp(pattern, 'i').test(pathChecked);
         } catch {
           return rule.action === 'DENY';
         }

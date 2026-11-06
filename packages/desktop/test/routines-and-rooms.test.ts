@@ -15,7 +15,7 @@ class MockIncomingMessage extends EventEmitter {
     super();
     this.method = method;
     this.url = url;
-    this.headers = headers;
+    this.headers = { host: '127.0.0.1:3456', ...headers };
   }
 
   public destroy(): this {

@@ -3,6 +3,7 @@ import * as fsSync from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as crypto from "node:crypto";
+import { VaultStore } from "./vault-store.js";
 
 export type ConnectorProviderId = "slack" | "linear" | "github";
 
@@ -140,6 +141,7 @@ export function parseConnectPrompt(text: string): { prompt: ConnectPrompt | null
 export interface ConnectorManagerOptions {
   storagePath?: string;
   mockNetwork?: boolean;
+  vaultStore?: VaultStore;
 }
 
 export class ConnectorManager {
@@ -147,10 +149,12 @@ export class ConnectorManager {
   private connectors: Map<ConnectorProviderId, StoredConnectorCredentials> = new Map();
   private pendingStates: Map<string, { providerId: ConnectorProviderId; createdAt: number }> = new Map();
   private mockNetwork: boolean;
+  private vaultStore?: VaultStore;
 
   constructor(options?: ConnectorManagerOptions) {
     this.storagePath = options?.storagePath || path.join(os.homedir(), ".config", "opensand", "connectors.json");
     this.mockNetwork = options?.mockNetwork ?? true;
+    this.vaultStore = options?.vaultStore;
     this.initializeDefaultConnectors();
     this.loadFromDisk();
   }
@@ -193,7 +197,29 @@ export class ConnectorManager {
       if (!fsSync.existsSync(dir)) {
         await fs.mkdir(dir, { recursive: true, mode: 0o700 });
       }
-      const data = Array.from(this.connectors.values());
+
+      // If vaultStore is available, ensure sensitive tokens are vaulted and not written plaintext to JSON
+      if (this.vaultStore) {
+        for (const [id, cred] of this.connectors.entries()) {
+          if (cred.token) {
+            await this.vaultStore.putSecret({
+              name: `connector_token_${id}`,
+              value: cred.token,
+              description: `${id} connector token`,
+            });
+          }
+        }
+      }
+
+      const data = Array.from(this.connectors.values()).map((c) => {
+        if (this.vaultStore && c.token) {
+          const sanitized = { ...c };
+          delete sanitized.token;
+          return sanitized;
+        }
+        return c;
+      });
+
       const tmpPath = `${this.storagePath}.${Date.now()}.tmp`;
       await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), { mode: 0o600 });
       await fs.rename(tmpPath, this.storagePath);
@@ -385,6 +411,9 @@ export class ConnectorManager {
     };
 
     this.connectors.set(id, creds);
+    if (this.vaultStore) {
+      await this.vaultStore.deleteSecret(`connector_token_${id}`).catch(() => {});
+    }
     await this.saveToDisk();
     return true;
   }

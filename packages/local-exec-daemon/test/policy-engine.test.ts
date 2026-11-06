@@ -35,6 +35,13 @@ describe('PolicyEngine - Fail-Closed Boundary Governance', () => {
       args: { path: '/Users/test/project/.env', content: 'SECRET=123' },
     });
     assert.strictEqual(decision3.action, 'DENY');
+
+    const decision4 = engine.evaluate({
+      tool: 'exec_command',
+      args: { command: 'cat /Users/test/project/.env' },
+    });
+    assert.strictEqual(decision4.action, 'DENY');
+    assert.ok(decision4.reason.includes('Sensitive'));
   });
 
   it('denies dangerous destructive shell commands by default', () => {

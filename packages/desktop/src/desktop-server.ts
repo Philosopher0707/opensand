@@ -122,14 +122,17 @@ export class DesktopServer {
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:* http://localhost:*; img-src 'self' data:;"
     );
 
-    // Host header validation to prevent DNS rebinding
-    if (hostHeader) {
-      const hostname = hostHeader.split(':')[0];
-      if (hostname !== '127.0.0.1' && hostname !== 'localhost') {
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Access forbidden: invalid Host header' }));
-        return;
-      }
+    // Host header validation to prevent DNS rebinding (fail closed)
+    if (!hostHeader) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Bad Request: missing Host header' }));
+      return;
+    }
+    const hostname = hostHeader.split(':')[0];
+    if (hostname !== '127.0.0.1' && hostname !== 'localhost') {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Access forbidden: invalid Host header' }));
+      return;
     }
 
     // Origin header validation to prevent cross-origin drive-by attacks from arbitrary websites
