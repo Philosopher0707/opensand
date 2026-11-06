@@ -1,12 +1,10 @@
-export interface DesktopSettings {
-  endpoint: string;
-  model: string;
-  apiKey?: string;
-  autoApprove: boolean;
-  provider: 'openai' | 'anthropic' | 'openrouter';
-  theme: 'dark' | 'light' | 'system';
-  maxContextTokens?: number;
-}
+/**
+ * Desktop types — canonical UI contracts live in @opensand/shared.
+ * This module is a thin shim: shared contracts are re-exported, while
+ * desktop-only approval/bridge shapes stay local.
+ */
+export type { DesktopSettings, SessionSummary, DesktopEvent, DesktopEventType } from '@opensand/shared';
+import type { DesktopSettings, SessionSummary, DesktopEvent } from '@opensand/shared';
 
 export interface ToolApprovalRequest {
   approvalId: string;
@@ -30,37 +28,6 @@ export interface ToolDiscoverySummary {
 export interface ApprovalDecision {
   action: 'approve_once' | 'always_allow' | 'reject';
   reason?: string;
-}
-
-export interface SessionSummary {
-  id: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-  messageCount: number;
-  /** Agent/bot this session was created under, when known. */
-  agentId?: string;
-  /** Room this session belongs to, when it is a room session. */
-  roomId?: string;
-}
-
-export type DesktopEventType =
-  | 'session_started'
-  | 'token'
-  | 'thought'
-  | 'tool_call'
-  | 'tool_result'
-  | 'approval_required'
-  | 'turn_complete'
-  | 'turn_cancelled'
-  | 'error'
-  | 'status'
-  | 'sentinel';
-
-export interface DesktopEvent {
-  type: DesktopEventType;
-  sessionId: string;
-  data: unknown;
 }
 
 export interface OpenSandBridgeApi {
