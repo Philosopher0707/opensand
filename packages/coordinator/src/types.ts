@@ -55,6 +55,8 @@ export interface ApprovalRequest {
   reason: string;
 }
 
+export type ApprovalDecision = "allow_once" | "allow_session" | "deny";
+
 export interface AttachmentRecord {
   id: string;
   filename: string;
@@ -81,10 +83,17 @@ export interface AgentTemplate {
 
 export type ApprovalHandler = (request: ApprovalRequest) => Promise<boolean>;
 
+/** Handler that can return a richer decision (allow once / allow session / deny). */
+export type ApprovalDecisionHandler = (request: ApprovalRequest) => Promise<ApprovalDecision>;
+
 export type TurnEventListener = (event: TurnEvent) => void;
+
+/** Phase of a turn iteration: the LLM is thinking or tools are executing. */
+export type TurnPhase = "thinking" | "executing";
 
 export type TurnEvent =
   | { type: "user_message"; content: string }
+  | { type: "phase_started"; phase: TurnPhase; iteration: number; maxIterations: number }
   | { type: "text_delta"; text: string }
   | { type: "thought_delta"; text: string }
   | { type: "tool_call_started"; toolCall: ToolCall }
