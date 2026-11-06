@@ -138,8 +138,12 @@ class OpenSandClient {
     if (this.isElectron) {
       return window.opensand.loadSession(sessionId);
     }
-    const res = await fetch(`/api/sessions/${sessionId}`);
-    return res.json();
+    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || `Failed to load session (HTTP ${res.status})`);
+    }
+    return data;
   }
 
   async deleteSession(sessionId) {
@@ -1533,7 +1537,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const conversationSearchInput = document.getElementById('conversationSearchInput');
 
   async function refreshSessions(filterQuery = '') {
-    const sessions = await client.getSessions();
+    const loaded = await client.getSessions();
+    const sessions = Array.isArray(loaded) ? loaded : [];
     sessionList.innerHTML = '';
 
     const query = filterQuery || (conversationSearchInput ? conversationSearchInput.value.trim().toLowerCase() : '');
@@ -3788,6 +3793,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
       const sessionData = await client.loadSession(sessionId);
+      const restoredAgentId = sessionData?.agentId || null;
+      if (restoredAgentId && restoredAgentId !== activeAgentId) {
+        const liveAgents = await client.getAgents().catch(() => []);
+        if (Array.isArray(liveAgents) && liveAgents.some((a) => a.id === restoredAgentId)) {
+          activeAgentId = restoredAgentId;
+          localStorage.setItem(AGENT_KEY, restoredAgentId);
+          await refreshBots();
+          refreshTokenBadge();
+        }
+      }
       const turns = reconstructDialogueTurns(sessionData);
       for (const turn of turns) {
         appendMessage(turn.role, turn.content, turn.toolCalls, turn.thought, turn.timestamp, turn.blocks);

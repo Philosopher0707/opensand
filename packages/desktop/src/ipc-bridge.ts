@@ -355,6 +355,48 @@ export class DesktopIpcBridge extends EventEmitter {
     return `${sessionId}:${agentId ?? 'default'}`;
   }
 
+  /** Read sessions/<id>/meta.json written at coordinator creation. */
+  private readSessionMeta(sessionId: string): { agentId?: string; roomId?: string } {
+    try {
+      const metaPath = path.join(this.baseDir, 'sessions', sessionId, 'meta.json');
+      if (!fs.existsSync(metaPath)) return {};
+      const raw = fs.readFileSync(metaPath, 'utf8');
+      const meta = JSON.parse(raw) as Record<string, unknown>;
+      const agentId = typeof meta.agentId === 'string' ? meta.agentId : undefined;
+      const roomId = typeof meta.roomId === 'string' ? meta.roomId : undefined;
+      return { agentId, roomId };
+    } catch {
+      return {};
+    }
+  }
+
+  /** Persist agent/model origin so a resumed session keeps its bot. */
+  private writeSessionMeta(sessionId: string, agentId?: string, model?: string): void {
+    try {
+      const sessDir = path.join(this.baseDir, 'sessions', sessionId);
+      fs.mkdirSync(sessDir, { recursive: true, mode: 0o700 });
+      const metaPath = path.join(sessDir, 'meta.json');
+      const meta: Record<string, unknown> = {
+        sessionId,
+        agentId: agentId ?? null,
+        model: model ?? this.settings.model,
+        createdAt: new Date().toISOString(),
+      };
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), { mode: 0o600 });
+    } catch {
+      // best-effort only
+    }
+  }
+
+  /**
+   * Infer the owning agent for legacy `sub_agent_<agentId>_<ts>` session
+   * ids created by delegate_to_agent (see orchestrator-tools).
+   */
+  private inferAgentIdFromSessionId(sessionId: string): string | undefined {
+    const m = sessionId.match(/^sub_agent_(.+)_(\d{10,})$/);
+    return m ? m[1] : undefined;
+  }
+
   public async createSessionCoordinator(sessionId?: string, agentId?: string): Promise<AgentCoordinator> {
     await this.ensureApiKeyResolved();
     const activeSessionId = sessionId || this.currentSessionId || `session_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
@@ -366,6 +408,7 @@ export class DesktopIpcBridge extends EventEmitter {
       return existing;
     }
     this.currentSessionId = activeSessionId;
+    this.writeSessionMeta(activeSessionId, agentId, this.settings.model);
 
     if (
       this.coordinator &&
@@ -666,12 +709,15 @@ export class DesktopIpcBridge extends EventEmitter {
         }
 
         const stat = fs.statSync(sessDir);
+        const { agentId, roomId } = this.readSessionMeta(ent.name);
         summaries.push({
           id: ent.name,
           title,
           createdAt: stat.birthtime.toISOString(),
           updatedAt: stat.mtime.toISOString(),
           messageCount,
+          agentId: agentId ?? this.inferAgentIdFromSessionId(ent.name),
+          roomId,
         });
       }
     }
@@ -679,7 +725,12 @@ export class DesktopIpcBridge extends EventEmitter {
     return summaries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
-  public async loadSession(sessionId: string): Promise<{ events: unknown[]; transcript: string }> {
+  public async loadSession(sessionId: string): Promise<{
+    events: unknown[];
+    transcript: string;
+    agentId?: string;
+    roomId?: string;
+  }> {
     if (!sessionId || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
       throw new Error(`Invalid sessionId: ${sessionId}`);
     }
@@ -712,12 +763,16 @@ export class DesktopIpcBridge extends EventEmitter {
     }
 
     this.currentSessionId = sessionId;
+    const { agentId, roomId } = this.readSessionMeta(sessionId);
+    const inferredAgentId = agentId ?? this.inferAgentIdFromSessionId(sessionId);
+    if (inferredAgentId) {
+      this.activeAgentId = inferredAgentId;
+    }
     if (this.coordinator && this.coordinator.sessionId !== sessionId) {
       this.coordinator = null;
-      this.activeAgentId = undefined;
     }
 
-    return { events, transcript };
+    return { events, transcript, agentId: inferredAgentId, roomId };
   }
 
   public async deleteSession(sessionId: string): Promise<boolean> {

@@ -119,6 +119,30 @@ test('DesktopIpcBridge - lists and loads session transcripts', async () => {
   }
 });
 
+test('DesktopIpcBridge - loads sessions and infers agentId for legacy sub_agent sessions', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-subsess-'));
+  try {
+    const sid = 'sub_agent_agent_cto_bot_bc125a5f_1793839209094';
+    const sessDir = path.join(tmpDir, 'sessions', sid);
+    fs.mkdirSync(sessDir, { recursive: true });
+    fs.writeFileSync(path.join(sessDir, 'transcript.jsonl'), JSON.stringify({ role: 'user', content: 'plan this' }) + '\n', 'utf8');
+
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    const sessions = await bridge.getSessions();
+    assert.strictEqual(sessions.length, 1);
+    assert.strictEqual(sessions[0].agentId, 'agent_cto_bot_bc125a5f');
+
+    const loaded = await bridge.loadSession(sid);
+    assert.strictEqual(loaded.events.length, 1);
+    assert.strictEqual(loaded.agentId, 'agent_cto_bot_bc125a5f');
+    assert.strictEqual((bridge as any).activeAgentId, 'agent_cto_bot_bc125a5f');
+
+    await assert.rejects(() => bridge.loadSession('../agents'), /Invalid sessionId/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('DesktopIpcBridge - preserves active coordinator and emits session_started on query', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-persist-'));
 

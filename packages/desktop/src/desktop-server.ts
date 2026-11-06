@@ -396,7 +396,7 @@ export class DesktopServer {
 
     // API: GET /api/sessions/:id
     if (pathname.startsWith('/api/sessions/') && req.method === 'GET') {
-      const sessionId = pathname.replace('/api/sessions/', '');
+      const sessionId = decodeURIComponent(pathname.replace('/api/sessions/', ''));
       if (!isValidId(sessionId)) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid sessionId format' }));
@@ -410,7 +410,7 @@ export class DesktopServer {
 
     // API: DELETE /api/sessions/:id (Delete individual session)
     if (pathname.startsWith('/api/sessions/') && req.method === 'DELETE') {
-      const sessionId = pathname.replace('/api/sessions/', '');
+      const sessionId = decodeURIComponent(pathname.replace('/api/sessions/', ''));
       if (!isValidId(sessionId)) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid sessionId format' }));

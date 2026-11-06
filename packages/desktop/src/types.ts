@@ -27,6 +27,10 @@ export interface SessionSummary {
   createdAt: string;
   updatedAt: string;
   messageCount: number;
+  /** Agent/bot this session was created under, when known. */
+  agentId?: string;
+  /** Room this session belongs to, when it is a room session. */
+  roomId?: string;
 }
 
 export type DesktopEventType =
@@ -53,7 +57,7 @@ export interface OpenSandBridgeApi {
   cancelTurn?: () => Promise<{ success: boolean; cancelled: boolean }>;
   approveTool: (approvalId: string, decision: ApprovalDecision) => Promise<{ success: boolean }>;
   getSessions: () => Promise<SessionSummary[]>;
-  loadSession: (sessionId: string) => Promise<{ events: unknown[]; transcript: string }>;
+  loadSession: (sessionId: string) => Promise<{ events: unknown[]; transcript: string; agentId?: string; roomId?: string }>;
   deleteSession?: (sessionId: string) => Promise<{ success: boolean }>;
   clearAllSessions?: () => Promise<{ success: boolean; count: number }>;
   deleteAgent?: (id: string) => Promise<boolean>;
