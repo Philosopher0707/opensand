@@ -125,7 +125,9 @@ export class DesktopIpcBridge extends EventEmitter {
 
     // NOTE: API-key resolution from the vault is deferred until first use
     // (sendQuery / createSessionCoordinator / getTokenTelemetry) — the
-    // constructor is sync.
+    // constructor is sync. Also kick off a best-effort resolve so
+    // GET /api/settings shows the saved state immediately after startup.
+    this.ensureApiKeyResolved().catch(() => {});
 
     // Setup daemon and native tools
     const stateDir = path.join(this.baseDir, 'state');
@@ -223,6 +225,12 @@ export class DesktopIpcBridge extends EventEmitter {
       s.apiKey = '********';
     }
     return s;
+  }
+
+  /** Resolve vault/env key first, then return sanitized settings for API/UI. */
+  public async getSanitizedSettingsResolved(): Promise<DesktopSettings> {
+    await this.ensureApiKeyResolved();
+    return this.getSanitizedSettings();
   }
 
   public updateSettings(partial: Partial<DesktopSettings>): DesktopSettings {
