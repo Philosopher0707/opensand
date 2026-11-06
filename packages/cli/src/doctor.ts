@@ -241,7 +241,7 @@ export async function runDoctorProbes(options: {
 
   // Probe 9: Tool Registry Verification (61 Tools)
   try {
-    const daemon = new LocalExecDaemon();
+    const daemon = new LocalExecDaemon({ stateDir: path.join(baseDir, "state") });
     await daemon.start();
     registerNativeTools(daemon);
     registerOrchestratorTools({ daemon });

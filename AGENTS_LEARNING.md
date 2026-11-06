@@ -140,3 +140,21 @@
 ### 9.1 Apple TCC Permissions (Screen Recording, Full Disk Access)
 * **Trap:** Hard crashing when reading `~/Library/Messages/chat.db` or invoking ScreenCaptureKit if permissions have not been granted in macOS System Settings.
 * **Rule:** System bridges must never crash the coordinator. Detect `EPERM` / `ENOENT` or TCC denials, format a structured diagnostic message instructing the user which toggle to enable in System Settings $\rightarrow$ Privacy & Security, and allow the model to report this gracefully to the user.
+
+---
+
+## 10. Web UI & Desktop Server Authentication
+
+### 10.1 Silent 401 & UI Deadlock in Asynchronous Turn Loops
+* **Trap:** If frontend methods like `client.sendQuery()` return `res.json()` without verifying `res.ok`, an unauthorized (401) or internal server error (500) returns an error object (e.g. `{ error: "Unauthorized: ..." }`) without throwing. The turn loop caller (e.g. `executeUserTurn`) checks `if (res && res.sessionId)`, which is false, bypassing the `catch (err)` block.
+* **Root Cause:** When `catch` is never executed, `setTurnBusy(false)` is never called, leaving the chat UI permanently frozen with `<span class="typing-shimmer">Thinking…</span>` and the input textarea disabled.
+* **Rule:** All frontend client methods calling backend APIs must verify `if (!res.ok)` and throw descriptive `Error` instances containing the server message or HTTP status. Turn execution pipelines must guarantee that any failure clears the busy state (`setTurnBusy(false)`), resets status indicators, and displays the error message directly in the message feed.
+
+### 10.2 Supervisor Script Timestamp Desynchronization
+* **Trap:** Using `find ... -newer "$marker"` inside a file watcher loop to detect source changes across a monorepo can cause infinite build and restart loops.
+* **Root Cause:** If an edit is made in a dependency package (such as `coordinator`), `pnpm -r build` runs `tsc -b`. If the target package (`desktop`) did not change, `tsc` will not re-emit or touch the marker file (`desktop/dist/src/desktop-server.js`). On the next iteration of the watcher, the modified source file in `coordinator` remains newer than the marker file, triggering another build and restart loop every 2 seconds.
+* **Rule:** Explicitly update the mtime of the marker file (`touch "$marker"`) after any successful monorepo build in file-watching supervisor scripts.
+
+### 10.3 Dynamic Authentication Header & Token Exchange Flow
+* **Trap:** Wrapping `window.fetch` only if an authentication token is present at page load. If the user arrives without credentials and subsequently authenticates or exchanges a token, subsequent fetch requests fail to include the `Authorization` header.
+* **Rule:** Install the fetch interceptor unconditionally. In the interceptor, read the active token dynamically from client instance state or `sessionStorage`. Intercept 401 status responses globally to present the authentication modal, and provide `POST /api/auth/token-exchange` so web clients can obtain a secure HttpOnly session cookie without exposing long-lived tokens in query strings or browser history.

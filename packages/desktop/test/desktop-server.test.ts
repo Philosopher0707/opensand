@@ -132,6 +132,7 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     await tokenExchPromise;
     assert.strictEqual(tokenExchRes.statusCode, 200);
     assert.ok(tokenExchRes.headers['set-cookie']?.includes('opensand_token='));
+    assert.strictEqual(JSON.parse(tokenExchRes.body).token, undefined, "token must not be exposed in body; cookie carries it");
 
     // Test Token Exchange endpoint with invalid token returns 401
     const badExchReq = new MockIncomingMessage('POST', '/api/auth/token-exchange', { authorization: '' });

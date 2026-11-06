@@ -53,7 +53,7 @@ export class DesktopServer {
   private webhookMaxRequestsPerMinute: number;
 
   constructor(options: DesktopServerOptions = {}) {
-    this.port = options.port || 3456;
+    this.port = options.port ?? 3456;
     this.host = options.host || '127.0.0.1';
     this.baseDir = options.baseDir || path.join(os.homedir(), '.opensand');
     this.tokenFilePath = path.join(this.baseDir, 'server.token');

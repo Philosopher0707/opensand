@@ -148,9 +148,12 @@ export class GitHubClient implements GitHubActions {
   private token: string | null;
   private timeoutMs: number;
 
-  constructor(options?: { token?: string; timeoutMs?: number }) {
+  private fetchFn: typeof globalThis.fetch;
+
+  constructor(options?: { token?: string; timeoutMs?: number; fetchFn?: typeof globalThis.fetch }) {
     this.token = resolveGitHubToken(options?.token);
     this.timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.fetchFn = options?.fetchFn ?? globalThis.fetch;
   }
 
   public isConnected(): boolean {
@@ -180,7 +183,7 @@ export class GitHubClient implements GitHubActions {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const res = await fetch(`${API}${endpoint}`, {
+      const res = await this.fetchFn(`${API}${endpoint}`, {
         method,
         signal: controller.signal,
         headers: {

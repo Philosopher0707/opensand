@@ -52,8 +52,7 @@ stop_server() {
 }
 
 needs_build() {
-  local marker="$DESKTOP/dist/src/desktop-server.js"
-  [[ -f "$marker" ]] || return 0
+    [[ -f "$marker" ]] || return 0
   find "$ROOT/packages/desktop/src" "$ROOT/packages/coordinator/src" "$ROOT/packages/native-bridge/src" "$ROOT/packages/local-exec-daemon/src" -name '*.ts' -type f -newer "$marker" -print -quit 2>/dev/null | grep -q .
 }
 

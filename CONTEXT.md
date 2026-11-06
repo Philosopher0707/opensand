@@ -133,21 +133,21 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 ### 3.5 [`packages/desktop`](file:///Users/philosopher/dev/opensand/packages/desktop) (Phase 5 & Multi-Tab Dashboard)
 * **`main.ts` & `tray.ts`**: Electron Main process lifecycle, menubar tray icon (`OpenSand: Ready/Thinking/Executing`), global hotkey (`Cmd+Shift+Space`), and secure IPC message router.
 * **`preload.ts`**: Hardened context bridge (`contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`) exposing `window.opensand`.
-* **`desktop-server.ts`**: Zero-dependency local HTTP/SSE UI server running at `http://127.0.0.1:3456`, serving REST endpoints (`/api/agents`, `/api/tasks`, `/api/learned-rules`, `/api/routines`, `/api/rooms`, `/api/skills`, `/api/vault`, `/api/settings`, `/api/tokens`, `/api/models`), path traversal containment checks, dynamic Bot switcher sidebar, "+ New Bot" creation modal, "+ Add Task" modal, and multi-tab dashboard (Chat, Rooms, Routines, Skills, Vault, Memories, Tasks). `GET /api/settings` uses `getSanitizedSettingsResolved()`: it resolves the vault `default-api-key` at startup, so the API key shows as `********` immediately after boot; a blank API key on save means "keep the saved key" (both UI `app.js` omits it and `ipc-bridge.ts:updateSettings()` deletes `''` like `'********'`).
-* **`renderer/`**: Interactive dark mode chat UI with streaming Markdown, live tool execution status cards, interactive permission approval modals ("Approve Once", "Always Allow", "Reject"), and model settings panel.
-* **Tests**: 6 unit tests (`test/*.test.ts`) covering IPC bridge, standing allowlist additions, and REST endpoints.
+* **`desktop-server.ts`**: Zero-dependency local HTTP/SSE UI server running at `http://127.0.0.1:3456`, serving REST endpoints (`/api/agents`, `/api/tasks`, `/api/learned-rules`, `/api/routines`, `/api/rooms`, `/api/skills`, `/api/vault`, `/api/settings`, `/api/tokens`, `/api/models`), unified Connect/RPC gateways (`/aiserver.v1.*`), AG-UI protocol handlers, and real-time SSE stream (`/api/events`). Enforces token-based session authentication (`server.token` with 0600 permissions), cookie exchange (`POST /api/auth/token-exchange`), and Host/Origin boundary checks. `GET /api/settings` uses `getSanitizedSettingsResolved()`: it resolves the vault `default-api-key` at startup, so the API key shows as `********` immediately after boot; a blank API key on save means "keep the saved key" (both UI `app.js` omits it and `ipc-bridge.ts:updateSettings()` deletes `''` like `'********'`).
+* **`renderer/`**: Interactive dark mode chat UI with streaming Markdown, live tool execution status cards, interactive permission approval modals ("Approve Once", "Always Allow", "Reject"), model settings panel, and interactive authentication dialog (`#authModal`) with dynamic token attachment.
+* **Tests**: 57 unit tests (`test/*.test.ts`) covering IPC bridge, standing allowlist additions, REST endpoints, unified RPC services, AG-UI gateway, webhook rate limiting, and token authentication.
 
 ---
 
 ## 4. Verification & Health Summary
 
 * **Monorepo Build**: `pnpm build` (`tsc -b` across all 5 packages) $\rightarrow$ 0 errors.
-* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **122 passed, 0 failed, 100% green**:
+* **Test Suite**: `pnpm test` (`node --test` across all 5 packages) $\rightarrow$ **173 passed, 0 failed, 100% green**:
   * `@opensand/local-exec-daemon`: 29 passed
   * `@opensand/coordinator`: 67 passed
   * `@opensand/native-bridge`: 11 passed
   * `@opensand/cli`: 9 passed
-  * `@opensand/desktop`: 6 passed
+  * `@opensand/desktop`: 57 passed
 * **Active Tool Catalog**: **61 fully registered tools** spanning core bash/file ops, native macOS vision/windows/audio, web browser automation, multi-agent orchestration, cognitive memories, encrypted vault, modular skills, scheduled routines, group rooms, git lifecycle, workspace sentinel, attachment staging, agent templates, and context auto-compaction.
 * **Backend Audit & Resilience Hardening**:
   * All 14 audit findings remediated across security, storage, resilience, networking, and deploy vectors.

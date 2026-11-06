@@ -37,7 +37,8 @@ describe("GitHubClient", () => {
   });
 
   it("reports a rejected token as 401 unauthorized, never as success", async () => {
-    const client = new GitHubClient({ token: "ghp_definitelynotarealtoken00000000000000" });
+    const fakeFetch = (async () => new Response(JSON.stringify({ message: "Bad credentials" }), { status: 401, statusText: "Unauthorized", headers: { "Content-Type": "application/json" } })) as typeof globalThis.fetch;
+    const client = new GitHubClient({ token: "ghp_definitelynotarealtoken00000000000000" , fetchFn: fakeFetch });
     assert.strictEqual(client.isConnected(), true);
 
     const res = await client.getRepo("Philosopher0707/wisp");

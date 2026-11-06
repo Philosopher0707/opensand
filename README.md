@@ -54,9 +54,9 @@ It replaces proprietary cloud ConnectRPC backends with universal OpenAI-compatib
 | [`@opensand/coordinator`](./packages/coordinator) | Multi-turn streaming agent loop, universal SSE parser, OpenAI & Anthropic clients, native MCP client, persistent Agent Store, Task Store, Habit Extractor, 7-Layer Memory System, Local Encrypted Vault, Recipe Skills Engine, Routine Engine, Multi-Agent Rooms, Git Manager, Workspace Sentinel, Attachment Staging, and Side-Question/Rollback/Compaction engines. | 67 passing |
 | [`@opensand/native-bridge`](./packages/native-bridge) | Native Apple Vision offline OCR (`sand-vision`), ScreenCaptureKit window capture (`sand-window-capture`), 1Password Seatbelt launcher, macOS Messages reader, Speech Synthesis, and Browser Automation (`web_search`, `fetch_web_page`, Safari tab inspector). | 11 passing |
 | [`@opensand/cli`](./packages/cli) | Interactive terminal REPL with live token streaming, bot persona switcher (`--bot`), system doctor (`opensand doctor`), fleet status (`opensand status`), first-class slash commands, and permission approval prompts. | 9 passing |
-| [`@opensand/desktop`](./packages/desktop) | Multi-tab Desktop GUI & REST server (`http://127.0.0.1:3456`) with Chat, Rooms, Routines, Skills, Vault, Memory Review Queue, Task Management, Attachments, and local webview shell. | 6 passing |
+| [`@opensand/desktop`](./packages/desktop) | Multi-tab Desktop GUI & REST server (`http://127.0.0.1:3456`) with Chat, Rooms, Routines, Skills, Vault, Memory Review Queue, Task Management, Attachments, and local webview shell. | 57 passing |
 
-**Total Test Coverage: 122/122 automated unit and integration tests passing (100% green).**
+**Total Test Coverage: 173/173 automated unit and integration tests passing (100% green).**
 
 ---
 
@@ -74,6 +74,8 @@ OpenSand was audited against the Backend Playbook (7 batches: Security, Storage,
 - **HTML Sanitization & CSP**: Desktop UI renders user-controlled bot and task metadata via `escapeHtml()`; server enforces strict CSP (`default-src 'self'`).
 - **Child Process Env Sanitization**: Subprocesses spawned by `exec_command` purge sensitive host API tokens (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_PERSONAL_ACCESS_TOKEN`, `AWS_SECRET_ACCESS_KEY`) from environment inheritance.
 - **Atomic File Operations**: Habit rules and state files use atomic `.tmp` + rename pattern with 0600 file modes.
+- **Session Authentication Token & Secret Masking**: Administrative REST routes, unified Connect/RPC endpoints (`/aiserver.v1.*`), and AG-UI routes require token authentication (`Authorization: Bearer <token>`, `X-OpenSand-Token`, or HttpOnly session cookie `opensand_token`). Tokens are generated with cryptographically secure random bytes and persisted to `~/.opensand/server.token` (`0600`). Settings API masks API keys as `********`.
+- **Token Exchange & Web Auth Dialog**: Clients can exchange tokens via `POST /api/auth/token-exchange` for an HttpOnly cookie without leaking credentials into browser history or URLs. When accessed without credentials, the web UI presents an interactive authentication modal to input `~/.opensand/server.token`.
 
 ---
 
@@ -329,10 +331,15 @@ pnpm test
 #   --status   show PID and recent log tail
 #   --restart  rebuild (if needed) and restart
 #   --stop     stop the server
-# Access at http://127.0.0.1:3456 in your browser
-# (single-run equivalent, no watcher):
-#   node packages/desktop/dist/src/desktop-server.js
+
+# The terminal outputs your authenticated link:
+# 🚀 OpenSand Desktop UI running at: http://127.0.0.1:3456/?token=<token>
 ```
+
+#### Accessing the Web UI:
+- **Direct Link**: Click the URL printed in the terminal (with `?token=...`). The server automatically sets a secure session cookie and removes the token from the browser address bar.
+- **Manual Authentication**: If you navigate directly to `http://127.0.0.1:3456` or `http://localhost:3456`, the UI displays an **Authentication Required** dialog. Copy the token from `~/.opensand/server.token` (or run `cat ~/.opensand/server.token` in terminal) and click **Connect & Authenticate**.
+- **Headless / API requests**: Pass `Authorization: Bearer <token>` or `X-OpenSand-Token: <token>`.
 
 **No manual restarts:** renderer-only edits (`packages/desktop/renderer/*`)
 take effect on browser refresh — the server reads them from disk per request.

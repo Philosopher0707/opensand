@@ -53,6 +53,7 @@ Use the supervisor instead of launching `node .../desktop-server.js` directly:
 
 - Renderer-only edits (`packages/desktop/renderer/*`) need no restart — just refresh the browser.
 - TypeScript edits (`packages/*/src`) — the watcher rebuilds and restarts for you.
+- Authentication: The server enforces token auth on all REST, RPC, and SSE endpoints. The session token is persisted to `~/.opensand/server.token` (`0600`). Open the full link with `?token=...` printed in the startup log or enter the token into the UI's Authentication dialog.
 - The old one-shot command `node packages/desktop/dist/src/desktop-server.js` still works
   for debugging, but does not watch for changes.
 

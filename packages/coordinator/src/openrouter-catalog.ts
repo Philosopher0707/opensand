@@ -202,7 +202,11 @@ export class OpenRouterCatalog {
    * Get exact context length for a model if found in OpenRouter catalog.
    */
   public getContextLength(modelId?: string): number | null {
-    const m = this.getModel(modelId);
+    let m = this.getModel(modelId);
+    if (!m && this.cacheFilePath) {
+      this.loadDiskCache();
+      m = this.getModel(modelId);
+    }
     return m ? m.context_length : null;
   }
 

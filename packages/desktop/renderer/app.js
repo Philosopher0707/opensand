@@ -24,26 +24,38 @@ class OpenSandClient {
     }
     this.token = token || sessionStorage.getItem('opensand_token') || '';
 
-    if (this.token && typeof window.fetch === 'function') {
+    // Wrap fetch unconditionally so Authorization is dynamically attached
+    // and 401s notify listeners to prompt for credentials
+    if (typeof window.fetch === 'function') {
       const origFetch = window.fetch;
-      const currentToken = this.token;
+      const self = this;
       window.fetch = function (input, init = {}) {
         init = { ...init };
-        if (init.headers instanceof Headers) {
-          if (!init.headers.has('Authorization')) {
-            init.headers.set('Authorization', `Bearer ${currentToken}`);
-          }
-        } else if (Array.isArray(init.headers)) {
-          if (!init.headers.some(([k]) => k.toLowerCase() === 'authorization')) {
-            init.headers.push(['Authorization', `Bearer ${currentToken}`]);
-          }
-        } else {
-          init.headers = { ...init.headers };
-          if (!init.headers['Authorization'] && !init.headers['authorization']) {
-            init.headers['Authorization'] = `Bearer ${currentToken}`;
+        const activeToken = self.token || sessionStorage.getItem('opensand_token');
+        if (activeToken) {
+          if (init.headers instanceof Headers) {
+            if (!init.headers.has('Authorization')) {
+              init.headers.set('Authorization', `Bearer ${activeToken}`);
+            }
+          } else if (Array.isArray(init.headers)) {
+            if (!init.headers.some(([k]) => k.toLowerCase() === 'authorization')) {
+              init.headers.push(['Authorization', `Bearer ${activeToken}`]);
+            }
+          } else {
+            init.headers = { ...init.headers };
+            if (!init.headers['Authorization'] && !init.headers['authorization']) {
+              init.headers['Authorization'] = `Bearer ${activeToken}`;
+            }
           }
         }
-        return origFetch(input, init);
+        return origFetch(input, init).then((res) => {
+          if (res.status === 401 && !self.isElectron) {
+            if (typeof self.onAuthRequired === 'function') {
+              self.onAuthRequired();
+            }
+          }
+          return res;
+        });
       };
     }
 
@@ -54,9 +66,39 @@ class OpenSandClient {
     }
   }
 
+  setToken(token) {
+    this.token = token || '';
+    if (token) {
+      sessionStorage.setItem('opensand_token', token);
+    } else {
+      sessionStorage.removeItem('opensand_token');
+    }
+  }
+
+  async authenticate(tokenCandidate) {
+    const res = await fetch('/api/auth/token-exchange', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: tokenCandidate }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || `Authentication failed (HTTP ${res.status})`);
+    }
+    this.setToken(data.token || tokenCandidate);
+    this.initSse();
+    return data;
+  }
+
   initSse() {
-    const sseUrl = this.token ? `/api/events?token=${encodeURIComponent(this.token)}` : '/api/events';
+    if (this.sse) {
+      try { this.sse.close(); } catch {}
+      this.sse = null;
+    }
+    const activeToken = this.token || sessionStorage.getItem('opensand_token') || '';
+    const sseUrl = activeToken ? `/api/events?token=${encodeURIComponent(activeToken)}` : '/api/events';
     const sse = new EventSource(sseUrl);
+    this.sse = sse;
     sse.onmessage = (msg) => {
       try {
         const event = JSON.parse(msg.data);
@@ -71,8 +113,15 @@ class OpenSandClient {
         fetch('/api/settings').then((res) => {
           if (res.ok && typeof forceResetTurnState === 'function') {
             forceResetTurnState('Connection re-established with server.');
+          } else if (res.status === 401 && typeof this.onAuthRequired === 'function') {
+            this.onAuthRequired();
           }
         }).catch(() => {});
+      }
+      if (sse.readyState === EventSource.CLOSED) {
+        setTimeout(() => {
+          this.initSse();
+        }, 5000);
       }
     };
   }
@@ -101,7 +150,11 @@ class OpenSandClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, sessionId, agentId }),
     });
-    return res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || `Query failed (HTTP ${res.status})`);
+    }
+    return data;
   }
 
   async cancelTurn() {
@@ -109,7 +162,11 @@ class OpenSandClient {
       return window.opensand.cancelTurn();
     }
     const res = await fetch('/api/cancel', { method: 'POST' });
-    return res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || `Cancel turn failed (HTTP ${res.status})`);
+    }
+    return data;
   }
 
   async approveTool(approvalId, decision) {
@@ -123,7 +180,11 @@ class OpenSandClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ approvalId, decision: payload }),
     });
-    return res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || `Approve tool failed (HTTP ${res.status})`);
+    }
+    return data;
   }
 
   async getSessions() {
@@ -131,7 +192,11 @@ class OpenSandClient {
       return window.opensand.getSessions();
     }
     const res = await fetch('/api/sessions');
-    return res.json();
+    const data = await res.json().catch(() => []);
+    if (!res.ok) {
+      return [];
+    }
+    return Array.isArray(data) ? data : [];
   }
 
   async loadSession(sessionId) {
@@ -196,7 +261,11 @@ class OpenSandClient {
 
   async getAgents() {
     const res = await fetch('/api/agents');
-    return res.json();
+    const data = await res.json().catch(() => []);
+    if (!res.ok) {
+      return [];
+    }
+    return Array.isArray(data) ? data : [];
   }
 
   async createAgent(agent) {
@@ -218,7 +287,11 @@ class OpenSandClient {
 
   async getTasks() {
     const res = await fetch('/api/tasks');
-    return res.json();
+    const data = await res.json().catch(() => []);
+    if (!res.ok) {
+      return [];
+    }
+    return Array.isArray(data) ? data : [];
   }
 
   async createTask(task) {
@@ -840,6 +913,74 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnApproveOnce = document.getElementById('btnApproveOnce');
   const btnAlwaysAllow = document.getElementById('btnAlwaysAllow');
   const btnRejectTool = document.getElementById('btnRejectTool');
+
+  // Authentication Modal Elements
+  const authModal = document.getElementById('authModal');
+  const serverAuthTokenInput = document.getElementById('serverAuthTokenInput');
+  const authErrorMsg = document.getElementById('authErrorMsg');
+  const btnSubmitAuthToken = document.getElementById('btnSubmitAuthToken');
+
+  function showAuthModal() {
+    if (authModal) {
+      authModal.classList.remove('hidden');
+      if (serverAuthTokenInput) {
+        serverAuthTokenInput.value = '';
+        setTimeout(() => serverAuthTokenInput.focus(), 50);
+      }
+      if (authErrorMsg) authErrorMsg.style.display = 'none';
+    }
+  }
+
+  function hideAuthModal() {
+    if (authModal) authModal.classList.add('hidden');
+  }
+
+  async function handleAuthSubmit() {
+    if (!serverAuthTokenInput || !btnSubmitAuthToken) return;
+    const token = serverAuthTokenInput.value.trim();
+    if (!token) {
+      if (authErrorMsg) {
+        authErrorMsg.textContent = 'Please enter an authentication token.';
+        authErrorMsg.style.display = 'block';
+      }
+      return;
+    }
+    btnSubmitAuthToken.disabled = true;
+    btnSubmitAuthToken.textContent = 'Authenticating...';
+    if (authErrorMsg) authErrorMsg.style.display = 'none';
+    try {
+      await client.authenticate(token);
+      hideAuthModal();
+      await refreshSettings();
+      await refreshBots();
+      await refreshTasks();
+      await refreshSessions();
+    } catch (err) {
+      if (authErrorMsg) {
+        authErrorMsg.textContent = err.message || 'Invalid authentication token.';
+        authErrorMsg.style.display = 'block';
+      }
+    } finally {
+      btnSubmitAuthToken.disabled = false;
+      btnSubmitAuthToken.textContent = 'Connect & Authenticate';
+    }
+  }
+
+  if (btnSubmitAuthToken) {
+    btnSubmitAuthToken.onclick = handleAuthSubmit;
+  }
+  if (serverAuthTokenInput) {
+    serverAuthTokenInput.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleAuthSubmit();
+      }
+    };
+  }
+
+  client.onAuthRequired = () => {
+    showAuthModal();
+  };
 
   // Bot Modal Elements
   const btnOpenCreateBot = document.getElementById('btnOpenCreateBot');
@@ -5627,17 +5768,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Boot Initial Load
   initTheme();
+  if (!client.isElectron && !client.token) {
+    try {
+      const probe = await fetch('/api/settings');
+      if (probe.status === 401) {
+        showAuthModal();
+      }
+    } catch {
+      showAuthModal();
+    }
+  }
   await refreshSettings();
   await refreshBots();
   // Validate persisted bot against live list
   if (activeAgentId) {
     const liveAgents = await client.getAgents();
-    if (!liveAgents.some((a) => a.id === activeAgentId)) {
-      activeAgentId = null;
-      localStorage.removeItem(AGENT_KEY);
-    } else {
+    if (Array.isArray(liveAgents) && liveAgents.some((a) => a.id === activeAgentId)) {
       const picked = liveAgents.find((a) => a.id === activeAgentId);
       badgeActiveBot.textContent = `${picked.kind === 'ROOM' ? '👥' : '⚡'} ${picked.name}`;
+    } else {
+      activeAgentId = null;
+      localStorage.removeItem(AGENT_KEY);
     }
   }
   await refreshBots();
@@ -5646,7 +5797,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Validate persisted session against live list, then restore it
   if (currentSessionId) {
     const liveSessions = await client.getSessions();
-    if (liveSessions.some((s) => s.id === currentSessionId)) {
+    if (Array.isArray(liveSessions) && liveSessions.some((s) => s.id === currentSessionId)) {
       await selectSession(currentSessionId);
     } else {
       currentSessionId = null;
