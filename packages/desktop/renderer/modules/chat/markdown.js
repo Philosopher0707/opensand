@@ -98,7 +98,7 @@ import { highlightToHtml } from './highlight.js';
       <button class="btn-copy-code" type="button" data-code="${escapeHtml(cleanCode)}">Copy</button>
     </div>
   </div>
-  <pre><code class="language-${cleanLang}">${highlightToHtml(rawCode, cleanLang)}</code></pre>
+  <pre><code class="language-${cleanLang}">${highlightToHtml(cleanCode, cleanLang)}</code></pre>
 </div>`);
       return `\n%%CODE_BLOCK_${idx}%%\n`;
     });

@@ -618,6 +618,21 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
       execSync(`node --input-type=module -e 'import "${mdJsPath}"'`);
     }, 'markdown.js module must be valid ES module syntax');
 
+    // Regression: renderMarkdown executes cleanly with fenced code blocks (no ReferenceError: rawCode)
+    assert.doesNotThrow(() => {
+      execSync(`node --input-type=module -e '
+        import { renderMarkdown, renderMarkdownCached } from "${mdJsPath}";
+        const output = renderMarkdown("Here is some code:\\n\`\`\`typescript\\nconst foo: number = 42;\\n\`\`\`\\nMore text.");
+        if (!output.includes("tok-keyword") || !output.includes("language-typescript")) {
+          throw new Error("Failed to render syntax-highlighted code block");
+        }
+        const cached = renderMarkdownCached("cached text with \`code\`");
+        if (!cached.includes("<code>code</code>")) {
+          throw new Error("Cached render failed");
+        }
+      '`);
+    }, 'renderMarkdown must render fenced code blocks without runtime reference errors');
+
     const appQueueJsPath = path.join(__dirname, '../../renderer/modules/chat/approval-queue.js');
     assert.doesNotThrow(() => {
       execSync(`node --input-type=module -e 'import "${appQueueJsPath}"'`);
