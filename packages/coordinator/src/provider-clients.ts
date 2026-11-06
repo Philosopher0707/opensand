@@ -114,20 +114,32 @@ export interface SlackIdentity {
 
 export class SlackClient extends HttpProvider {
   private token: string | null;
+  private getTokenFn?: () => string | null | undefined;
 
-  constructor(options?: { token?: string; storedToken?: string | null }) {
+  constructor(options?: { token?: string; storedToken?: string | null; getToken?: () => string | null | undefined }) {
     super();
     const explicit = options?.token?.trim();
     const env = (process.env.SLACK_BOT_TOKEN || process.env.SLACK_TOKEN || "").trim();
     this.token = explicit || env || options?.storedToken?.trim() || null;
+    this.getTokenFn = options?.getToken;
+  }
+
+  public getToken(): string | null {
+    if (this.getTokenFn) {
+      const dynamic = this.getTokenFn();
+      if (dynamic && dynamic.trim().length > 0) return dynamic.trim();
+    }
+    return this.token;
   }
 
   public isConnected(): boolean {
-    return this.token !== null && this.token.length > 0;
+    const t = this.getToken();
+    return t !== null && t.length > 0;
   }
 
   public describe(): { connected: boolean; source: string } {
-    return { connected: this.isConnected(), source: sourceLabelFor(this.token, "slack") };
+    const t = this.getToken();
+    return { connected: this.isConnected(), source: sourceLabelFor(t, "slack") };
   }
 
   private guard(): ProviderError | null {
@@ -149,7 +161,7 @@ export class SlackClient extends HttpProvider {
     const r = await this.request<SlackResponse & Partial<SlackIdentity>>("https://slack.com/api/auth.test", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${this.token}`,
+        Authorization: `Bearer ${this.getToken()}`,
         "Content-Type": "application/json; charset=utf-8",
       },
     });
@@ -193,7 +205,7 @@ export class SlackClient extends HttpProvider {
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${this.token}`,
+          Authorization: `Bearer ${this.getToken()}`,
           "Content-Type": "application/json; charset=utf-8",
         },
         body: JSON.stringify({ channel, text }),
@@ -242,20 +254,32 @@ export interface LinearIssue {
 
 export class LinearClient extends HttpProvider {
   private token: string | null;
+  private getTokenFn?: () => string | null | undefined;
 
-  constructor(options?: { token?: string; storedToken?: string | null }) {
+  constructor(options?: { token?: string; storedToken?: string | null; getToken?: () => string | null | undefined }) {
     super();
     const explicit = options?.token?.trim();
     const env = (process.env.LINEAR_API_KEY || "").trim();
     this.token = explicit || env || options?.storedToken?.trim() || null;
+    this.getTokenFn = options?.getToken;
+  }
+
+  public getToken(): string | null {
+    if (this.getTokenFn) {
+      const dynamic = this.getTokenFn();
+      if (dynamic && dynamic.trim().length > 0) return dynamic.trim();
+    }
+    return this.token;
   }
 
   public isConnected(): boolean {
-    return this.token !== null && this.token.length > 0;
+    const t = this.getToken();
+    return t !== null && t.length > 0;
   }
 
   public describe(): { connected: boolean; source: string } {
-    return { connected: this.isConnected(), source: sourceLabelFor(this.token, "linear") };
+    const t = this.getToken();
+    return { connected: this.isConnected(), source: sourceLabelFor(t, "linear") };
   }
 
   private async query<T>(query: string, variables?: Record<string, unknown>): Promise<T | ProviderError> {
@@ -272,7 +296,7 @@ export class LinearClient extends HttpProvider {
       method: "POST",
       headers: {
         // Linear personal API keys go in Authorization bare, not as a Bearer token.
-        Authorization: this.token as string,
+        Authorization: this.getToken() as string,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ query, variables: variables ?? {} }),

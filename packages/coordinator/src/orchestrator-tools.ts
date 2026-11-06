@@ -96,9 +96,11 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   const githubClient = options.githubClient ?? new GitHubClient();
   const slackClient = options.slackClient ?? new SlackClient({
     storedToken: connectorManager.getRawCredentials("slack")?.token ?? null,
+    getToken: () => connectorManager.getRawCredentials("slack")?.token ?? null,
   });
   const linearClient = options.linearClient ?? new LinearClient({
     storedToken: connectorManager.getRawCredentials("linear")?.token ?? null,
+    getToken: () => connectorManager.getRawCredentials("linear")?.token ?? null,
   });
   const sessionsBaseDir = options.sessionsBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
   const habitExtractor = options.habitExtractor ?? new HabitExtractor({ sessionsDir: sessionsBaseDir });

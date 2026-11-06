@@ -47,6 +47,7 @@ export class DesktopServer {
   }
 
   public async start(): Promise<{ port: number; host: string; url: string }> {
+    await this.bridge.connectorManager.ensureLoaded();
     return new Promise((resolve, reject) => {
       const server = http.createServer(async (req, res) => {
         try {
@@ -1040,6 +1041,7 @@ export class DesktopServer {
 
     // API: GET /api/connectors (3rd-Party OAuth Connectors)
     if (pathname === '/api/connectors' && req.method === 'GET') {
+      await this.bridge.connectorManager.ensureLoaded();
       const list = this.bridge.listConnectors();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(list));
@@ -1048,6 +1050,7 @@ export class DesktopServer {
 
     // API: GET /api/connectors/:id
     if (pathname.startsWith('/api/connectors/') && !pathname.includes('/', 17) && req.method === 'GET') {
+      await this.bridge.connectorManager.ensureLoaded();
       const id = pathname.replace('/api/connectors/', '') as any;
       const conn = this.bridge.getConnector(id);
       if (!conn) {
@@ -1076,7 +1079,7 @@ export class DesktopServer {
         res.end(JSON.stringify(result));
         return;
       }
-      const flow = this.bridge.initiateOAuth(id, body.redirectUri);
+      const flow = await this.bridge.initiateOAuth(id, body.redirectUri);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(flow));
       return;

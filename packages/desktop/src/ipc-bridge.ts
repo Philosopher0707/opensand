@@ -1247,7 +1247,7 @@ export class DesktopIpcBridge extends EventEmitter {
     return this.connectorManager.getConnector(id);
   }
 
-  public initiateOAuth(id: ConnectorProviderId, redirectUri?: string): { authUrl: string; state: string; providerId: ConnectorProviderId } {
+  public async initiateOAuth(id: ConnectorProviderId, redirectUri?: string): Promise<{ authUrl: string; state: string; providerId: ConnectorProviderId }> {
     return this.connectorManager.initiateOAuth(id, redirectUri);
   }
 

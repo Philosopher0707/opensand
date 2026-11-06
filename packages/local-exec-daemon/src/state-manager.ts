@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import * as crypto from "node:crypto";
 import { DaemonState, DaemonConnection, DaemonSupervisorHeartbeat, PermissionGates } from "./types.js";
 
 export class StateManager {
@@ -25,7 +26,7 @@ export class StateManager {
   private async writeJsonAtomic(filename: string, data: any): Promise<void> {
     await this.ensureDirectory();
     const targetPath = this.resolvePath(filename);
-    const tempPath = path.join(this.baseDir, `.${filename}.${Date.now()}.tmp`);
+    const tempPath = path.join(this.baseDir, `.${filename}.${Date.now()}.${crypto.randomBytes(6).toString("hex")}.tmp`);
     const content = JSON.stringify(data, null, 2);
 
     try {

@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as crypto from "node:crypto";
@@ -82,6 +83,96 @@ export class VaultStore {
 
   async ensureDirectory(): Promise<void> {
     await fs.mkdir(this.baseDir, { recursive: true, mode: 0o700 });
+  }
+
+  private getOrCreateSaltSync(): Buffer {
+    try {
+      const raw = fsSync.readFileSync(this.saltFilePath);
+      if (raw.length === 32) {
+        return raw;
+      }
+    } catch {
+      // File missing or invalid
+    }
+
+    const salt = crypto.randomBytes(32);
+    try {
+      fsSync.mkdirSync(this.baseDir, { recursive: true, mode: 0o700 });
+      fsSync.writeFileSync(this.saltFilePath, salt, { mode: 0o600 });
+    } catch {
+      // Best-effort write
+    }
+    return salt;
+  }
+
+  private getOrCreateMasterKeySync(): Buffer {
+    try {
+      const raw = fsSync.readFileSync(this.masterKeyFilePath);
+      if (raw.length === 32) {
+        return raw;
+      }
+    } catch {
+      // File missing or invalid
+    }
+
+    const key = crypto.randomBytes(32);
+    try {
+      fsSync.mkdirSync(this.baseDir, { recursive: true, mode: 0o700 });
+      fsSync.writeFileSync(this.masterKeyFilePath, key, { mode: 0o600 });
+    } catch {
+      // Best-effort write
+    }
+    return key;
+  }
+
+  private deriveKeySync(): Buffer {
+    const salt = this.getOrCreateSaltSync();
+    if (this.passphrase) {
+      return crypto.pbkdf2Sync(this.passphrase, salt, 100_000, 32, "sha256");
+    }
+    const masterKey = this.getOrCreateMasterKeySync();
+    return crypto.pbkdf2Sync(masterKey, salt, 100_000, 32, "sha256");
+  }
+
+  public getSecretSync(nameOrId: string): VaultSecret | null {
+    try {
+      if (!fsSync.existsSync(this.vaultFilePath)) return null;
+      const raw = fsSync.readFileSync(this.vaultFilePath, "utf-8");
+      const container: EncryptedVaultContainer = JSON.parse(raw);
+
+      let key = this.deriveKeySync();
+      let decrypted: string | null = null;
+
+      try {
+        const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(container.iv, "hex"));
+        decipher.setAuthTag(Buffer.from(container.tag, "hex"));
+        let dec = decipher.update(container.ciphertext, "hex", "utf-8");
+        dec += decipher.final("utf-8");
+        decrypted = dec;
+      } catch {
+        if (!this.passphrase) {
+          const salt = this.getOrCreateSaltSync();
+          const legacySeed = `${os.hostname()}:${os.userInfo().username}:${os.homedir()}:opensand-default-vault-seed`;
+          const legacyKey = crypto.pbkdf2Sync(legacySeed, salt, 100_000, 32, "sha256");
+          const legacyDecipher = crypto.createDecipheriv("aes-256-gcm", legacyKey, Buffer.from(container.iv, "hex"));
+          legacyDecipher.setAuthTag(Buffer.from(container.tag, "hex"));
+          let dec = legacyDecipher.update(container.ciphertext, "hex", "utf-8");
+          dec += legacyDecipher.final("utf-8");
+          decrypted = dec;
+        }
+      }
+
+      if (!decrypted) return null;
+      const payload = JSON.parse(decrypted) as PlainVaultPayload;
+      const query = nameOrId.toLowerCase().trim();
+      return (
+        Object.values(payload.secrets).find(
+          (s) => s.id.toLowerCase() === query || s.name.toLowerCase() === query
+        ) ?? null
+      );
+    } catch {
+      return null;
+    }
   }
 
   private async getOrCreateSalt(): Promise<Buffer> {

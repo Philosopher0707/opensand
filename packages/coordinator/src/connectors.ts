@@ -187,7 +187,15 @@ export class ConnectorManager {
         if (Array.isArray(parsed)) {
           for (const item of parsed) {
             if (item && item.id && OAUTH_PROVIDERS[item.id as ConnectorProviderId]) {
-              this.connectors.set(item.id as ConnectorProviderId, item);
+              const id = item.id as ConnectorProviderId;
+              // Synchronously restore vaulted token so sync callers never experience a race
+              if (!item.token && this.vaultStore && typeof (this.vaultStore as any).getSecretSync === "function") {
+                const sec = (this.vaultStore as any).getSecretSync(`connector_token_${id}`);
+                if (sec?.value) {
+                  item.token = sec.value;
+                }
+              }
+              this.connectors.set(id, item);
             }
           }
         }
@@ -223,8 +231,8 @@ export class ConnectorManager {
       if (needsSave) {
         await this.saveToDisk();
       }
-    } catch {
-      // Best-effort vault hydration
+    } catch (err) {
+      console.warn("[ConnectorManager] Failed to hydrate vaulted tokens:", err);
     }
   }
 
@@ -316,10 +324,11 @@ export class ConnectorManager {
     return this.connectors.get(id);
   }
 
-  public initiateOAuth(
+  public async initiateOAuth(
     id: ConnectorProviderId,
     redirectUri?: string
-  ): { authUrl: string; state: string; providerId: ConnectorProviderId } {
+  ): Promise<{ authUrl: string; state: string; providerId: ConnectorProviderId }> {
+    await this.ensureLoaded();
     const provider = OAUTH_PROVIDERS[id];
     if (!provider) {
       throw new Error(`Unknown connector provider: ${id}`);

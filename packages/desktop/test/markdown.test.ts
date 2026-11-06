@@ -1,11 +1,26 @@
 import test from 'node:test';
 import * as assert from 'node:assert';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const mdPath = path.join(__dirname, '../../renderer/modules/chat/markdown.js');
+
+function resolveRendererModule(relativePath: string): string {
+  const candidates = [
+    path.resolve(__dirname, '../renderer', relativePath),
+    path.resolve(__dirname, '../../renderer', relativePath),
+    path.resolve(process.cwd(), 'packages/desktop/renderer', relativePath),
+    path.resolve(process.cwd(), 'renderer', relativePath),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return candidates[0];
+}
+
+const mdPath = resolveRendererModule('modules/chat/markdown.js');
 
 interface MarkdownModule {
   renderMarkdown: (text: string) => string;

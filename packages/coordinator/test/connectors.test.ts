@@ -13,6 +13,12 @@ import {
 } from "../src/index.js";
 import { LocalExecDaemon } from "@opensand/local-exec-daemon";
 
+/**
+ * Note on VaultStore isolation: ConnectorManager creates or defaults to a VaultStore
+ * located under `path.join(path.dirname(storagePath), "vault")`. In tests, ensure each
+ * test suite or test case passes an isolated tmpDir `storagePath` or an explicit isolated
+ * `vaultStore` to prevent cross-test vault state leakage.
+ */
 describe("3rd-Party OAuth Connectors & Connect Cards", () => {
   const tmpDir = path.join(os.tmpdir(), `opensand-connectors-test-${Date.now()}`);
   const storagePath = path.join(tmpDir, "connectors.json");
@@ -34,9 +40,9 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
     }
   });
 
-  it("initiates OAuth flow with proper scopes, client_id, and state", () => {
+  it("initiates OAuth flow with proper scopes, client_id, and state", async () => {
     const manager = new ConnectorManager({ storagePath });
-    const flow = manager.initiateOAuth("slack", "http://127.0.0.1:3456/api/connectors/callback");
+    const flow = await manager.initiateOAuth("slack", "http://127.0.0.1:3456/api/connectors/callback");
 
     assert.strictEqual(flow.providerId, "slack");
     assert.ok(flow.state.length >= 16);
@@ -52,7 +58,7 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
 
   it("completes OAuth flow and stores connected state", async () => {
     const manager = new ConnectorManager({ storagePath });
-    const flow = manager.initiateOAuth("linear");
+    const flow = await manager.initiateOAuth("linear");
     const completed = await manager.completeOAuth("linear", "code_12345", flow.state);
 
     assert.strictEqual(completed.status, "connected");
@@ -139,6 +145,28 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
     const disconnected = await manager.disconnect("slack");
     assert.strictEqual(disconnected, true);
     assert.strictEqual(manager.getConnector("slack")?.status, "disconnected");
+  });
+
+  it("ensureLoaded() is idempotent across sequential and concurrent invocations", async () => {
+    const manager = new ConnectorManager({ storagePath });
+
+    // Calling ensureLoaded multiple times concurrently
+    await Promise.all([
+      manager.ensureLoaded(),
+      manager.ensureLoaded(),
+      manager.ensureLoaded(),
+    ]);
+
+    // Calling ensureLoaded sequentially
+    await manager.ensureLoaded();
+
+    // Directly calling initiateOAuth internally ensures loaded without issue
+    const flow = await manager.initiateOAuth("github");
+    assert.strictEqual(flow.providerId, "github");
+
+    // Calling ensureLoaded again after operations is a safe no-op
+    await manager.ensureLoaded();
+    assert.strictEqual(manager.getConnector("github")?.status, "connecting");
   });
 
   it("formats and parses [connect-app] markers for inline cards", () => {
