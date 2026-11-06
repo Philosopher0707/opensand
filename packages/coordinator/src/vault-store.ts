@@ -63,6 +63,7 @@ export class VaultStore {
   private baseDir: string;
   private vaultFilePath: string;
   private saltFilePath: string;
+  private masterKeyFilePath: string;
   private passphrase?: string;
   private knownSecretValues = new Map<string, string>(); // secret value -> secret name
   private initialized = false;
@@ -71,6 +72,7 @@ export class VaultStore {
     this.baseDir = options?.baseDir ?? path.join(os.homedir(), ".opensand", "vault");
     this.vaultFilePath = path.join(this.baseDir, "vault.enc");
     this.saltFilePath = path.join(this.baseDir, ".vault.salt");
+    this.masterKeyFilePath = path.join(this.baseDir, ".vault.key");
     this.passphrase = options?.passphrase ?? process.env.OPENSAND_VAULT_PASSPHRASE;
   }
 
@@ -97,10 +99,28 @@ export class VaultStore {
     return salt;
   }
 
+  private async getOrCreateMasterKey(): Promise<Buffer> {
+    try {
+      const raw = await fs.readFile(this.masterKeyFilePath);
+      if (raw.length === 32) {
+        return raw;
+      }
+    } catch {
+      // File missing or invalid
+    }
+
+    const key = crypto.randomBytes(32);
+    await fs.writeFile(this.masterKeyFilePath, key, { mode: 0o600 });
+    return key;
+  }
+
   private async deriveKey(): Promise<Buffer> {
     const salt = await this.getOrCreateSalt();
-    const machineSeed = `${os.hostname()}:${os.userInfo().username}:${os.homedir()}:${this.passphrase ?? "opensand-default-vault-seed"}`;
-    return crypto.pbkdf2Sync(machineSeed, salt, 100_000, 32, "sha256");
+    if (this.passphrase) {
+      return crypto.pbkdf2Sync(this.passphrase, salt, 100_000, 32, "sha256");
+    }
+    const masterKey = await this.getOrCreateMasterKey();
+    return crypto.pbkdf2Sync(masterKey, salt, 100_000, 32, "sha256");
   }
 
   private async loadPayload(): Promise<PlainVaultPayload> {
@@ -110,12 +130,36 @@ export class VaultStore {
       const raw = await fs.readFile(this.vaultFilePath, "utf-8");
       const container: EncryptedVaultContainer = JSON.parse(raw);
 
-      const key = await this.deriveKey();
-      const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(container.iv, "hex"));
-      decipher.setAuthTag(Buffer.from(container.tag, "hex"));
+      let decrypted: string | null = null;
+      let key = await this.deriveKey();
 
-      let decrypted = decipher.update(container.ciphertext, "hex", "utf-8");
-      decrypted += decipher.final("utf-8");
+      try {
+        const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(container.iv, "hex"));
+        decipher.setAuthTag(Buffer.from(container.tag, "hex"));
+
+        let dec = decipher.update(container.ciphertext, "hex", "utf-8");
+        dec += decipher.final("utf-8");
+        decrypted = dec;
+      } catch (decryptErr) {
+        // Fallback check: if no explicit passphrase was set, attempt legacy machine-seed decryption for seamless migration
+        if (!this.passphrase) {
+          const salt = await this.getOrCreateSalt();
+          const legacySeed = `${os.hostname()}:${os.userInfo().username}:${os.homedir()}:opensand-default-vault-seed`;
+          const legacyKey = crypto.pbkdf2Sync(legacySeed, salt, 100_000, 32, "sha256");
+          const legacyDecipher = crypto.createDecipheriv("aes-256-gcm", legacyKey, Buffer.from(container.iv, "hex"));
+          legacyDecipher.setAuthTag(Buffer.from(container.tag, "hex"));
+
+          let dec = legacyDecipher.update(container.ciphertext, "hex", "utf-8");
+          dec += legacyDecipher.final("utf-8");
+          decrypted = dec;
+
+          // Migrate vault file to newly generated authentic random master key
+          const payload = JSON.parse(decrypted) as PlainVaultPayload;
+          await this.savePayloadAtomic(payload);
+          return payload;
+        }
+        throw decryptErr;
+      }
 
       const payload = JSON.parse(decrypted) as PlainVaultPayload;
       this.rebuildKnownSecrets(payload);

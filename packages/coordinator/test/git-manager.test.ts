@@ -72,6 +72,26 @@ describe("GitManager", () => {
     assert.strictEqual(statusAfter.isClean, true);
   });
 
+  it("excludes sensitive secret files (.env, *.pem, *.key) from autoCommit staging", async () => {
+    // Create a valid source file and sensitive files
+    await fs.writeFile(path.join(tempRepoDir, "safe.ts"), "export const safe = true;\n");
+    await fs.writeFile(path.join(tempRepoDir, ".env"), "SECRET_API_KEY=xyz123\n");
+    await fs.writeFile(path.join(tempRepoDir, "server.key"), "PRIVATE_KEY_DATA\n");
+    await fs.writeFile(path.join(tempRepoDir, "cert.pem"), "CERT_DATA\n");
+
+    const commit = await gitManager.autoCommit("feat: add safe code");
+    assert.strictEqual(commit.branch, "main");
+
+    // safe.ts should be committed, but .env, server.key, cert.pem must remain untracked!
+    const status = await gitManager.getStatus();
+    assert.strictEqual(status.isClean, false);
+    assert.strictEqual(status.staged.length, 0);
+    assert.ok(status.untracked.includes(".env"), ".env must remain untracked");
+    assert.ok(status.untracked.includes("server.key"), "server.key must remain untracked");
+    assert.ok(status.untracked.includes("cert.pem"), "cert.pem must remain untracked");
+    assert.strictEqual(status.untracked.includes("safe.ts"), false, "safe.ts must have been committed");
+  });
+
   it("reviews PR diffs and flags critical security issues, console logs, and bypasses", async () => {
     // Add problematic lines to branch
     await fs.writeFile(

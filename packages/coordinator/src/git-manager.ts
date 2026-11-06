@@ -51,6 +51,25 @@ export interface GitWorktreeEntry {
   isBare?: boolean;
 }
 
+const SENSITIVE_FILE_PATTERNS: RegExp[] = [
+  /^\.env(?:\..+)?$/i,
+  /\.pem$/i,
+  /\.key$/i,
+  /\.pfx$/i,
+  /\.p12$/i,
+  /^id_rsa(?:\..+)?$/i,
+  /^id_ed25519(?:\..+)?$/i,
+  /(?:^|\/)\.vault\./i,
+  /(?:^|\/)\.aws\/credentials/i,
+  /(?:^|\/)\.ssh\//i,
+];
+
+export function isSensitiveGitFile(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, "/");
+  const basename = path.basename(normalized);
+  return SENSITIVE_FILE_PATTERNS.some((pat) => pat.test(basename) || pat.test(normalized));
+}
+
 export class GitManager {
   private defaultCwd: string;
 
@@ -193,9 +212,16 @@ export class GitManager {
     // Stage changes
     await this.execGit(["add", "-A"], cwd);
 
+    // Filter out and unstage any sensitive secret files matching .env*, *.pem, *.key, etc.
+    const preStatus = await this.getStatus(cwd);
+    const sensitiveStaged = preStatus.staged.filter(isSensitiveGitFile);
+    if (sensitiveStaged.length > 0) {
+      await this.execGit(["reset", "HEAD", "--", ...sensitiveStaged], cwd);
+    }
+
     const status = await this.getStatus(cwd);
     if (status.staged.length === 0) {
-      throw new Error("No changes staged to commit");
+      throw new Error("No safe changes staged to commit (sensitive files were excluded)");
     }
 
     let commitMsg = message?.trim();

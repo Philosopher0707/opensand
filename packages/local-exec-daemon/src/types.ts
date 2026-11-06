@@ -69,6 +69,8 @@ export interface ReadFileInput {
   path: string;
   start_line?: number;
   end_line?: number;
+  workspaceRoot?: string;
+  allowOutsideWorkspace?: boolean;
 }
 
 export interface ReadFileOutput {
@@ -83,6 +85,8 @@ export interface WriteFileInput {
   path: string;
   content: string;
   overwrite?: boolean;
+  workspaceRoot?: string;
+  allowOutsideWorkspace?: boolean;
 }
 
 export interface WriteFileOutput {
@@ -96,6 +100,8 @@ export interface ListDirectoryInput {
   path: string;
   recursive?: boolean;
   max_depth?: number;
+  workspaceRoot?: string;
+  allowOutsideWorkspace?: boolean;
 }
 
 export interface DirectoryEntry {

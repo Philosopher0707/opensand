@@ -14,6 +14,8 @@ export interface ToolExecutionContext {
   permissionGates?: PermissionGates;
   approvalGranted?: boolean;
   approvalId?: string;
+  workspaceRoot?: string;
+  allowOutsideWorkspace?: boolean;
 }
 
 export type CustomToolHandler = (args: Record<string, any>, context?: ToolExecutionContext) => Promise<any>;
@@ -234,7 +236,9 @@ export class ToolRegistry {
           };
         }
 
-        const output = await readFileOperation(input);
+        const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
+        const allowOutsideWorkspace = input.allowOutsideWorkspace ?? context?.allowOutsideWorkspace;
+        const output = await readFileOperation({ ...input, workspaceRoot, allowOutsideWorkspace });
         return {
           status: "ok",
           output,
@@ -254,7 +258,9 @@ export class ToolRegistry {
           };
         }
 
-        const output = await writeFileOperation(input);
+        const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
+        const allowOutsideWorkspace = input.allowOutsideWorkspace ?? context?.allowOutsideWorkspace;
+        const output = await writeFileOperation({ ...input, workspaceRoot, allowOutsideWorkspace });
         return {
           status: "ok",
           output,
@@ -274,7 +280,9 @@ export class ToolRegistry {
           };
         }
 
-        const output = await listDirectoryOperation(input);
+        const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
+        const allowOutsideWorkspace = input.allowOutsideWorkspace ?? context?.allowOutsideWorkspace;
+        const output = await listDirectoryOperation({ ...input, workspaceRoot, allowOutsideWorkspace });
         return {
           status: "ok",
           output,

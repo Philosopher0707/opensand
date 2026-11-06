@@ -96,4 +96,64 @@ describe("FileOps", () => {
       /File size .* exceeds maximum safe read limit/
     );
   });
+
+  it("enforces workspace confinement and blocks path traversal outside workspaceRoot", async () => {
+    const projectRoot = path.join(testDir, "my-project");
+    const secretOutside = path.join(testDir, "outside-secret.txt");
+    await fs.mkdir(projectRoot, { recursive: true });
+    await fs.writeFile(secretOutside, "SUPER_SECRET_PAYLOAD");
+
+    // 1. Path traversal via ../ blocked in readFileOperation
+    await assert.rejects(
+      async () => {
+        await readFileOperation({
+          path: "../outside-secret.txt",
+          workspaceRoot: projectRoot,
+        });
+      },
+      /Path traversal blocked: target path .* resolves outside workspace root/
+    );
+
+    // 2. Absolute path outside workspaceRoot blocked
+    await assert.rejects(
+      async () => {
+        await readFileOperation({
+          path: secretOutside,
+          workspaceRoot: projectRoot,
+        });
+      },
+      /Path traversal blocked: target path .* resolves outside workspace root/
+    );
+
+    // 3. Traversal blocked in writeFileOperation
+    await assert.rejects(
+      async () => {
+        await writeFileOperation({
+          path: "../escaped.txt",
+          content: "malicious write",
+          workspaceRoot: projectRoot,
+        });
+      },
+      /Path traversal blocked/
+    );
+
+    // 4. Traversal blocked in listDirectoryOperation
+    await assert.rejects(
+      async () => {
+        await listDirectoryOperation({
+          path: "..",
+          workspaceRoot: projectRoot,
+        });
+      },
+      /Path traversal blocked/
+    );
+
+    // 5. allowOutsideWorkspace explicitly allows authorized outside access
+    const allowed = await readFileOperation({
+      path: secretOutside,
+      workspaceRoot: projectRoot,
+      allowOutsideWorkspace: true,
+    });
+    assert.equal(allowed.content, "SUPER_SECRET_PAYLOAD");
+  });
 });

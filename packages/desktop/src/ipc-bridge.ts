@@ -63,7 +63,7 @@ import {
   GalleryTemplateItem,
   GalleryQueryOptions,
 } from '@opensand/coordinator';
-import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry } from '@opensand/local-exec-daemon';
+import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
 import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSummary, DesktopEvent } from './types.js';
 
@@ -396,9 +396,6 @@ export class DesktopIpcBridge extends EventEmitter {
         skillsContext,
       },
       onApprovalRequired: async (req: ApprovalRequest) => {
-        if (this.settings.autoApprove) {
-          return true;
-        }
         return this.requestUserApproval(req.toolName, req.arguments, req.reason);
       },
       onEvent: (event: TurnEvent) => {
@@ -480,7 +477,29 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async requestUserApproval(toolName: string, args: Record<string, unknown>, reason?: string): Promise<boolean> {
-    if (this.settings.autoApprove) {
+    let mustPrompt = false;
+
+    // Safety Ceiling: Destructive shell commands (rm -rf /, raw disks, fork bombs) must never auto-approve
+    if (toolName === 'exec_command' && typeof args.command === 'string') {
+      const validation = validateBashCommand(args.command);
+      if (validation.isDangerous) {
+        mustPrompt = true;
+        reason = reason
+          ? `${reason} (Dangerous pattern detected: ${validation.dangerReason})`
+          : `Dangerous command pattern detected: ${validation.dangerReason}`;
+      }
+    }
+
+    // Explicit PolicyEngine REQUIRE_APPROVAL rules must always prompt human confirmation
+    if (!mustPrompt && this.daemon) {
+      const policy = this.daemon.evaluatePolicy(toolName, args);
+      if (policy.action === 'REQUIRE_APPROVAL') {
+        mustPrompt = true;
+        reason = reason ? `${reason} (${policy.reason})` : policy.reason;
+      }
+    }
+
+    if (this.settings.autoApprove && !mustPrompt) {
       return true;
     }
 

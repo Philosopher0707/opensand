@@ -5,8 +5,26 @@ import { ReadFileInput, ReadFileOutput, WriteFileInput, WriteFileOutput, ListDir
 
 const MAX_READ_FILE_BYTES = 25 * 1024 * 1024; // 25MB safety boundary
 
+export function resolveAndValidatePath(
+  targetPath: string,
+  workspaceRoot?: string,
+  allowOutsideWorkspace?: boolean
+): string {
+  const root = workspaceRoot ? path.resolve(workspaceRoot) : undefined;
+  const resolved = root && !path.isAbsolute(targetPath) ? path.resolve(root, targetPath) : path.resolve(targetPath);
+
+  if (root && !allowOutsideWorkspace) {
+    const rel = path.relative(root, resolved);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error(`Path traversal blocked: target path "${targetPath}" resolves outside workspace root "${root}".`);
+    }
+  }
+
+  return resolved;
+}
+
 export async function readFileOperation(input: ReadFileInput): Promise<ReadFileOutput> {
-  const resolvedPath = path.resolve(input.path);
+  const resolvedPath = resolveAndValidatePath(input.path, input.workspaceRoot, input.allowOutsideWorkspace);
   const stat = await fs.stat(resolvedPath);
   if (stat.size > MAX_READ_FILE_BYTES) {
     throw new Error(
@@ -68,7 +86,7 @@ export async function readFileOperation(input: ReadFileInput): Promise<ReadFileO
 }
 
 export async function writeFileOperation(input: WriteFileInput): Promise<WriteFileOutput> {
-  const resolvedPath = path.resolve(input.path);
+  const resolvedPath = resolveAndValidatePath(input.path, input.workspaceRoot, input.allowOutsideWorkspace);
   const parentDir = path.dirname(resolvedPath);
   await fs.mkdir(parentDir, { recursive: true });
 
@@ -106,7 +124,7 @@ export async function writeFileOperation(input: WriteFileInput): Promise<WriteFi
 }
 
 export async function listDirectoryOperation(input: ListDirectoryInput): Promise<ListDirectoryOutput> {
-  const resolvedPath = path.resolve(input.path);
+  const resolvedPath = resolveAndValidatePath(input.path, input.workspaceRoot, input.allowOutsideWorkspace);
   const entries: DirectoryEntry[] = [];
 
   async function scan(currentDir: string, currentDepth: number, maxDepth: number) {

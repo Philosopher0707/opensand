@@ -424,3 +424,67 @@ test('DesktopIpcBridge - coordinator map is keyed by (sessionId, agentId)', asyn
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('DesktopIpcBridge - autoApprove safety ceiling enforces prompt on dangerous commands & policy gates', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-safety-ceiling-'));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    bridge.updateSettings({ autoApprove: true, model: 'test-model' });
+
+    // 1. Safe command is auto-approved without prompting
+    const safeRes = await bridge.requestUserApproval('exec_command', { command: 'git status' });
+    assert.strictEqual(safeRes, true);
+
+    // 2. Dangerous command (rm -rf /) MUST NOT auto-approve even with autoApprove: true
+    let promptedDangerous = false;
+    bridge.on('event', (evt) => {
+      if (evt.type === 'approval_required' && evt.data?.toolName === 'exec_command') {
+        promptedDangerous = true;
+      }
+    });
+
+    const dangerousPromise = bridge.requestUserApproval('exec_command', { command: 'rm -rf /' });
+    // Let event cycle
+    await new Promise((r) => setTimeout(r, 10));
+    assert.strictEqual(promptedDangerous, true, 'Dangerous command must prompt user despite autoApprove');
+
+    const activeApprovals = (bridge as any).activeApprovals as Map<string, any>;
+    const [approvalId] = Array.from(activeApprovals.keys());
+    assert.ok(approvalId);
+
+    // Reject it
+    await bridge.approveTool(approvalId, { action: 'reject' });
+    const dangerousRes = await dangerousPromise;
+    assert.strictEqual(dangerousRes, false);
+
+    // 3. Custom policy rule requiring approval MUST NOT auto-approve
+    bridge.daemon.policy.setRule({
+      id: 'rule_require_appr_write',
+      name: 'Require Approval for Critical Config Write',
+      enabled: true,
+      action: 'REQUIRE_APPROVAL',
+      conditions: {
+        tools: ['write_file'],
+        pathsPrefix: ['config.production.json'],
+      },
+    });
+
+    let promptedPolicy = false;
+    bridge.on('event', (evt) => {
+      if (evt.type === 'approval_required' && evt.data?.toolName === 'write_file') {
+        promptedPolicy = true;
+      }
+    });
+
+    const policyPromise = bridge.requestUserApproval('write_file', { path: 'config.production.json', content: '{}' });
+    await new Promise((r) => setTimeout(r, 10));
+    assert.strictEqual(promptedPolicy, true, 'Policy REQUIRE_APPROVAL must prompt user despite autoApprove');
+
+    const [policyApprovalId] = Array.from(activeApprovals.keys());
+    await bridge.approveTool(policyApprovalId, { action: 'approve_once' });
+    const policyRes = await policyPromise;
+    assert.strictEqual(policyRes, true);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

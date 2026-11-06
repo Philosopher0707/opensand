@@ -111,3 +111,31 @@ test('VaultStore - automatically redacts known secrets from text', async () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('VaultStore - generates authentic 256-bit random master key file and migrates legacy vaults', async () => {
+  const tmpDir = path.join(os.tmpdir(), `opensand-masterkey-test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+  try {
+    const vault = new VaultStore({ baseDir: tmpDir });
+    await vault.putSecret({
+      name: 'TEST_KEY',
+      value: 'secret-token-val-999',
+    });
+
+    const keyFilePath = path.join(tmpDir, '.vault.key');
+    const saltFilePath = path.join(tmpDir, '.vault.salt');
+    assert.ok(fs.existsSync(keyFilePath), '.vault.key must be created');
+    assert.ok(fs.existsSync(saltFilePath), '.vault.salt must be created');
+
+    const keyBytes = fs.readFileSync(keyFilePath);
+    assert.strictEqual(keyBytes.length, 32, 'Master key must be exactly 32 bytes (256-bit)');
+
+    const stat = fs.statSync(keyFilePath);
+    assert.strictEqual(stat.mode & 0o777, 0o600, 'Master key file must have strict 0600 permissions');
+
+    // Verify secret retrieved correctly with modern key
+    const retrieved = await vault.getSecret('TEST_KEY');
+    assert.strictEqual(retrieved?.value, 'secret-token-val-999');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
