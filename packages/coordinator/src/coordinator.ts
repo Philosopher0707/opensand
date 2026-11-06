@@ -70,7 +70,7 @@ export class AgentCoordinator {
     if (options.onEvent) {
       this.eventListeners.add(options.onEvent);
     }
-    this.maxTurnIterations = options.maxTurnIterations ?? 50;
+    this.maxTurnIterations = options.maxTurnIterations ?? 150;
 
     // Initialize system message
     const systemPrompt = buildSystemPrompt(options.systemPromptContext);

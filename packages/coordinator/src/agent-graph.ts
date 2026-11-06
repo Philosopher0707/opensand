@@ -137,7 +137,7 @@ export class StateGraph<TState extends Record<string, unknown>> {
       edges: new Map(this.edges),
       conditionalEdges: new Map(this.conditionalEdges),
       entryPoint: this.entryPoint || this.edges.get(START)!,
-      defaultMaxIterations: options.maxIterations || 50,
+      defaultMaxIterations: options.maxIterations || 150,
       onCheckpoint: options.onCheckpoint,
     });
   }
