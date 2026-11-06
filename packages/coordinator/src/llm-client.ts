@@ -15,6 +15,123 @@ export interface ConsolidatedAssistantResponse {
   tool_calls?: ToolCall[];
 }
 
+export class NetworkError extends Error {
+  public readonly endpoint: string;
+  public readonly code?: string;
+  public readonly isNetworkError = true;
+
+  constructor(message: string, endpoint: string, code?: string, cause?: unknown) {
+    super(message);
+    this.name = "NetworkError";
+    this.endpoint = endpoint;
+    this.code = code;
+    if (cause) {
+      this.cause = cause;
+    }
+  }
+}
+
+export function classifyNetworkError(
+  err: any,
+  endpoint: string,
+  timeoutMs: number,
+  isTimeout = false
+): NetworkError {
+  if (isTimeout) {
+    return new NetworkError(
+      `LLM API request timed out after ${timeoutMs}ms waiting for response from ${endpoint}`,
+      endpoint,
+      "ETIMEDOUT",
+      err
+    );
+  }
+
+  const causeCode = (err?.cause?.code || err?.code || "").toUpperCase();
+  const rawMsg = err?.message || "";
+  const causeMsg = err?.cause?.message || "";
+  const combined = `${rawMsg} ${causeMsg} ${causeCode}`.toLowerCase();
+
+  if (causeCode === "ECONNREFUSED" || combined.includes("econnrefused")) {
+    return new NetworkError(
+      `Connection refused to ${endpoint}. If running locally, verify that your model server is active (e.g. 'ollama serve').`,
+      endpoint,
+      "ECONNREFUSED",
+      err
+    );
+  }
+
+  if (
+    causeCode === "ENOTFOUND" ||
+    causeCode === "EAI_AGAIN" ||
+    combined.includes("enotfound") ||
+    combined.includes("eai_again") ||
+    combined.includes("getaddrinfo")
+  ) {
+    const code = causeCode || "ENOTFOUND";
+    return new NetworkError(
+      `DNS lookup failed for ${endpoint} (${code}). Check your endpoint URL spelling and network connection.`,
+      endpoint,
+      code,
+      err
+    );
+  }
+
+  if (
+    causeCode === "ENETUNREACH" ||
+    causeCode === "EHOSTUNREACH" ||
+    combined.includes("enetunreach") ||
+    combined.includes("ehostunreach")
+  ) {
+    const code = causeCode || "ENETUNREACH";
+    return new NetworkError(
+      `Network unreachable for ${endpoint} (${code}). Check your network connection or VPN routing.`,
+      endpoint,
+      code,
+      err
+    );
+  }
+
+  if (
+    causeCode === "ECONNRESET" ||
+    causeCode === "EPIPE" ||
+    causeCode === "UND_ERR_SOCKET" ||
+    combined.includes("econnreset") ||
+    combined.includes("epipe") ||
+    combined.includes("socket hang up") ||
+    combined.includes("connection reset")
+  ) {
+    const code = causeCode || "ECONNRESET";
+    return new NetworkError(
+      `Connection to ${endpoint} was reset. The model server may have closed the connection or crashed mid-stream.`,
+      endpoint,
+      code,
+      err
+    );
+  }
+
+  if (
+    causeCode === "ETIMEDOUT" ||
+    causeCode === "UND_ERR_CONNECT_TIMEOUT" ||
+    combined.includes("etimedout") ||
+    combined.includes("timed out")
+  ) {
+    return new NetworkError(
+      `Connection to ${endpoint} timed out. The server may be overloaded or unreachable.`,
+      endpoint,
+      "ETIMEDOUT",
+      err
+    );
+  }
+
+  const detail = err?.cause?.message || err?.message || "network request failed";
+  return new NetworkError(
+    `Failed to connect to LLM at ${endpoint}: ${detail}`,
+    endpoint,
+    causeCode || "NETWORK_ERROR",
+    err
+  );
+}
+
 export class UniversalLLMClient {
   private config: LLMClientConfig;
 
@@ -92,28 +209,12 @@ export class UniversalLLMClient {
       });
     } catch (networkErr: any) {
       if (timeoutSignal.aborted && !signal?.aborted) {
-        throw new Error(`LLM API request timed out after ${timeoutMs}ms waiting for response from ${endpoint}`);
+        throw classifyNetworkError(networkErr, endpoint, timeoutMs, true);
       }
       if (networkErr?.name === "AbortError" || signal?.aborted) {
         throw networkErr;
       }
-      const causeCode = networkErr?.cause?.code || networkErr?.code;
-      if (causeCode === "ECONNREFUSED" || networkErr.message?.includes("ECONNREFUSED")) {
-        throw new Error(
-          `Connection refused to ${endpoint}. If running locally, verify that your model server is active (e.g. 'ollama serve').`
-        );
-      }
-      if (causeCode === "ENOTFOUND" || networkErr.message?.includes("ENOTFOUND")) {
-        throw new Error(
-          `Host not found for ${endpoint}. Check your endpoint URL spelling and network connection.`
-        );
-      }
-      if (causeCode === "ETIMEDOUT" || networkErr.message?.includes("ETIMEDOUT")) {
-        throw new Error(
-          `Connection to ${endpoint} timed out. The server may be overloaded or unreachable.`
-        );
-      }
-      throw new Error(`Failed to connect to LLM at ${endpoint}: ${networkErr.message}`);
+      throw classifyNetworkError(networkErr, endpoint, timeoutMs, false);
     }
 
     if (!response.ok) {
@@ -177,9 +278,22 @@ export class UniversalLLMClient {
         toolCalls: {} as Record<number, { id: string; name: string; arguments: string }>,
       };
 
-      const stream = parseAnthropicSSEStream(rawStream, (s) => {
+      const anthropicStream = parseAnthropicSSEStream(rawStream, (s) => {
         state = s;
       });
+
+      async function* anthropicGenerator(): AsyncIterable<StreamDelta> {
+        try {
+          for await (const delta of anthropicStream) {
+            yield delta;
+          }
+        } catch (streamErr: any) {
+          if (signal?.aborted || streamErr?.name === "AbortError") {
+            return;
+          }
+          throw classifyNetworkError(streamErr, endpoint, timeoutMs, false);
+        }
+      }
 
       const getConsolidated = (): ConsolidatedAssistantResponse => {
         const toolCalls: ToolCall[] = Object.values(state.toolCalls).map((tc) => ({
@@ -199,7 +313,7 @@ export class UniversalLLMClient {
         };
       };
 
-      return { stream, getConsolidated };
+      return { stream: anthropicGenerator(), getConsolidated };
     }
 
     // OpenAI-compatible streaming
@@ -211,66 +325,73 @@ export class UniversalLLMClient {
     > = {};
 
     async function* generator(): AsyncIterable<StreamDelta> {
-      for await (const rawPayload of parseSSEStream(rawStream)) {
-        if (signal?.aborted) {
-          break;
-        }
-        if (rawPayload === "[DONE]") {
-          break;
-        }
+      try {
+        for await (const rawPayload of parseSSEStream(rawStream)) {
+          if (signal?.aborted) {
+            break;
+          }
+          if (rawPayload === "[DONE]") {
+            break;
+          }
 
-        let chunk: any;
-        try {
-          chunk = JSON.parse(rawPayload);
-        } catch {
-          continue;
-        }
+          let chunk: any;
+          try {
+            chunk = JSON.parse(rawPayload);
+          } catch {
+            continue;
+          }
 
-        const choice = chunk.choices?.[0];
-        if (!choice) continue;
+          const choice = chunk.choices?.[0];
+          if (!choice) continue;
 
-        const delta = choice.delta;
-        if (!delta) continue;
+          const delta = choice.delta;
+          if (!delta) continue;
 
-        const streamDelta: StreamDelta = {
-          finish_reason: choice.finish_reason ?? null,
-        };
+          const streamDelta: StreamDelta = {
+            finish_reason: choice.finish_reason ?? null,
+          };
 
-        const reasoning = delta.reasoning_content || delta.thought;
-        if (reasoning) {
-          fullThinking += reasoning;
-          streamDelta.thinking = reasoning;
-        }
+          const reasoning = delta.reasoning_content || delta.thought;
+          if (reasoning) {
+            fullThinking += reasoning;
+            streamDelta.thinking = reasoning;
+          }
 
-        if (delta.content) {
-          fullContent += delta.content;
-          streamDelta.content = delta.content;
-        }
+          if (delta.content) {
+            fullContent += delta.content;
+            streamDelta.content = delta.content;
+          }
 
-        if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
-          streamDelta.tool_calls = delta.tool_calls;
-          for (const tc of delta.tool_calls) {
-            const index = tc.index ?? 0;
-            if (!toolCallAccumulator[index]) {
-              toolCallAccumulator[index] = {
-                id: tc.id ?? `call_${Date.now()}_${index}`,
-                name: tc.function?.name ?? "",
-                arguments: "",
-              };
-            }
-            if (tc.id) {
-              toolCallAccumulator[index].id = tc.id;
-            }
-            if (tc.function?.name) {
-              toolCallAccumulator[index].name = tc.function.name;
-            }
-            if (tc.function?.arguments) {
-              toolCallAccumulator[index].arguments += tc.function.arguments;
+          if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
+            streamDelta.tool_calls = delta.tool_calls;
+            for (const tc of delta.tool_calls) {
+              const index = tc.index ?? 0;
+              if (!toolCallAccumulator[index]) {
+                toolCallAccumulator[index] = {
+                  id: tc.id ?? `call_${Date.now()}_${index}`,
+                  name: tc.function?.name ?? "",
+                  arguments: "",
+                };
+              }
+              if (tc.id) {
+                toolCallAccumulator[index].id = tc.id;
+              }
+              if (tc.function?.name) {
+                toolCallAccumulator[index].name = tc.function.name;
+              }
+              if (tc.function?.arguments) {
+                toolCallAccumulator[index].arguments += tc.function.arguments;
+              }
             }
           }
-        }
 
-        yield streamDelta;
+          yield streamDelta;
+        }
+      } catch (streamErr: any) {
+        if (signal?.aborted || streamErr?.name === "AbortError") {
+          return;
+        }
+        throw classifyNetworkError(streamErr, endpoint, timeoutMs, false);
       }
     }
 

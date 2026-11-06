@@ -6,6 +6,10 @@ runCli(process.argv.slice(2)).catch((err) => {
   if (err?.code === "ABORT_ERR" || err?.name === "AbortError") {
     process.exit(0);
   }
+  if (err?.name === "NetworkError" || err?.isNetworkError) {
+    console.error(`\x1b[33mOpenSand network error: ${err.message}\x1b[0m`);
+    process.exit(1);
+  }
   console.error(`\x1b[31mOpenSand fatal error: ${err?.message || err}\x1b[0m`);
   process.exit(1);
 });

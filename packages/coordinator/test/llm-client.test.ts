@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { UniversalLLMClient } from "../src/llm-client.js";
+import { UniversalLLMClient, NetworkError } from "../src/llm-client.js";
 import { ChatMessage } from "../src/types.js";
 
 describe("UniversalLLMClient", () => {
@@ -177,5 +177,136 @@ describe("UniversalLLMClient", () => {
 
     assert.equal(chunks.length, 1);
     assert.equal(chunks[0], "part1");
+  });
+
+  it("handles offline DNS failure (ENOTFOUND / EAI_AGAIN) with NetworkError", async () => {
+    const mockFetch = async (): Promise<Response> => {
+      const err: any = new TypeError("fetch failed");
+      err.cause = Object.assign(new Error("getaddrinfo ENOTFOUND api.openai.com"), { code: "ENOTFOUND" });
+      throw err;
+    };
+
+    const client = new UniversalLLMClient({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      fetch: mockFetch as any,
+    });
+
+    await assert.rejects(
+      async () => {
+        await client.streamCompletion([{ role: "user", content: "test" }]);
+      },
+      (err: any) => {
+        assert.ok(err instanceof NetworkError);
+        assert.equal(err.code, "ENOTFOUND");
+        assert.equal(err.endpoint, "https://api.openai.com/v1/chat/completions");
+        assert.ok(err.message.includes("DNS lookup failed"));
+        assert.ok(err.message.includes("api.openai.com"));
+        return true;
+      }
+    );
+  });
+
+  it("handles server-down mid-stream (ECONNRESET) with NetworkError", async () => {
+    const encoder = new TextEncoder();
+    const mockFetch = async (): Promise<Response> => {
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: "part1" } }] })}\n\n`)
+          );
+          // Simulate socket reset mid-stream
+          const resetErr: any = new Error("read ECONNRESET");
+          resetErr.code = "ECONNRESET";
+          controller.error(resetErr);
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    };
+
+    const client = new UniversalLLMClient({
+      baseUrl: "http://127.0.0.1:11434/v1",
+      model: "qwen3:8b",
+      fetch: mockFetch as any,
+    });
+
+    const { stream } = await client.streamCompletion([{ role: "user", content: "test" }]);
+
+    await assert.rejects(
+      async () => {
+        for await (const chunk of stream) {
+          // iterate until mid-stream error
+        }
+      },
+      (err: any) => {
+        assert.ok(err instanceof NetworkError);
+        assert.equal(err.code, "ECONNRESET");
+        assert.ok(err.message.includes("reset"));
+        return true;
+      }
+    );
+  });
+
+  it("handles request timeout with NetworkError", async () => {
+    const mockFetch = async (_url: any, init: any): Promise<Response> => {
+      return new Promise((_, reject) => {
+        if (init.signal) {
+          init.signal.addEventListener("abort", () => {
+            const err: any = new Error("The operation was aborted");
+            err.name = "TimeoutError";
+            reject(err);
+          });
+        }
+      });
+    };
+
+    const client = new UniversalLLMClient({
+      baseUrl: "http://127.0.0.1:11434/v1",
+      model: "qwen3:8b",
+      timeoutMs: 50,
+      fetch: mockFetch as any,
+    });
+
+    await assert.rejects(
+      async () => {
+        await client.streamCompletion([{ role: "user", content: "test" }]);
+      },
+      (err: any) => {
+        assert.ok(err instanceof NetworkError);
+        assert.equal(err.code, "ETIMEDOUT");
+        assert.ok(err.message.includes("timed out after 50ms"));
+        return true;
+      }
+    );
+  });
+
+  it("handles network unreachable (ENETUNREACH) with NetworkError", async () => {
+    const mockFetch = async (): Promise<Response> => {
+      const err: any = new Error("connect ENETUNREACH 192.168.1.100");
+      err.code = "ENETUNREACH";
+      throw err;
+    };
+
+    const client = new UniversalLLMClient({
+      baseUrl: "http://192.168.1.100:11434/v1",
+      model: "qwen3:8b",
+      fetch: mockFetch as any,
+    });
+
+    await assert.rejects(
+      async () => {
+        await client.streamCompletion([{ role: "user", content: "test" }]);
+      },
+      (err: any) => {
+        assert.ok(err instanceof NetworkError);
+        assert.equal(err.code, "ENETUNREACH");
+        assert.ok(err.message.includes("Network unreachable"));
+        return true;
+      }
+    );
   });
 });

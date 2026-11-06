@@ -372,6 +372,8 @@ Examples:
     } catch (err: any) {
       if (queryAbort.signal.aborted || err?.name === "AbortError" || err?.code === "ABORT_ERR") {
         ui.printInfo("\n[Execution cancelled by user]");
+      } else if (err?.name === "NetworkError" || err?.isNetworkError) {
+        ui.printError(`Network failure: ${err.message}`);
       } else {
         ui.printError(`Execution failed: ${err.message}`);
       }
@@ -815,13 +817,34 @@ Available OpenSand REPL Commands:
       process.on("SIGINT", onSigInt);
 
       try {
-        await coordinator.runTurn(trimmed, turnAbort.signal);
+        try {
+          await coordinator.runTurn(trimmed, turnAbort.signal);
+        } catch (firstErr: any) {
+          const isNetErr =
+            firstErr?.isNetworkError ||
+            firstErr?.name === "NetworkError" ||
+            firstErr?.code === "ECONNRESET" ||
+            firstErr?.code === "ETIMEDOUT" ||
+            firstErr?.code === "ECONNREFUSED" ||
+            firstErr?.code === "ENOTFOUND" ||
+            firstErr?.code === "EAI_AGAIN";
+
+          if (isNetErr && !turnAbort.signal.aborted) {
+            ui.printWarning(`Network error encountered: ${firstErr.message}\nRetrying turn once in 1s...`);
+            await new Promise((r) => setTimeout(r, 1000));
+            await coordinator.runTurn(trimmed, turnAbort.signal);
+          } else {
+            throw firstErr;
+          }
+        }
         const estTokens = coordinator.estimateTokens();
         const userTurns = coordinator.history.filter((m) => m.role === "user").length;
         console.log(`\x1b[2m[context: ~${estTokens.toLocaleString()} tokens | ${userTurns} turns | toolScope: ${coordinator.toolScopeMode}]\x1b[0m\n`);
       } catch (err: any) {
         if (turnAbort.signal.aborted || err?.name === "AbortError" || err?.code === "ABORT_ERR") {
           ui.printInfo("\n[Turn cancelled by user]");
+        } else if (err?.isNetworkError || err?.name === "NetworkError") {
+          ui.printError(`Network failure: ${err.message}\n(REPL ready for your next command)`);
         } else {
           ui.printError(`Turn failed: ${err.message}`);
         }
