@@ -1,6 +1,7 @@
 /**
  * Minimal TTY spinner — paints a single status line in place.
- * Falls back to plain (non-animated) lines when stdout is not a TTY.
+ * Silent when stdout is not a TTY (piped output), so tool call/result
+ * lines are not interleaved with phase labels.
  */
 
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -29,8 +30,11 @@ export class TerminalSpinner {
   }
 
   onPhaseChange(label: string, phase: SpinnerPhase = "thinking"): void {
+    void phase;
+    // In non-TTY mode, stay silent: printing "Thinking"/"Running tool"
+    // lines here would interleave junk between tool call/result lines.
     if (!this.animated) {
-      this.println(label, phase);
+      this.active = null;
       return;
     }
     this.stopLineOnly();
@@ -57,12 +61,6 @@ export class TerminalSpinner {
   finish(line: string): void {
     this.stopLineOnly();
     if (line) console.log(line);
-  }
-
-  /** Plain label line used when the terminal is not a TTY. */
-  private println(label: string, phase: SpinnerPhase): void {
-    void phase;
-    console.log(`${DIM}${label}${RESET}`);
   }
 
   private paint(spinner: ActiveSpinner): void {

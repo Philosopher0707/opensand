@@ -1,6 +1,6 @@
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { ToolCall } from "@opensand/coordinator";
+import { ToolCall, TurnPhase, ApprovalDecision } from "@opensand/coordinator";
 import { ToolExecutionResult } from "@opensand/local-exec-daemon";
 import {
   parseToolArgs,
@@ -225,26 +225,44 @@ export class TerminalUI {
     }
   }
 
-  async promptApproval(toolName: string, args: Record<string, any>): Promise<boolean> {
+  async promptApproval(toolName: string, args: Record<string, any>): Promise<ApprovalDecision> {
+    this.spinner.onPhaseChange(`Paused — approval required`, "tool");
     this.noteApprovalRequired(toolName);
     const rl = readline.createInterface({ input, output });
     try {
       const summary = summarizeToolCall(toolName, args);
-      console.log(`\n${BOLD}${YELLOW}⚠️  Approve tool execution?${RESET}`);
+      console.log(`\n${BOLD}${YELLOW}⏸️  Approval required — run this tool?${RESET}`);
       console.log(`  ${BOLD}${summary}${RESET} ${DIM}(${toolName})${RESET}`);
       console.log(`${DIM}${safeJson(args)}${RESET}`);
+      console.log(`${DIM}  y = allow once   s = allow for this session   n = deny${RESET}`);
       try {
-        const answer = await rl.question(`${BOLD}Approve execution? [y/N]: ${RESET}`);
-        return answer.trim().toLowerCase() === "y" || answer.trim().toLowerCase() === "yes";
+        const answer = await rl.question(`${BOLD}Allow? [y/s/n]: ${RESET}`);
+        const v = answer.trim().toLowerCase();
+        if (v === "y" || v === "yes") return "allow_once";
+        if (v === "s" || v === "session" || v === "always") return "allow_session";
+        return "deny";
       } catch (err: any) {
         if (err?.code === "ABORT_ERR" || err?.name === "AbortError") {
           console.log(`\n${DIM}Approval rejected (interrupted).${RESET}`);
-          return false;
+          return "deny";
         }
         throw err;
       }
     } finally {
       rl.close();
+    }
+  }
+
+  /** Handle a phase_started event from the coordinator (P1). */
+  onPhaseStarted(phase: TurnPhase, iteration: number, maxIterations: number): void {
+    const step = `step ${iteration}/${maxIterations}`;
+    if (phase === "thinking") {
+      this.spinner.onPhaseChange(`Thinking… ${DIM}[${step}]${RESET}`, "thinking");
+    } else {
+      this.onToolRunning();
+      if (this.verbosity !== "quiet" && !this.running.size) {
+        this.spinner.onPhaseChange(`Executing tools… ${DIM}[${step}]${RESET}`, "tool");
+      }
     }
   }
 

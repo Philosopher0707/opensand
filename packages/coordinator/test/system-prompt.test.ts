@@ -22,4 +22,13 @@ describe("SystemPrompt", () => {
     assert.match(prompt, /Workspace directory: \/my\/custom\/project/);
     assert.match(prompt, /Always write TypeScript in strict mode\./);
   });
+
+  it("instructs the model to narrate tool use for human audiences", () => {
+    const prompt = buildSystemPrompt();
+
+    assert.match(prompt, /## Communicating Progress/);
+    assert.match(prompt, /Before you call any tool/);
+    assert.match(prompt, /one short, plain sentence/);
+    assert.match(prompt, /what you are\s+about to do and why/);
+  });
 });

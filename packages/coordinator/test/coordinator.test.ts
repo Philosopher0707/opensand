@@ -221,6 +221,94 @@ describe("AgentCoordinator Integration", () => {
     assert.match(txtTranscript, /\[Tool result\]/);
   });
 
+  it("emits phase_started events (thinking, then executing) during a tool turn", async () => {
+    const outputPath = path.join(tempDir, "output.txt");
+
+    const mockFetch = async (_url: any, init: any): Promise<Response> => {
+      const payload = JSON.parse(init.body as string);
+      const messages = payload.messages;
+      const lastMsg = messages[messages.length - 1];
+      const encoder = new TextEncoder();
+      let chunks: string[] = [];
+
+      if (lastMsg.role === "tool") {
+        chunks = [
+          `data: ${JSON.stringify({ choices: [{ delta: { content: "Done." } }] })}\n\n`,
+          "data: [DONE]\n\n",
+        ];
+      } else {
+        chunks = [
+          `data: ${JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  content: "I'll write the file.",
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call_phase_1",
+                      type: "function",
+                      function: {
+                        name: "write_file",
+                        arguments: JSON.stringify({
+                          path: outputPath,
+                          content: "phase test",
+                        }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          })}\n\n`,
+          "data: [DONE]\n\n",
+        ];
+      }
+
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const c of chunks) controller.enqueue(encoder.encode(c));
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    };
+
+    const client = new UniversalLLMClient({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      fetch: mockFetch as any,
+    });
+
+    const phases: Array<{ phase: string; iteration: number; maxIterations: number }> = [];
+    const coordinator = new AgentCoordinator({
+      llmClient: client,
+      daemon,
+      sessionsBaseDir: path.join(tempDir, "sessions"),
+      onEvent: (event) => {
+        if (event.type === "phase_started") {
+          phases.push({
+            phase: event.phase,
+            iteration: event.iteration,
+            maxIterations: event.maxIterations,
+          });
+        }
+      },
+    });
+
+    const finalAnswer = await coordinator.runTurn("Write the file");
+    assert.equal(finalAnswer, "Done.");
+    // Iteration 1: thinking then executing; iteration 2: thinking only.
+    assert.deepEqual(phases[0], { phase: "thinking", iteration: 1, maxIterations: 150 });
+    assert.deepEqual(phases[1], { phase: "executing", iteration: 1, maxIterations: 150 });
+    assert.deepEqual(phases[2], { phase: "thinking", iteration: 2, maxIterations: 150 });
+    assert.equal(phases.length, 3);
+  });
+
   it("enforces allowedTools whitelist policy on agent tool execution", async () => {
     let callCount = 0;
     const mockFetch = async (_url: any, init: any): Promise<Response> => {

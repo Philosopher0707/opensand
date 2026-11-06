@@ -12,6 +12,7 @@ import {
   GitManager,
   MemoryStore,
   MemoStore,
+  ApprovalDecision,
 } from "@opensand/coordinator";
 import { parseCliArgs, CliConfig, probeLocalOllama, validateConfig } from "./config.js";
 import { TerminalUI } from "./terminal-ui.js";
@@ -284,6 +285,16 @@ Examples:
   const memoContext = new MemoStore().formatForPrompt(process.cwd());
   const memoryContext = [legacyContext, memoContext].filter(Boolean).join("\n\n");
 
+  // Session allowlist: tools+command-prefix pairs approved via
+  // "allow for this session" auto-approve for the rest of the run.
+  const sessionAllowlist = new Set<string>();
+  const allowlistKey = (toolName: string, args: Record<string, any>): string => {
+    if (toolName === "exec_command" && typeof args.command === "string") {
+      return `exec_command:${args.command.trim().split(/\s+/)[0] ?? ""}`;
+    }
+    return toolName;
+  };
+
   // Helper to build coordinator
   function createCoordinator(instructions?: string, modelOverride?: string, endpointOverride?: string): AgentCoordinator {
     const targetModel = modelOverride || config.model;
@@ -306,12 +317,30 @@ Examples:
       },
       onApprovalRequired: async (req) => {
         if (config.autoApprove) return true;
-        return ui.promptApproval(req.toolName, req.arguments);
+        // Session allowlist: tools+command-prefix pairs approved with
+        // "allow for this session" auto-approve for the rest of the run.
+        if (sessionAllowlist.has(allowlistKey(req.toolName, req.arguments))) {
+          ui.printInfo(`Auto-approved (session allowlist): ${req.toolName}`);
+          return true;
+        }
+        const decision: ApprovalDecision = await ui.promptApproval(
+          req.toolName,
+          req.arguments
+        );
+        if (decision === "allow_session") {
+          sessionAllowlist.add(allowlistKey(req.toolName, req.arguments));
+          ui.printSuccess("Added to session allowlist — future matching calls will auto-approve.");
+          return true;
+        }
+        return decision === "allow_once";
       },
       onEvent: (event) => {
         switch (event.type) {
           case "text_delta":
             ui.onTextDelta(event.text);
+            break;
+          case "phase_started":
+            ui.onPhaseStarted(event.phase, event.iteration, event.maxIterations);
             break;
           case "thought_delta":
             ui.onThoughtDelta(event.text);

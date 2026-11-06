@@ -149,6 +149,7 @@ export class AgentCoordinator {
     // 2. Multi-turn Agent Tool Loop
     while (iterations < this.maxTurnIterations) {
       iterations++;
+      this.emit({ type: "phase_started", phase: "thinking", iteration: iterations, maxIterations: this.maxTurnIterations });
 
       let toolDefs = this.daemon.getToolDefinitions();
       if (this.allowedTools && this.allowedTools.length > 0) {
@@ -217,6 +218,10 @@ export class AgentCoordinator {
           approvalGranted: boolean;
         };
       }[] = [];
+      // The loop has moved from thinking to tool execution for this iteration.
+      // Emit once per batch (not per tool) so the label stays stable. Inside the
+      // prepare loop tools start individually, but the phase label is per iteration.
+      this.emit({ type: "phase_started", phase: "executing", iteration: iterations, maxIterations: this.maxTurnIterations });
       for (const tc of assistantMsg.tool_calls) {
         this.emit({ type: "tool_call_started", toolCall: tc });
 

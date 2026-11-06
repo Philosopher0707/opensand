@@ -9,6 +9,16 @@ import { GitManager } from "../src/git-manager.js";
 
 const execFileAsync = promisify(execFile);
 
+/** Strip ambient GIT_* variables so inner git commands target the temp repo,
+ * not an enclosing repo (prevents the outer pre-commit hook from recursing). */
+function gitEnv(): NodeJS.ProcessEnv {
+  const env: Record<string, string | undefined> = { ...(process.env as Record<string, string | undefined>) };
+  for (const k of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX", "GIT_CEILING_DIRECTORIES"]) {
+    delete env[k];
+  }
+  return env as NodeJS.ProcessEnv;
+}
+
 describe("GitManager", () => {
   let tempRepoDir: string;
   let gitManager: GitManager;
@@ -16,14 +26,14 @@ describe("GitManager", () => {
   beforeEach(async () => {
     tempRepoDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-git-test-"));
     // Initialize temporary git repo
-    await execFileAsync("git", ["init", "-b", "main"], { cwd: tempRepoDir });
-    await execFileAsync("git", ["config", "user.name", "Test User"], { cwd: tempRepoDir });
-    await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: tempRepoDir });
+    await execFileAsync("git", ["init", "-b", "main"], { cwd: tempRepoDir, env: gitEnv() });
+    await execFileAsync("git", ["config", "user.name", "Test User"], { cwd: tempRepoDir, env: gitEnv() });
+    await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: tempRepoDir, env: gitEnv() });
 
     // Initial commit
     await fs.writeFile(path.join(tempRepoDir, "README.md"), "# Test Repo\n");
-    await execFileAsync("git", ["add", "README.md"], { cwd: tempRepoDir });
-    await execFileAsync("git", ["commit", "-m", "chore: initial commit"], { cwd: tempRepoDir });
+    await execFileAsync("git", ["add", "README.md"], { cwd: tempRepoDir, env: gitEnv() });
+    await execFileAsync("git", ["commit", "-m", "chore: initial commit"], { cwd: tempRepoDir, env: gitEnv() });
 
     gitManager = new GitManager(tempRepoDir);
   });
@@ -45,7 +55,7 @@ describe("GitManager", () => {
     assert.strictEqual(untrackedStatus.untracked[0], "newfile.txt");
 
     // Stage it
-    await execFileAsync("git", ["add", "newfile.txt"], { cwd: tempRepoDir });
+    await execFileAsync("git", ["add", "newfile.txt"], { cwd: tempRepoDir, env: gitEnv() });
     const stagedStatus = await gitManager.getStatus();
     assert.strictEqual(stagedStatus.staged.length, 1);
     assert.strictEqual(stagedStatus.staged[0], "newfile.txt");
@@ -98,8 +108,8 @@ describe("GitManager", () => {
       path.join(tempRepoDir, "auth.ts"),
       `export const key = "sk-1234567890123456789012345";\nconsole.log(key);\nconst val: any = 1;\n`
     );
-    await execFileAsync("git", ["add", "-A"], { cwd: tempRepoDir });
-    await execFileAsync("git", ["commit", "-m", "feat: auth updates"], { cwd: tempRepoDir });
+    await execFileAsync("git", ["add", "-A"], { cwd: tempRepoDir, env: gitEnv() });
+    await execFileAsync("git", ["commit", "-m", "feat: auth updates"], { cwd: tempRepoDir, env: gitEnv() });
 
     const review = await gitManager.reviewPullRequest("HEAD");
     assert.strictEqual(review.verdict, "CHANGES_REQUESTED");
