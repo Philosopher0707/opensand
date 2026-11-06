@@ -1,7 +1,9 @@
 /**
  * OpenSand Local Execution Daemon Type Definitions
  * Derived from reverse-engineered Sand local-exec protocol contracts.
+ * ToolDefinition / ToolExecutionResult are canonical in @opensand/shared.
  */
+export type { ToolDefinition, ToolExecutionResult } from "@opensand/shared";
 
 export interface DaemonState {
   pid: number;
@@ -29,25 +31,6 @@ export interface PermissionGates {
   computerUseAllowed: boolean;
   deviceToolsAllowed: boolean;
   standingAllowlist: string[];
-}
-
-export interface ToolDefinition {
-  type: "function";
-  function: {
-    name: string;
-    description: string;
-    parameters: {
-      type: "object";
-      properties: Record<string, {
-        type: string;
-        description?: string;
-        default?: any;
-        items?: any;
-        enum?: string[];
-      }>;
-      required?: string[];
-    };
-  };
 }
 
 export interface ExecCommandInput {
@@ -116,12 +99,3 @@ export interface ListDirectoryOutput {
   entries: DirectoryEntry[];
 }
 
-export interface ToolExecutionResult<T = any> {
-  status: "ok" | "error" | "permission_pending";
-  output?: T;
-  error?: {
-    code: string;
-    message: string;
-  };
-  approvalId?: string;
-}

@@ -36,6 +36,9 @@ importers:
       '@opensand/local-exec-daemon':
         specifier: workspace:*
         version: link:../local-exec-daemon
+      '@opensand/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -55,6 +58,9 @@ importers:
       '@opensand/native-bridge':
         specifier: workspace:*
         version: link:../native-bridge
+      '@opensand/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -64,6 +70,10 @@ importers:
         version: 5.9.3
 
   packages/local-exec-daemon:
+    dependencies:
+      '@opensand/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -77,6 +87,15 @@ importers:
       '@opensand/local-exec-daemon':
         specifier: workspace:*
         version: link:../local-exec-daemon
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/shared:
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
