@@ -62,10 +62,11 @@ import {
   TemplateGallery,
   GalleryTemplateItem,
   GalleryQueryOptions,
+  buildToolDiscoverySummary,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
-import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSummary, DesktopEvent } from './types.js';
+import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSummary, DesktopEvent, ToolDiscoverySummary } from './types.js';
 
 export interface IpcBridgeOptions {
   baseDir?: string;
@@ -580,6 +581,16 @@ export class DesktopIpcBridge extends EventEmitter {
       this.activeApprovals.set(approvalId, { request, resolve });
       this.emitEvent('approval_required', request);
     });
+  }
+
+  public async listPendingApprovals(): Promise<ToolApprovalRequest[]> {
+    return [...this.activeApprovals.values()]
+      .map(({ request }) => JSON.parse(JSON.stringify(request)) as ToolApprovalRequest)
+      .sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  public async getToolDiscovery(): Promise<ToolDiscoverySummary> {
+    return buildToolDiscoverySummary(this.daemon.getToolDefinitions());
   }
 
   public async approveTool(approvalId: string, decision: ApprovalDecision): Promise<{ success: boolean }> {

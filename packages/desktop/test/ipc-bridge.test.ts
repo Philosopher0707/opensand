@@ -512,3 +512,59 @@ test('DesktopIpcBridge - autoApprove safety ceiling enforces prompt on dangerous
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('DesktopIpcBridge - lists pending approvals as isolated copies and removes them after approval', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-pending-'));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    bridge.updateSettings({ autoApprove: false, model: 'test-pending-approvals' });
+
+    assert.deepStrictEqual(await bridge.listPendingApprovals(), []);
+
+    const first = bridge.requestUserApproval('exec_command', { command: 'git status' }, 'first');
+    const second = bridge.requestUserApproval('exec_command', { command: 'npm test' }, 'second');
+    await new Promise((r) => setTimeout(r, 10));
+
+    const pending = await bridge.listPendingApprovals();
+    assert.strictEqual(pending.length, 2);
+    assert.ok(pending.every((request) => !('resolve' in request)));
+    assert.ok(pending[0].timestamp <= pending[1].timestamp);
+    assert.deepStrictEqual(pending.map((request) => request.reason), ['first', 'second']);
+
+    // Mutating the returned copy must not mutate the live queue.
+    pending[0].toolName = 'mutated';
+    assert.strictEqual((await bridge.listPendingApprovals())[0].toolName, 'exec_command');
+
+    const activeMap = (bridge as any).activeApprovals as Map<string, any>;
+    const firstId = pending[0].approvalId;
+    assert.strictEqual(activeMap.has(firstId), true);
+    assert.deepStrictEqual(await bridge.approveTool(firstId, { action: 'approve_once' }), { success: true });
+    assert.strictEqual(await first, true);
+
+    const remaining = await bridge.listPendingApprovals();
+    assert.strictEqual(remaining.length, 1);
+    assert.strictEqual(remaining[0].reason, 'second');
+
+    await bridge.approveTool(remaining[0].approvalId, { action: 'reject' });
+    assert.strictEqual(await second, false);
+    assert.deepStrictEqual(await bridge.listPendingApprovals(), []);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('DesktopIpcBridge - tool discovery matches daemon discover_tools parity', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-discovery-'));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    const discovery = await bridge.getToolDiscovery();
+    const execution = await bridge.daemon.executeTool('discover_tools', {});
+    assert.strictEqual(execution.status, 'ok');
+    assert.deepStrictEqual(discovery, JSON.parse(execution.output));
+    assert.strictEqual(discovery.totalTools, discovery.tools.length);
+    assert.ok(discovery.tools.some((tool) => tool.name === 'create_agent'));
+    assert.ok(discovery.capabilities.includes('core'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

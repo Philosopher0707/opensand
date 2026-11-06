@@ -101,6 +101,14 @@ export class DesktopApp {
       return this.bridge.approveTool(approvalId, decision);
     });
 
+    ipcMain.handle('opensand:listPendingApprovals', async () => {
+      return this.bridge.listPendingApprovals();
+    });
+
+    ipcMain.handle('opensand:getToolDiscovery', async () => {
+      return this.bridge.getToolDiscovery();
+    });
+
     ipcMain.handle('opensand:getSessions', async () => {
       return this.bridge.getSessions();
     });

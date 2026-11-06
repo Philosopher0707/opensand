@@ -779,3 +779,37 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('DesktopServer - exposes read-only pending approvals and live tool discovery', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-server-parity-'));
+  try {
+    const server = new DesktopServer({ baseDir: tmpDir });
+    MockIncomingMessage.defaultToken = server.getAuthToken();
+
+    const approvalsReq = new MockIncomingMessage('GET', '/api/approvals');
+    const approvalsRes = new MockServerResponse();
+    await (server as any).handleRequest(approvalsReq, approvalsRes);
+    assert.strictEqual(approvalsRes.statusCode, 200);
+    assert.deepStrictEqual(JSON.parse(approvalsRes.body), []);
+
+    const toolsReq = new MockIncomingMessage('GET', '/api/tools');
+    const toolsRes = new MockServerResponse();
+    await (server as any).handleRequest(toolsReq, toolsRes);
+    assert.strictEqual(toolsRes.statusCode, 200);
+    const tools = JSON.parse(toolsRes.body);
+    assert.strictEqual(tools.totalTools, tools.tools.length);
+    assert.ok(tools.tools.some((tool: any) => tool.name === 'create_agent'));
+
+    const unauthApprovalsReq = new MockIncomingMessage('GET', '/api/approvals', { authorization: '' });
+    const unauthApprovalsRes = new MockServerResponse();
+    await (server as any).handleRequest(unauthApprovalsReq, unauthApprovalsRes);
+    assert.strictEqual(unauthApprovalsRes.statusCode, 401);
+
+    const unauthToolsReq = new MockIncomingMessage('GET', '/api/tools', { authorization: '' });
+    const unauthToolsRes = new MockServerResponse();
+    await (server as any).handleRequest(unauthToolsReq, unauthToolsRes);
+    assert.strictEqual(unauthToolsRes.statusCode, 401);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

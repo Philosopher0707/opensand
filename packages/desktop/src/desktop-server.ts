@@ -386,6 +386,22 @@ export class DesktopServer {
       return;
     }
 
+    // API: GET /api/approvals (read-only pending-approval queue)
+    if (pathname === '/api/approvals' && req.method === 'GET') {
+      const approvals = await this.bridge.listPendingApprovals();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(approvals));
+      return;
+    }
+
+    // API: GET /api/tools (read-only live tool discovery)
+    if (pathname === '/api/tools' && req.method === 'GET') {
+      const discovery = await this.bridge.getToolDiscovery();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(discovery));
+      return;
+    }
+
     // API: GET /api/sessions
     if (pathname === '/api/sessions' && req.method === 'GET') {
       const sessions = await this.bridge.getSessions();

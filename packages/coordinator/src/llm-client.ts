@@ -195,8 +195,15 @@ export class UniversalLLMClient {
       : this.buildOpenAIPayload(messages, tools);
 
     const timeoutMs = this.config.timeoutMs ?? 120000;
-    const timeoutSignal = AbortSignal.timeout(timeoutMs);
-    const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+    // Use an explicit ref'd timer instead of AbortSignal.timeout():
+    // the built-in signal's timer does not hold the event loop open in
+    // Node 22, so a pending fetch with no other handles lets the loop
+    // drain ("event loop has already resolved") before the timeout fires.
+    const timeoutController = new AbortController();
+    const timeoutTimer = setTimeout(() => timeoutController.abort(), timeoutMs);
+    const combinedSignal = signal
+      ? AbortSignal.any([signal, timeoutController.signal])
+      : timeoutController.signal;
 
     const fetchFn = this.config.fetch ?? globalThis.fetch;
     let response: Response;
@@ -208,13 +215,15 @@ export class UniversalLLMClient {
         signal: combinedSignal,
       });
     } catch (networkErr: any) {
-      if (timeoutSignal.aborted && !signal?.aborted) {
+      if (timeoutController.signal.aborted && !signal?.aborted) {
         throw classifyNetworkError(networkErr, endpoint, timeoutMs, true);
       }
       if (networkErr?.name === "AbortError" || signal?.aborted) {
         throw networkErr;
       }
       throw classifyNetworkError(networkErr, endpoint, timeoutMs, false);
+    } finally {
+      clearTimeout(timeoutTimer);
     }
 
     if (!response.ok) {

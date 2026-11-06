@@ -139,6 +139,8 @@ test('createDefaultRpcGateway - handles GrokBotService and SandBoxService wire c
     const fleetData = JSON.parse(resFleet.body);
     assert.strictEqual(fleetData.fleet.status, 'operational');
     assert.ok(fleetData.fleet.agentsCount >= 1);
+    assert.strictEqual(fleetData.fleet.pendingApprovals, 0);
+    assert.ok(fleetData.fleet.totalTools > 0);
 
     // 5. AnalyticsService: Zero-Leakage Privacy Sink (Wildcard)
     const reqAnalytics = new MockIncomingMessage('POST', '/aiserver.v1.AnalyticsService/TrackEvents');
