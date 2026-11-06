@@ -10,12 +10,16 @@ class MockIncomingMessage extends EventEmitter {
   public method: string;
   public url: string;
   public headers: Record<string, string>;
+  public static defaultToken: string = '';
 
   constructor(method: string, url: string, headers: Record<string, string> = {}) {
     super();
     this.method = method;
     this.url = url;
     this.headers = { host: '127.0.0.1:3456', ...headers };
+    if (!('authorization' in this.headers) && !('Authorization' in this.headers) && MockIncomingMessage.defaultToken) {
+      this.headers['authorization'] = `Bearer ${MockIncomingMessage.defaultToken}`;
+    }
   }
 
   public destroy(): this {
@@ -57,6 +61,7 @@ class MockServerResponse extends EventEmitter {
 test('DesktopServer - Routines and Rooms REST API Endpoints', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-routines-rooms-test-'));
   const server = new DesktopServer({ baseDir: tmpDir });
+  MockIncomingMessage.defaultToken = server.getAuthToken();
 
   try {
     // 1. POST /api/routines

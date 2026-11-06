@@ -1,6 +1,8 @@
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
+import * as crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
 import { createDefaultRpcGateway, RpcGateway } from './rpc-gateway.js';
@@ -14,6 +16,8 @@ export interface DesktopServerOptions {
   port?: number;
   host?: string;
   baseDir?: string;
+  authToken?: string;
+  requireAuth?: boolean;
 }
 
 export class DesktopServer {
@@ -24,10 +28,45 @@ export class DesktopServer {
   private rendererDir: string;
   private port: number;
   private host: string;
+  private baseDir: string;
+  private authToken: string;
+  private tokenFilePath: string;
+  private requireAuth: boolean;
 
   constructor(options: DesktopServerOptions = {}) {
     this.port = options.port || 3456;
     this.host = options.host || '127.0.0.1';
+    this.baseDir = options.baseDir || path.join(os.homedir(), '.opensand');
+    this.tokenFilePath = path.join(this.baseDir, 'server.token');
+    this.requireAuth = options.requireAuth ?? true;
+
+    // Resolve or generate session authentication token
+    if (options.authToken) {
+      this.authToken = options.authToken;
+    } else {
+      try {
+        if (fs.existsSync(this.tokenFilePath)) {
+          const raw = fs.readFileSync(this.tokenFilePath, 'utf8').trim();
+          if (raw.length >= 32) {
+            this.authToken = raw;
+          } else {
+            this.authToken = crypto.randomBytes(32).toString('hex');
+          }
+        } else {
+          this.authToken = crypto.randomBytes(32).toString('hex');
+        }
+      } catch {
+        this.authToken = crypto.randomBytes(32).toString('hex');
+      }
+    }
+
+    try {
+      fs.mkdirSync(this.baseDir, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(this.tokenFilePath, this.authToken + '\n', { mode: 0o600 });
+    } catch {
+      // Best effort
+    }
+
     this.bridge = new DesktopIpcBridge({ baseDir: options.baseDir });
     this.rpcGateway = createDefaultRpcGateway(this.bridge);
     this.rendererDir = path.join(__dirname, '../../renderer');
@@ -44,6 +83,42 @@ export class DesktopServer {
 
   public getRpcGateway(): RpcGateway {
     return this.rpcGateway;
+  }
+
+  public getAuthToken(): string {
+    return this.authToken;
+  }
+
+  public verifyToken(provided?: string | null): boolean {
+    if (!provided || typeof provided !== 'string') return false;
+    const clean = provided.trim();
+    if (!clean) return false;
+    const bufA = crypto.createHash('sha256').update(clean).digest();
+    const bufB = crypto.createHash('sha256').update(this.authToken).digest();
+    return crypto.timingSafeEqual(bufA, bufB);
+  }
+
+  private extractToken(req: http.IncomingMessage, url: URL): string | null {
+    const authHeader = req.headers['authorization'];
+    if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+      return authHeader.slice(7).trim();
+    }
+    const customHeader = req.headers['x-opensand-token'];
+    if (typeof customHeader === 'string' && customHeader.trim()) {
+      return customHeader.trim();
+    }
+    const cookieHeader = req.headers['cookie'];
+    if (cookieHeader) {
+      const match = cookieHeader.match(/(?:^|;\s*)opensand_token=([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    const queryToken = url.searchParams.get('token');
+    if (queryToken && queryToken.trim()) {
+      return queryToken.trim();
+    }
+    return null;
   }
 
   public async start(): Promise<{ port: number; host: string; url: string }> {
@@ -69,7 +144,7 @@ export class DesktopServer {
         this.server = server;
         const addr = server.address();
         const actualPort = typeof addr === 'object' && addr ? addr.port : this.port;
-        const url = `http://${this.host}:${actualPort}`;
+        const url = `http://${this.host}:${actualPort}/?token=${this.authToken}`;
         resolve({ port: actualPort, host: this.host, url });
       });
     });
@@ -157,13 +232,31 @@ export class DesktopServer {
     }
 
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-OpenSand-Token');
     res.setHeader('Vary', 'Origin');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
       res.end();
       return;
+    }
+
+    // Authentication Middleware
+    const token = this.extractToken(req, url);
+    const isStaticAsset = !pathname.startsWith('/api/') && !pathname.startsWith('/aiserver.') && !pathname.startsWith('/ag-ui/');
+    const isWebhookIngress = pathname.startsWith('/api/webhooks/') && req.method === 'POST' && pathname !== '/api/webhooks';
+
+    // If accessing root or static HTML with valid ?token=..., set session cookie
+    if ((pathname === '/' || pathname === '/index.html') && token && this.verifyToken(token)) {
+      res.setHeader('Set-Cookie', `opensand_token=${this.authToken}; Path=/; SameSite=Strict; HttpOnly`);
+    }
+
+    if (this.requireAuth && !isStaticAsset && !isWebhookIngress) {
+      if (!this.verifyToken(token)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized: missing or invalid authorization token' }));
+        return;
+      }
     }
 
     const isValidId = (id: string) => /^[a-zA-Z0-9_-]+$/.test(id);
@@ -263,7 +356,7 @@ export class DesktopServer {
 
     // API: GET /api/settings
     if (pathname === '/api/settings' && req.method === 'GET') {
-      const settings = this.bridge.getSettings();
+      const settings = this.bridge.getSanitizedSettings();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(settings));
       return;
@@ -272,7 +365,8 @@ export class DesktopServer {
     // API: POST /api/settings
     if (pathname === '/api/settings' && req.method === 'POST') {
       const body = await this.readJsonBody(req);
-      const updated = this.bridge.updateSettings(body);
+      this.bridge.updateSettings(body);
+      const updated = this.bridge.getSanitizedSettings();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(updated));
       return;
@@ -1175,6 +1269,13 @@ export class DesktopServer {
       return;
     }
 
+    // API 404s: Any unmatched /api/* or /aiserver.* or /ag-ui/* route returns 404 JSON, never SPA index.html
+    if (pathname.startsWith('/api/') || pathname.startsWith('/aiserver.') || pathname.startsWith('/ag-ui/')) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `Not found: ${pathname}` }));
+      return;
+    }
+
     // Serve static files from renderer/
     let filePath = path.join(this.rendererDir, pathname === '/' ? 'index.html' : pathname);
     const resolvedPath = path.resolve(filePath);
@@ -1188,6 +1289,13 @@ export class DesktopServer {
     }
 
     if (fs.existsSync(filePath)) {
+      if (filePath.endsWith('index.html') && token && this.verifyToken(token)) {
+        let html = fs.readFileSync(filePath, 'utf-8');
+        html = html.replace('</head>', `<script>window.__OPENSAND_AUTH_TOKEN__ = "${this.authToken}";</script></head>`);
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+        return;
+      }
       const ext = path.extname(filePath);
       const mimeTypes: Record<string, string> = {
         '.html': 'text/html; charset=utf-8',

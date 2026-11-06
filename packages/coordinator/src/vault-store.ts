@@ -60,21 +60,52 @@ interface PlainVaultPayload {
   credentials: Record<string, VaultCredential>;
 }
 
+export interface VaultStoreOptions {
+  baseDir?: string;
+  masterKeyPath?: string;
+  passphrase?: string;
+}
+
 export class VaultStore {
   private baseDir: string;
   private vaultFilePath: string;
   private saltFilePath: string;
   private masterKeyFilePath: string;
   private passphrase?: string;
+  private cachedKey: Buffer | null = null;
+  private writeQueue: Promise<any> = Promise.resolve();
   private knownSecretValues = new Map<string, string>(); // secret value -> secret name
   private initialized = false;
 
-  constructor(options?: { baseDir?: string; passphrase?: string }) {
+  constructor(options?: VaultStoreOptions) {
     this.baseDir = options?.baseDir ?? path.join(os.homedir(), ".opensand", "vault");
     this.vaultFilePath = path.join(this.baseDir, "vault.enc");
     this.saltFilePath = path.join(this.baseDir, ".vault.salt");
-    this.masterKeyFilePath = path.join(this.baseDir, ".vault.key");
     this.passphrase = options?.passphrase ?? process.env.OPENSAND_VAULT_PASSPHRASE;
+
+    if (options?.masterKeyPath) {
+      this.masterKeyFilePath = options.masterKeyPath;
+    } else if (process.env.OPENSAND_VAULT_KEY_PATH) {
+      this.masterKeyFilePath = process.env.OPENSAND_VAULT_KEY_PATH;
+    } else if (options?.baseDir) {
+      // Explicit baseDir specified (e.g. hermetic tmpDir in tests)
+      this.masterKeyFilePath = path.join(this.baseDir, ".vault.key");
+    } else {
+      // Default: check if existing legacy key is present in ~/.opensand/vault
+      const legacyKeyPath = path.join(this.baseDir, ".vault.key");
+      if (fsSync.existsSync(legacyKeyPath)) {
+        this.masterKeyFilePath = legacyKeyPath;
+      } else {
+        // Disentangle key from vault container directory to avoid co-location
+        this.masterKeyFilePath = path.join(os.homedir(), ".opensand", "keys", ".vault.key");
+      }
+    }
+  }
+
+  private async withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.writeQueue.then(fn, fn);
+    this.writeQueue = next.catch(() => {});
+    return next;
   }
 
   get storageDirectory(): string {
@@ -117,7 +148,8 @@ export class VaultStore {
 
     const key = crypto.randomBytes(32);
     try {
-      fsSync.mkdirSync(this.baseDir, { recursive: true, mode: 0o700 });
+      const keyDir = path.dirname(this.masterKeyFilePath);
+      fsSync.mkdirSync(keyDir, { recursive: true, mode: 0o700 });
       fsSync.writeFileSync(this.masterKeyFilePath, key, { mode: 0o600 });
     } catch {
       // Best-effort write
@@ -126,12 +158,15 @@ export class VaultStore {
   }
 
   private deriveKeySync(): Buffer {
+    if (this.cachedKey) return this.cachedKey;
     const salt = this.getOrCreateSaltSync();
     if (this.passphrase) {
-      return crypto.pbkdf2Sync(this.passphrase, salt, 100_000, 32, "sha256");
+      this.cachedKey = crypto.pbkdf2Sync(this.passphrase, salt, 100_000, 32, "sha256");
+    } else {
+      const masterKey = this.getOrCreateMasterKeySync();
+      this.cachedKey = crypto.pbkdf2Sync(masterKey, salt, 100_000, 32, "sha256");
     }
-    const masterKey = this.getOrCreateMasterKeySync();
-    return crypto.pbkdf2Sync(masterKey, salt, 100_000, 32, "sha256");
+    return this.cachedKey;
   }
 
   public getSecretSync(nameOrId: string): VaultSecret | null {
@@ -170,7 +205,10 @@ export class VaultStore {
           (s) => s.id.toLowerCase() === query || s.name.toLowerCase() === query
         ) ?? null
       );
-    } catch {
+    } catch (err: any) {
+      if (err?.code !== "ENOENT") {
+        console.warn("[VaultStore] Warning: failed to retrieve secret synchronously:", err?.message || err);
+      }
       return null;
     }
   }
@@ -201,17 +239,22 @@ export class VaultStore {
     }
 
     const key = crypto.randomBytes(32);
+    const keyDir = path.dirname(this.masterKeyFilePath);
+    await fs.mkdir(keyDir, { recursive: true, mode: 0o700 });
     await fs.writeFile(this.masterKeyFilePath, key, { mode: 0o600 });
     return key;
   }
 
   private async deriveKey(): Promise<Buffer> {
+    if (this.cachedKey) return this.cachedKey;
     const salt = await this.getOrCreateSalt();
     if (this.passphrase) {
-      return crypto.pbkdf2Sync(this.passphrase, salt, 100_000, 32, "sha256");
+      this.cachedKey = crypto.pbkdf2Sync(this.passphrase, salt, 100_000, 32, "sha256");
+    } else {
+      const masterKey = await this.getOrCreateMasterKey();
+      this.cachedKey = crypto.pbkdf2Sync(masterKey, salt, 100_000, 32, "sha256");
     }
-    const masterKey = await this.getOrCreateMasterKey();
-    return crypto.pbkdf2Sync(masterKey, salt, 100_000, 32, "sha256");
+    return this.cachedKey;
   }
 
   private async loadPayload(): Promise<PlainVaultPayload> {
@@ -307,26 +350,28 @@ export class VaultStore {
   // --- Secrets API ---
 
   async putSecret(input: PutSecretInput): Promise<VaultSecret> {
-    const payload = await this.loadPayload();
-    const name = input.name.trim();
-    if (!name) throw new Error("Secret name cannot be empty");
+    return this.withWriteLock(async () => {
+      const payload = await this.loadPayload();
+      const name = input.name.trim();
+      if (!name) throw new Error("Secret name cannot be empty");
 
-    const existingKey = Object.keys(payload.secrets).find((k) => k.toLowerCase() === name.toLowerCase());
-    const id = existingKey ?? `sec_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
-    const now = Date.now();
+      const existingKey = Object.keys(payload.secrets).find((k) => k.toLowerCase() === name.toLowerCase());
+      const id = existingKey ?? `sec_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+      const now = Date.now();
 
-    const record: VaultSecret = {
-      id,
-      name,
-      description: input.description ?? "",
-      value: input.value,
-      createdAtMs: payload.secrets[id]?.createdAtMs ?? now,
-      updatedAtMs: now,
-    };
+      const record: VaultSecret = {
+        id,
+        name,
+        description: input.description ?? "",
+        value: input.value,
+        createdAtMs: payload.secrets[id]?.createdAtMs ?? now,
+        updatedAtMs: now,
+      };
 
-    payload.secrets[id] = record;
-    await this.savePayloadAtomic(payload);
-    return record;
+      payload.secrets[id] = record;
+      await this.savePayloadAtomic(payload);
+      return record;
+    });
   }
 
   async getSecret(nameOrId: string): Promise<VaultSecret | null> {
@@ -355,52 +400,56 @@ export class VaultStore {
   }
 
   async deleteSecret(nameOrId: string): Promise<boolean> {
-    const payload = await this.loadPayload();
-    const query = nameOrId.toLowerCase().trim();
+    return this.withWriteLock(async () => {
+      const payload = await this.loadPayload();
+      const query = nameOrId.toLowerCase().trim();
 
-    const key = Object.keys(payload.secrets).find(
-      (k) => payload.secrets[k].id.toLowerCase() === query || payload.secrets[k].name.toLowerCase() === query
-    );
+      const key = Object.keys(payload.secrets).find(
+        (k) => payload.secrets[k].id.toLowerCase() === query || payload.secrets[k].name.toLowerCase() === query
+      );
 
-    if (key) {
-      delete payload.secrets[key];
-      await this.savePayloadAtomic(payload);
-      return true;
-    }
-    return false;
+      if (key) {
+        delete payload.secrets[key];
+        await this.savePayloadAtomic(payload);
+        return true;
+      }
+      return false;
+    });
   }
 
   // --- Credentials API ---
 
   async putCredential(input: PutCredentialInput): Promise<VaultCredential> {
-    const payload = await this.loadPayload();
-    const title = input.title.trim();
-    if (!title) throw new Error("Credential title cannot be empty");
+    return this.withWriteLock(async () => {
+      const payload = await this.loadPayload();
+      const title = input.title.trim();
+      if (!title) throw new Error("Credential title cannot be empty");
 
-    const existingKey = Object.keys(payload.credentials).find(
-      (k) => payload.credentials[k].title.toLowerCase() === title.toLowerCase() &&
-             payload.credentials[k].username.toLowerCase() === input.username.toLowerCase()
-    );
-    const id = existingKey ?? `cred_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
-    const now = Date.now();
+      const existingKey = Object.keys(payload.credentials).find(
+        (k) => payload.credentials[k].title.toLowerCase() === title.toLowerCase() &&
+               payload.credentials[k].username.toLowerCase() === input.username.toLowerCase()
+      );
+      const id = existingKey ?? `cred_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+      const now = Date.now();
 
-    const record: VaultCredential = {
-      id,
-      title,
-      username: input.username,
-      password: input.password,
-      notes: input.notes,
-      sites: input.sites ?? [],
-      agentId: input.agentId,
-      kind: input.kind ?? "API_KEY",
-      managedBy: input.managedBy ?? "LOCAL",
-      createdAtMs: payload.credentials[id]?.createdAtMs ?? now,
-      updatedAtMs: now,
-    };
+      const record: VaultCredential = {
+        id,
+        title,
+        username: input.username,
+        password: input.password,
+        notes: input.notes,
+        sites: input.sites ?? [],
+        agentId: input.agentId,
+        kind: input.kind ?? "API_KEY",
+        managedBy: input.managedBy ?? "LOCAL",
+        createdAtMs: payload.credentials[id]?.createdAtMs ?? now,
+        updatedAtMs: now,
+      };
 
-    payload.credentials[id] = record;
-    await this.savePayloadAtomic(payload);
-    return record;
+      payload.credentials[id] = record;
+      await this.savePayloadAtomic(payload);
+      return record;
+    });
   }
 
   async getCredential(idOrTitle: string): Promise<VaultCredential | null> {
@@ -446,19 +495,21 @@ export class VaultStore {
   }
 
   async deleteCredential(idOrTitle: string): Promise<boolean> {
-    const payload = await this.loadPayload();
-    const query = idOrTitle.toLowerCase().trim();
+    return this.withWriteLock(async () => {
+      const payload = await this.loadPayload();
+      const query = idOrTitle.toLowerCase().trim();
 
-    const key = Object.keys(payload.credentials).find(
-      (k) => payload.credentials[k].id.toLowerCase() === query || payload.credentials[k].title.toLowerCase() === query
-    );
+      const key = Object.keys(payload.credentials).find(
+        (k) => payload.credentials[k].id.toLowerCase() === query || payload.credentials[k].title.toLowerCase() === query
+      );
 
-    if (key) {
-      delete payload.credentials[key];
-      await this.savePayloadAtomic(payload);
-      return true;
-    }
-    return false;
+      if (key) {
+        delete payload.credentials[key];
+        await this.savePayloadAtomic(payload);
+        return true;
+      }
+      return false;
+    });
   }
 
   // --- Automatic Redaction / Scrubbing Engine ---

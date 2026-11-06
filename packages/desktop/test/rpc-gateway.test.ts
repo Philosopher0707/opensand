@@ -84,7 +84,7 @@ test('createDefaultRpcGateway - handles GrokBotService and SandBoxService wire c
     const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
     const gateway = createDefaultRpcGateway(bridge);
 
-    // 1. SandBoxService: WriteFile & ReadFile
+    // 1. SandBoxService: WriteFile & ReadFile are disabled over HTTP RPC (403 permission_denied)
     const filePath = path.join(tmpDir, 'test-rpc.txt');
     const reqWrite = new MockIncomingMessage('POST', '/aiserver.v1.SandBoxService/WriteFile');
     const resWrite = new MockServerResponse();
@@ -93,7 +93,8 @@ test('createDefaultRpcGateway - handles GrokBotService and SandBoxService wire c
       content: 'Clean-room wire test',
     });
     assert.strictEqual(handledWrite, true);
-    assert.strictEqual(resWrite.statusCode, 200);
+    assert.strictEqual(resWrite.statusCode, 403);
+    assert.strictEqual(JSON.parse(resWrite.body).code, 'permission_denied');
 
     const reqRead = new MockIncomingMessage('POST', '/aiserver.v1.SandBoxService/ReadFile');
     const resRead = new MockServerResponse();
@@ -101,9 +102,8 @@ test('createDefaultRpcGateway - handles GrokBotService and SandBoxService wire c
       path: filePath,
     });
     assert.strictEqual(handledRead, true);
-    assert.strictEqual(resRead.statusCode, 200);
-    const readBody = JSON.parse(resRead.body);
-    assert.ok(readBody.content.includes('Clean-room wire test'));
+    assert.strictEqual(resRead.statusCode, 403);
+    assert.strictEqual(JSON.parse(resRead.body).code, 'permission_denied');
 
     // 2. GrokBotService: EnsureSandBox & EnsureSandBoxWindow
     const reqEnsure = new MockIncomingMessage('POST', '/aiserver.v1.GrokBotService/EnsureSandBox');
@@ -156,12 +156,12 @@ test('createDefaultRpcGateway - handles GrokBotService and SandBoxService wire c
     assert.strictEqual(resUnknown.statusCode, 404);
     assert.strictEqual(JSON.parse(resUnknown.body).code, 'not_found');
 
-    // 7. Error handling: Invalid argument produces 400
+    // 7. SandBoxService: ExecCommand produces 403 permission_denied
     const reqBadExec = new MockIncomingMessage('POST', '/aiserver.v1.SandBoxService/ExecCommand');
     const resBadExec = new MockServerResponse();
     await gateway.handleHttpRequest(reqBadExec as any, resBadExec as any, {});
-    assert.strictEqual(resBadExec.statusCode, 400);
-    assert.strictEqual(JSON.parse(resBadExec.body).code, 'invalid_argument');
+    assert.strictEqual(resBadExec.statusCode, 403);
+    assert.strictEqual(JSON.parse(resBadExec.body).code, 'permission_denied');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

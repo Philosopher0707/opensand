@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import * as crypto from "node:crypto";
 import { McpClient, McpServerConfig, McpToolDefinition } from "./mcp-client.js";
 import { LocalExecDaemon, ToolDefinition } from "@opensand/local-exec-daemon";
 
@@ -50,8 +51,11 @@ export class McpManager {
    * Save MCP server definitions to configuration file.
    */
   async saveConfig(config: McpConfigFile): Promise<void> {
-    await fs.mkdir(path.dirname(this.configPath), { recursive: true });
-    await fs.writeFile(this.configPath, JSON.stringify(config, null, 2), "utf-8");
+    const dir = path.dirname(this.configPath);
+    await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+    const tmp = `${this.configPath}.${Date.now()}.${crypto.randomBytes(6).toString("hex")}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(config, null, 2), { encoding: "utf-8", mode: 0o600 });
+    await fs.rename(tmp, this.configPath);
   }
 
   /**

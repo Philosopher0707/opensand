@@ -7,11 +7,13 @@
 import * as http from 'node:http';
 import { DesktopIpcBridge } from './ipc-bridge.js';
 
+export type RpcErrorCode = 'not_found' | 'invalid_argument' | 'permission_denied' | 'unauthenticated' | 'internal';
+
 export class RpcError extends Error {
-  public code: 'not_found' | 'invalid_argument' | 'permission_denied' | 'internal';
+  public code: RpcErrorCode;
 
   constructor(
-    code: 'not_found' | 'invalid_argument' | 'permission_denied' | 'internal',
+    code: RpcErrorCode,
     message: string
   ) {
     super(message);
@@ -99,8 +101,15 @@ export class RpcGateway {
         res.end(JSON.stringify(result ?? {}));
       }
     } catch (err: any) {
-      const code = err instanceof RpcError ? err.code : 'internal';
-      const statusCode = code === 'not_found' ? 404 : code === 'invalid_argument' ? 400 : 500;
+      const code: RpcErrorCode = err instanceof RpcError ? err.code : 'internal';
+      const statusMap: Record<RpcErrorCode, number> = {
+        invalid_argument: 400,
+        unauthenticated: 401,
+        permission_denied: 403,
+        not_found: 404,
+        internal: 500,
+      };
+      const statusCode = statusMap[code] || 500;
       if (!res.writableEnded) {
         res.writeHead(statusCode);
         res.end(
@@ -203,33 +212,21 @@ export function createDefaultRpcGateway(bridge: DesktopIpcBridge): RpcGateway {
   });
 
   // 3. aiserver.v1.SandBoxService (Execution & File Operations)
-  gateway.register('aiserver.v1.SandBoxService', 'ExecCommand', async (req) => {
-    if (!req.command) throw new RpcError('invalid_argument', 'Missing command in ExecCommandRequest');
-    const res = await bridge.daemon.executeTool('exec_command', req);
-    if (res.status !== 'ok') throw new RpcError('internal', res.error?.message || 'Command execution failed');
-    return res.output;
+  // Security: Command execution and direct filesystem tools are strictly disabled over HTTP RPC.
+  gateway.register('aiserver.v1.SandBoxService', 'ExecCommand', async () => {
+    throw new RpcError('permission_denied', 'SandBoxService command execution is disabled over HTTP');
   });
 
-  gateway.register('aiserver.v1.SandBoxService', 'ReadFile', async (req) => {
-    if (!req.path) throw new RpcError('invalid_argument', 'Missing path in ReadFileRequest');
-    const res = await bridge.daemon.executeTool('read_file', req);
-    if (res.status !== 'ok') throw new RpcError('internal', res.error?.message || 'Read file failed');
-    return res.output;
+  gateway.register('aiserver.v1.SandBoxService', 'ReadFile', async () => {
+    throw new RpcError('permission_denied', 'SandBoxService file operations are disabled over HTTP');
   });
 
-  gateway.register('aiserver.v1.SandBoxService', 'WriteFile', async (req) => {
-    if (!req.path || req.content === undefined) {
-      throw new RpcError('invalid_argument', 'Missing path or content in WriteFileRequest');
-    }
-    const res = await bridge.daemon.executeTool('write_file', req);
-    if (res.status !== 'ok') throw new RpcError('internal', res.error?.message || 'Write file failed');
-    return res.output;
+  gateway.register('aiserver.v1.SandBoxService', 'WriteFile', async () => {
+    throw new RpcError('permission_denied', 'SandBoxService file operations are disabled over HTTP');
   });
 
-  gateway.register('aiserver.v1.SandBoxService', 'ListDirectory', async (req) => {
-    const res = await bridge.daemon.executeTool('list_directory', req);
-    if (res.status !== 'ok') throw new RpcError('internal', res.error?.message || 'List directory failed');
-    return res.output;
+  gateway.register('aiserver.v1.SandBoxService', 'ListDirectory', async () => {
+    throw new RpcError('permission_denied', 'SandBoxService directory listing is disabled over HTTP');
   });
 
   // 4. aiserver.v1.DashboardService

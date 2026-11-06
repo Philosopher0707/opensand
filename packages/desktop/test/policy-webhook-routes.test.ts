@@ -41,6 +41,7 @@ describe('Desktop Server - Policies, Webhooks, and AG-UI Endpoints', () => {
           method,
           headers: {
             'Host': '127.0.0.1',
+            Authorization: `Bearer ${server.getAuthToken()}`,
             ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}),
             ...headers,
           },

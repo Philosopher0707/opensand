@@ -16,12 +16,16 @@ class MockIncomingMessage extends EventEmitter {
   public method: string;
   public url: string;
   public headers: Record<string, string>;
+  public static defaultToken: string = '';
 
   constructor(method: string, url: string, headers: Record<string, string> = {}) {
     super();
     this.method = method;
     this.url = url;
     this.headers = { host: '127.0.0.1:3456', ...headers };
+    if (!('authorization' in this.headers) && !('Authorization' in this.headers) && MockIncomingMessage.defaultToken) {
+      this.headers['authorization'] = `Bearer ${MockIncomingMessage.defaultToken}`;
+    }
   }
 
   public destroy(): this {
@@ -65,7 +69,58 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-server-test-'));
 
   try {
+    const cacheDir = path.join(tmpDir, 'cache');
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(cacheDir, 'openrouter-models.json'),
+      JSON.stringify({
+        timestamp: Date.now(),
+        models: [
+          { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek Flash', context_length: 1048576 },
+        ],
+      }),
+      'utf8'
+    );
+
     const server = new DesktopServer({ baseDir: tmpDir });
+    MockIncomingMessage.defaultToken = server.getAuthToken();
+
+    // Test Authentication Middleware: missing token returns 401
+    const unauthReq = new MockIncomingMessage('GET', '/api/settings', { authorization: '' });
+    const unauthRes = new MockServerResponse();
+    await (server as any).handleRequest(unauthReq, unauthRes);
+    assert.strictEqual(unauthRes.statusCode, 401);
+
+    // Test Authentication Middleware: invalid token returns 401
+    const badTokenReq = new MockIncomingMessage('GET', '/api/settings', { authorization: 'Bearer invalid-token-123' });
+    const badTokenRes = new MockServerResponse();
+    await (server as any).handleRequest(badTokenReq, badTokenRes);
+    assert.strictEqual(badTokenRes.statusCode, 401);
+
+    // Test Authentication Middleware: X-OpenSand-Token succeeds
+    const customHeaderReq = new MockIncomingMessage('GET', '/api/settings', { authorization: '', 'x-opensand-token': server.getAuthToken() });
+    const customHeaderRes = new MockServerResponse();
+    await (server as any).handleRequest(customHeaderReq, customHeaderRes);
+    assert.strictEqual(customHeaderRes.statusCode, 200);
+
+    // Test Authentication Middleware: Cookie opensand_token succeeds
+    const cookieReq = new MockIncomingMessage('GET', '/api/settings', { authorization: '', cookie: `opensand_token=${server.getAuthToken()}` });
+    const cookieRes = new MockServerResponse();
+    await (server as any).handleRequest(cookieReq, cookieRes);
+    assert.strictEqual(cookieRes.statusCode, 200);
+
+    // Test Authentication Middleware: Query ?token= succeeds
+    const queryReq = new MockIncomingMessage('GET', `/api/settings?token=${server.getAuthToken()}`, { authorization: '' });
+    const queryRes = new MockServerResponse();
+    await (server as any).handleRequest(queryReq, queryRes);
+    assert.strictEqual(queryRes.statusCode, 200);
+
+    // Test API 404 behavior: unmatched /api/* returns 404 JSON, never SPA index.html
+    const notFoundReq = new MockIncomingMessage('GET', '/api/nonexistent-route-for-testing');
+    const notFoundRes = new MockServerResponse();
+    await (server as any).handleRequest(notFoundReq, notFoundRes);
+    assert.strictEqual(notFoundRes.statusCode, 404);
+    assert.ok(JSON.parse(notFoundRes.body).error.includes('Not found'));
 
     // Test GET /api/settings
     const req1 = new MockIncomingMessage('GET', '/api/settings');
@@ -75,6 +130,14 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     assert.strictEqual(res1.statusCode, 200);
     const settings = JSON.parse(res1.body);
     assert.strictEqual(settings.provider, 'openai');
+
+    // Test API key redaction: key must be masked in API responses
+    (server as any).bridge.updateSettings({ apiKey: 'sk-ant-api03-super-secret-key-12345' });
+    const reqMasked = new MockIncomingMessage('GET', '/api/settings');
+    const resMasked = new MockServerResponse();
+    await (server as any).handleRequest(reqMasked, resMasked);
+    const maskedData = JSON.parse(resMasked.body);
+    assert.strictEqual(maskedData.apiKey, '********');
 
     // Test POST /api/settings
     const req2 = new MockIncomingMessage('POST', '/api/settings');

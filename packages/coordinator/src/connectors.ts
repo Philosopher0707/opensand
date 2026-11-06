@@ -189,8 +189,8 @@ export class ConnectorManager {
             if (item && item.id && OAUTH_PROVIDERS[item.id as ConnectorProviderId]) {
               const id = item.id as ConnectorProviderId;
               // Synchronously restore vaulted token so sync callers never experience a race
-              if (!item.token && this.vaultStore && typeof (this.vaultStore as any).getSecretSync === "function") {
-                const sec = (this.vaultStore as any).getSecretSync(`connector_token_${id}`);
+              if (!item.token && this.vaultStore) {
+                const sec = this.vaultStore.getSecretSync(`connector_token_${id}`);
                 if (sec?.value) {
                   item.token = sec.value;
                 }
@@ -265,7 +265,7 @@ export class ConnectorManager {
         return c;
       });
 
-      const tmpPath = `${this.storagePath}.${Date.now()}.tmp`;
+      const tmpPath = `${this.storagePath}.${Date.now()}.${crypto.randomBytes(6).toString("hex")}.tmp`;
       await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), { mode: 0o600 });
       await fs.rename(tmpPath, this.storagePath);
     } catch {

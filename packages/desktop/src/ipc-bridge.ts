@@ -217,7 +217,20 @@ export class DesktopIpcBridge extends EventEmitter {
     return { ...this.settings };
   }
 
+  public getSanitizedSettings(): DesktopSettings {
+    const s = { ...this.settings };
+    if (s.apiKey && s.apiKey !== 'none') {
+      s.apiKey = '********';
+    }
+    return s;
+  }
+
   public updateSettings(partial: Partial<DesktopSettings>): DesktopSettings {
+    // If client sends back masked placeholder, ignore updating the API key
+    if (partial.apiKey === '********') {
+      delete partial.apiKey;
+    }
+
     const modelChanged =
       (partial.model !== undefined && partial.model !== this.settings.model) ||
       (partial.endpoint !== undefined && partial.endpoint !== this.settings.endpoint) ||
@@ -240,7 +253,7 @@ export class DesktopIpcBridge extends EventEmitter {
       this.activeAgentId = undefined;
     }
     this.saveSettings();
-    this.emitEvent('status', { settings: this.settings });
+    this.emitEvent('status', { settings: this.getSanitizedSettings() });
     return { ...this.settings };
   }
 

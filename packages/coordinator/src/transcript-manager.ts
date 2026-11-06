@@ -34,7 +34,7 @@ export class TranscriptManager {
       ...event,
     }) + "\n";
 
-    await fs.appendFile(path.join(this.sessionDir, "transcript.jsonl"), entry, "utf-8");
+    await fs.appendFile(path.join(this.sessionDir, "transcript.jsonl"), entry, { encoding: "utf-8", mode: 0o600 });
   }
 
   /**
@@ -82,7 +82,7 @@ export class TranscriptManager {
     await fs.writeFile(
       path.join(this.sessionDir, "messages.json"),
       JSON.stringify(messages, null, 2),
-      "utf-8"
+      { encoding: "utf-8", mode: 0o600 }
     );
   }
 
@@ -160,7 +160,7 @@ export class TranscriptManager {
   async writeHumanReadableTranscript(messages: ChatMessage[]): Promise<void> {
     await this.ensureDirectory();
     const formatted = this.formatHumanReadable(messages);
-    await fs.writeFile(path.join(this.sessionDir, "transcript.txt"), formatted, "utf-8");
+    await fs.writeFile(path.join(this.sessionDir, "transcript.txt"), formatted, { encoding: "utf-8", mode: 0o600 });
     await this.saveMessages(messages);
   }
 }

@@ -11,6 +11,35 @@ class OpenSandClient {
   constructor() {
     this.isElectron = typeof window.opensand !== 'undefined';
     this.listeners = new Set();
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token') || (typeof window.__OPENSAND_AUTH_TOKEN__ !== 'undefined' ? window.__OPENSAND_AUTH_TOKEN__ : '');
+    if (token) {
+      sessionStorage.setItem('opensand_token', token);
+    }
+    this.token = token || sessionStorage.getItem('opensand_token') || '';
+
+    if (this.token && typeof window.fetch === 'function') {
+      const origFetch = window.fetch;
+      const currentToken = this.token;
+      window.fetch = function (input, init = {}) {
+        init = { ...init };
+        if (init.headers instanceof Headers) {
+          if (!init.headers.has('Authorization')) {
+            init.headers.set('Authorization', `Bearer ${currentToken}`);
+          }
+        } else if (Array.isArray(init.headers)) {
+          if (!init.headers.some(([k]) => k.toLowerCase() === 'authorization')) {
+            init.headers.push(['Authorization', `Bearer ${currentToken}`]);
+          }
+        } else {
+          init.headers = { ...init.headers };
+          if (!init.headers['Authorization'] && !init.headers['authorization']) {
+            init.headers['Authorization'] = `Bearer ${currentToken}`;
+          }
+        }
+        return origFetch(input, init);
+      };
+    }
 
     if (this.isElectron) {
       window.opensand.onEvent((event) => this.dispatch(event));
@@ -20,7 +49,8 @@ class OpenSandClient {
   }
 
   initSse() {
-    const sse = new EventSource('/api/events');
+    const sseUrl = this.token ? `/api/events?token=${encodeURIComponent(this.token)}` : '/api/events';
+    const sse = new EventSource(sseUrl);
     sse.onmessage = (msg) => {
       try {
         const event = JSON.parse(msg.data);
