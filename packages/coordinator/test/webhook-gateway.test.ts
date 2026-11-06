@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as crypto from 'node:crypto';
-import { WebhookGateway } from '../src/webhook-gateway.js';
+import { WebhookGateway, safeTimingCompare } from '../src/webhook-gateway.js';
 import { StateGraph, END } from '../src/agent-graph.js';
 
 describe('WebhookGateway - Inbound Proactive Event Triggers', () => {
@@ -119,5 +119,99 @@ describe('WebhookGateway - Inbound Proactive Event Triggers', () => {
     });
     assert.strictEqual(filteredResult.success, true);
     assert.ok(filteredResult.reason?.includes('filtered out'));
+  });
+
+  it('evaluates safeTimingCompare across all edge cases (timing-attack defense)', () => {
+    // 1. Identical strings
+    assert.strictEqual(safeTimingCompare('my-secret-key-12345', 'my-secret-key-12345'), true);
+
+    // 2. Different strings of same length
+    assert.strictEqual(safeTimingCompare('my-secret-key-12345', 'my-secret-key-99999'), false);
+
+    // 3. Different lengths
+    assert.strictEqual(safeTimingCompare('short', 'much-longer-string-with-extra-bytes'), false);
+
+    // 4. Empty strings (fail closed)
+    assert.strictEqual(safeTimingCompare('', ''), false);
+    assert.strictEqual(safeTimingCompare('secret', ''), false);
+    assert.strictEqual(safeTimingCompare('', 'secret'), false);
+
+    // 5. Non-string types (fail closed without throwing)
+    assert.strictEqual(safeTimingCompare(null, 'secret'), false);
+    assert.strictEqual(safeTimingCompare('secret', undefined), false);
+    assert.strictEqual(safeTimingCompare(12345, '12345'), false);
+    assert.strictEqual(safeTimingCompare({}, {}), false);
+  });
+
+  it('enforces timing-safe Bearer token and custom header authentication', async () => {
+    const secret = 'bearer-auth-token-xyz-789';
+    gateway.registerWebhook({
+      id: 'wh_bearer',
+      name: 'ci-bearer',
+      secret,
+      targetType: 'graph',
+      targetId: 'dummy_graph',
+      enabled: true,
+    });
+
+    const dummyGraph = new StateGraph<any>();
+    dummyGraph.addNode('step', (s) => ({ done: true }));
+    dummyGraph.setEntryPoint('step');
+    dummyGraph.addEdge('step', END);
+    gateway.registerGraph('dummy_graph', dummyGraph.compile());
+
+    // 1. Valid Bearer token
+    const validBearer = await gateway.handleWebhook('ci-bearer', { event: 'deploy' }, {
+      authorization: `Bearer ${secret}`,
+    });
+    assert.strictEqual(validBearer.success, true);
+    assert.strictEqual(validBearer.status, 'dispatched');
+
+    // 2. Wrong Bearer token
+    const wrongBearer = await gateway.handleWebhook('ci-bearer', { event: 'deploy' }, {
+      authorization: 'Bearer wrong-token-value',
+    });
+    assert.strictEqual(wrongBearer.success, false);
+    assert.strictEqual(wrongBearer.status, 'rejected');
+
+    // 3. Empty Bearer token
+    const emptyBearer = await gateway.handleWebhook('ci-bearer', { event: 'deploy' }, {
+      authorization: 'Bearer ',
+    });
+    assert.strictEqual(emptyBearer.success, false);
+    assert.strictEqual(emptyBearer.status, 'rejected');
+
+    // 4. Non-Bearer authorization format
+    const basicAuth = await gateway.handleWebhook('ci-bearer', { event: 'deploy' }, {
+      authorization: 'Basic dXNlcjpwYXNz',
+    });
+    assert.strictEqual(basicAuth.success, false);
+    assert.strictEqual(basicAuth.status, 'rejected');
+
+    // 5. Valid custom token header (x-opensand-secret)
+    const validCustom = await gateway.handleWebhook('ci-bearer', { event: 'deploy' }, {
+      'x-opensand-secret': secret,
+    });
+    assert.strictEqual(validCustom.success, true);
+    assert.strictEqual(validCustom.status, 'dispatched');
+
+    // 6. Valid custom token header (x-webhook-token)
+    const validWebhookToken = await gateway.handleWebhook('ci-bearer', { event: 'deploy' }, {
+      'x-webhook-token': secret,
+    });
+    assert.strictEqual(validWebhookToken.success, true);
+    assert.strictEqual(validWebhookToken.status, 'dispatched');
+
+    // 7. Wrong custom token header
+    const wrongCustom = await gateway.handleWebhook('ci-bearer', { event: 'deploy' }, {
+      'x-opensand-secret': 'attacker-forged-key',
+    });
+    assert.strictEqual(wrongCustom.success, false);
+    assert.strictEqual(wrongCustom.status, 'rejected');
+
+    // 8. Missing all authentication when secret is configured
+    const missingAuth = await gateway.handleWebhook('ci-bearer', { event: 'deploy' }, {});
+    assert.strictEqual(missingAuth.success, false);
+    assert.strictEqual(missingAuth.status, 'rejected');
   });
 });

@@ -188,6 +188,13 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     await (server as any).handleRequest(reqUntrustedOrigin, resUntrustedOrigin);
     assert.strictEqual(resUntrustedOrigin.statusCode, 403);
 
+    // Test Security: Missing Host header rejected with 400 Bad Request (fail closed)
+    const reqMissingHost = new MockIncomingMessage('GET', '/api/settings');
+    delete (reqMissingHost.headers as any).host;
+    const resMissingHost = new MockServerResponse();
+    await (server as any).handleRequest(reqMissingHost, resMissingHost);
+    assert.strictEqual(resMissingHost.statusCode, 400);
+
     // Test Security: Untrusted Host header rejected with 403 (DNS rebinding defense)
     const reqUntrustedHost = new MockIncomingMessage('GET', '/api/settings', { host: 'attacker-controlled.com' });
     const resUntrustedHost = new MockServerResponse();

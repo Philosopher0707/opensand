@@ -150,13 +150,19 @@ export class ConnectorManager {
   private pendingStates: Map<string, { providerId: ConnectorProviderId; createdAt: number }> = new Map();
   private mockNetwork: boolean;
   private vaultStore?: VaultStore;
+  private initPromise: Promise<void>;
 
   constructor(options?: ConnectorManagerOptions) {
     this.storagePath = options?.storagePath || path.join(os.homedir(), ".config", "opensand", "connectors.json");
     this.mockNetwork = options?.mockNetwork ?? true;
-    this.vaultStore = options?.vaultStore;
+    this.vaultStore = options?.vaultStore ?? new VaultStore({ baseDir: path.join(path.dirname(this.storagePath), "vault") });
     this.initializeDefaultConnectors();
-    this.loadFromDisk();
+    this.loadFromDiskSync();
+    this.initPromise = this.restoreVaultedTokensAndMigrate();
+  }
+
+  public async ensureLoaded(): Promise<void> {
+    await this.initPromise;
   }
 
   private initializeDefaultConnectors(): void {
@@ -173,7 +179,7 @@ export class ConnectorManager {
     }
   }
 
-  private loadFromDisk(): void {
+  private loadFromDiskSync(): void {
     try {
       if (fsSync.existsSync(this.storagePath)) {
         const raw = fsSync.readFileSync(this.storagePath, "utf-8");
@@ -181,13 +187,44 @@ export class ConnectorManager {
         if (Array.isArray(parsed)) {
           for (const item of parsed) {
             if (item && item.id && OAUTH_PROVIDERS[item.id as ConnectorProviderId]) {
-              this.connectors.set(item.id, item);
+              this.connectors.set(item.id as ConnectorProviderId, item);
             }
           }
         }
       }
     } catch {
       // Non-fatal if missing or unreadable
+    }
+  }
+
+  private async restoreVaultedTokensAndMigrate(): Promise<void> {
+    if (!this.vaultStore) return;
+    try {
+      let needsSave = false;
+      for (const [id, cred] of this.connectors.entries()) {
+        // Issue 3: Stale plaintext migration - if an older connectors.json had a plaintext token, vault it
+        if (cred.token) {
+          await this.vaultStore.putSecret({
+            name: `connector_token_${id}`,
+            value: cred.token,
+            description: `${id} connector token`,
+          });
+          needsSave = true;
+        } else if (cred.status === "connected") {
+          // Issue 1: Round-trip restoration - fetch token from vaultStore into memory
+          const secret = await this.vaultStore.getSecret(`connector_token_${id}`);
+          if (secret?.value) {
+            cred.token = secret.value;
+          }
+        }
+      }
+
+      // If plaintext tokens were migrated from old connectors.json, save sanitized JSON (without token)
+      if (needsSave) {
+        await this.saveToDisk();
+      }
+    } catch {
+      // Best-effort vault hydration
     }
   }
 
@@ -274,6 +311,11 @@ export class ConnectorManager {
     return this.connectors.get(id);
   }
 
+  public async getRawCredentialsAsync(id: ConnectorProviderId): Promise<StoredConnectorCredentials | undefined> {
+    await this.ensureLoaded();
+    return this.connectors.get(id);
+  }
+
   public initiateOAuth(
     id: ConnectorProviderId,
     redirectUri?: string
@@ -315,6 +357,7 @@ export class ConnectorManager {
     code: string,
     state?: string
   ): Promise<ConnectorState> {
+    await this.ensureLoaded();
     const provider = OAUTH_PROVIDERS[id];
     if (!provider) {
       throw new Error(`Unknown connector provider: ${id}`);
@@ -361,6 +404,7 @@ export class ConnectorManager {
       metadata?: Record<string, string>;
     }
   ): Promise<ConnectorState> {
+    await this.ensureLoaded();
     const provider = OAUTH_PROVIDERS[id];
     if (!provider) {
       throw new Error(`Unknown connector provider: ${id}`);
@@ -398,6 +442,7 @@ export class ConnectorManager {
   }
 
   public async disconnect(id: ConnectorProviderId): Promise<boolean> {
+    await this.ensureLoaded();
     const provider = OAUTH_PROVIDERS[id];
     if (!provider) return false;
 
@@ -419,6 +464,7 @@ export class ConnectorManager {
   }
 
   public async testConnection(id: ConnectorProviderId): Promise<{ ok: boolean; message: string; account?: string }> {
+    await this.ensureLoaded();
     const creds = this.connectors.get(id);
     const provider = OAUTH_PROVIDERS[id];
     if (!provider) {

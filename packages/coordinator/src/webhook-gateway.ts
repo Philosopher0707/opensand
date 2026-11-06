@@ -52,6 +52,13 @@ export interface WebhookDispatchResult {
   output?: unknown;
 }
 
+export function safeTimingCompare(a: unknown, b: unknown): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
+  const bufA = crypto.createHash('sha256').update(a).digest();
+  const bufB = crypto.createHash('sha256').update(b).digest();
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 export class WebhookGateway {
   private webhooks: Map<string, WebhookRegistration> = new Map();
   private deliveries: WebhookDeliveryLog[] = [];
@@ -196,11 +203,8 @@ export class WebhookGateway {
     }
   }
 
-  private safeCompare(a: string, b: string): boolean {
-    if (typeof a !== 'string' || typeof b !== 'string') return false;
-    const bufA = crypto.createHash('sha256').update(a).digest();
-    const bufB = crypto.createHash('sha256').update(b).digest();
-    return crypto.timingSafeEqual(bufA, bufB);
+  public safeCompare(a: unknown, b: unknown): boolean {
+    return safeTimingCompare(a, b);
   }
 
   private verifySignature(secret: string, payload: any, headers: Record<string, string>): boolean {

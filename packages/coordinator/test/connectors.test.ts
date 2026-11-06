@@ -63,9 +63,60 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
 
     // Verify persistence
     const reloaded = new ConnectorManager({ storagePath });
+    await reloaded.ensureLoaded();
     const reloadedLinear = reloaded.getConnector("linear");
     assert.strictEqual(reloadedLinear?.status, "connected");
     assert.strictEqual(reloadedLinear?.account, completed.account);
+
+    // Verify token round-trip restoration from vault
+    const reloadedCreds = await reloaded.getRawCredentialsAsync("linear");
+    assert.ok(reloadedCreds?.token, "Token must be restored from vault upon reload");
+    assert.strictEqual(reloadedCreds?.token, (manager.getRawCredentials("linear"))?.token);
+
+    // Verify disk hygiene: token is vaulted, NOT plaintext in connectors.json
+    const diskJson = fs.readFileSync(storagePath, "utf-8");
+    const rawToken = manager.getRawCredentials("linear")?.token;
+    assert.ok(rawToken && rawToken.startsWith("oauth_linear_"));
+    assert.ok(!diskJson.includes(rawToken), "Plaintext token must not exist in connectors.json");
+  });
+
+  it("migrates legacy plaintext tokens in connectors.json to encrypted vault and sanitizes disk file", async () => {
+    const migrationStoragePath = path.join(tmpDir, "legacy-connectors.json");
+    // Seed an old-format connectors.json containing a plaintext token
+    const legacyData = [
+      {
+        id: "slack",
+        status: "connected",
+        token: "xoxb-plaintext-legacy-token-12345",
+        account: "Legacy Workspace",
+        scopes: ["chat:write"],
+        authType: "token",
+        metadata: {},
+      },
+    ];
+    fs.writeFileSync(migrationStoragePath, JSON.stringify(legacyData, null, 2), { mode: 0o600 });
+
+    const manager = new ConnectorManager({ storagePath: migrationStoragePath });
+    await manager.ensureLoaded();
+
+    // 1. In memory, token is preserved and connection verified
+    const testRes = await manager.testConnection("slack");
+    assert.strictEqual(testRes.ok, true);
+    assert.strictEqual(testRes.account, "Legacy Workspace");
+
+    const creds = await manager.getRawCredentialsAsync("slack");
+    assert.strictEqual(creds?.token, "xoxb-plaintext-legacy-token-12345");
+
+    // 2. On disk, connectors.json is scrubbed of the plaintext token
+    const diskContent = fs.readFileSync(migrationStoragePath, "utf-8");
+    assert.ok(!diskContent.includes("xoxb-plaintext-legacy-token-12345"), "Plaintext token must be scrubbed from connectors.json");
+    assert.ok(diskContent.includes('"account": "Legacy Workspace"'));
+
+    // 3. New manager reload from the sanitized connectors.json still recovers the vaulted token
+    const secondReload = new ConnectorManager({ storagePath: migrationStoragePath });
+    await secondReload.ensureLoaded();
+    const secondCreds = await secondReload.getRawCredentialsAsync("slack");
+    assert.strictEqual(secondCreds?.token, "xoxb-plaintext-legacy-token-12345");
   });
 
   it("configures manual token credentials directly", async () => {
