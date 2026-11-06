@@ -314,7 +314,10 @@ Examples:
             ui.onTextDelta(event.text);
             break;
           case "thought_delta":
-            // Render thinking in dimmed italics if present
+            ui.onThoughtDelta(event.text);
+            break;
+          case "approval_requested":
+            ui.noteApprovalRequired(event.request.toolName);
             break;
           case "tool_call_started":
             ui.onToolCallStart(event.toolCall);
@@ -360,6 +363,7 @@ Examples:
     }
 
     ui.printUserTurn(config.query);
+    ui.beginTurn();
     const queryAbort = new AbortController();
     const onSigInt = () => {
       queryAbort.abort();
@@ -445,6 +449,9 @@ Available OpenSand REPL Commands:
   /tasks              List active agent tasks and milestones
   /rules              Show continuous learning guidelines
   /tokens             Inspect real-time context token usage, bounds, and caching
+  /verbose [thinking|tools|all|off]
+                      Toggle verbose output: stream thinking, show tool args/results
+  /quiet              Suppress thinking + tool progress (answers only)
   /clear              Clear terminal screen
   exit, quit, /exit   Terminate REPL session
 `);
@@ -471,6 +478,30 @@ Available OpenSand REPL Commands:
 
       if (trimmed === "/clear") {
         console.clear();
+        continue;
+      }
+
+      if (trimmed === "/quiet") {
+        ui.setVerbosity("quiet");
+        ui.printInfo("Output: quiet (tool progress and thinking hidden).");
+        continue;
+      }
+
+      if (trimmed === "/verbose" || trimmed.startsWith("/verbose ")) {
+        const mode = trimmed.slice(8).trim().toLowerCase();
+        if (mode === "thinking" || mode === "tools" || mode === "all") {
+          ui.setVerbosity("verbose");
+        } else if (mode === "off" || mode === "normal") {
+          ui.setVerbosity("normal");
+        } else if (!mode) {
+          ui.setVerbosity("verbose");
+        } else {
+          ui.printWarning("Usage: /verbose [thinking|tools|all|off]");
+          continue;
+        }
+        ui.printInfo(
+          `Output: ${ui.currentVerbosity === "verbose" ? "verbose (thinking + tool args/results shown)" : "normal"}.`
+        );
         continue;
       }
 
@@ -810,6 +841,7 @@ Available OpenSand REPL Commands:
 
       // Normal turn execution with interrupt support
       ui.printUserTurn(trimmed);
+      ui.beginTurn();
       const turnAbort = new AbortController();
       const onSigInt = () => {
         turnAbort.abort();
@@ -842,6 +874,7 @@ Available OpenSand REPL Commands:
         console.log(`\x1b[2m[context: ~${estTokens.toLocaleString()} tokens | ${userTurns} turns | toolScope: ${coordinator.toolScopeMode}]\x1b[0m\n`);
       } catch (err: any) {
         if (turnAbort.signal.aborted || err?.name === "AbortError" || err?.code === "ABORT_ERR") {
+          ui.onCancelled();
           ui.printInfo("\n[Turn cancelled by user]");
         } else if (err?.isNetworkError || err?.name === "NetworkError") {
           ui.printError(`Network failure: ${err.message}\n(REPL ready for your next command)`);
