@@ -956,6 +956,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const settingEndpoint = document.getElementById('settingEndpoint');
   const settingModel = document.getElementById('settingModel');
   const settingApiKey = document.getElementById('settingApiKey');
+  let hasStoredApiKey = false;
   const settingAutoApprove = document.getElementById('settingAutoApprove');
 
   // State
@@ -5202,20 +5203,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     settingProvider.value = detectedProvider;
     settingEndpoint.value = s.endpoint || '';
     settingModel.value = s.model || '';
-    settingApiKey.value = s.apiKey || '';
+    const hasStoredKey = !!s.apiKey && s.apiKey !== 'none';
+    hasStoredApiKey = hasStoredKey;
+    settingApiKey.value = '';
+    settingApiKey.placeholder = hasStoredKey ? 'Saved (leave blank to keep)' : 'sk-...';
     settingAutoApprove.checked = !!s.autoApprove;
     settingsModal.classList.remove('hidden');
     populateModelSuggestions(settingProvider.value, settingEndpoint.value);
   };
   btnCloseSettings.onclick = () => settingsModal.classList.add('hidden');
   btnSaveSettings.onclick = async () => {
-    await client.updateSettings({
+    const payload = {
       provider: settingProvider.value,
       endpoint: settingEndpoint.value,
       model: settingModel.value,
-      apiKey: settingApiKey.value,
       autoApprove: settingAutoApprove.checked,
-    });
+    };
+    const newKey = settingApiKey.value.trim();
+    if (newKey) payload.apiKey = newKey;
+    await client.updateSettings(payload);
     settingsModal.classList.add('hidden');
     await refreshSettings();
     await refreshTokenBadge();

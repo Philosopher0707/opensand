@@ -226,8 +226,8 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public updateSettings(partial: Partial<DesktopSettings>): DesktopSettings {
-    // If client sends back masked placeholder, ignore updating the API key
-    if (partial.apiKey === '********') {
+    // Empty string and masked placeholder both mean keep the stored key.
+    if (partial.apiKey === '********' || partial.apiKey === '') {
       delete partial.apiKey;
     }
 
@@ -980,7 +980,10 @@ export class DesktopIpcBridge extends EventEmitter {
       activeModel = this.coordinator.llmClient.model;
     }
 
-    let maxContextTokens = this.settings.maxContextTokens;
+    let maxContextTokens =
+      this.settings.maxContextTokens ||
+      this.coordinator?.maxContextTokens ||
+      (sessionId ? this.getCoordinatorFor(sessionId, agentId)?.maxContextTokens : undefined);
     if (!maxContextTokens) {
       maxContextTokens = await resolveModelContextWindow(activeModel, activeEndpoint, this.settings.apiKey);
       if (this.coordinator && (!this.coordinator.llmClient || this.coordinator.llmClient.model === activeModel)) {
@@ -989,6 +992,18 @@ export class DesktopIpcBridge extends EventEmitter {
     }
 
     const targetSessionId = sessionId || this.currentSessionId;
+    const sessionCoordinator =
+      (targetSessionId ? this.getCoordinatorFor(targetSessionId, agentId) : null) || null;
+    if (sessionCoordinator) {
+      return {
+        estimatedTokens: sessionCoordinator.estimateTokens(),
+        maxContextTokens: sessionCoordinator.maxContextTokens || maxContextTokens,
+        toolScopeMode: sessionCoordinator.toolScopeMode,
+        turnsCount: sessionCoordinator.history.filter((m) => m.role === 'user').length,
+        messagesCount: sessionCoordinator.history.length,
+        model: activeModel,
+      };
+    }
     if (this.coordinator && (!targetSessionId || this.coordinator.sessionId === targetSessionId)) {
       return {
         estimatedTokens: this.coordinator.estimateTokens(),
