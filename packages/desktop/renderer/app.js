@@ -15,6 +15,12 @@ class OpenSandClient {
     const token = urlParams.get('token') || (typeof window.__OPENSAND_AUTH_TOKEN__ !== 'undefined' ? window.__OPENSAND_AUTH_TOKEN__ : '');
     if (token) {
       sessionStorage.setItem('opensand_token', token);
+      if (urlParams.has('token') && window.history && typeof window.history.replaceState === 'function') {
+        urlParams.delete('token');
+        const cleanSearch = urlParams.toString();
+        const cleanUrl = window.location.pathname + (cleanSearch ? '?' + cleanSearch : '') + window.location.hash;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
     }
     this.token = token || sessionStorage.getItem('opensand_token') || '';
 

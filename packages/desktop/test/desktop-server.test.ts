@@ -16,6 +16,7 @@ class MockIncomingMessage extends EventEmitter {
   public method: string;
   public url: string;
   public headers: Record<string, string>;
+  public socket: any;
   public static defaultToken: string = '';
 
   constructor(method: string, url: string, headers: Record<string, string> = {}) {
@@ -23,6 +24,7 @@ class MockIncomingMessage extends EventEmitter {
     this.method = method;
     this.url = url;
     this.headers = { host: '127.0.0.1:3456', ...headers };
+    this.socket = { remoteAddress: '127.0.0.1' };
     if (!('authorization' in this.headers) && !('Authorization' in this.headers) && MockIncomingMessage.defaultToken) {
       this.headers['authorization'] = `Bearer ${MockIncomingMessage.defaultToken}`;
     }
@@ -109,11 +111,72 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     await (server as any).handleRequest(cookieReq, cookieRes);
     assert.strictEqual(cookieRes.statusCode, 200);
 
-    // Test Authentication Middleware: Query ?token= succeeds
+    // Test Authentication Middleware: Query ?token= rejected on standard API endpoints
     const queryReq = new MockIncomingMessage('GET', `/api/settings?token=${server.getAuthToken()}`, { authorization: '' });
     const queryRes = new MockServerResponse();
     await (server as any).handleRequest(queryReq, queryRes);
-    assert.strictEqual(queryRes.statusCode, 200);
+    assert.strictEqual(queryRes.statusCode, 401);
+
+    // Test Authentication Middleware: Query ?token= permitted on SSE endpoint (/api/events)
+    const sseQueryReq = new MockIncomingMessage('GET', `/api/events?token=${server.getAuthToken()}`, { authorization: '' });
+    const sseQueryRes = new MockServerResponse();
+    await (server as any).handleRequest(sseQueryReq, sseQueryRes);
+    assert.strictEqual(sseQueryRes.statusCode, 200);
+
+    // Test Token Exchange endpoint: POST /api/auth/token-exchange
+    const tokenExchReq = new MockIncomingMessage('POST', '/api/auth/token-exchange', { authorization: '' });
+    const tokenExchRes = new MockServerResponse();
+    const tokenExchPromise = (server as any).handleRequest(tokenExchReq, tokenExchRes);
+    tokenExchReq.emit('data', JSON.stringify({ token: server.getAuthToken() }));
+    tokenExchReq.emit('end');
+    await tokenExchPromise;
+    assert.strictEqual(tokenExchRes.statusCode, 200);
+    assert.ok(tokenExchRes.headers['set-cookie']?.includes('opensand_token='));
+
+    // Test Token Exchange endpoint with invalid token returns 401
+    const badExchReq = new MockIncomingMessage('POST', '/api/auth/token-exchange', { authorization: '' });
+    const badExchRes = new MockServerResponse();
+    const badExchPromise = (server as any).handleRequest(badExchReq, badExchRes);
+    badExchReq.emit('data', JSON.stringify({ token: 'wrong-token' }));
+    badExchReq.emit('end');
+    await badExchPromise;
+    assert.strictEqual(badExchRes.statusCode, 401);
+
+    // Test token file idempotence: token file is NOT overwritten on startup if already valid
+    const tokenFile = path.join(tmpDir, 'server.token');
+    const originalToken = fs.readFileSync(tokenFile, 'utf8').trim();
+    const mtimeBefore = fs.statSync(tokenFile).mtimeMs;
+    const server2 = new DesktopServer({ baseDir: tmpDir });
+    assert.strictEqual(server2.getAuthToken(), originalToken);
+    const mtimeAfter = fs.statSync(tokenFile).mtimeMs;
+    assert.strictEqual(mtimeAfter, mtimeBefore, 'server.token must not be rewritten if already valid');
+
+    // Test webhook ingress per-IP rate limiting
+    const whServer = new DesktopServer({ baseDir: tmpDir, webhookMaxRequestsPerMinute: 2 });
+    const whReq1 = new MockIncomingMessage('POST', '/api/webhooks/test-hook', { authorization: '' });
+    const whRes1 = new MockServerResponse();
+    const p1 = (whServer as any).handleRequest(whReq1, whRes1);
+    whReq1.emit('data', JSON.stringify({}));
+    whReq1.emit('end');
+    await p1;
+    assert.notStrictEqual(whRes1.statusCode, 429);
+
+    const whReq2 = new MockIncomingMessage('POST', '/api/webhooks/test-hook', { authorization: '' });
+    const whRes2 = new MockServerResponse();
+    const p2 = (whServer as any).handleRequest(whReq2, whRes2);
+    whReq2.emit('data', JSON.stringify({}));
+    whReq2.emit('end');
+    await p2;
+    assert.notStrictEqual(whRes2.statusCode, 429);
+
+    const whReq3 = new MockIncomingMessage('POST', '/api/webhooks/test-hook', { authorization: '' });
+    const whRes3 = new MockServerResponse();
+    const p3 = (whServer as any).handleRequest(whReq3, whRes3);
+    whReq3.emit('data', JSON.stringify({}));
+    whReq3.emit('end');
+    await p3;
+    assert.strictEqual(whRes3.statusCode, 429);
+    assert.ok(JSON.parse(whRes3.body).error.includes('rate limit'));
 
     // Test API 404 behavior: unmatched /api/* returns 404 JSON, never SPA index.html
     const notFoundReq = new MockIncomingMessage('GET', '/api/nonexistent-route-for-testing');

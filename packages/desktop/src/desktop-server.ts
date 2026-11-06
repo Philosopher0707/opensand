@@ -18,8 +18,25 @@ export interface DesktopServerOptions {
   baseDir?: string;
   authToken?: string;
   requireAuth?: boolean;
+  webhookMaxRequestsPerMinute?: number;
 }
 
+/**
+ * OpenSand Desktop HTTP & SSE Server
+ *
+ * Security Model:
+ * - Server binds to localhost (127.0.0.1) by default.
+ * - Enforces Host header validation and Origin check to prevent DNS rebinding and cross-site request forgery.
+ * - All administrative API, RPC, and AG-UI routes require token authentication (Bearer header,
+ *   X-OpenSand-Token, or opensand_token session cookie).
+ * - The session authentication token (authToken) is equivalent to an administrative password for the
+ *   OpenSand instance. Anyone possessing this token can create sessions, configure settings, and inspect agents.
+ *   The token is stored in ~/.opensand/server.token with 0o600 permissions.
+ * - Query parameter authentication (?token=...) is strictly restricted to initial page bootstrap (GET /)
+ *   and native browser EventSource connections (GET /api/events, which cannot set custom HTTP headers).
+ * - Client applications can exchange the token via POST /api/auth/token-exchange to obtain a secure HttpOnly cookie.
+ * - Webhook ingestion (POST /api/webhooks/:name) is protected by per-IP rate limiting and signature verification.
+ */
 export class DesktopServer {
   private server: http.Server | null = null;
   private bridge: DesktopIpcBridge;
@@ -32,6 +49,8 @@ export class DesktopServer {
   private authToken: string;
   private tokenFilePath: string;
   private requireAuth: boolean;
+  private webhookRateLimits: Map<string, { count: number; resetAt: number }> = new Map();
+  private webhookMaxRequestsPerMinute: number;
 
   constructor(options: DesktopServerOptions = {}) {
     this.port = options.port || 3456;
@@ -39,8 +58,10 @@ export class DesktopServer {
     this.baseDir = options.baseDir || path.join(os.homedir(), '.opensand');
     this.tokenFilePath = path.join(this.baseDir, 'server.token');
     this.requireAuth = options.requireAuth ?? true;
+    this.webhookMaxRequestsPerMinute = options.webhookMaxRequestsPerMinute ?? 60;
 
     // Resolve or generate session authentication token
+    let shouldWriteTokenFile = false;
     if (options.authToken) {
       this.authToken = options.authToken;
     } else {
@@ -51,20 +72,25 @@ export class DesktopServer {
             this.authToken = raw;
           } else {
             this.authToken = crypto.randomBytes(32).toString('hex');
+            shouldWriteTokenFile = true;
           }
         } else {
           this.authToken = crypto.randomBytes(32).toString('hex');
+          shouldWriteTokenFile = true;
         }
       } catch {
         this.authToken = crypto.randomBytes(32).toString('hex');
+        shouldWriteTokenFile = true;
       }
     }
 
-    try {
-      fs.mkdirSync(this.baseDir, { recursive: true, mode: 0o700 });
-      fs.writeFileSync(this.tokenFilePath, this.authToken + '\n', { mode: 0o600 });
-    } catch {
-      // Best effort
+    if (shouldWriteTokenFile) {
+      try {
+        fs.mkdirSync(this.baseDir, { recursive: true, mode: 0o700 });
+        fs.writeFileSync(this.tokenFilePath, this.authToken + '\n', { mode: 0o600 });
+      } catch {
+        // Best effort
+      }
     }
 
     this.bridge = new DesktopIpcBridge({ baseDir: options.baseDir });
@@ -114,11 +140,45 @@ export class DesktopServer {
         return match[1];
       }
     }
-    const queryToken = url.searchParams.get('token');
-    if (queryToken && queryToken.trim()) {
-      return queryToken.trim();
+    // Only permit query-parameter token on initial page load (GET / or GET /index.html)
+    // or browser EventSource SSE endpoint (GET /api/events where EventSource cannot set headers).
+    const isAllowedQueryRoute =
+      (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/api/events') &&
+      req.method === 'GET';
+    if (isAllowedQueryRoute) {
+      const queryToken = url.searchParams.get('token');
+      if (queryToken && queryToken.trim()) {
+        return queryToken.trim();
+      }
     }
     return null;
+  }
+
+  private checkWebhookRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const windowMs = 60000;
+
+    // Prune stale entries if map gets large
+    if (this.webhookRateLimits.size > 1000) {
+      for (const [key, record] of this.webhookRateLimits.entries()) {
+        if (now > record.resetAt) {
+          this.webhookRateLimits.delete(key);
+        }
+      }
+    }
+
+    const record = this.webhookRateLimits.get(ip);
+    if (!record || now > record.resetAt) {
+      this.webhookRateLimits.set(ip, { count: 1, resetAt: now + windowMs });
+      return true;
+    }
+
+    if (record.count >= this.webhookMaxRequestsPerMinute) {
+      return false;
+    }
+
+    record.count++;
+    return true;
   }
 
   public async start(): Promise<{ port: number; host: string; url: string }> {
@@ -245,13 +305,14 @@ export class DesktopServer {
     const token = this.extractToken(req, url);
     const isStaticAsset = !pathname.startsWith('/api/') && !pathname.startsWith('/aiserver.') && !pathname.startsWith('/ag-ui/');
     const isWebhookIngress = pathname.startsWith('/api/webhooks/') && req.method === 'POST' && pathname !== '/api/webhooks';
+    const isTokenExchange = pathname === '/api/auth/token-exchange' && req.method === 'POST';
 
     // If accessing root or static HTML with valid ?token=..., set session cookie
     if ((pathname === '/' || pathname === '/index.html') && token && this.verifyToken(token)) {
       res.setHeader('Set-Cookie', `opensand_token=${this.authToken}; Path=/; SameSite=Strict; HttpOnly`);
     }
 
-    if (this.requireAuth && !isStaticAsset && !isWebhookIngress) {
+    if (this.requireAuth && !isStaticAsset && !isWebhookIngress && !isTokenExchange) {
       if (!this.verifyToken(token)) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Unauthorized: missing or invalid authorization token' }));
@@ -260,6 +321,21 @@ export class DesktopServer {
     }
 
     const isValidId = (id: string) => /^[a-zA-Z0-9_-]+$/.test(id);
+
+    // API: POST /api/auth/token-exchange (Exchange raw token for session cookie without putting it in URL)
+    if (pathname === '/api/auth/token-exchange' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      const tokenCandidate = body?.token;
+      if (!this.verifyToken(tokenCandidate)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized: invalid token' }));
+        return;
+      }
+      res.setHeader('Set-Cookie', `opensand_token=${this.authToken}; Path=/; SameSite=Strict; HttpOnly`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
+      return;
+    }
 
     // SSE event stream: /api/events
     if (pathname === '/api/events' && req.method === 'GET') {
@@ -1074,6 +1150,12 @@ export class DesktopServer {
 
     // API: POST /api/webhooks/:name (External webhook trigger ingestion)
     if (pathname.startsWith('/api/webhooks/') && req.method === 'POST') {
+      const clientIp = (req.socket && req.socket.remoteAddress) || '127.0.0.1';
+      if (!this.checkWebhookRateLimit(clientIp)) {
+        res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
+        res.end(JSON.stringify({ error: 'Too many requests: webhook ingress rate limit exceeded' }));
+        return;
+      }
       const name = pathname.replace('/api/webhooks/', '');
       const body = await this.readJsonBody(req);
       const result = await this.bridge.handleWebhook(name, body, req.headers as Record<string, string>);
@@ -1291,7 +1373,8 @@ export class DesktopServer {
     if (fs.existsSync(filePath)) {
       if (filePath.endsWith('index.html') && token && this.verifyToken(token)) {
         let html = fs.readFileSync(filePath, 'utf-8');
-        html = html.replace('</head>', `<script>window.__OPENSAND_AUTH_TOKEN__ = "${this.authToken}";</script></head>`);
+        const safeTokenJson = JSON.stringify(this.authToken).replace(/</g, '\\u003c');
+        html = html.replace('</head>', `<script>window.__OPENSAND_AUTH_TOKEN__ = ${safeTokenJson};</script></head>`);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(html);
         return;
