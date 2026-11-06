@@ -54,6 +54,8 @@ export const REPL_SLASH_COMMANDS = [
   "/tasks",
   "/rules",
   "/tokens",
+  "/verbose",
+  "/quiet",
   "/clear",
   "/exit",
   "quit",
