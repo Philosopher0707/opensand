@@ -1015,6 +1015,7 @@ export class DesktopServer {
     if (pathname === '/api/models' && req.method === 'GET') {
       const provider = url.searchParams.get('provider') || this.bridge.getSettings().provider;
       const endpoint = url.searchParams.get('endpoint') || this.bridge.getSettings().endpoint;
+      await this.bridge.ensureApiKeyResolved();
       const apiKey = this.bridge.getSettings().apiKey;
 
       try {

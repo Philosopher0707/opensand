@@ -972,7 +972,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let activeTurnExtraChars = 0;
   let latestTelemetryData = {
     estimatedTokens: 0,
-    maxContextTokens: 128000,
+    maxContextTokens: 0,
     model: '',
     turnsCount: 0,
     messagesCount: 0,
@@ -1175,11 +1175,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       // 2. Token Telemetry Gauge
       const telemetry = await client.getTokenTelemetry(activeAgentId || undefined, currentSessionId || undefined);
       if (telemetry) {
-        const used = telemetry.totalTokens || 0;
-        const max = telemetry.maxContextTokens || 1048576;
+        const used = telemetry.estimatedTokens || 0;
+        const max = telemetry.maxContextTokens || 0;
         const pct = Math.min(100, Math.round((used / max) * 1000) / 10);
         if (detailTokensUsed) detailTokensUsed.textContent = `${used.toLocaleString()} tokens`;
-        if (detailTokensMax) detailTokensMax.textContent = max.toLocaleString();
+        if (detailTokensMax) detailTokensMax.textContent = max ? max.toLocaleString() : '-';
         if (detailTokensPct) detailTokensPct.textContent = `${pct.toFixed(1)}%`;
         if (detailMeterFill) {
           detailMeterFill.style.width = `${Math.min(100, Math.max(0.75, pct))}%`;
@@ -1342,13 +1342,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   function updateTokenDisplay(current, max, model) {
     if (!badgeTokens) return;
     const currentTokens = Math.max(0, current || 0);
-    const maxTokens = Math.max(1, max || 128000);
+    const maxTokens = Math.max(1, max || 0);
     const pctStr = formatPercentage(currentTokens, maxTokens);
     const rawPct = (currentTokens / maxTokens) * 100;
     const activeModelName = model || latestTelemetryData.model || badgeModel?.textContent || 'model';
 
-    badgeTokens.textContent = `⚡ ${formatTokenCount(currentTokens)} / ${formatTokenCount(maxTokens)} (${pctStr})`;
-    badgeTokens.title = `Context Window: ${currentTokens.toLocaleString()} / ${maxTokens.toLocaleString()} tokens (${pctStr}) for ${activeModelName}. Click to compact dialogue.`;
+    badgeTokens.textContent = `⚡ ${formatTokenCount(currentTokens)} / ${max ? formatTokenCount(maxTokens) : '-'} (${pctStr})`;
+    badgeTokens.title = `Context Window: ${currentTokens.toLocaleString()} / ${max ? maxTokens.toLocaleString() : '-'} tokens (${pctStr}) for ${activeModelName}. Click to compact dialogue.`;
     badgeTokens.className = 'badge badge-tokens';
     if (rawPct > 80) {
       badgeTokens.classList.add('danger');
@@ -1372,7 +1372,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (detailTokensUsed) {
       detailTokensUsed.textContent = `${currentTokens.toLocaleString()} tokens`;
-      if (detailTokensMax) detailTokensMax.textContent = maxTokens.toLocaleString();
+      if (detailTokensMax) detailTokensMax.textContent = max ? maxTokens.toLocaleString() : '-';
       if (detailTokensPct) detailTokensPct.textContent = pctStr;
       if (detailMeterFill) {
         detailMeterFill.style.width = `${Math.min(100, Math.max(0.75, rawPct))}%`;
