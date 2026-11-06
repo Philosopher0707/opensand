@@ -6,8 +6,20 @@
 # Emergency override: OPENSAND_ALLOW_BLANKET=1 git commit ...
 set -euo pipefail
 
+# Strip ambient GIT_* variables so a nested `git commit` (e.g. from
+# coordinator's git-manager tests, or a sandboxed agent env that leaks
+# GIT_DIR/GIT_WORK_TREE) cannot re-enter this hook and recurse.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_CEILING_DIRECTORIES
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+
+# Fail closed if we cannot determine the repo
+if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
+  echo "x pre-commit: not inside a git work tree (GIT_* env stripped); refusing to run checks." >&2
+  echo "  Override with: OPENSAND_ALLOW_BLANKET=1 git commit ..." >&2
+  exit 1
+fi
 
 # --- Blanket-add guard -------------------------------------------------
 if [[ "${OPENSAND_ALLOW_BLANKET:-0}" != "1" ]]; then
