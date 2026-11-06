@@ -5,6 +5,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { AgentStore } from "../src/agent-store.js";
 import { registerOrchestratorTools } from "../src/orchestrator-tools.js";
+import { buildToolDiscoverySummary } from "../src/token-hygiene.js";
 import { LocalExecDaemon } from "@opensand/local-exec-daemon";
 
 test("AgentStore - creates, lists, updates, and deletes agent personas", async () => {
@@ -138,7 +139,11 @@ test("OrchestratorTools - registers meta-tools into daemon and executes create_a
     assert.strictEqual(discoverRes.status, "ok");
     const discoverPayload = JSON.parse(discoverRes.output);
     assert.ok(discoverPayload.totalTools >= 5);
+    assert.strictEqual(discoverPayload.totalTools, discoverPayload.tools.length);
     assert.ok(discoverPayload.tools.some((t: any) => t.name === "create_agent"));
+    assert.ok(Array.isArray(discoverPayload.capabilities));
+    assert.ok(discoverPayload.capabilities.includes("core"));
+    assert.deepStrictEqual(discoverPayload, buildToolDiscoverySummary(daemon.getToolDefinitions()));
 
     await daemon.stop();
   } finally {

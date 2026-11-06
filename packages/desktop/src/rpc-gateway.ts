@@ -254,6 +254,8 @@ export function createDefaultRpcGateway(bridge: DesktopIpcBridge): RpcGateway {
     const tasks = await bridge.getTasks();
     const secrets = await bridge.listSecrets();
     const telemetry = await bridge.getTokenTelemetry();
+    const pendingApprovals = await bridge.listPendingApprovals();
+    const toolDiscovery = await bridge.getToolDiscovery();
     return {
       fleet: {
         agentsCount: agents.length,
@@ -262,6 +264,8 @@ export function createDefaultRpcGateway(bridge: DesktopIpcBridge): RpcGateway {
         tasksCount: tasks.length,
         secretsCount: secrets.length,
         contextTokens: telemetry.estimatedTokens,
+        pendingApprovals: pendingApprovals.length,
+        totalTools: toolDiscovery.totalTools,
         status: 'operational',
       },
     };

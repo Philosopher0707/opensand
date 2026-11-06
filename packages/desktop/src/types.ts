@@ -16,6 +16,17 @@ export interface ToolApprovalRequest {
   timestamp: number;
 }
 
+export interface ToolDiscoverySummary {
+  totalTools: number;
+  capabilities: string[];
+  tools: Array<{
+    name: string;
+    description: string;
+    parameters: string[];
+    capabilities: string[];
+  }>;
+}
+
 export interface ApprovalDecision {
   action: 'approve_once' | 'always_allow' | 'reject';
   reason?: string;
@@ -56,6 +67,8 @@ export interface OpenSandBridgeApi {
   sendQuery: (query: string, sessionId?: string, agentId?: string) => Promise<{ success: boolean; sessionId: string }>;
   cancelTurn?: () => Promise<{ success: boolean; cancelled: boolean }>;
   approveTool: (approvalId: string, decision: ApprovalDecision) => Promise<{ success: boolean }>;
+  listPendingApprovals?: () => Promise<ToolApprovalRequest[]>;
+  getToolDiscovery?: () => Promise<ToolDiscoverySummary>;
   getSessions: () => Promise<SessionSummary[]>;
   loadSession: (sessionId: string) => Promise<{ events: unknown[]; transcript: string; agentId?: string; roomId?: string }>;
   deleteSession?: (sessionId: string) => Promise<{ success: boolean }>;

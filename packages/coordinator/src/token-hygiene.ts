@@ -114,6 +114,28 @@ export function foldHistoricalToolResults(
  * `selectActiveToolsForModel()`; it never sees hidden tools it cannot call.
  * Keys not listed default to CORE.
  */
+export interface ToolDiscoverySummary {
+  totalTools: number;
+  capabilities: string[];
+  tools: Array<{
+    name: string;
+    description: string;
+    parameters: string[];
+    capabilities: string[];
+  }>;
+}
+
+export function buildToolDiscoverySummary(defs: ToolDefinition[]): ToolDiscoverySummary {
+  const tools = defs.map((d) => ({
+    name: d.function.name,
+    description: d.function.description,
+    parameters: Object.keys((d.function.parameters as any)?.properties || {}),
+    capabilities: TOOL_CAPABILITY_HINTS[d.function.name] ?? ["core"],
+  }));
+  const capabilities = [...new Set(tools.flatMap((tool) => tool.capabilities))].sort();
+  return { totalTools: tools.length, capabilities, tools };
+}
+
 export const TOOL_CAPABILITY_HINTS: Record<string, string[]> = {
   create_agent_task: ["tasks"],
   list_agent_tasks: ["tasks"],
