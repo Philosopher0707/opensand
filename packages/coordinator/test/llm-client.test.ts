@@ -530,4 +530,12 @@ describe("UniversalLLMClient", () => {
     }
   });
 
+  it("refuses a blank endpoint with an actionable message instead of Invalid URL", async () => {
+    const client = new UniversalLLMClient({ baseUrl: "  ", model: "m" });
+    await assert.rejects(
+      () => client.streamCompletion([{ role: "user", content: "hi" }]),
+      /LLM endpoint is not configured/
+    );
+  });
+
 });

@@ -227,7 +227,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
 
       // Create isolated LLM client for this subagent
       const subagentLlm = new UniversalLLMClient({
-        baseUrl: agent.endpoint ?? options.defaultEndpoint ?? "http://127.0.0.1:11434/v1",
+        baseUrl: agent.endpoint || options.defaultEndpoint || "http://127.0.0.1:11434/v1",
         model: resolveAgentModel(agent.model, options.defaultModel),
         apiKey: options.defaultApiKey,
       });

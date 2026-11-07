@@ -268,6 +268,13 @@ export class DesktopIpcBridge extends EventEmitter {
       delete partial.apiKey;
     }
 
+    // A blank or scheme-less endpoint can never work: keep the current one so a
+    // half-finished Settings save cannot break every turn with "Invalid URL".
+    if (partial.endpoint !== undefined) {
+      partial.endpoint = partial.endpoint.trim();
+      if (!/^https?:\/\//i.test(partial.endpoint)) delete partial.endpoint;
+    }
+
     const modelChanged =
       (partial.model !== undefined && partial.model !== this.settings.model) ||
       (partial.endpoint !== undefined && partial.endpoint !== this.settings.endpoint) ||
@@ -287,6 +294,9 @@ export class DesktopIpcBridge extends EventEmitter {
     }
     if (modelChanged) {
       this.coordinator = null;
+      // Cached per-session coordinators hold their own LLM client; keeping them
+      // would make an open session keep using the old model/endpoint/key.
+      this.coordinatorMap.clear();
       this.activeAgentId = undefined;
     }
     this.saveSettings();

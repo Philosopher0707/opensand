@@ -144,10 +144,16 @@ export class UniversalLLMClient {
   }
 
   private resolveEndpoint(): string {
-    if (isAnthropicProvider(this.config)) {
-      return resolveAnthropicEndpoint(this.config.baseUrl);
+    const baseUrl = this.config.baseUrl?.trim();
+    if (!baseUrl) {
+      throw new Error(
+        "LLM endpoint is not configured. Open Settings and set the endpoint URL (e.g. http://127.0.0.1:11434/v1)."
+      );
     }
-    const base = this.config.baseUrl.replace(/\/+$/, "");
+    if (isAnthropicProvider(this.config)) {
+      return resolveAnthropicEndpoint(baseUrl);
+    }
+    const base = baseUrl.replace(/\/+$/, "");
     if (base.endsWith("/chat/completions")) {
       return base;
     }

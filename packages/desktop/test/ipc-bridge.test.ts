@@ -464,6 +464,43 @@ test('DesktopIpcBridge - coordinator map is keyed by (sessionId, agentId)', asyn
   }
 });
 
+test('DesktopIpcBridge - a blank endpoint never replaces the working one', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-endpoint-'));
+  try {
+    const bridge = new DesktopIpcBridge({
+      baseDir: tmpDir,
+      defaultSettings: { endpoint: 'https://openrouter.ai/api/v1' },
+    });
+
+    assert.strictEqual(bridge.updateSettings({ endpoint: '   ' }).endpoint, 'https://openrouter.ai/api/v1');
+    assert.strictEqual(bridge.updateSettings({ endpoint: 'openrouter.ai/api/v1' }).endpoint, 'https://openrouter.ai/api/v1');
+
+    const parsed = JSON.parse(fs.readFileSync(path.join(tmpDir, 'config.json'), 'utf8'));
+    assert.strictEqual(parsed.endpoint, 'https://openrouter.ai/api/v1');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('DesktopIpcBridge - settings change drops cached per-session coordinators', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-invalidate-'));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const before = await bridge.createSessionCoordinator('sess-A', undefined);
+    assert.strictEqual(bridge.getCoordinatorFor('sess-A', undefined), before);
+
+    bridge.updateSettings({ endpoint: 'https://openrouter.ai/api/v1' });
+    assert.strictEqual(bridge.getCoordinatorFor('sess-A', undefined), null);
+
+    const after = await bridge.createSessionCoordinator('sess-A', undefined);
+    assert.notStrictEqual(after, before, 'an open session must pick up the new model settings');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('DesktopIpcBridge - autoApprove safety ceiling enforces prompt on dangerous commands & policy gates', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-safety-ceiling-'));
   try {
