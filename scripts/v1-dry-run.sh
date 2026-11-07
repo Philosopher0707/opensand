@@ -47,7 +47,8 @@ echo "   -> [OK] Evaluation suite passed (all automated tasks passing)"
 echo "7. Running test suite across monorepo..."
 test_output=$(pnpm -r run test)
 echo "$test_output"
-total_tests=$(echo "$test_output" | grep -E "ℹ pass [0-9]+" | awk '{for(i=1;i<=NF;i++) if($i=="pass") s+=$(i+1)} END {print s+0}')
+# Node 26 prints "ℹ pass N"; Node 22 prints "# pass N".
+total_tests=$(echo "$test_output" | grep -E "(ℹ|#) pass [0-9]+" | awk '{for(i=1;i<=NF;i++) if($i=="pass") s+=$(i+1)} END {print s+0}')
 echo "   -> [OK] All automated tests passed (${total_tests:-all} tests passing)"
 
 echo "=== ALL 7 DEFINITION OF SHIPPED CRITERIA VERIFIED ==="

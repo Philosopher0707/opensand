@@ -24,7 +24,8 @@ for pkg_json in packages/*/package.json; do
   if [[ -n "$ts_srcs" ]]; then
     pkg_name=$(node -p "require('./$pkg_json').name")
     output=$(pnpm --filter "$pkg_name" test 2>&1)
-    test_count=$(echo "$output" | grep -E "ℹ (tests|pass) [0-9]+" | awk '{print $3}' | tail -n 1 || true)
+    # Node 26 prints "ℹ tests 39"; Node 22 (CI) prints "# tests 39".
+    test_count=$(echo "$output" | grep -E "(#|ℹ) (tests|pass) [0-9]+" | awk '{print $NF}' | tail -n 1 || true)
     if [[ -z "$test_count" || "$test_count" -le 0 ]]; then
       echo "verify error: Package $pkg_name has TypeScript sources in src/ but reported 0 tests!" >&2
       exit 1
