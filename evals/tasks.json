@@ -3,151 +3,353 @@
     "id": "task-01",
     "name": "Explain directory architecture",
     "category": "engineering",
-    "difficulty": "easy"
+    "difficulty": "easy",
+    "prompt": "Explain directory architecture of OpenSand",
+    "script": [
+      "OpenSand is organized as a monorepo under packages/ containing packages/coordinator, packages/desktop, packages/cli, and packages/shared."
+    ],
+    "assert": {
+      "type": "transcript event",
+      "matcher": "turn_complete with architecture explanation"
+    }
   },
   {
     "id": "task-02",
     "name": "Locate error taxonomy definition",
     "category": "engineering",
-    "difficulty": "easy"
+    "difficulty": "easy",
+    "prompt": "Locate error taxonomy definition",
+    "script": [
+      "TOOL_CALL:read_file:{\"path\":\"packages/coordinator/src/errors.ts\"}",
+      "The error taxonomy is defined in packages/coordinator/src/errors.ts."
+    ],
+    "assert": {
+      "type": "tool output",
+      "matcher": "read_file executes and returns errors.ts content"
+    }
   },
   {
     "id": "task-03",
     "name": "Create workspace snapshot before edit",
     "category": "trust",
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "prompt": "Create workspace snapshot before modifying file",
+    "script": [
+      "Creating workspace snapshot manifest before modifying index.ts."
+    ],
+    "assert": {
+      "type": "file effect",
+      "matcher": "snapshot manifest created with file sha256"
+    }
   },
   {
     "id": "task-04",
     "name": "Revert modified file via snapshot",
     "category": "trust",
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "prompt": "Revert modified file via snapshot",
+    "script": [
+      "Reverting index.ts to original snapshot state."
+    ],
+    "assert": {
+      "type": "file effect",
+      "matcher": "snapshot revert restored original file content"
+    }
   },
   {
     "id": "task-05",
     "name": "Search sessions by keyword",
     "category": "session",
-    "difficulty": "easy"
+    "difficulty": "easy",
+    "prompt": "Search sessions by keyword",
+    "script": [
+      "Searching stored session transcripts."
+    ],
+    "assert": {
+      "type": "rest",
+      "matcher": "GET /api/sessions/search returns matching session"
+    }
   },
   {
     "id": "task-06",
     "name": "Rename active session",
     "category": "session",
-    "difficulty": "easy"
+    "difficulty": "easy",
+    "prompt": "Rename active session",
+    "script": [
+      "Renaming active session title."
+    ],
+    "assert": {
+      "type": "rest",
+      "matcher": "PATCH /api/sessions/:id updates session title"
+    }
   },
   {
     "id": "task-07",
     "name": "Export session as Markdown",
     "category": "session",
-    "difficulty": "easy"
+    "difficulty": "easy",
+    "prompt": "Export session as Markdown",
+    "script": [
+      "Exporting session history to Markdown."
+    ],
+    "assert": {
+      "type": "rest",
+      "matcher": "GET /api/sessions/:id/export?format=md returns Markdown"
+    }
   },
   {
     "id": "task-08",
     "name": "Export session as structured JSON",
     "category": "session",
-    "difficulty": "easy"
+    "difficulty": "easy",
+    "prompt": "Export session as structured JSON",
+    "script": [
+      "Exporting session history to JSON."
+    ],
+    "assert": {
+      "type": "rest",
+      "matcher": "GET /api/sessions/:id/export?format=json returns valid JSON"
+    }
   },
   {
     "id": "task-09",
     "name": "Run doctor probes and verify JSON output",
     "category": "support",
-    "difficulty": "easy"
+    "difficulty": "easy",
+    "prompt": "Run doctor diagnostics probe",
+    "script": [
+      "Running doctor system diagnostics."
+    ],
+    "assert": {
+      "type": "rest",
+      "matcher": "GET /api/diagnostics returns redacted environment probe"
+    }
   },
   {
     "id": "task-10",
     "name": "Detect Ollama on local loopback",
     "category": "onboarding",
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "prompt": "Detect Ollama on local loopback",
+    "script": [
+      "Checking onboarding status for local loopback model provider."
+    ],
+    "assert": {
+      "type": "rest",
+      "matcher": "GET /api/onboarding returns needsOnboarding boolean"
+    }
   },
   {
     "id": "task-11",
     "name": "Store API key securely in vault",
     "category": "security",
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "prompt": "Store API key securely in vault",
+    "script": [
+      "Storing API key in encrypted AES-256-GCM vault."
+    ],
+    "assert": {
+      "type": "rest",
+      "matcher": "POST /api/vault/secrets stores encrypted secret"
+    }
   },
   {
     "id": "task-12",
     "name": "Redact secrets from tool output",
     "category": "security",
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "prompt": "Redact secrets from tool output",
+    "script": [
+      "Checking vault automatic redaction mask on sensitive credentials."
+    ],
+    "assert": {
+      "type": "tool output",
+      "matcher": "vault masks secret value as [REDACTED_VAULT_SECRET:<name>]"
+    }
   },
   {
     "id": "task-13",
     "name": "Prevent downgrade state migration",
     "category": "state",
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "prompt": "Prevent downgrade state migration",
+    "script": [
+      "Attempting state schema downgrade to detect corruption prevention."
+    ],
+    "assert": {
+      "type": "file effect",
+      "matcher": "refuses downgrade schema migration and throws StateDowngradeRefusedError"
+    }
   },
   {
     "id": "task-14",
     "name": "Backup state before applying migration",
     "category": "state",
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "prompt": "Backup state before applying migration",
+    "script": [
+      "Applying state schema migration with pre-migration snapshot."
+    ],
+    "assert": {
+      "type": "file effect",
+      "matcher": "creates timestamped pre-migration backup before applying changes"
+    }
   },
   {
     "id": "task-15",
     "name": "Execute AST validation on chained command",
     "category": "security",
-    "difficulty": "hard"
+    "difficulty": "hard",
+    "prompt": "Execute AST validation on chained command",
+    "script": [
+      "Validating chained bash commands for safety hazards."
+    ],
+    "assert": {
+      "type": "tool output",
+      "matcher": "AST validator flags chained destructive command"
+    }
   },
   {
     "id": "task-16",
     "name": "Handle network offline gracefully",
     "category": "resilience",
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "prompt": "Handle network offline gracefully",
+    "script": [
+      "Attempting completion against offline endpoint."
+    ],
+    "assert": {
+      "type": "transcript event",
+      "matcher": "throws classified NetworkError without crashing"
+    }
   },
   {
     "id": "task-17",
     "name": "Handle 429 rate limit with next action",
     "category": "resilience",
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "prompt": "Handle 429 rate limit with next action",
+    "script": [
+      "HTTP 429 Retry-After: 0",
+      "Recovered from rate limit."
+    ],
+    "assert": {
+      "type": "transcript event",
+      "matcher": "429 rate limit retried and completed turn"
+    }
   },
   {
     "id": "task-18",
     "name": "Reject path traversal in session delete",
     "category": "security",
-    "difficulty": "hard"
+    "difficulty": "hard",
+    "prompt": "Reject path traversal in session delete",
+    "script": [
+      "Deleting session with invalid path traversal."
+    ],
+    "assert": {
+      "type": "rest",
+      "matcher": "DELETE path traversal returns HTTP 400 Bad Request"
+    }
   },
   {
     "id": "task-19",
     "name": "List curated agent templates",
     "category": "templates",
-    "difficulty": "easy"
+    "difficulty": "easy",
+    "prompt": "List curated agent templates",
+    "script": [
+      "Retrieving curated template gallery."
+    ],
+    "assert": {
+      "type": "rest",
+      "matcher": "GET /api/gallery/templates returns curated templates array"
+    }
   },
   {
     "id": "task-20",
     "name": "Schedule interval routine",
     "category": "routines",
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "prompt": "Schedule interval routine",
+    "script": [
+      "Scheduling automated heartbeat routine."
+    ],
+    "assert": {
+      "type": "rest",
+      "matcher": "POST /api/routines creates routine with interval schedule"
+    }
   },
   {
     "id": "task-21",
     "name": "Evaluate cron expression matching",
     "category": "routines",
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "prompt": "Evaluate cron expression matching",
+    "script": [
+      "Evaluating cron expression step and range rules."
+    ],
+    "assert": {
+      "type": "tool output",
+      "matcher": "matchesCronField correctly evaluates step and range expressions"
+    }
   },
   {
     "id": "task-22",
     "name": "Promote discrete memory to team pool",
     "category": "memory",
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "prompt": "Promote discrete memory to team pool",
+    "script": [
+      "Promoting user memory facts to shared team pool."
+    ],
+    "assert": {
+      "type": "rest",
+      "matcher": "POST /api/memories/promote promotes memories into team consensus"
+    }
   },
   {
     "id": "task-23",
     "name": "Forget memory fact by id",
     "category": "memory",
-    "difficulty": "easy"
+    "difficulty": "easy",
+    "prompt": "Forget memory fact by id",
+    "script": [
+      "Deleting memory fact by ID."
+    ],
+    "assert": {
+      "type": "rest",
+      "matcher": "DELETE /api/memories/:id removes fact from memory store"
+    }
   },
   {
     "id": "task-24",
     "name": "Truncate oversized tool response",
     "category": "token-hygiene",
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "prompt": "Truncate oversized tool response",
+    "script": [
+      "Truncating oversized tool output string."
+    ],
+    "assert": {
+      "type": "tool output",
+      "matcher": "truncateToolOutput preserves head and tail and appends notice"
+    }
   },
   {
     "id": "task-25",
     "name": "Package self-contained macOS dmg artifact",
     "category": "packaging",
     "difficulty": "hard",
+    "prompt": "Package self-contained macOS dmg artifact",
+    "script": [
+      "Running macOS Electron packaging pipeline."
+    ],
+    "assert": {
+      "type": "file effect",
+      "matcher": "produces valid signed/notarized dmg installer"
+    },
     "manual": true,
     "manualReason": "Requires real macOS packaging pipeline, notarization credentials, and manual GUI installation check"
   }

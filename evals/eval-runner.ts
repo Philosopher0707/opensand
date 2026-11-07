@@ -27,6 +27,12 @@ interface EvalTask {
   name: string;
   category: string;
   difficulty: string;
+  prompt: string;
+  script: string[];
+  assert: {
+    type: "transcript event" | "rest" | "file effect" | "tool output";
+    matcher: string;
+  };
   manual?: boolean;
   manualReason?: string;
 }

@@ -12,11 +12,11 @@
     "stage:desktop": "rm -rf dist/stage && pnpm --filter @opensand/desktop... run build && pnpm --filter @opensand/desktop deploy --prod --legacy dist/stage",
     "package:app": "pnpm stage:desktop && electron-builder --mac --publish never",
     "package": "bash scripts/package-cli.sh && pnpm package:app",
-    "package:mac": "pnpm package:app"
+    "package:mac": "pnpm package:app",
+    "eval": "node --experimental-strip-types evals/eval-runner.ts"
   },
   "devDependencies": {
     "electron-builder": "^26.18.0",
-    "tsx": "^4.23.15",
     "typescript": "^5.7.0"
   },
   "pnpm": {

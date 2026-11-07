@@ -41,7 +41,7 @@ echo "   -> [OK] Full documentation and changelog present"
 echo "6. Running 25-task evaluation suite..."
 test -f evals/tasks.json
 test -f evals/eval-runner.ts
-pnpm exec tsx evals/eval-runner.ts
+pnpm run eval
 echo "   -> [OK] Evaluation suite passed (all automated tasks passing)"
 
 echo "7. Running test suite across monorepo..."
