@@ -1,4 +1,5 @@
 import { DesktopIpcBridge } from './ipc-bridge.js';
+import { getOnboardingState } from './onboarding.js';
 import { DesktopServer } from './desktop-server.js';
 import { DesktopTrayManager } from './tray.js';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
@@ -53,13 +54,19 @@ export class DesktopApp {
       const { url } = await this.server.start();
       console.log('[OpenSand Desktop] server listening:', url.split('?')[0]);
 
-      this.createMainWindow(BrowserWindow, url);
+      const onboarding = await getOnboardingState(this.server.getBridge());
+      if (onboarding.needsOnboarding) console.log('[OpenSand Desktop] first run: no model and no key, showing onboarding');
+      const welcome = new URL(url);
+      welcome.pathname = '/welcome';
+      const target = onboarding.needsOnboarding ? welcome.toString() : url;
+
+      this.createMainWindow(BrowserWindow, target);
       this.setupIpcHandlers(ipcMain);
       this.setupTray();
 
       app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
-          this.createMainWindow(BrowserWindow, url);
+          this.createMainWindow(BrowserWindow, target);
         }
       });
 

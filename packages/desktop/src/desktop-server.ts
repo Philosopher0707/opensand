@@ -9,6 +9,7 @@ import { createDefaultRpcGateway, RpcGateway } from './rpc-gateway.js';
 import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient } from '@opensand/coordinator';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 import { runStateMigrations } from '@opensand/shared';
+import { getOnboardingState, probeOllama, OLLAMA_CHAT_ENDPOINT } from './onboarding.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -149,10 +150,13 @@ export class DesktopServer {
         return match[1];
       }
     }
-    // Only permit query-parameter token on initial page load (GET / or GET /index.html)
+    // Only permit query-parameter token on initial page load (GET /, /index.html, /welcome)
     // or browser EventSource SSE endpoint (GET /api/events where EventSource cannot set headers).
     const isAllowedQueryRoute =
-      (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/api/events') &&
+      (url.pathname === '/' ||
+        url.pathname === '/index.html' ||
+        url.pathname === '/welcome' ||
+        url.pathname === '/api/events') &&
       req.method === 'GET';
     if (isAllowedQueryRoute) {
       const queryToken = url.searchParams.get('token');
@@ -317,8 +321,8 @@ export class DesktopServer {
     const isWebhookIngress = pathname.startsWith('/api/webhooks/') && req.method === 'POST' && pathname !== '/api/webhooks';
     const isTokenExchange = pathname === '/api/auth/token-exchange' && req.method === 'POST';
 
-    // If accessing root or static HTML with valid ?token=..., set session cookie
-    if ((pathname === '/' || pathname === '/index.html') && token && this.verifyToken(token)) {
+    // If accessing root or welcome with a valid ?token=..., set session cookie
+    if ((pathname === '/' || pathname === '/index.html' || pathname === '/welcome') && token && this.verifyToken(token)) {
       res.setHeader('Set-Cookie', `opensand_token=${this.authToken}; Path=/; SameSite=Strict; HttpOnly`);
     }
 
@@ -471,6 +475,59 @@ export class DesktopServer {
       const updated = await this.bridge.getSanitizedSettingsResolved();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(updated));
+      return;
+    }
+
+    // API: GET /api/onboarding (first-run state: local model or key required)
+    if (pathname === '/api/onboarding' && req.method === 'GET') {
+      const state = await getOnboardingState(this.bridge);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(state));
+      return;
+    }
+
+    // API: POST /api/onboarding (pick a local model or store an API key)
+    if (pathname === '/api/onboarding' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      const mode = body?.mode;
+
+      if (mode === 'ollama') {
+        const probe = await probeOllama();
+        if (!probe.available) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Ollama is not answering on 127.0.0.1:11434' }));
+          return;
+        }
+        const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : probe.models[0];
+        if (!model) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'No local model found. Run: ollama pull llama3.1' }));
+          return;
+        }
+        this.bridge.updateSettings({
+          endpoint: OLLAMA_CHAT_ENDPOINT,
+          model,
+          apiKey: 'none',
+          provider: 'openai',
+        });
+      } else if (mode === 'key') {
+        const endpoint = typeof body.endpoint === 'string' ? body.endpoint.trim() : '';
+        const model = typeof body.model === 'string' ? body.model.trim() : '';
+        const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+        if (!/^https?:\/\//.test(endpoint) || !model || !apiKey) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Endpoint (http/https), model and API key are required' }));
+          return;
+        }
+        this.bridge.updateSettings({ endpoint, model, apiKey, provider: 'openai' });
+      } else {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'mode must be "ollama" or "key"' }));
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, settings: this.bridge.getSanitizedSettings() }));
       return;
     }
 
