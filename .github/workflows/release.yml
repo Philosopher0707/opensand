@@ -34,6 +34,9 @@ jobs:
       - name: Run verification suite
         run: pnpm -r run test
 
+      - name: Check Provenance Review Gate
+        run: bash scripts/provenance-gate.sh
+
       - name: Package macOS Application
         run: pnpm package:mac
         env:
