@@ -1,8 +1,11 @@
 import { stdin as input, stdout as output } from "node:process";
 import * as readline from "node:readline/promises";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import { LocalExecDaemon } from "@opensand/local-exec-daemon";
 import { registerNativeTools } from "@opensand/native-bridge";
+import { runStateMigrations } from "@opensand/shared";
 import {
   UniversalLLMClient,
   AgentCoordinator,
@@ -68,6 +71,19 @@ Examples:
   if (argv.includes("--version") || argv.includes("-v")) {
     console.log("opensand 0.1.0");
     return;
+  }
+
+  try {
+    const migration = runStateMigrations(path.join(os.homedir(), ".opensand", "state"));
+    if (migration.migrated) {
+      console.log(
+        `State schema upgraded v${migration.from} -> v${migration.to}` +
+          (migration.backupDir ? ` (backup ${migration.backupDir})` : ""),
+      );
+    }
+  } catch (err) {
+    console.error(`Cannot start: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
   }
 
   const config = parseCliArgs(argv);

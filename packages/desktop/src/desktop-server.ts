@@ -8,6 +8,7 @@ import { DesktopIpcBridge } from './ipc-bridge.js';
 import { createDefaultRpcGateway, RpcGateway } from './rpc-gateway.js';
 import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient } from '@opensand/coordinator';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
+import { runStateMigrations } from '@opensand/shared';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -91,6 +92,14 @@ export class DesktopServer {
       } catch {
         // Best effort
       }
+    }
+
+    const migration = runStateMigrations(path.join(this.baseDir, 'state'));
+    if (migration.migrated) {
+      console.log(
+        `[OpenSand] state schema v${migration.from} -> v${migration.to}` +
+          (migration.backupDir ? ` (backup: ${migration.backupDir})` : ''),
+      );
     }
 
     this.bridge = new DesktopIpcBridge({ baseDir: options.baseDir });

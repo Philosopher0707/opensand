@@ -26,6 +26,9 @@ importers:
       '@opensand/native-bridge':
         specifier: workspace:*
         version: link:../native-bridge
+      '@opensand/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
