@@ -1,0 +1,36 @@
+# electron-builder configuration for the local macOS build.
+# Staging: `pnpm stage:desktop` produces dist/stage with real node_modules.
+appId: com.opensand.agent
+productName: OpenSand
+electronVersion: 45.2.3
+
+directories:
+  app: dist/stage
+  output: dist/release
+
+# Symlinked workspace packages are kept as a plain folder; asar cannot hold symlinks.
+asar: false
+
+files:
+  - "**/*"
+  - "!**/*.map"
+  - "!src/**"
+  - "!test/**"
+  - "!tsconfig.json"
+  - "!package-lock.json"
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+  # Local builds are unsigned. Remove this line and add entitlements + a
+  # Developer ID identity in CI to sign and notarize.
+  identity: null
+  hardenedRuntime: false
+  extendInfo:
+    NSScreenCaptureUsageDescription: OpenSand captures the screen to read visible code windows and recognise text.
+
+extraResources:
+  - from: packages/native-bridge/bin
+    to: bin

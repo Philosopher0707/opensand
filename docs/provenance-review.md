@@ -19,7 +19,7 @@ behave, or because someone copied what was inside it?**
 
 ## Current inventory
 
-15 source files mention Grok Bot, Anysphere, or the upstream endpoint. Reference counts are
+14 source files mention Grok Bot, Anysphere, or the upstream endpoint. Reference counts are
 line matches, not a risk score, but they show where to look first.
 
 | File | References | Risk | Verdict |
@@ -38,7 +38,6 @@ line matches, not a risk score, but they show where to look first.
 | `packages/cli/src/cli-app.ts` | 1 | low | — |
 | `packages/coordinator/src/transcript-manager.ts` | 1 | low | — |
 | `packages/coordinator/src/connectors.ts` | 1 | low | — |
-| `scripts/bundle-macos-app.sh` | 1 | low — a comment | — |
 
 Checked and currently clean:
 
