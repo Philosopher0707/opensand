@@ -40,6 +40,7 @@ export const REPL_SLASH_COMMANDS = [
   "/compact",
   "/sessions",
   "/resume",
+  "/new",
   "/doctor",
   "/status",
   "/attach",

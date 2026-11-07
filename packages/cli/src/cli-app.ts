@@ -21,6 +21,7 @@ import {
   SessionSummary,
 } from "@opensand/coordinator";
 import { sigIntAction } from "./interrupt.js";
+import { matchSession } from "./sessions.js";
 import { parseCliArgs, CliConfig, probeLocalOllama, validateConfig } from "./config.js";
 import { TerminalUI } from "./terminal-ui.js";
 import { runDoctorProbes } from "./doctor.js";
@@ -369,19 +370,6 @@ Examples:
     return toolName;
   };
 
-  function findSession(sessions: SessionSummary[], query: string): SessionSummary | undefined {
-    if (query === "latest") {
-      return sessions[0];
-    }
-    const exact = sessions.find((s) => s.sessionId === query);
-    if (exact) return exact;
-    const matches = sessions.filter((s) => s.sessionId.startsWith(query));
-    if (matches.length === 1) {
-      return matches[0];
-    }
-    return undefined;
-  }
-
   // Helper to build coordinator
   function createCoordinator(
     instructions?: string,
@@ -472,7 +460,14 @@ Examples:
         console.log(`Resumed session ${targetSession.sessionId} (${targetSession.turns} user turns, ${dateStr})`);
       }
     } else {
-      const targetSession = findSession(allSessions, config.resume);
+      const match = matchSession(allSessions, config.resume);
+      if (match.ambiguous) {
+        console.error(`Session prefix '${config.resume}' is ambiguous. Use a full id:`);
+        for (const s of match.ambiguous) console.error(`  ${s.sessionId}`);
+        process.exitCode = 1;
+        return;
+      }
+      const targetSession = match.session;
       if (!targetSession) {
         const recent = allSessions.slice(0, 5);
         if (recent.length > 0) {
@@ -595,6 +590,10 @@ Examples:
           }
           break;
         }
+        if (err?.code === "ERR_USE_AFTER_CLOSE") {
+          // stdin ended (piped input) and closed readline; nothing left to read.
+          break;
+        }
         throw err;
       }
 
@@ -617,6 +616,7 @@ Available OpenSand REPL Commands:
   /compact [keep]     Compact older conversation turns into a dense summary
   /sessions           List recent saved sessions
   /resume <id|latest> Resume a saved session
+  /new                Start a fresh session
   /doctor             Run preflight diagnostics across host runtime, models, and tools
   /status             Show fleet status (agents, rooms, routines, skills, vault)
   /attach <file>      Stage a file or image attachment into session store
@@ -728,7 +728,12 @@ Available OpenSand REPL Commands:
       if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {
         const arg = trimmed.slice(7).trim() || "latest";
         const sessions = await listSessions();
-        const target = findSession(sessions, arg);
+        const match = matchSession(sessions, arg);
+        if (match.ambiguous) {
+          ui.printError(`Multiple sessions match '${arg}': ${match.ambiguous.map((s) => s.sessionId).join(", ")}`);
+          continue;
+        }
+        const target = match.session;
         if (!target) {
           if (arg === "latest") {
             ui.printError("No saved sessions to resume. Run /sessions to list them.");
@@ -740,6 +745,13 @@ Available OpenSand REPL Commands:
         activeSessionId = target.sessionId;
         coordinator = createCoordinator(userInstructions, config.model, config.endpoint, activeSessionId);
         console.log(`Resumed session ${target.sessionId} (${target.turns} user turns)`);
+        continue;
+      }
+
+      if (trimmed === "/new") {
+        activeSessionId = undefined;
+        coordinator = createCoordinator(userInstructions, config.model, config.endpoint);
+        console.log(`Started a new session ${coordinator.sessionId}`);
         continue;
       }
 

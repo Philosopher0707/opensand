@@ -62,9 +62,10 @@ describe("Completion Generator", () => {
     const [quitHits] = getReplCompletions("qu");
     assert.deepEqual(quitHits, ["quit"]);
   });
-  it("has /sessions and /resume in REPL_SLASH_COMMANDS", () => {
+  it("has /sessions, /resume and /new in REPL_SLASH_COMMANDS", () => {
     assert.ok(REPL_SLASH_COMMANDS.includes("/sessions"));
     assert.ok(REPL_SLASH_COMMANDS.includes("/resume"));
+    assert.ok(REPL_SLASH_COMMANDS.includes("/new"));
   });
 
   it("completes /resume with latest and provided session IDs", () => {
