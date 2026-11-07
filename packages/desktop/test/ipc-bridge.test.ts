@@ -3,7 +3,22 @@ import * as assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { DesktopIpcBridge } from '../src/ipc-bridge.js';
+import { DesktopIpcBridge as BaseDesktopIpcBridge } from '../src/ipc-bridge.js';
+import { workspaceSentinel } from '@opensand/coordinator';
+
+const createdBridges: BaseDesktopIpcBridge[] = [];
+class DesktopIpcBridge extends BaseDesktopIpcBridge {
+  constructor(options: any) {
+    super(options);
+    createdBridges.push(this);
+  }
+}
+
+test.afterEach(async () => {
+  while (createdBridges.length) {
+    await createdBridges.pop()?.close();
+  }
+});
 import { StateManager } from '@opensand/local-exec-daemon';
 
 test('DesktopIpcBridge - manages settings and persistent config', () => {
@@ -612,6 +627,20 @@ test('DesktopIpcBridge - tool discovery matches daemon discover_tools parity', a
     assert.strictEqual(discovery.totalTools, discovery.tools.length);
     assert.ok(discovery.tools.some((tool) => tool.name === 'create_agent'));
     assert.ok(discovery.capabilities.includes('core'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('DesktopIpcBridge - close() removes workspaceSentinel listener and frees resources', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-close-'));
+  const bridge = new BaseDesktopIpcBridge({ baseDir: tmpDir });
+  try {
+    const countWithBridge = workspaceSentinel.listenerCount('diagnostic');
+    assert.ok(countWithBridge >= 1);
+    await bridge.close();
+    const countAfterClose = workspaceSentinel.listenerCount('diagnostic');
+    assert.strictEqual(countAfterClose, countWithBridge - 1);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

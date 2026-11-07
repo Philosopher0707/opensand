@@ -238,6 +238,14 @@ export class DesktopServer {
     }
     this.sseClients.clear();
 
+    if (this.bridge) {
+      try {
+        await this.bridge.close();
+      } catch {
+        // Ignore
+      }
+    }
+
     if (this.server) {
       return new Promise((resolve) => {
         this.server?.close(() => {

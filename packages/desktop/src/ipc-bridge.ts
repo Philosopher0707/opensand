@@ -77,6 +77,7 @@ export class DesktopIpcBridge extends EventEmitter {
   private baseDir: string;
   private configFile: string;
   private settings: DesktopSettings;
+  private sentinelListener: ((event: SentinelDiagnosticEvent) => void) | null = null;
   public daemon: LocalExecDaemon;
   public stateManager: StateManager;
   public mcpManager: McpManager;
@@ -203,9 +204,10 @@ export class DesktopIpcBridge extends EventEmitter {
     });
 
     // Forward Workspace Sentinel events to UI clients
-    workspaceSentinel.on('diagnostic', (event: SentinelDiagnosticEvent) => {
+    this.sentinelListener = (event: SentinelDiagnosticEvent) => {
       this.emitEvent('sentinel', event);
-    });
+    };
+    workspaceSentinel.on('diagnostic', this.sentinelListener);
 
     // Initialize OpenRouter model catalog cache
     defaultOpenRouterCatalog.initCacheDir(path.join(this.baseDir, 'cache'));
@@ -214,6 +216,32 @@ export class DesktopIpcBridge extends EventEmitter {
         console.error("[ipc-bridge] OpenRouter catalog fetch failed:", err instanceof Error ? err.message : err);
       });
     }
+  }
+
+  public async close(): Promise<void> {
+    if (this.sentinelListener) {
+      workspaceSentinel.removeListener('diagnostic', this.sentinelListener);
+      this.sentinelListener = null;
+    }
+    if (this.routineEngine) {
+      try {
+        this.routineEngine.stop();
+      } catch {
+        // ignore
+      }
+    }
+    if (this.mcpManager) {
+      try {
+        await this.mcpManager.closeAll();
+      } catch {
+        // ignore
+      }
+    }
+    this.removeAllListeners();
+  }
+
+  public async dispose(): Promise<void> {
+    return this.close();
   }
 
   public getSettings(): DesktopSettings {
