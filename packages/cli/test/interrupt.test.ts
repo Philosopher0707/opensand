@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { shouldExitOnSigInt, DOUBLE_SIGINT_WINDOW_MS } from "../src/interrupt.js";
+import { shouldExitOnSigInt, sigIntAction, DOUBLE_SIGINT_WINDOW_MS } from "../src/interrupt.js";
 
 describe("Interrupt / SIGINT exit logic", () => {
   it("returns true when now is within window of lastAt", () => {
@@ -18,5 +18,18 @@ describe("Interrupt / SIGINT exit logic", () => {
     const lastAt = 1000;
     const now = 3000; // 2000ms difference > 1500ms
     assert.equal(shouldExitOnSigInt(lastAt, now), false);
+  });
+});
+
+describe("sigIntAction", () => {
+  it("cancels the running turn first, regardless of the exit window", () => {
+    assert.equal(sigIntAction(true, 1000, 1200), "cancel");
+    assert.equal(sigIntAction(true, 0, 1200), "cancel");
+  });
+
+  it("exits on a second press inside the window, arms on the first", () => {
+    assert.equal(sigIntAction(false, 1000, 1200), "exit");
+    assert.equal(sigIntAction(false, 0, 1200), "arm");
+    assert.equal(sigIntAction(false, 1000, 3000), "arm");
   });
 });

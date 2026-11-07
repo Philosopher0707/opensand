@@ -20,7 +20,7 @@ import {
   listSessions,
   SessionSummary,
 } from "@opensand/coordinator";
-import { shouldExitOnSigInt } from "./interrupt.js";
+import { sigIntAction } from "./interrupt.js";
 import { parseCliArgs, CliConfig, probeLocalOllama, validateConfig } from "./config.js";
 import { TerminalUI } from "./terminal-ui.js";
 import { runDoctorProbes } from "./doctor.js";
@@ -559,16 +559,24 @@ Examples:
 
   let lastSigIntAt = 0;
   let exiting = false;
+  // Set while a turn runs: Ctrl+C then cancels the turn instead of arming exit.
+  // process.on("SIGINT") never fires here, because readline turns the keypress
+  // into an interface event before Node raises a signal.
+  let activeTurnAbort: AbortController | null = null;
   const onRlSigInt = () => {
-    const now = Date.now();
-    if (shouldExitOnSigInt(lastSigIntAt, now)) {
+    const action = sigIntAction(activeTurnAbort !== null, lastSigIntAt, Date.now());
+    if (action === "cancel") {
+      activeTurnAbort?.abort();
+      return;
+    }
+    if (action === "exit") {
       console.log("\nExiting OpenSand.");
       process.exitCode = 130;
       exiting = true;
       rl.close();
       return;
     }
-    lastSigIntAt = now;
+    lastSigIntAt = Date.now();
     rl.write(null, { ctrl: true, name: "u" });
     console.log("\n(press Ctrl+C again within 1.5s to exit, or Ctrl+D)");
   };
@@ -1050,10 +1058,7 @@ Available OpenSand REPL Commands:
       ui.printUserTurn(trimmed);
       ui.beginTurn();
       const turnAbort = new AbortController();
-      const onSigInt = () => {
-        turnAbort.abort();
-      };
-      process.on("SIGINT", onSigInt);
+      activeTurnAbort = turnAbort;
 
       try {
         try {
@@ -1089,7 +1094,7 @@ Available OpenSand REPL Commands:
           ui.printError(`Turn failed: ${err.message}`);
         }
       } finally {
-        process.off("SIGINT", onSigInt);
+        activeTurnAbort = null;
         lastSigIntAt = 0;
       }
     }
