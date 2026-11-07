@@ -309,11 +309,9 @@ export async function listSessions(sessionsBaseDir?: string): Promise<SessionSum
             }
           }
         }
-      } catch (err: any) {
-        if (err?.code !== "ENOENT") {
-          // unreadable or corrupt messages.json
-          continue;
-        }
+      } catch {
+        // Corrupt/unreadable messages.json: loadHistory falls back to transcript.jsonl,
+        // so keep listing the session (with no title) instead of hiding it.
       }
 
       if (!hasTranscript) {

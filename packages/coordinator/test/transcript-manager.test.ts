@@ -152,6 +152,16 @@ describe("TranscriptManager", () => {
       assert.equal(sessions[1].sessionId, "session_a");
       assert.equal(sessions[1].title, "What is the capital of France?");
       assert.equal(sessions[1].turns, 1);
+
+      // 4. Corrupt messages.json must still be listed: loadHistory falls back to transcript.jsonl
+      const corruptDir = path.join(baseDir, "corrupt_session");
+      await fs.mkdir(corruptDir, { recursive: true });
+      await fs.writeFile(path.join(corruptDir, "messages.json"), "{not json");
+      await fs.writeFile(path.join(corruptDir, "transcript.jsonl"), JSON.stringify({ role: "user" }) + "\n");
+      const withCorrupt = await listSessions(baseDir);
+      const corrupt = withCorrupt.find((s) => s.sessionId === "corrupt_session");
+      assert.ok(corrupt, "corrupt session should still be listed");
+      assert.equal(corrupt.title, undefined);
     } finally {
       await fs.rm(baseDir, { recursive: true, force: true });
     }
