@@ -16,4 +16,20 @@ fi
 pnpm -r run build
 pnpm -r run test
 
+echo "verify: checking zero-test package guard..."
+for pkg_json in packages/*/package.json; do
+  [[ -f "$pkg_json" ]] || continue
+  pkg_dir="$(dirname "$pkg_json")"
+  ts_srcs=$(find "$pkg_dir/src" -name "*.ts" 2>/dev/null || true)
+  if [[ -n "$ts_srcs" ]]; then
+    pkg_name=$(node -p "require('./$pkg_json').name")
+    output=$(pnpm --filter "$pkg_name" test 2>&1)
+    test_count=$(echo "$output" | grep -E "ℹ (tests|pass) [0-9]+" | awk '{print $3}' | tail -n 1 || true)
+    if [[ -z "$test_count" || "$test_count" -le 0 ]]; then
+      echo "verify error: Package $pkg_name has TypeScript sources in src/ but reported 0 tests!" >&2
+      exit 1
+    fi
+  fi
+done
+
 echo "verify: ok"
