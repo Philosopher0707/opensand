@@ -170,6 +170,8 @@ export interface SubagentInfo {
   sessionId: string;
   task: string;
   depth: number;
+  /** Parent subagent session id for nested delegations (undefined = direct child). */
+  parentSessionId?: string;
 }
 
 /** A TurnEvent from a delegated subagent, wrapped with its identity. */

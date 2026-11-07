@@ -260,6 +260,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
                 task: String(args.task ?? ""),
                 depth: context?.subagent?.depth ?? 1,
                 sessionId: subsessionId,
+                parentSessionId: context?.subagent?.sessionId,
               });
             }
           } catch {

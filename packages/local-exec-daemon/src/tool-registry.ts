@@ -25,6 +25,8 @@ export interface ToolExecutionContext {
     onEvent?: (event: any, info?: any) => void;
     /** Current delegation depth (0 = direct child of the main agent). */
     depth?: number;
+    /** Parent coordinator session id, for nested delegation linkage. */
+    sessionId?: string;
   };
 }
 

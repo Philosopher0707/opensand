@@ -577,6 +577,30 @@ test('DesktopIpcBridge - dispatchTurnEvent forwards subagent delegation as a Des
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+test('DesktopIpcBridge - dispatchTurnEvent forwards nested subagent delegation preserving parent link', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-nested-subagent-'));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    const seen: any[] = [];
+    bridge.on('event', (evt: any) => seen.push(evt));
+    (bridge as any).currentSessionId = 'sess-parent';
+    const parent = { agentId: 'agent_cto', agentName: 'CTO Bot', role: 'CTO', task: 'plan it', depth: 1, sessionId: 'sub_agent_cto_1793839209000' };
+    const child = { agentId: 'agent_rev', agentName: 'Reviewer', task: 'review it', depth: 2, sessionId: 'sub_agent_rev_1793839209094', parentSessionId: 'sub_agent_cto_1793839209000' };
+    (bridge as any).dispatchTurnEvent({ type: 'subagent', subagent: parent, event: { type: 'text_delta', text: 'outer' } });
+    (bridge as any).dispatchTurnEvent({ type: 'subagent', subagent: child, event: { type: 'text_delta', text: 'inner' } });
+    const subs = seen.filter((e) => e.type === 'subagent');
+    assert.strictEqual(subs.length, 2);
+    const outer = subs.find((e) => e.subagent.sessionId === 'sub_agent_cto_1793839209000');
+    const inner = subs.find((e) => e.subagent.sessionId === 'sub_agent_rev_1793839209094');
+    assert.ok(outer);
+    assert.ok(inner);
+    assert.strictEqual(inner.subagent.depth, 2);
+    assert.strictEqual(inner.subagent.parentSessionId, 'sub_agent_cto_1793839209000');
+    assert.deepStrictEqual(inner.data, { type: 'text_delta', text: 'inner' });
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
 test('DesktopIpcBridge - tool discovery matches daemon discover_tools parity', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-discovery-'));
   try {

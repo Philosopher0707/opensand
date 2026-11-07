@@ -437,13 +437,14 @@ export class AgentCoordinator {
    * tree stays bounded — delegation beyond the cap still runs, just without
    * live streaming.
    */
-  private buildDelegationContext(toolName: string): { onEvent: (event: TurnEvent, info: SubagentInfo) => void; depth: number } | undefined {
+  private buildDelegationContext(toolName: string): { onEvent: (event: TurnEvent, info: SubagentInfo) => void; depth: number; sessionId: string } | undefined {
     if (toolName !== "delegate_to_agent") return undefined;
     const MAX_DELEGATION_DEPTH = 3;
     const depth = this.subagentDepth + 1;
     if (depth > MAX_DELEGATION_DEPTH) return undefined;
     return {
       depth,
+      sessionId: this.sessionId,
       onEvent: (event: TurnEvent, info: SubagentInfo) => {
         // Forward to this coordinator's listeners, wrapped so the UI can
         // attribute the event to the child. The child turn's own sessionId

@@ -3739,7 +3739,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   function getOrCreateSubagentCard(subagent) {
     if (!currentAssistantMessage || !subagent || !subagent.sessionId) return null;
     const key = subagent.sessionId;
-    let card = currentAssistantMessage._subagentCards && currentAssistantMessage._subagentCards.get(key);
+    if (!currentAssistantMessage._subagentCards) currentAssistantMessage._subagentCards = new Map();
+    let card = currentAssistantMessage._subagentCards.get(key);
     if (card) return card;
     const depth = Math.max(0, Math.min(3, Number(subagent.depth) || 0));
     const cardEl = document.createElement("div");
@@ -3757,7 +3758,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       + '<div class="subagent-card-thought"></div>'
       + '<div class="subagent-card-text message-content subagent-text-block"></div>'
       + '<div class="subagent-card-tools"></div>';
-    currentAssistantMessage.body.insertBefore(cardEl, currentAssistantMessage.actionsEl);
+    // Nested delegations render inside their parent card when the parent
+    // already exists (depth >= 1); direct children mount at the message root.
+    const parentCard = subagent.parentSessionId ? currentAssistantMessage._subagentCards.get(subagent.parentSessionId) : null;
+    if (parentCard && parentCard.toolsEl) {
+      parentCard.toolsEl.appendChild(cardEl);
+    } else {
+      currentAssistantMessage.body.insertBefore(cardEl, currentAssistantMessage.actionsEl);
+    }
     if (!currentAssistantMessage._subagentCards) currentAssistantMessage._subagentCards = new Map();
     card = {
       element: cardEl,
@@ -3769,6 +3777,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       thoughtText: "",
       segmentText: "",
       done: false,
+      children: new Map(),
     };
     currentAssistantMessage._subagentCards.set(key, card);
     return card;
@@ -3827,6 +3836,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         card.textEl.innerHTML = renderMarkdown(inner.finalContent || card.segmentText || "Done");
         if (card.thoughtText) renderThoughtBlock(card.thoughtEl, card.thoughtText, false);
         setSubagentCardStatus(card, "Done", "badge-done");
+        if (subagent && subagent.parentSessionId && currentAssistantMessage._subagentCards) {
+          const parent = currentAssistantMessage._subagentCards.get(subagent.parentSessionId);
+          if (parent && !parent.done) setSubagentCardStatus(parent, "Running…", "badge-running");
+        }
         break;
       }
       case "error": {
@@ -4921,6 +4934,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const wrapperInner = event.data;
       const subagentInfo = event.subagent || (wrapperInner && wrapperInner.subagent) || {};
       if (wrapperInner && wrapperInner.event && wrapperInner.subagent) {
+        // Preserve parentSessionId only if already on the wrapper subagent
+        // (coordinator v2 forwards it via SubagentInfo). handleSubagentEvent
+        // keys cards by sessionId, so nested cards adopt their parent.
         handleSubagentEvent(wrapperInner.subagent, wrapperInner.event);
       } else if (wrapperInner && wrapperInner.type) {
         handleSubagentEvent(subagentInfo, wrapperInner);
