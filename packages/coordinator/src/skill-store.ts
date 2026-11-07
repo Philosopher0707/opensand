@@ -42,7 +42,8 @@ export interface ParsedSkillFrontmatter {
 }
 
 /**
- * Pure standard YAML frontmatter parser (1:1 parity with Grok Bot's nq and OOt parser)
+ * Pure standard YAML frontmatter parser, written from the documented behaviour:
+ * "---" fences, key/value lines, first H1 as the fallback name.
  */
 export function parseSkillContent(rawContent: string): ParsedSkillFrontmatter {
   const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
@@ -151,7 +152,7 @@ export class SkillStore {
     const basename = path.basename(filePath);
     const parentDirName = path.basename(path.dirname(filePath));
 
-    // Parity with Grok Bot's U(e): if filename is SKILL.md, infer name from directory
+    // Observed behaviour: a SKILL.md filename takes its name from its directory
     const defaultName = basename.toLowerCase() === "skill.md" ? parentDirName : path.parse(basename).name;
 
     const parsed = parseSkillContent(raw);
