@@ -38,13 +38,16 @@ test -f docs/security.md
 test -f CHANGELOG.md
 echo "   -> [OK] Full documentation and changelog present"
 
-echo "6. Checking 25-task evaluation suite..."
+echo "6. Running 25-task evaluation suite..."
 test -f evals/tasks.json
 test -f evals/eval-runner.ts
-echo "   -> [OK] Evaluation tasks and runner defined"
+pnpm exec tsx evals/eval-runner.ts
+echo "   -> [OK] Evaluation suite passed (all automated tasks passing)"
 
 echo "7. Running test suite across monorepo..."
-pnpm -r run test > /dev/null
-echo "   -> [OK] All automated tests passed"
+test_output=$(pnpm -r run test)
+echo "$test_output"
+total_tests=$(echo "$test_output" | grep -E "ℹ (pass|tests) [0-9]+" | awk '{if ($2 == "pass") s+=$3} END {print s}')
+echo "   -> [OK] All automated tests passed (${total_tests:-all} tests passing)"
 
 echo "=== ALL 7 DEFINITION OF SHIPPED CRITERIA VERIFIED ==="
