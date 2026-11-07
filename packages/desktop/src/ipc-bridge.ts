@@ -358,7 +358,7 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   /** Read sessions/<id>/meta.json written at coordinator creation. */
-  private readSessionMeta(sessionId: string): { agentId?: string; roomId?: string } {
+  private readSessionMeta(sessionId: string): { agentId?: string; roomId?: string; title?: string } {
     try {
       const metaPath = path.join(this.baseDir, 'sessions', sessionId, 'meta.json');
       if (!fs.existsSync(metaPath)) return {};
@@ -366,7 +366,8 @@ export class DesktopIpcBridge extends EventEmitter {
       const meta = JSON.parse(raw) as Record<string, unknown>;
       const agentId = typeof meta.agentId === 'string' ? meta.agentId : undefined;
       const roomId = typeof meta.roomId === 'string' ? meta.roomId : undefined;
-      return { agentId, roomId };
+      const title = typeof meta.title === 'string' ? meta.title : undefined;
+      return { agentId, roomId, title };
     } catch {
       return {};
     }
@@ -738,7 +739,8 @@ export class DesktopIpcBridge extends EventEmitter {
         }
 
         const stat = fs.statSync(sessDir);
-        const { agentId, roomId } = this.readSessionMeta(ent.name);
+        const { agentId, roomId, title: metaTitle } = this.readSessionMeta(ent.name);
+        if (metaTitle) title = metaTitle;
         summaries.push({
           id: ent.name,
           title,
@@ -804,7 +806,59 @@ export class DesktopIpcBridge extends EventEmitter {
     return { events, transcript, agentId: inferredAgentId, roomId };
   }
 
-  public async deleteSession(sessionId: string): Promise<boolean> {
+  async renameSession(sessionId: string, newTitle: string): Promise<boolean> {
+    if (!sessionId || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
+      throw new Error(`Invalid sessionId: ${sessionId}`);
+    }
+    const sessionDir = path.join(this.baseDir, "sessions", sessionId);
+    if (!fs.existsSync(sessionDir)) return false;
+    const metaPath = path.join(sessionDir, "meta.json");
+    let meta: Record<string, unknown> = {};
+    if (fs.existsSync(metaPath)) {
+      try { meta = JSON.parse(fs.readFileSync(metaPath, "utf8")); } catch {}
+    }
+    meta.title = newTitle;
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf8");
+    return true;
+  }
+
+  async exportSession(sessionId: string, format: "json" | "md" = "json"): Promise<string> {
+    const sessionDir = path.join(this.baseDir, "sessions", sessionId);
+    if (!fs.existsSync(sessionDir)) throw new Error(`Session not found: ${sessionId}`);
+    const data = await this.loadSession(sessionId);
+    if (!data) throw new Error(`Session not found: ${sessionId}`);
+    const meta = this.readSessionMeta(sessionId);
+    const title = meta.title || sessionId;
+
+    if (format === "md") {
+      let md = `# Session: ${title}\n\nSession ID: \`${sessionId}\`\n\n`;
+      if (data.transcript && data.transcript.trim()) {
+        md += data.transcript + "\n";
+      } else if (data.events && Array.isArray(data.events)) {
+        for (const evt of data.events as any[]) {
+          const r = evt.role || evt.type || "Message";
+          const role = r === "user" ? "User" : r === "assistant" ? "Assistant" : r;
+          const content = evt.content || evt.text || JSON.stringify(evt);
+          md += `### ${role}\n\n${content}\n\n`;
+        }
+      }
+      return md;
+    }
+    return JSON.stringify({ sessionId, title, meta, ...data }, null, 2);
+  }
+
+  async searchSessions(query: string): Promise<SessionSummary[]> {
+    const all = await this.getSessions();
+    if (!query || !query.trim()) return all;
+    const q = query.toLowerCase().trim();
+    return all.filter(s => {
+      if (s.id.toLowerCase().includes(q)) return true;
+      if (s.title && s.title.toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }
+
+  async deleteSession(sessionId: string): Promise<boolean> {
     if (!sessionId || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
       throw new Error(`Invalid sessionId: ${sessionId}`);
     }

@@ -421,6 +421,57 @@ export class DesktopServer {
     }
 
     // API: GET /api/sessions
+    // API: GET /api/sessions/search
+    if (pathname === '/api/sessions/search' && req.method === 'GET') {
+      const q = url.searchParams.get('q') || '';
+      const results = await this.bridge.searchSessions(q);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(results));
+      return;
+    }
+
+    // API: GET /api/sessions/:id/export
+    if (pathname.startsWith('/api/sessions/') && pathname.endsWith('/export') && req.method === 'GET') {
+      const rawId = pathname.slice('/api/sessions/'.length, -('/export'.length));
+      const sessionId = decodeURIComponent(rawId);
+      if (!isValidId(sessionId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid sessionId format' }));
+        return;
+      }
+      const format = (url.searchParams.get('format') || 'json') as 'json' | 'md';
+      try {
+        const exported = await this.bridge.exportSession(sessionId, format);
+        const contentType = format === 'md' ? 'text/markdown; charset=utf-8' : 'application/json; charset=utf-8';
+        res.writeHead(200, { 'Content-Type': contentType });
+        res.end(exported);
+      } catch (err: any) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message || 'Session export failed' }));
+      }
+      return;
+    }
+
+    // API: PATCH /api/sessions/:id (Rename session)
+    if (pathname.startsWith('/api/sessions/') && req.method === 'PATCH') {
+      const sessionId = decodeURIComponent(pathname.replace('/api/sessions/', ''));
+      if (!isValidId(sessionId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid sessionId format' }));
+        return;
+      }
+      const body = await this.readJsonBody(req);
+      if (!body.title || typeof body.title !== 'string') {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing or invalid title' }));
+        return;
+      }
+      const success = await this.bridge.renameSession(sessionId, body.title);
+      res.writeHead(success ? 200 : 404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success }));
+      return;
+    }
+
     if (pathname === '/api/sessions' && req.method === 'GET') {
       const sessions = await this.bridge.getSessions();
       res.writeHead(200, { 'Content-Type': 'application/json' });
