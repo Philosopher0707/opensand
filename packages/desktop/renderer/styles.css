@@ -3329,6 +3329,23 @@ textarea#promptInput {
   display: none !important;
 }
 
+
+/* --- Activity timeline: one fold per tool burst, interleaved with narrative --- */
+.tool-activity-group {
+  margin: 10px 0;
+  border-left: 3px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  background: rgba(255,255,255,0.015);
+}
+.tool-group-summary {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.tool-group-label {
+  font-weight: 400;
+}
+.tool-group-label::first-letter { text-transform: uppercase; }
+
 .turn-text-block {
   margin: 6px 0;
 }

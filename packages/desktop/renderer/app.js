@@ -3416,7 +3416,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       const statusEl = summary.querySelector('.tool-group-status');
 
       if (labelEl) {
-        labelEl.textContent = count === 1 ? `1 tool operation (${names})` : `${count} tool operations (${names})`;
+        const lastTool = groupDiv._tools[groupDiv._tools.length - 1];
+        const lastDetail = lastTool ? (lastTool.querySelector('.tool-line-detail')?.textContent || '') : '';
+        const detailSuffix = lastDetail ? ` — ${lastDetail}` : '';
+        labelEl.textContent = count === 1 ? `1 tool operation (${names})${detailSuffix}` : `${count} tool operations (${names})${detailSuffix}`;
       }
 
       if (statusEl) {
@@ -4254,6 +4257,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       actionsEl,
       activeTextBlock: null,
       activeToolGroup: null,
+      _activity: null,
       _subagentCards: new Map(),
       currentSegmentText: '',
     };
@@ -4933,9 +4937,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, false);
         }
 
-        // If tools were previously running, close the active group so text appears BELOW the tools!
+        // Narrative text breaks the activity timeline so agent text interleaves with tool groups
         if (currentAssistantMessage.activeToolGroup) {
           currentAssistantMessage.activeToolGroup = null;
+          currentAssistantMessage._activity = null;
         }
 
         // Ensure we have an active text block in the chronological flow
@@ -5010,13 +5015,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const toolEl = createToolLineElement(toolCall, 'running');
         activeToolLines.push(toolEl);
 
-        // Group adjacent tool calls into a single collapsible activity container (OpenBot parity)
-        if (!currentAssistantMessage.activeToolGroup) {
-          currentAssistantMessage.activeToolGroup = createToolGroupElement(toolEl);
-          currentAssistantMessage.body.insertBefore(currentAssistantMessage.activeToolGroup.element, currentAssistantMessage.actionsEl);
+        // Fold adjacent tool calls into one collapsible activity timeline.
+        // Agent text (token/thought) breaks the timeline so narrative stays interleaved.
+        if (!currentAssistantMessage._activity) {
+          currentAssistantMessage._activity = createToolGroupElement(toolEl);
+          currentAssistantMessage.body.insertBefore(currentAssistantMessage._activity.element, currentAssistantMessage.actionsEl);
         } else {
-          currentAssistantMessage.activeToolGroup.addTool(toolEl);
+          currentAssistantMessage._activity.addTool(toolEl);
         }
+        currentAssistantMessage.activeToolGroup = currentAssistantMessage._activity;
         smartScrollToBottom();
 
         const toolName = toolCall.name || toolCall.function?.name || 'tool';
