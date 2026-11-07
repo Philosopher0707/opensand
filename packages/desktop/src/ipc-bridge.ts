@@ -1140,7 +1140,7 @@ export class DesktopIpcBridge extends EventEmitter {
     const targetSessionId = sessionId || this.currentSessionId;
     const sessionCoordinator =
       (targetSessionId ? this.getCoordinatorFor(targetSessionId, agentId) : null) || null;
-    if (sessionCoordinator) {
+    if (sessionCoordinator && (sessionCoordinator.history.length > 1 || !targetSessionId)) {
       return {
         estimatedTokens: sessionCoordinator.estimateTokens(),
         maxContextTokens: sessionCoordinator.maxContextTokens || maxContextTokens,
@@ -1213,6 +1213,40 @@ export class DesktopIpcBridge extends EventEmitter {
           }
           return {
             estimatedTokens,
+            maxContextTokens,
+            toolScopeMode: this.coordinator?.toolScopeMode || 'auto',
+            turnsCount,
+            messagesCount,
+            model: activeModel,
+          };
+        }
+
+        if (fs.existsSync(jsonlPath)) {
+          const lines = fs.readFileSync(jsonlPath, 'utf8').trim().split('\n').filter(Boolean);
+          let totalChars = 0;
+          let turnsCount = 0;
+          const messagesCount = lines.length;
+          for (const line of lines) {
+            try {
+              const entry = JSON.parse(line);
+              if (entry.role === 'user' || entry.type === 'user_message') turnsCount++;
+              if (typeof entry.content === 'string') totalChars += entry.content.length;
+              if (typeof entry.text === 'string') totalChars += entry.text.length;
+              if (typeof entry.thought === 'string') totalChars += entry.thought.length;
+              if (entry.tool_calls && Array.isArray(entry.tool_calls)) {
+                for (const tc of entry.tool_calls) {
+                  totalChars += (tc.function?.name?.length || 0) + (tc.function?.arguments?.length || 0);
+                }
+              }
+              if (entry.result) {
+                totalChars += typeof entry.result === 'string' ? entry.result.length : JSON.stringify(entry.result).length;
+              }
+            } catch {
+              totalChars += line.length;
+            }
+          }
+          return {
+            estimatedTokens: Math.ceil(totalChars / 3.8),
             maxContextTokens,
             toolScopeMode: this.coordinator?.toolScopeMode || 'auto',
             turnsCount,
