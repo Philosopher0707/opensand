@@ -204,6 +204,7 @@ export class DesktopServer {
         this.server = server;
         const addr = server.address();
         const actualPort = typeof addr === 'object' && addr ? addr.port : this.port;
+        this.port = actualPort;
         const url = `http://${this.host}:${actualPort}/?token=${this.authToken}`;
         resolve({ port: actualPort, host: this.host, url });
       });
@@ -1388,14 +1389,6 @@ export class DesktopServer {
     }
 
     if (fs.existsSync(filePath)) {
-      if (filePath.endsWith('index.html') && token && this.verifyToken(token)) {
-        let html = fs.readFileSync(filePath, 'utf-8');
-        const safeTokenJson = JSON.stringify(this.authToken).replace(/</g, '\\u003c');
-        html = html.replace('</head>', `<script>window.__OPENSAND_AUTH_TOKEN__ = ${safeTokenJson};</script></head>`);
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(html);
-        return;
-      }
       const ext = path.extname(filePath);
       const mimeTypes: Record<string, string> = {
         '.html': 'text/html; charset=utf-8',

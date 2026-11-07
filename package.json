@@ -7,6 +7,7 @@
   "scripts": {
     "test": "pnpm --recursive run test",
     "build": "pnpm --recursive run build",
+    "dev:desktop": "pnpm --filter @opensand/desktop dev",
     "package:cli": "bash scripts/package-cli.sh",
     "package:app": "bash scripts/bundle-macos-app.sh",
     "package": "bash scripts/package-cli.sh && bash scripts/bundle-macos-app.sh"

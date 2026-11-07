@@ -12,19 +12,20 @@ export interface TrayCallbacks {
 export class DesktopTrayManager {
   private tray: any = null;
   private callbacks: TrayCallbacks;
+  private electron: any = null;
   private currentStatus: 'idle' | 'thinking' | 'executing' | 'error' = 'idle';
 
-  constructor(callbacks: TrayCallbacks) {
+  constructor(callbacks: TrayCallbacks, electron?: any) {
     this.callbacks = callbacks;
+    this.electron = electron ?? null;
   }
 
   public init(): boolean {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const electron = require('electron');
-      const { Tray, Menu, nativeImage, globalShortcut } = electron;
+      const electron = this.electron;
+      const { Tray, nativeImage, globalShortcut } = electron ?? {};
 
-      if (!Tray) {
+      if (!electron || !Tray) {
         return false;
       }
 
@@ -62,8 +63,8 @@ export class DesktopTrayManager {
     if (!this.tray) return;
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { Menu } = require('electron');
+      const { Menu } = this.electron ?? {};
+      if (!Menu) return;
       const statusLabels = {
         idle: '● OpenSand: Ready',
         thinking: '◌ OpenSand: Thinking...',
@@ -90,8 +91,7 @@ export class DesktopTrayManager {
   public destroy(): void {
     if (this.tray) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { globalShortcut } = require('electron');
+        const { globalShortcut } = this.electron ?? {};
         if (globalShortcut) {
           globalShortcut.unregister('CommandOrControl+Shift+Space');
         }

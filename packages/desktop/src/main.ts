@@ -1,40 +1,65 @@
-import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
+import { DesktopServer } from './desktop-server.js';
 import { DesktopTrayManager } from './tray.js';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export class DesktopApp {
   private bridge: DesktopIpcBridge;
   private trayManager: DesktopTrayManager | null = null;
   private mainWindow: any = null;
+  private server: DesktopServer | null = null;
+  private electron: any = null;
 
   constructor() {
     this.bridge = new DesktopIpcBridge();
   }
 
   public async start(): Promise<void> {
+    // Dynamic import keeps this module loadable in plain Node (tests, web mode);
+    // in plain Node 'electron' resolves to a path string, so app/BrowserWindow are absent.
+    let electron: any;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { app, BrowserWindow, ipcMain } = require('electron');
+      electron = await import('electron');
+    } catch {
+      console.log('[OpenSand Desktop] Electron not available. Run desktop-server for web mode.');
+      return;
+    }
 
-      if (!app) {
-        console.log('[OpenSand Desktop] Electron not detected. Run desktop-server for web mode.');
-        return;
+    const { app, BrowserWindow, ipcMain, dialog } = electron;
+    if (!app || !BrowserWindow) {
+      console.log('[OpenSand Desktop] Electron not detected. Run desktop-server for web mode.');
+      return;
+    }
+    this.electron = electron;
+
+    if (!app.requestSingleInstanceLock()) {
+      app.quit();
+      return;
+    }
+
+    await app.whenReady();
+
+    app.on('second-instance', () => {
+      if (this.mainWindow) {
+        if (this.mainWindow.isMinimized()) this.mainWindow.restore();
+        this.mainWindow.focus();
       }
+    });
 
-      await app.whenReady();
+    try {
+      // Ephemeral port: the window loads whatever URL the server returns, so a
+      // dev server already on 3456 cannot block the app from starting.
+      this.server = new DesktopServer({ port: 0 });
+      const { url } = await this.server.start();
+      console.log('[OpenSand Desktop] server listening:', url.split('?')[0]);
 
-      this.createMainWindow(BrowserWindow);
+      this.createMainWindow(BrowserWindow, url);
       this.setupIpcHandlers(ipcMain);
       this.setupTray();
 
       app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
-          this.createMainWindow(BrowserWindow);
+          this.createMainWindow(BrowserWindow, url);
         }
       });
 
@@ -44,12 +69,21 @@ export class DesktopApp {
           app.quit();
         }
       });
+
+      app.on('before-quit', () => {
+        void this.server?.stop();
+      });
     } catch (err) {
-      console.log('[OpenSand Desktop] Running in headless / server mode:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[OpenSand Desktop] Failed to start:', message);
+      dialog?.showErrorBox?.('OpenSand could not start', message);
+      app.quit();
     }
   }
 
-  private createMainWindow(BrowserWindow: any): void {
+  private createMainWindow(BrowserWindow: any, serverUrl: string): void {
+    const origin = new URL(serverUrl).origin;
+
     this.mainWindow = new BrowserWindow({
       width: 960,
       height: 740,
@@ -59,15 +93,26 @@ export class DesktopApp {
       backgroundColor: '#18181b',
       titleBarStyle: 'hiddenInset',
       webPreferences: {
-        preload: path.join(__dirname, 'preload.js'),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
       },
     });
 
-    const indexPath = path.join(__dirname, '../../renderer/index.html');
-    this.mainWindow.loadFile(indexPath);
+    void this.mainWindow.loadURL(serverUrl);
+
+    // Keep navigation inside the local server; send everything else to the browser.
+    const shell = this.electron?.shell;
+    this.mainWindow.webContents.setWindowOpenHandler(({ url }: { url: string }) => {
+      if (shell) void shell.openExternal(url);
+      return { action: 'deny' };
+    });
+    this.mainWindow.webContents.on('will-navigate', (event: any, target: string) => {
+      if (!target.startsWith(origin)) {
+        event.preventDefault();
+        if (shell) void shell.openExternal(target);
+      }
+    });
 
     // Forward IPC events to renderer
     this.bridge.on('event', (event: DesktopEvent) => {
@@ -167,11 +212,9 @@ export class DesktopApp {
         }
       },
       onQuit: () => {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { app } = require('electron');
-        app.quit();
+        this.electron?.app?.quit();
       },
-    });
+    }, this.electron);
 
     this.trayManager.init();
   }
@@ -180,5 +223,5 @@ export class DesktopApp {
 // Auto-start if executed directly via Electron
 if (process.versions.electron) {
   const desktopApp = new DesktopApp();
-  desktopApp.start();
+  void desktopApp.start();
 }
