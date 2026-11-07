@@ -50,7 +50,7 @@ export class DesktopApp {
     try {
       // Ephemeral port: the window loads whatever URL the server returns, so a
       // dev server already on 3456 cannot block the app from starting.
-      this.server = new DesktopServer({ port: 0 });
+      this.server = new DesktopServer({ port: 0, appVersion: app.getVersion() });
       const { url } = await this.server.start();
       console.log('[OpenSand Desktop] server listening:', url.split('?')[0]);
 

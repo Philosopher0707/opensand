@@ -247,6 +247,15 @@ class OpenSandClient {
     return res.json();
   }
 
+  async getDiagnostics() {
+    const res = await fetch('/api/diagnostics');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || `Diagnostics failed (HTTP ${res.status})`);
+    }
+    return data;
+  }
+
   async getTokenTelemetry(agentId, sessionId) {
     if (this.isElectron && window.opensand?.getTokenTelemetry) {
       return window.opensand.getTokenTelemetry(agentId, sessionId);
@@ -1103,6 +1112,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const settingApiKey = document.getElementById('settingApiKey');
   let hasStoredApiKey = false;
   const settingAutoApprove = document.getElementById('settingAutoApprove');
+  const btnCopyDiagnostics = document.getElementById('btnCopyDiagnostics');
 
   // State
   let currentSessionId = null;
@@ -5522,6 +5532,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     await refreshSettings();
     await refreshTokenBadge();
   };
+
+  if (btnCopyDiagnostics) {
+    btnCopyDiagnostics.onclick = async () => {
+      const original = btnCopyDiagnostics.textContent;
+      try {
+        const report = await client.getDiagnostics();
+        await navigator.clipboard.writeText(report.text);
+        btnCopyDiagnostics.textContent = 'Copied ✓';
+      } catch (err) {
+        btnCopyDiagnostics.textContent = 'Could not copy';
+      }
+      setTimeout(() => {
+        btnCopyDiagnostics.textContent = original;
+      }, 1500);
+    };
+  }
 
   // --- BTW Ephemeral Side Question Modal ---
   const btnOpenBtw = document.getElementById('btnOpenBtw');

@@ -349,6 +349,21 @@ Run it in your terminal or via launchd; `GET /api/settings` resolves the
 vault API key at startup (`getSanitizedSettingsResolved()`), so Settings
 shows the saved state immediately after boot.
 
+## Uninstall
+
+OpenSand keeps everything local in `~/.opensand` plus a few macOS support
+folders. To remove the data and start clean:
+
+```bash
+opensand uninstall          # lists targets, asks you to type "remove"
+opensand uninstall --yes    # no prompt
+```
+
+Then drag `OpenSand.app` from Applications to the Trash. The command removes
+`~/.opensand` (sessions, settings, vault, backups), `~/Library/Application
+Support/OpenSand`, the cache, preferences and saved window state. It never
+touches files you edited with the agent.
+
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the workflow rules

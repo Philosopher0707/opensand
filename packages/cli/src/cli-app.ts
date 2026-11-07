@@ -1,6 +1,7 @@
 import { stdin as input, stdout as output } from "node:process";
 import * as readline from "node:readline/promises";
 import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { LocalExecDaemon } from "@opensand/local-exec-daemon";
@@ -49,6 +50,8 @@ Options:
   --help, -h               Show this help message
   --version, -v            Show version
   completion <bash|zsh>    Generate shell completion script
+  doctor [--json]          Run environment diagnostics
+  uninstall [--yes]        Remove local data in ~/.opensand
 
 Interactive REPL Commands:
   /help                    Show available REPL commands
@@ -112,13 +115,63 @@ Examples:
     process.exit(0);
   }
 
+  if (argv[0] === "uninstall") {
+    const baseDir = path.join(os.homedir(), ".opensand");
+    const appSupport = [
+      path.join(os.homedir(), "Library", "Application Support", "OpenSand"),
+      path.join(os.homedir(), "Library", "Application Support", "@opensand"),
+      path.join(os.homedir(), "Library", "Caches", "OpenSand"),
+      path.join(os.homedir(), "Library", "Preferences", "com.opensand.agent.plist"),
+      path.join(os.homedir(), "Library", "Saved Application State", "com.opensand.agent.savedState"),
+    ];
+    const targets = [baseDir, ...appSupport].filter((dir) => fsSync.existsSync(dir));
+
+    if (targets.length === 0) {
+      console.log("Nothing to remove: no local OpenSand data found.");
+      return;
+    }
+
+    console.log("This removes OpenSand's local data:");
+    for (const target of targets) console.log(`  ${target}`);
+    console.log("The app itself is separate: drag OpenSand.app from Applications to the Trash.");
+
+    if (!argv.includes("--yes") && !argv.includes("-y")) {
+      const rl = readline.createInterface({ input, output });
+      const answer = await rl.question('Type "remove" to delete this data: ');
+      rl.close();
+      if (answer.trim() !== "remove") {
+        console.log("Cancelled. Nothing was deleted.");
+        return;
+      }
+    }
+
+    for (const target of targets) {
+      await fs.rm(target, { recursive: true, force: true });
+      console.log(`removed ${target}`);
+    }
+    console.log("Done. Launch the app again and it starts from a clean first run.");
+    return;
+  }
+
   if (argv[0] === "doctor" || argv.includes("--doctor")) {
-    console.log(`\n\x1b[1m=== OpenSand System Doctor & Environment Preflight ===\x1b[0m\n`);
     const { probes, allCriticalPassed } = await runDoctorProbes({
       endpoint: config.endpoint,
       apiKey: config.apiKey,
       model: config.model,
     });
+
+    if (argv.includes("--json")) {
+      console.log(JSON.stringify({
+        version: "0.1.0",
+        generatedAt: new Date().toISOString(),
+        allCriticalPassed,
+        probes,
+      }, null, 2));
+      if (!allCriticalPassed) process.exit(1);
+      return;
+    }
+
+    console.log(`\n\x1b[1m=== OpenSand System Doctor & Environment Preflight ===\x1b[0m\n`);
     for (const p of probes) {
       const mark = p.status === "ok" ? "\x1b[32m✔\x1b[0m" : p.status === "warn" ? "\x1b[33m▲\x1b[0m" : "\x1b[31m✖\x1b[0m";
       console.log(`  ${mark} \x1b[1m[${p.category}]\x1b[0m \x1b[36m${p.name}\x1b[0m: ${p.message}`);

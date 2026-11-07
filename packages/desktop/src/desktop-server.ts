@@ -8,7 +8,8 @@ import { DesktopIpcBridge } from './ipc-bridge.js';
 import { createDefaultRpcGateway, RpcGateway } from './rpc-gateway.js';
 import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient } from '@opensand/coordinator';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
-import { runStateMigrations } from '@opensand/shared';
+import { runStateMigrations, readSchemaVersion } from '@opensand/shared';
+import { buildDiagnosticsReport } from './diagnostics.js';
 import { getOnboardingState, probeOllama, OLLAMA_CHAT_ENDPOINT } from './onboarding.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -21,6 +22,7 @@ export interface DesktopServerOptions {
   authToken?: string;
   requireAuth?: boolean;
   webhookMaxRequestsPerMinute?: number;
+  appVersion?: string;
 }
 
 /**
@@ -53,6 +55,7 @@ export class DesktopServer {
   private requireAuth: boolean;
   private webhookRateLimits: Map<string, { count: number; resetAt: number }> = new Map();
   private webhookMaxRequestsPerMinute: number;
+  private appVersion: string;
 
   constructor(options: DesktopServerOptions = {}) {
     this.port = options.port ?? 3456;
@@ -61,6 +64,7 @@ export class DesktopServer {
     this.tokenFilePath = path.join(this.baseDir, 'server.token');
     this.requireAuth = options.requireAuth ?? true;
     this.webhookMaxRequestsPerMinute = options.webhookMaxRequestsPerMinute ?? 60;
+    this.appVersion = options.appVersion ?? '0.1.0';
 
     // Resolve or generate session authentication token
     let shouldWriteTokenFile = false;
@@ -475,6 +479,20 @@ export class DesktopServer {
       const updated = await this.bridge.getSanitizedSettingsResolved();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(updated));
+      return;
+    }
+
+    // API: GET /api/diagnostics (redacted support report)
+    if (pathname === '/api/diagnostics' && req.method === 'GET') {
+      const report = buildDiagnosticsReport({
+        baseDir: this.baseDir,
+        settings: await this.bridge.getSanitizedSettingsResolved(),
+        stateVersion: readSchemaVersion(path.join(this.baseDir, 'state')),
+        appVersion: this.appVersion,
+        electronVersion: process.versions.electron,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(report));
       return;
     }
 

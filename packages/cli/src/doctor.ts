@@ -265,6 +265,27 @@ export async function runDoctorProbes(options: {
     });
   }
 
+  // Probe 10: Free disk space
+  try {
+    const stat = await fs.statfs(baseDir);
+    const freeMb = Math.round((stat.bavail * stat.bsize) / (1024 * 1024));
+    probes.push({
+      category: "Storage",
+      name: "Free Disk Space",
+      passed: freeMb > 512,
+      status: freeMb > 512 ? "ok" : "warn",
+      message: `${freeMb} MB free at ${baseDir}`,
+    });
+  } catch (err: any) {
+    probes.push({
+      category: "Storage",
+      name: "Free Disk Space",
+      passed: true,
+      status: "warn",
+      message: `Could not read disk space: ${err.message}`,
+    });
+  }
+
   const allCriticalPassed = probes.every((p) => p.status !== "fail");
   return { probes, allCriticalPassed };
 }
