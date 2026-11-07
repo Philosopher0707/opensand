@@ -5,6 +5,11 @@
 **Target Reverse-Engineered:** Grok Bot macOS Desktop App (`/Applications/Grok Bot.app`, Bundle ID: `com.anysphere.sand`, Version: 0.78.1)  
 **Status:** Phases 1–12 Fully Implemented & Hardened (122/122 unit & integration tests passing, 100% green, 61 active registered tools)
 
+**v1.0 scope freeze (2026-11-07):** the engine surface is frozen until v1.0 ships. New tools,
+protocols and side surfaces (`graph-vscode`, AG-UI, RPC gateway, webhooks, VS Code extension) are out
+of scope. Work goes to packaging, failure handling and end-to-end proof. See
+`docs/provenance-review.md` before distributing any binary.
+
 ---
 
 ## 1. Executive Summary & Goals
