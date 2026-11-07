@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { TranscriptManager } from "../src/transcript-manager.js";
+import { TranscriptManager, listSessions } from "../src/transcript-manager.js";
 import { ChatMessage } from "../src/types.js";
 
 describe("TranscriptManager", () => {
@@ -106,5 +106,54 @@ describe("TranscriptManager", () => {
     assert.equal(loaded[2].content, "tool output");
     assert.equal(loaded[3].role, "assistant");
     assert.equal(loaded[3].content, "final answer");
+  });
+
+  it("listSessions on a mkdtemp dir returns newest-first, reads title/turns from messages.json, ignores empty dirs, returns [] for missing dir", async () => {
+    const missingDir = path.join(tempDir, "does-not-exist");
+    const missingResult = await listSessions(missingDir);
+    assert.deepEqual(missingResult, []);
+
+    const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-listsessions-test-"));
+    try {
+      // 1. Session A: older
+      const sessADir = path.join(baseDir, "session_a");
+      await fs.mkdir(sessADir, { recursive: true });
+      const msgsA = [
+        { role: "user", content: "What is the capital of France?" },
+        { role: "assistant", content: "Paris" },
+      ];
+      await fs.writeFile(path.join(sessADir, "messages.json"), JSON.stringify(msgsA));
+      await fs.writeFile(path.join(sessADir, "transcript.jsonl"), JSON.stringify({ role: "user", content: "hello" }) + "\n");
+      const pastTime = new Date(Date.now() - 60000);
+      await fs.utimes(path.join(sessADir, "transcript.jsonl"), pastTime, pastTime);
+
+      // 2. Session B: newer
+      const sessBDir = path.join(baseDir, "session_b");
+      await fs.mkdir(sessBDir, { recursive: true });
+      const msgsB = [
+        { role: "user", content: "Implement session resume feature in OpenSand" },
+        { role: "assistant", content: "Working on it" },
+        { role: "user", content: "Also add tab completion" },
+        { role: "assistant", content: "Done" },
+      ];
+      await fs.writeFile(path.join(sessBDir, "messages.json"), JSON.stringify(msgsB));
+      await fs.writeFile(path.join(sessBDir, "transcript.jsonl"), JSON.stringify({ role: "user", content: "test" }) + "\n");
+
+      // 3. Directory with no transcript (empty dir)
+      const emptyDir = path.join(baseDir, "empty_session");
+      await fs.mkdir(emptyDir, { recursive: true });
+
+      const sessions = await listSessions(baseDir);
+      assert.equal(sessions.length, 2);
+      assert.equal(sessions[0].sessionId, "session_b");
+      assert.equal(sessions[0].title, "Implement session resume feature in OpenSand");
+      assert.equal(sessions[0].turns, 2);
+
+      assert.equal(sessions[1].sessionId, "session_a");
+      assert.equal(sessions[1].title, "What is the capital of France?");
+      assert.equal(sessions[1].turns, 1);
+    } finally {
+      await fs.rm(baseDir, { recursive: true, force: true });
+    }
   });
 });

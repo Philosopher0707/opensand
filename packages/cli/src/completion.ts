@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 /**
  * OpenSand Shell Completion & REPL Autocompletion Generator
  * Zero-dependency native Node.js completion generator for ZSH, Bash, and REPL readline.
@@ -37,6 +38,8 @@ export const REPL_SLASH_COMMANDS = [
   "/btw",
   "/rollback",
   "/compact",
+  "/sessions",
+  "/resume",
   "/doctor",
   "/status",
   "/attach",
@@ -171,13 +174,42 @@ complete -F _opensand_completions opensand
 `;
 }
 
+function completePath(typedPath: string): string[] {
+  let searchDir: string;
+  let prefix: string;
+  const lastSlash = typedPath.lastIndexOf("/");
+  if (lastSlash === -1) {
+    searchDir = ".";
+    prefix = typedPath;
+  } else {
+    searchDir = typedPath.slice(0, lastSlash + 1);
+    prefix = typedPath.slice(lastSlash + 1);
+  }
+
+  try {
+    const entries = fs.readdirSync(searchDir || ".", { withFileTypes: true });
+    const hits: string[] = [];
+    for (const entry of entries) {
+      if (entry.name.startsWith(prefix)) {
+        const isDir = entry.isDirectory();
+        const candidate = (lastSlash === -1 ? "" : searchDir) + entry.name + (isDir ? "/" : "");
+        hits.push(candidate);
+      }
+    }
+    return hits;
+  } catch {
+    return [];
+  }
+}
+
 /**
  * REPL Readline Tab Completer.
- * Completes slash commands and registered bot names dynamically.
+ * Completes slash commands, registered bot names, session IDs, and file paths dynamically.
  */
 export function getReplCompletions(
   line: string,
-  botNames: string[] = []
+  botNames: string[] = [],
+  sessionIds: string[] = []
 ): [string[], string] {
   const trimmed = line.trimStart();
 
@@ -189,6 +221,30 @@ export function getReplCompletions(
       .filter((name) => name.toLowerCase().startsWith(query))
       .map((name) => `/bot ${name}`);
     return [hits.length > 0 ? hits : candidateBots.map((n) => `/bot ${n}`), line];
+  }
+
+  // /resume <id>
+  if (trimmed.startsWith("/resume ")) {
+    const query = trimmed.slice(8);
+    const candidateIds = ["latest", ...sessionIds];
+    const hits = candidateIds
+      .filter((id) => id.startsWith(query))
+      .map((id) => `/resume ${id}`);
+    return [hits, line];
+  }
+
+  // /attach <path>
+  if (trimmed.startsWith("/attach ")) {
+    const query = trimmed.slice(8);
+    const hits = completePath(query).map((p) => `/attach ${p}`);
+    return [hits, line];
+  }
+
+  // /template import <path>
+  if (trimmed.startsWith("/template import ")) {
+    const query = trimmed.slice(17);
+    const hits = completePath(query).map((p) => `/template import ${p}`);
+    return [hits, line];
   }
 
   // If line starts with /, complete slash commands

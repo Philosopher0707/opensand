@@ -1,3 +1,6 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import * as os from "node:os";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -58,5 +61,34 @@ describe("Completion Generator", () => {
 
     const [quitHits] = getReplCompletions("qu");
     assert.deepEqual(quitHits, ["quit"]);
+  });
+  it("has /sessions and /resume in REPL_SLASH_COMMANDS", () => {
+    assert.ok(REPL_SLASH_COMMANDS.includes("/sessions"));
+    assert.ok(REPL_SLASH_COMMANDS.includes("/resume"));
+  });
+
+  it("completes /resume with latest and provided session IDs", () => {
+    const [hits, line] = getReplCompletions("/resume ", [], ["sess-1", "sess-2"]);
+    assert.equal(line, "/resume ");
+    assert.deepEqual(hits, ["/resume latest", "/resume sess-1", "/resume sess-2"]);
+
+    const [filtered] = getReplCompletions("/resume sess-1", [], ["sess-1", "sess-2"]);
+    assert.deepEqual(filtered, ["/resume sess-1"]);
+  });
+
+  it("completes /attach with filesystem paths", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-attach-test-"));
+    try {
+      const filePath = path.join(tmpDir, "test-file.txt");
+      await fs.writeFile(filePath, "sample content");
+      const subDir = path.join(tmpDir, "subdir");
+      await fs.mkdir(subDir);
+
+      const [hits] = getReplCompletions(`/attach ${tmpDir}/`);
+      assert.ok(hits.includes(`/attach ${tmpDir}/test-file.txt`));
+      assert.ok(hits.includes(`/attach ${tmpDir}/subdir/`));
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });

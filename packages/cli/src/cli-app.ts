@@ -17,7 +17,10 @@ import {
   MemoryStore,
   MemoStore,
   ApprovalDecision,
+  listSessions,
+  SessionSummary,
 } from "@opensand/coordinator";
+import { shouldExitOnSigInt } from "./interrupt.js";
 import { parseCliArgs, CliConfig, probeLocalOllama, validateConfig } from "./config.js";
 import { TerminalUI } from "./terminal-ui.js";
 import { runDoctorProbes } from "./doctor.js";
@@ -42,6 +45,8 @@ Options:
   --api-key <key>          API key (default: $OPENSAND_API_KEY)
   --bot <id_or_name>       Activate a registered bot persona from Agent Store (e.g. 'cto')
   --system-prompt <file>   Path to custom instructions markdown/text file
+  --resume [id]            Resume a saved session (omit id for the most recent)
+  --continue, -c           Resume the most recent session
   --worktree [name]        Run in an isolated Git worktree sandbox (CCD & Codex parity)
   --list-tools             List all active OS, orchestrator, and MCP tools
   --list-bots              List all registered bot personas in the Agent Store
@@ -364,8 +369,26 @@ Examples:
     return toolName;
   };
 
+  function findSession(sessions: SessionSummary[], query: string): SessionSummary | undefined {
+    if (query === "latest") {
+      return sessions[0];
+    }
+    const exact = sessions.find((s) => s.sessionId === query);
+    if (exact) return exact;
+    const matches = sessions.filter((s) => s.sessionId.startsWith(query));
+    if (matches.length === 1) {
+      return matches[0];
+    }
+    return undefined;
+  }
+
   // Helper to build coordinator
-  function createCoordinator(instructions?: string, modelOverride?: string, endpointOverride?: string): AgentCoordinator {
+  function createCoordinator(
+    instructions?: string,
+    modelOverride?: string,
+    endpointOverride?: string,
+    sessionIdOverride?: string
+  ): AgentCoordinator {
     const targetModel = modelOverride || config.model;
     const targetEndpoint = endpointOverride || config.endpoint;
 
@@ -376,6 +399,7 @@ Examples:
     });
 
     return new AgentCoordinator({
+      sessionId: sessionIdOverride,
       llmClient,
       daemon,
       allowedTools: activeAgent?.allowedTools,
@@ -434,7 +458,39 @@ Examples:
     });
   }
 
-  let coordinator = createCoordinator(userInstructions, config.model, config.endpoint);
+  let activeSessionId: string | undefined;
+
+  if (config.resume) {
+    const allSessions = await listSessions();
+    if (config.resume === "latest") {
+      const targetSession = allSessions[0];
+      if (!targetSession) {
+        ui.printError("No saved sessions to resume.");
+      } else {
+        activeSessionId = targetSession.sessionId;
+        const dateStr = new Date(targetSession.mtimeMs).toISOString().slice(0, 10);
+        console.log(`Resumed session ${targetSession.sessionId} (${targetSession.turns} user turns, ${dateStr})`);
+      }
+    } else {
+      const targetSession = findSession(allSessions, config.resume);
+      if (!targetSession) {
+        const recent = allSessions.slice(0, 5);
+        if (recent.length > 0) {
+          console.log("Recent sessions:");
+          for (const s of recent) {
+            console.log(`  ${s.sessionId}`);
+          }
+        }
+        process.exitCode = 1;
+        return;
+      }
+      activeSessionId = targetSession.sessionId;
+      const dateStr = new Date(targetSession.mtimeMs).toISOString().slice(0, 10);
+      console.log(`Resumed session ${targetSession.sessionId} (${targetSession.turns} user turns, ${dateStr})`);
+    }
+  }
+
+  let coordinator = createCoordinator(userInstructions, config.model, config.endpoint, activeSessionId);
 
   ui.printBanner(config.model, config.endpoint);
   if (mcpCount > 0) {
@@ -474,12 +530,14 @@ Examples:
     } catch (err: any) {
       if (queryAbort.signal.aborted || err?.name === "AbortError" || err?.code === "ABORT_ERR") {
         ui.printInfo("\n[Execution cancelled by user]");
+        process.exitCode = 130;
       } else if (err?.name === "NetworkError" || err?.isNetworkError) {
         ui.printError(`Network failure: ${err.message}`);
+        process.exitCode = 1;
       } else {
         ui.printError(`Execution failed: ${err.message}`);
+        process.exitCode = 1;
       }
-      process.exitCode = 1;
     } finally {
       process.off("SIGINT", onSigInt);
       await daemon.stop();
@@ -487,16 +545,34 @@ Examples:
     return;
   }
 
-  // Load registered bots for dynamic REPL autocompletion
+  // Load registered bots and session IDs for dynamic REPL autocompletion
   const registeredBots = await agentStore.listAgents().catch(() => []);
   const knownBotNames = registeredBots.map((b) => b.name);
+  const knownSessionIds = (await listSessions().catch(() => [])).map((s) => s.sessionId);
 
   // Interactive REPL loop with native tab autocompletion
   const rl = readline.createInterface({
     input,
     output,
-    completer: (l: string) => getReplCompletions(l, knownBotNames),
+    completer: (l: string) => getReplCompletions(l, knownBotNames, knownSessionIds),
   });
+
+  let lastSigIntAt = 0;
+  let exiting = false;
+  const onRlSigInt = () => {
+    const now = Date.now();
+    if (shouldExitOnSigInt(lastSigIntAt, now)) {
+      console.log("\nExiting OpenSand.");
+      process.exitCode = 130;
+      exiting = true;
+      rl.close();
+      return;
+    }
+    lastSigIntAt = now;
+    rl.write(null, { ctrl: true, name: "u" });
+    console.log("\n(press Ctrl+C again within 1.5s to exit, or Ctrl+D)");
+  };
+  rl.on("SIGINT", onRlSigInt);
 
   try {
     while (true) {
@@ -506,7 +582,9 @@ Examples:
         line = await rl.question(`\n${promptPrefix}`);
       } catch (err: any) {
         if (err?.code === "ABORT_ERR" || err?.name === "AbortError") {
-          console.log("\nExiting OpenSand.");
+          if (!exiting) {
+            console.log("\nExiting OpenSand.");
+          }
           break;
         }
         throw err;
@@ -529,6 +607,8 @@ Available OpenSand REPL Commands:
   /btw <question>     Ask ephemeral side-question using current work context (BTW parity)
   /rollback [turns]   Roll back conversation history by N turns (RollBack parity)
   /compact [keep]     Compact older conversation turns into a dense summary
+  /sessions           List recent saved sessions
+  /resume <id|latest> Resume a saved session
   /doctor             Run preflight diagnostics across host runtime, models, and tools
   /status             Show fleet status (agents, rooms, routines, skills, vault)
   /attach <file>      Stage a file or image attachment into session store
@@ -627,6 +707,34 @@ Available OpenSand REPL Commands:
         continue;
       }
 
+      if (trimmed === "/sessions") {
+        const sessions = await listSessions();
+        for (const s of sessions.slice(0, 10)) {
+          const dateStr = new Date(s.mtimeMs).toISOString().slice(0, 10);
+          const titlePart = s.title ? `  ${s.title}` : "";
+          console.log(`${s.sessionId}  ${dateStr}  ${s.turns}${titlePart}`);
+        }
+        continue;
+      }
+
+      if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {
+        const arg = trimmed.slice(7).trim() || "latest";
+        const sessions = await listSessions();
+        const target = findSession(sessions, arg);
+        if (!target) {
+          if (arg === "latest") {
+            ui.printError("No saved sessions to resume. Run /sessions to list them.");
+          } else {
+            ui.printError(`Session '${arg}' not found. Run /sessions to list them.`);
+          }
+          continue;
+        }
+        activeSessionId = target.sessionId;
+        coordinator = createCoordinator(userInstructions, config.model, config.endpoint, activeSessionId);
+        console.log(`Resumed session ${target.sessionId} (${target.turns} user turns)`);
+        continue;
+      }
+
       if (trimmed === "/tools") {
         const defs = daemon.getToolDefinitions();
         console.log(`\n\x1b[1m=== Active Registered OpenSand Tools (${defs.length}) ===\x1b[0m`);
@@ -655,7 +763,7 @@ Available OpenSand REPL Commands:
         const query = trimmed.slice(5).trim();
         if (query === "default" || query === "reset") {
           activeAgent = null;
-          coordinator = createCoordinator(undefined, config.model, config.endpoint);
+          coordinator = createCoordinator(undefined, config.model, config.endpoint, activeSessionId);
           ui.printInfo("Switched active persona back to: ⚡ Default Assistant");
         } else {
           const agent = await agentStore.getAgent(query);
@@ -664,7 +772,8 @@ Available OpenSand REPL Commands:
             coordinator = createCoordinator(
               agent.systemPrompt,
               agent.model && agent.model !== "default" ? agent.model : config.model,
-              agent.endpoint
+              agent.endpoint,
+              activeSessionId
             );
             ui.printInfo(`Switched active persona to: 🤖 ${agent.name} (${agent.role})`);
           } else {
@@ -981,9 +1090,11 @@ Available OpenSand REPL Commands:
         }
       } finally {
         process.off("SIGINT", onSigInt);
+        lastSigIntAt = 0;
       }
     }
   } finally {
+    rl.off("SIGINT", onRlSigInt);
     rl.close();
     await daemon.stop();
   }

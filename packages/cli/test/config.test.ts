@@ -123,4 +123,22 @@ describe("CliConfig", () => {
     assert.equal(res?.endpoint, "http://127.0.0.1:11434/v1");
     assert.equal(res?.model, "qwen3:8b");
   });
+
+  it("parses --resume with id", () => {
+    const config = parseCliArgs(["--resume", "abc"]);
+    assert.equal(config.resume, "abc");
+  });
+
+  it("parses bare --resume as latest", () => {
+    const config = parseCliArgs(["--resume"]);
+    assert.equal(config.resume, "latest");
+  });
+
+  it("parses --continue and -c as latest", () => {
+    const c1 = parseCliArgs(["--continue"]);
+    assert.equal(c1.resume, "latest");
+
+    const c2 = parseCliArgs(["-c"]);
+    assert.equal(c2.resume, "latest");
+  });
 });

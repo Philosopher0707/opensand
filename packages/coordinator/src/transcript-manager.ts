@@ -165,6 +165,13 @@ export class TranscriptManager {
   }
 }
 
+export interface SessionSummary {
+  sessionId: string;
+  mtimeMs: number;
+  title?: string;
+  turns: number;
+}
+
 export interface RetentionPolicy {
   /** Keep the N most recent sessions (by mtime). Default 30. */
   maxSessions?: number;
@@ -255,6 +262,84 @@ export async function evaluateRetention(
   const totalSizeBytes = candidates.reduce((sum, c) => sum + c.sizeBytes, 0);
   return { removed, kept, totalSizeBytes };
 }
+
+export async function listSessions(sessionsBaseDir?: string): Promise<SessionSummary[]> {
+  const baseDir = sessionsBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
+  let entries: Array<{ name: string; isDirectory: () => boolean }> = [];
+  try {
+    entries = await fs.readdir(baseDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const sessions: SessionSummary[] = [];
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    try {
+      const sessionDir = path.join(baseDir, entry.name);
+      const jsonlPath = path.join(sessionDir, "transcript.jsonl");
+      const messagesPath = path.join(sessionDir, "messages.json");
+
+      let mtimeMs: number | undefined;
+      let hasTranscript = false;
+
+      try {
+        const jsonlStat = await fs.stat(jsonlPath);
+        mtimeMs = jsonlStat.mtimeMs;
+        hasTranscript = true;
+      } catch {
+        // transcript.jsonl not present
+      }
+
+      let title: string | undefined;
+      let turns = 0;
+
+      try {
+        const raw = await fs.readFile(messagesPath, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          hasTranscript = true;
+          for (const msg of parsed) {
+            if (msg && msg.role === "user") {
+              turns++;
+              if (title === undefined && typeof msg.content === "string") {
+                title = msg.content.slice(0, 80);
+              }
+            }
+          }
+        }
+      } catch (err: any) {
+        if (err?.code !== "ENOENT") {
+          // unreadable or corrupt messages.json
+          continue;
+        }
+      }
+
+      if (!hasTranscript) {
+        continue;
+      }
+
+      if (mtimeMs === undefined) {
+        const dirStat = await fs.stat(sessionDir);
+        mtimeMs = dirStat.mtimeMs;
+      }
+
+      sessions.push({
+        sessionId: entry.name,
+        mtimeMs,
+        title,
+        turns,
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  sessions.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return sessions;
+}
+
 
 /**
  * Prune old sessions per policy. Returns what was removed.

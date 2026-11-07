@@ -16,6 +16,7 @@ export interface CliConfig {
   listBots?: boolean;
   listTasks?: boolean;
   provider?: string;
+  resume?: string;
 }
 
 export function loadUserConfig(customPath?: string): Partial<CliConfig> {
@@ -140,6 +141,14 @@ export function parseCliArgs(args: string[], customConfigFile?: string): CliConf
       } else {
         config.completion = "bash";
       }
+    } else if (arg === "--resume") {
+      if (i + 1 < args.length && !args[i + 1].startsWith("-")) {
+        config.resume = args[++i];
+      } else {
+        config.resume = "latest";
+      }
+    } else if (arg === "--continue" || arg === "-c") {
+      config.resume = "latest";
     } else if (!arg.startsWith("-")) {
       positional.push(arg);
     }
