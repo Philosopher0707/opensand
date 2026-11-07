@@ -152,9 +152,32 @@ export type TurnEvent =
   | { type: "approval_requested"; request: ApprovalRequest }
   | { type: "tool_call_completed"; toolCall: ToolCall; result: ToolExecutionResult }
   | { type: "turn_completed"; finalContent: string }
-  | { type: "error"; error: Error };
+  | { type: "error"; error: Error }
+  | { type: "subagent"; subagent: SubagentInfo; event: TurnEvent };
 
 export type TurnEventListener = (event: TurnEvent) => void;
+
+/**
+ * Subagent delegation descriptor carried on every forwarded subagent
+ * TurnEvent so the UI can route activity to the correct card and block
+ * unbounded nesting. `depth` is 0 for a direct child of the main agent.
+ */
+export interface SubagentInfo {
+  agentId: string;
+  agentName: string;
+  role?: string;
+  /** Subagent turn session id: sub_<agentId>_<ts> */
+  sessionId: string;
+  task: string;
+  depth: number;
+}
+
+/** A TurnEvent from a delegated subagent, wrapped with its identity. */
+export interface SubagentTurnEvent {
+  type: "subagent";
+  subagent: SubagentInfo;
+  event: TurnEvent;
+}
 
 /* ── LLM client config ───────────────────────────────────────── */
 
@@ -205,10 +228,21 @@ export type DesktopEventType =
   | 'turn_cancelled'
   | 'error'
   | 'status'
-  | 'sentinel';
+  | 'sentinel'
+  | 'subagent';
 
 export interface DesktopEvent {
   type: DesktopEventType;
   sessionId: string;
   data: unknown;
+  /** Present on 'subagent' events: identity of the delegated agent. */
+  subagent?: SubagentInfo;
 }
+
+/**
+ * Turn-event listener with delegation context. When the coordinator
+ * executes delegate_to_agent it threads `subagent` (sink + depth) into
+ * the tool context so the child turn's events stream to the UI.
+ */
+export type DelegatedTurnEventListener =
+  (event: TurnEvent, context: { subagent?: { onEvent: (e: TurnEvent) => void; depth: number } }) => void;

@@ -5,6 +5,6 @@
 export type {
   ToolCallFunction, ToolCall, ChatMessage, StreamDelta, LLMClientConfig,
   ApprovalRequest, ApprovalDecision, AttachmentRecord, AgentTemplate,
-  ApprovalHandler, ApprovalDecisionHandler, TurnEventListener, TurnPhase, TurnEvent,
+  ApprovalHandler, ApprovalDecisionHandler, TurnEventListener, TurnPhase, TurnEvent, SubagentInfo,
 } from "@opensand/shared";
 export type { ToolDefinition, ToolExecutionResult } from "@opensand/local-exec-daemon";

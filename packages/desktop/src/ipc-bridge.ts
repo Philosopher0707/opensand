@@ -335,11 +335,12 @@ export class DesktopIpcBridge extends EventEmitter {
     }
   }
 
-  public emitEvent(type: DesktopEvent['type'], data: unknown): void {
+  public emitEvent(type: DesktopEvent['type'], data: unknown, subagent?: DesktopEvent['subagent']): void {
     const event: DesktopEvent = {
       type,
       sessionId: this.currentSessionId || 'default',
       data,
+      ...(subagent ? { subagent } : {}),
     };
     this.emit('event', event);
   }
@@ -464,25 +465,7 @@ export class DesktopIpcBridge extends EventEmitter {
         return this.requestUserApproval(req.toolName, req.arguments, req.reason);
       },
       onEvent: (event: TurnEvent) => {
-        if (event.type === 'text_delta') {
-          this.emitEvent('token', { token: event.text });
-        } else if (event.type === 'thought_delta') {
-          this.emitEvent('thought', { thought: event.text });
-        } else if (event.type === 'tool_call_started') {
-          let parsedArgs = {};
-          try {
-            parsedArgs = event.toolCall.function.arguments ? JSON.parse(event.toolCall.function.arguments) : {};
-          } catch {
-            parsedArgs = { raw: event.toolCall.function.arguments };
-          }
-          this.emitEvent('tool_call', { name: event.toolCall.function.name, args: parsedArgs });
-        } else if (event.type === 'tool_call_completed') {
-          this.emitEvent('tool_result', { name: event.toolCall.function.name, result: event.result.output });
-        } else if (event.type === 'turn_completed') {
-          this.emitEvent('turn_complete', { response: event.finalContent });
-        } else if (event.type === 'error') {
-          this.emitEvent('error', { message: event.error.message });
-        }
+        this.dispatchTurnEvent(event);
       },
     });
 
@@ -496,6 +479,41 @@ export class DesktopIpcBridge extends EventEmitter {
     }
 
     return coordinator;
+  }
+
+  /** Map a coordinator TurnEvent to DesktopEvents for the renderer. */
+  private dispatchTurnEvent(event: TurnEvent): void {
+    // Subagent delegation: forward the wrapped child event so the renderer
+    // can show live subagent activity in a nested card.
+    if (event.type === 'subagent') {
+      const wrapper = event as unknown as {
+        type: 'subagent';
+        subagent: unknown;
+        event: TurnEvent;
+      };
+      const inner = wrapper.event;
+      this.emitEvent('subagent', inner, wrapper.subagent as DesktopEvent['subagent']);
+      return;
+    }
+    if (event.type === 'text_delta') {
+      this.emitEvent('token', { token: event.text });
+    } else if (event.type === 'thought_delta') {
+      this.emitEvent('thought', { thought: event.text });
+    } else if (event.type === 'tool_call_started') {
+      let parsedArgs = {};
+      try {
+        parsedArgs = event.toolCall.function.arguments ? JSON.parse(event.toolCall.function.arguments) : {};
+      } catch {
+        parsedArgs = { raw: event.toolCall.function.arguments };
+      }
+      this.emitEvent('tool_call', { name: event.toolCall.function.name, args: parsedArgs });
+    } else if (event.type === 'tool_call_completed') {
+      this.emitEvent('tool_result', { name: event.toolCall.function.name, result: event.result.output });
+    } else if (event.type === 'turn_completed') {
+      this.emitEvent('turn_complete', { response: event.finalContent });
+    } else if (event.type === 'error') {
+      this.emitEvent('error', { message: event.error.message });
+    }
   }
 
   public async sendQuery(query: string, sessionId?: string, agentId?: string): Promise<{ success: boolean; sessionId: string }> {

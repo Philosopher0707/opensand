@@ -3732,6 +3732,111 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // --- Subagent Activity Cards (delegate_to_agent live view) ---
+  function getOrCreateSubagentCard(subagent) {
+    if (!currentAssistantMessage || !subagent || !subagent.sessionId) return null;
+    const key = subagent.sessionId;
+    let card = currentAssistantMessage._subagentCards && currentAssistantMessage._subagentCards.get(key);
+    if (card) return card;
+    const depth = Math.max(0, Math.min(3, Number(subagent.depth) || 0));
+    const cardEl = document.createElement("div");
+    cardEl.className = "subagent-card subagent-depth-" + depth;
+    cardEl.dataset.subagentSessionId = key;
+    const name = subagent.agentName || subagent.agentId || "Subagent";
+    const role = subagent.role ? " · " + subagent.role : "";
+    const task = subagent.task ? String(subagent.task).slice(0, 160) : "";
+    cardEl.innerHTML = '<div class="subagent-card-header">'
+      + '<span class="subagent-card-icon">🤖</span>'
+      + '<span class="subagent-card-name">' + escapeHtml(name + role) + '</span>'
+      + '<span class="subagent-card-status tool-line-badge badge-running">Running</span>'
+      + (task ? '<span class="subagent-card-task" title="' + escapeHtml(task) + '">' + escapeHtml(task) + '</span>' : "")
+      + '</div>'
+      + '<div class="subagent-card-thought"></div>'
+      + '<div class="subagent-card-text message-content subagent-text-block"></div>'
+      + '<div class="subagent-card-tools"></div>';
+    currentAssistantMessage.body.insertBefore(cardEl, currentAssistantMessage.actionsEl);
+    if (!currentAssistantMessage._subagentCards) currentAssistantMessage._subagentCards = new Map();
+    card = {
+      element: cardEl,
+      thoughtEl: cardEl.querySelector(".subagent-card-thought"),
+      textEl: cardEl.querySelector(".subagent-card-text"),
+      toolsEl: cardEl.querySelector(".subagent-card-tools"),
+      statusEl: cardEl.querySelector(".subagent-card-status"),
+      toolLines: [],
+      thoughtText: "",
+      segmentText: "",
+      done: false,
+    };
+    currentAssistantMessage._subagentCards.set(key, card);
+    return card;
+  }
+
+  function setSubagentCardStatus(card, text, kind) {
+    if (!card || !card.statusEl) return;
+    card.statusEl.textContent = text;
+    card.statusEl.className = "subagent-card-status tool-line-badge " + (kind || "badge-running");
+  }
+
+  function handleSubagentEvent(subagent, inner) {
+    if (!inner || !inner.type) return;
+    const card = getOrCreateSubagentCard(subagent);
+    if (!card || card.done) return;
+    smartScrollToBottom();
+    switch (inner.type) {
+      case "text_delta": {
+        const delta = inner.text || "";
+        if (!delta) return;
+        card.segmentText += delta;
+        card.textEl.innerHTML = renderMarkdownCached(card.segmentText);
+        setSubagentCardStatus(card, "Generating…", "badge-running");
+        break;
+      }
+      case "thought_delta": {
+        card.thoughtText += inner.text || "";
+        renderThoughtBlock(card.thoughtEl, card.thoughtText, true);
+        setSubagentCardStatus(card, "Thinking…", "badge-running");
+        break;
+      }
+      case "phase_started": {
+        setSubagentCardStatus(card, inner.phase === "executing" ? "Executing…" : "Thinking…", "badge-running");
+        break;
+      }
+      case "tool_call_started": {
+        const toolCall = inner.toolCall || inner.data || inner;
+        const toolEl = createToolLineElement(toolCall, "running");
+        card.toolLines.push(toolEl);
+        card.toolsEl.appendChild(toolEl);
+        const toolName = toolCall.function?.name || toolCall.name || "tool";
+        setSubagentCardStatus(card, "Running " + toolName + "…", "badge-running");
+        break;
+      }
+      case "tool_call_completed": {
+        const toolName = inner.toolCall?.function?.name || inner.toolCall?.name || inner.name;
+        const result = inner.result !== undefined ? (inner.result.output !== undefined ? inner.result.output : inner.result) : (inner.data && inner.data.result);
+        const targetEl = card.toolLines.find(function(el) { return el.classList.contains("tool-line-running") && (!toolName || el.dataset.toolName === toolName); })
+          || card.toolLines.find(function(el) { return el.classList.contains("tool-line-running"); });
+        if (targetEl) updateToolLineStatus(targetEl, "done", result);
+        setSubagentCardStatus(card, "Processing…", "badge-running");
+        break;
+      }
+      case "turn_completed": {
+        card.done = true;
+        card.textEl.innerHTML = renderMarkdown(inner.finalContent || card.segmentText || "Done");
+        if (card.thoughtText) renderThoughtBlock(card.thoughtEl, card.thoughtText, false);
+        setSubagentCardStatus(card, "Done", "badge-done");
+        break;
+      }
+      case "error": {
+        card.done = true;
+        const msg = (inner.error && inner.error.message) || inner.message || "Subagent error";
+        card.textEl.textContent = msg;
+        setSubagentCardStatus(card, "Failed", "badge-error");
+        break;
+      }
+      default:
+        break;
+    }
+  }
   // --- Thought Process Renderer ---
   function renderThoughtBlock(thoughtEl, thoughtText, isStreaming = false) {
     if (!thoughtEl) return;
@@ -4149,6 +4254,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       actionsEl,
       activeTextBlock: null,
       activeToolGroup: null,
+      _subagentCards: new Map(),
       currentSegmentText: '',
     };
   }
@@ -4806,6 +4912,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
 
+    // Subagent delegation activity (delegate_to_agent, nested cards)
+    if (event.type === 'subagent') {
+      const wrapperInner = event.data;
+      const subagentInfo = event.subagent || (wrapperInner && wrapperInner.subagent) || {};
+      if (wrapperInner && wrapperInner.event && wrapperInner.subagent) {
+        handleSubagentEvent(wrapperInner.subagent, wrapperInner.event);
+      } else if (wrapperInner && wrapperInner.type) {
+        handleSubagentEvent(subagentInfo, wrapperInner);
+      }
+      if (currentAssistantMessage) botStatusText.textContent = 'Subagent running…';
+    }
     // Token delta stream
     if (event.type === 'token' || event.type === 'text_delta') {
       const delta = event.data?.token || event.token || event.text || '';

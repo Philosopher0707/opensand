@@ -219,7 +219,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       },
     },
     requiresGate: "computerUse",
-    handler: async (args) => {
+    handler: async (args, context) => {
       const agent = await store.getAgent(args.agent_id_or_name);
       if (!agent) {
         throw new Error(`Subagent [${args.agent_id_or_name}] not found in Agent Store. Use list_agents to inspect available agents.`);
@@ -242,6 +242,31 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         systemPromptContext: {
           userInstructions: agent.systemPrompt,
         },
+        // Stream the child turn's events up to the parent's delegation
+        // sink (threaded through tool context by the turn loop). Best-effort:
+        // a sink error must never break the subagent's turn loop.
+        onEvent: (event: any) => {
+          try {
+            // The coordinator's delegation sink expects (event, info); the
+            // orchestrator layer supplies agent identity + task so the UI
+            // card header can render, and the sub-session id is attached
+            // here via a wrapper event.
+            const sink: any = context?.subagent?.onEvent;
+            if (sink) {
+              sink(event, {
+                agentId: agent.id,
+                agentName: agent.name,
+                role: agent.role,
+                task: String(args.task ?? ""),
+                depth: context?.subagent?.depth ?? 1,
+                sessionId: subsessionId,
+              });
+            }
+          } catch {
+            // Event listener errors should not disrupt the agent turn loop
+          }
+        },
+        subagentDepth: (context?.subagent?.depth ?? 0),
       });
 
       const finalResponse = await subCoordinator.runTurn(args.task);

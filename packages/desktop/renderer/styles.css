@@ -3627,3 +3627,23 @@ textarea#promptInput {
   gap: 8px;
   margin-top: 8px;
 }
+
+/* Subagent Activity Cards (delegate_to_agent live view) */
+.subagent-card{
+  margin:12px 0 8px;
+  border:1px solid var(--border-color);
+  border-radius:var(--radius-md);
+  background:rgba(255,255,255,.02);
+  padding:10px 12px;
+  display:flex; flex-direction:column; gap:6px;
+}
+.subagent-card-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.subagent-card-icon{font-size:15px}
+.subagent-card-name{font-weight:600;font-size:13px}
+.subagent-card-task{flex:1 1 100%;color:var(--text-muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.subagent-card-tools{display:flex;flex-direction:column;gap:6px}
+.subagent-card-thought:empty{display:none}
+.subagent-text-block:empty{display:none}
+.subagent-depth-1{margin-left:12px}
+.subagent-depth-2{margin-left:24px}
+.subagent-depth-3{margin-left:36px}

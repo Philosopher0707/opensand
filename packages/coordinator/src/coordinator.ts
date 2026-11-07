@@ -8,6 +8,7 @@ import {
   ApprovalHandler,
   TurnEventListener,
   TurnEvent,
+  SubagentInfo,
 } from "./types.js";
 import { TranscriptManager } from "./transcript-manager.js";
 import { buildSystemPrompt, SystemPromptContext } from "./system-prompt.js";
@@ -36,6 +37,8 @@ export interface CoordinatorOptions {
   onEvent?: TurnEventListener;
   maxTurnIterations?: number;
   sessionsBaseDir?: string;
+  /** Delegation depth: how many delegate_to_agent hops above this coordinator. */
+  subagentDepth?: number;
 }
 
 export class AgentCoordinator {
@@ -54,6 +57,7 @@ export class AgentCoordinator {
   private onApprovalRequired?: ApprovalHandler;
   private eventListeners: Set<TurnEventListener> = new Set();
   private maxTurnIterations: number;
+  private readonly subagentDepth: number;
   private initialized = false;
 
   constructor(options: CoordinatorOptions) {
@@ -71,6 +75,7 @@ export class AgentCoordinator {
       this.eventListeners.add(options.onEvent);
     }
     this.maxTurnIterations = options.maxTurnIterations ?? 150;
+    this.subagentDepth = options.subagentDepth ?? 0;
 
     // Initialize system message
     const systemPrompt = buildSystemPrompt(options.systemPromptContext);
@@ -374,6 +379,7 @@ export class AgentCoordinator {
           return this.daemon.executeTool(item.tc.function.name, item.args, {
             approvalGranted: item.execution.approvalGranted,
             permissionGates: item.execution.gates,
+            subagent: this.buildDelegationContext(item.tc.function.name),
           });
         }));
         for (let i = 0; i < batch.length; i++) {
@@ -395,6 +401,7 @@ export class AgentCoordinator {
             const execResult = await this.daemon.executeTool(item.tc.function.name, item.args, {
               approvalGranted: item.execution.approvalGranted,
               permissionGates: item.execution.gates,
+              subagent: this.buildDelegationContext(item.tc.function.name),
             });
             await commitPrepared(item, execResult);
           }
@@ -421,6 +428,34 @@ export class AgentCoordinator {
       finalContent: fallbackMessage,
     });
     return fallbackMessage;
+  }
+
+  /**
+   * Build the delegation context so delegate_to_agent can stream the child
+   * turn's events up to the UI. Only meaningful for delegate_to_agent;
+   * other tools get `undefined` (no-op). Depth is capped so the UI card
+   * tree stays bounded — delegation beyond the cap still runs, just without
+   * live streaming.
+   */
+  private buildDelegationContext(toolName: string): { onEvent: (event: TurnEvent, info: SubagentInfo) => void; depth: number } | undefined {
+    if (toolName !== "delegate_to_agent") return undefined;
+    const MAX_DELEGATION_DEPTH = 3;
+    const depth = this.subagentDepth + 1;
+    if (depth > MAX_DELEGATION_DEPTH) return undefined;
+    return {
+      depth,
+      onEvent: (event: TurnEvent, info: SubagentInfo) => {
+        // Forward to this coordinator's listeners, wrapped so the UI can
+        // attribute the event to the child. The child turn's own sessionId
+        // arrives on `info` (set by the orchestrator tool); emit-time
+        // listener errors are contained in emit().
+        this.emit({
+          type: "subagent",
+          subagent: { ...info, depth: info.depth ?? depth },
+          event,
+        });
+      },
+    };
   }
 
   private harvestDiscoverToolsOutput(execResult: ToolExecutionResult): void {

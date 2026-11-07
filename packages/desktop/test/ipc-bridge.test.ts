@@ -553,6 +553,30 @@ test('DesktopIpcBridge - lists pending approvals as isolated copies and removes 
   }
 });
 
+test('DesktopIpcBridge - dispatchTurnEvent forwards subagent delegation as a DesktopEvent', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-subagent-'));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    const seen: any[] = [];
+    bridge.on('event', (evt: any) => seen.push(evt));
+    (bridge as any).currentSessionId = 'sess-parent';
+    const subagent = { agentId: 'agent_cto', agentName: 'CTO Bot', role: 'CTO', task: 'plan it', depth: 1, sessionId: 'sub_agent_cto_1793839209094' };
+    (bridge as any).dispatchTurnEvent({ type: 'subagent', subagent, event: { type: 'text_delta', text: 'hi' } });
+    const sub = seen.find((e) => e.type === 'subagent');
+    assert.ok(sub);
+    assert.strictEqual(sub.subagent.agentId, 'agent_cto');
+    assert.strictEqual(sub.subagent.agentName, 'CTO Bot');
+    assert.strictEqual(sub.subagent.depth, 1);
+    assert.strictEqual(sub.subagent.sessionId, 'sub_agent_cto_1793839209094');
+    assert.deepStrictEqual(sub.data, { type: 'text_delta', text: 'hi' });
+    assert.strictEqual(sub.sessionId, 'sess-parent');
+    // Non-subagent events still work normally
+    (bridge as any).dispatchTurnEvent({ type: 'text_delta', text: 'parent' });
+    assert.ok(seen.some((e) => e.type === 'token' && e.data.token === 'parent'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
 test('DesktopIpcBridge - tool discovery matches daemon discover_tools parity', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-discovery-'));
   try {

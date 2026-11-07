@@ -16,6 +16,16 @@ export interface ToolExecutionContext {
   approvalId?: string;
   workspaceRoot?: string;
   allowOutsideWorkspace?: boolean;
+  /**
+   * Subagent delegation context. Set by the turn loop so delegate_to_agent
+   * can stream the child turn's events up to the UI and bound nesting depth.
+   */
+  subagent?: {
+    /** Sink invoked with the child coordinator's raw TurnEvent. */
+    onEvent?: (event: any, info?: any) => void;
+    /** Current delegation depth (0 = direct child of the main agent). */
+    depth?: number;
+  };
 }
 
 export type CustomToolHandler = (args: Record<string, any>, context?: ToolExecutionContext) => Promise<any>;
