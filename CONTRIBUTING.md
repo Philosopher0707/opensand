@@ -81,6 +81,11 @@ Use the supervisor instead of launching `node .../desktop-server.js` directly:
 5. **Automate rules with tooling.** If a rule matters, it should be enforced
    by a hook, CI job, or a test — not by remembering.
 
+6. **Read `AGENTS_LEARNING.md` before changing a gate, settings, or interactive
+   behaviour.** It records the traps we already paid for. Run gates on the CI
+   runtime: `.nvmrc` pins Node 22, and a gate that only passed locally is not
+   proven.
+
 ## Commands
 
 | Command | What it does |

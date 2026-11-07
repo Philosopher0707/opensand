@@ -158,3 +158,40 @@
 ### 10.3 Dynamic Authentication Header & Token Exchange Flow
 * **Trap:** Wrapping `window.fetch` only if an authentication token is present at page load. If the user arrives without credentials and subsequently authenticates or exchanges a token, subsequent fetch requests fail to include the `Authorization` header.
 * **Rule:** Install the fetch interceptor unconditionally. In the interceptor, read the active token dynamically from client instance state or `sessionStorage`. Intercept 401 status responses globally to present the authentication modal, and provide `POST /api/auth/token-exchange` so web clients can obtain a secure HttpOnly session cookie without exposing long-lived tokens in query strings or browser history.
+
+---
+
+## 11. Settings, Cache Invalidation & Verification Traps
+
+### 11.1 A gate that only ever passed is not proven
+* **Trap:** `scripts/verify.sh`'s zero-test guard matched only `ℹ tests` (Node 26 reporter). CI runs Node 22, which prints `# tests 39`, so the guard read **0 tests for every package** and failed the first push — while local runs stayed green.
+* **Root Cause:** The gate was written against the local runtime and never observed failing on the runtime that runs it.
+* **Rule:** Any parser/gate over tool output must accept both reporter shapes (`(#|ℹ) (tests|pass) [0-9]+`), and a new or changed gate must be proven twice: it passes on good input and **fails on a deliberately broken input** (a throwaway 0-test package), on the same Node major as CI.
+
+### 11.2 Cached objects capture config; changing settings must invalidate them
+* **Trap:** Fixing the endpoint in Settings did not fix the open chat. `createSessionCoordinator` returns `coordinatorMap.get(...)` first, and `updateSettings` cleared only `this.coordinator`. The open session kept its old `UniversalLLMClient` with the old `baseUrl`, so it kept failing while a **new** session worked — which reads as "the app is broken".
+* **Root Cause:** Per-session caches outlive the settings they were built from.
+* **Rule:** When a cached object is constructed from settings, every settings write that can affect it must clear the whole cache (`coordinatorMap.clear()`), and the test must cover the **recovery path** (change setting → same session works), not only the fresh path.
+
+### 11.3 A blank endpoint becomes a hostless URL and a useless error
+* **Trap:** `baseUrl: ""` makes `resolveEndpoint()` return `/v1/chat/completions`; `fetch()` throws `Invalid URL`, surfaced as `Failed to connect to LLM at /v1/chat/completions: Invalid URL`.
+* **Root Cause:** `updateSettings` persisted any string; nothing required a scheme, and the client built a URL from an empty base.
+* **Rule:** Validate at the settings trust boundary (trim + `^https?://`, otherwise keep the working value) and refuse to build a URL from a blank base with an error that names the fix ("LLM endpoint is not configured. Open Settings…"). Never let `??` stand in for `||` on an endpoint: `""` is falsy but not nullish (`orchestrator-tools.ts`, subagent client).
+
+### 11.4 Cold local models look like broken deployments
+* **Trap:** A live probe failed at 60s right after a server restart; the first diagnosis ("stale server") was wrong. The local `qwen3:8b` needed 60s+ for its first token on a cold start, then 16.7s warm.
+* **Root Cause:** Latency budget of local inference was never measured; a single failed attempt was treated as a cause.
+* **Rule:** Before blaming a process, measure: time one real turn cold and warm. Treat a first-run timeout as latency until a warm retry proves otherwise, and warm the model before running live probes or demos.
+
+### 11.5 Green unit tests do not prove user behaviour
+* **Trap:** 334 tests passed while mid-turn `Ctrl+C` was dead (readline turns `SIGINT` into an interface event, so `process.on("SIGINT")` never fires) and a corrupt `messages.json` session was invisible in `/sessions` but still resumable.
+* **Root Cause:** The suite exercised branches, not the interactive surface the user actually touches.
+* **Rule:** For anything terminal- or UI-driven (prompt handling, resume, streaming, cancellation), prove it end-to-end with a pty or a live server run before claiming it works. Unit tests are necessary, not sufficient.
+
+### 11.6 Bypassed hooks and half-tracked packages hide the gate
+* **Trap:** Two commits were landed with `--no-verify` because the pre-commit hook ran a flaky live probe. Separately, `packages/vscode-extension/` sat untracked inside the workspace glob: local runs counted 352 tests while CI counted 334, untracked code entered the build, and its hardcoded 60s live-probe timeout kept turning `verify.sh` red on a cold model.
+* **Root Cause:** A flaky gate was routed around instead of fixed, and a workspace package was neither tracked nor excluded.
+* **Rule:** Never bypass a gate to land work: fix or narrow the gate in the same change. Every workspace package is either tracked or explicitly excluded from the glob, and any live probe gets a timeout that matches measured cold-start latency (>=120s) or skips when the server is cold.
+
+### 11.7 Local green is not CI green
+* **Rule:** After every push, read the actual CI run (`gh run view <id> --json status,conclusion`). Claim "green" only from that result, and if it fails, fix the cause before the next push instead of re-running until it passes.
