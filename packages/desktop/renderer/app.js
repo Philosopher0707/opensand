@@ -3704,7 +3704,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       carryOnBtn.textContent = 'Continuing…';
       if (promptInput) {
         promptInput.value = `${appName} is now connected. Please continue the task.`;
-        submitTurn();
+        submitQuery();
       }
       return;
     }
@@ -3712,37 +3712,47 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // --- Smart Scrolling & Viewport Hygiene ---
   const btnScrollBottom = document.getElementById('btnScrollBottom');
+  let autoScrollEnabled = true;
 
   function isUserScrolledUp() {
-    const threshold = 80;
+    const threshold = 100;
     return (chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight) > threshold;
   }
 
   function smartScrollToBottom(force = false) {
-    const isUp = isUserScrolledUp();
-    if (btnScrollBottom) {
-      if (isUp) {
-        btnScrollBottom.classList.remove('hidden');
-      } else {
-        btnScrollBottom.classList.add('hidden');
-      }
+    if (force) {
+      autoScrollEnabled = true;
     }
-    if (force || !isUp) {
+    if (autoScrollEnabled) {
       chatContainer.scrollTop = chatContainer.scrollHeight;
+      if (btnScrollBottom) btnScrollBottom.classList.add('hidden');
+    } else {
+      if (btnScrollBottom) {
+        if (isUserScrolledUp()) {
+          btnScrollBottom.classList.remove('hidden');
+        } else {
+          btnScrollBottom.classList.add('hidden');
+        }
+      }
     }
   }
 
   if (btnScrollBottom) {
-    btnScrollBottom.onclick = () => smartScrollToBottom(true);
+    btnScrollBottom.onclick = () => {
+      autoScrollEnabled = true;
+      chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+      btnScrollBottom.classList.add('hidden');
+    };
   }
 
   chatContainer.addEventListener('scroll', () => {
-    if (btnScrollBottom) {
-      if (isUserScrolledUp()) {
-        btnScrollBottom.classList.remove('hidden');
-      } else {
-        btnScrollBottom.classList.add('hidden');
-      }
+    const distanceFromBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight;
+    if (distanceFromBottom > 100) {
+      autoScrollEnabled = false;
+      if (btnScrollBottom) btnScrollBottom.classList.remove('hidden');
+    } else if (distanceFromBottom <= 30) {
+      autoScrollEnabled = true;
+      if (btnScrollBottom) btnScrollBottom.classList.add('hidden');
     }
   });
 
@@ -4270,7 +4280,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (first) messageFeed.removeChild(first);
     }
 
-    smartScrollToBottom();
+    if (role === 'user') {
+      smartScrollToBottom(true);
+    } else {
+      smartScrollToBottom();
+    }
 
     return {
       msgDiv,
@@ -4778,6 +4792,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     botStatusAvatar.textContent = '⏳';
     botStatusText.textContent = 'Thinking...';
 
+    autoScrollEnabled = true;
     appendMessage('user', q);
 
     currentAssistantMessage = appendMessage('assistant', '');
@@ -4786,6 +4801,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentAssistantThought = '';
     activeToolLines = [];
     activeTurnExtraChars = q.length;
+
+    smartScrollToBottom(true);
+    requestAnimationFrame(() => smartScrollToBottom(true));
 
     // Immediately reflect the user's prompt in the token display
     const userPromptDelta = Math.ceil(activeTurnExtraChars / 3.8);

@@ -765,7 +765,6 @@ body {
   flex-direction: column;
   gap: 20px;
   user-select: text;
-  scroll-behavior: smooth;
 }
 
 .welcome-banner {
