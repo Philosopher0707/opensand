@@ -193,6 +193,10 @@ export interface LLMClientConfig {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
+  maxRetries?: number;
+  streamIdleTimeoutMs?: number;
+  initialBackoffMs?: number;
+  maxBackoffMs?: number;
   headers?: Record<string, string>;
   fetch?: typeof globalThis.fetch;
 }

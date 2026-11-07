@@ -1,3 +1,4 @@
+import * as http from "node:http";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { UniversalLLMClient, NetworkError } from "../src/llm-client.js";
@@ -309,4 +310,224 @@ describe("UniversalLLMClient", () => {
       }
     );
   });
+
+  it("429 + Retry-After then 200 succeeds and waited", async () => {
+    let requestCount = 0;
+
+    const server = http.createServer((req, res) => {
+      requestCount++;
+      if (requestCount === 1) {
+        res.writeHead(429, {
+          "Content-Type": "application/json",
+          "Retry-After": "1",
+        });
+        res.end(JSON.stringify({ error: { message: "Too many requests" } }));
+      } else {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+        });
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "Success after 429" } }] })}\n\n`);
+        res.write("data: [DONE]\n\n");
+        res.end();
+      }
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const port = (server.address() as any).port;
+    const startTime = Date.now();
+
+    try {
+      const client = new UniversalLLMClient({
+        baseUrl: `http://127.0.0.1:${port}/v1`,
+        model: "gpt-4o",
+      });
+
+      const { stream, getConsolidated } = await client.streamCompletion([{ role: "user", content: "hi" }]);
+      for await (const chunk of stream) {
+        // consume
+      }
+      const consolidated = getConsolidated();
+      assert.equal(consolidated.content, "Success after 429");
+      assert.equal(requestCount, 2);
+      assert.ok(Date.now() - startTime >= 900, "Should have waited for Retry-After duration");
+    } finally {
+      (server as any).closeAllConnections?.();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("503 x 3 => classified error after bounded retries", async () => {
+    let requestCount = 0;
+    const server = http.createServer((_req, res) => {
+      requestCount++;
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "Provider unavailable" } }));
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const port = (server.address() as any).port;
+
+    try {
+      const client = new UniversalLLMClient({
+        baseUrl: `http://127.0.0.1:${port}/v1`,
+        model: "gpt-4o",
+        maxRetries: 3,
+        initialBackoffMs: 10,
+      });
+
+      await assert.rejects(
+        async () => {
+          await client.streamCompletion([{ role: "user", content: "test" }]);
+        },
+        (err: Error) => {
+          assert.ok(err.message.includes("503"));
+          assert.ok(err.message.includes("Provider unavailable"));
+          return true;
+        }
+      );
+      assert.equal(requestCount, 4); // 1 initial + 3 retries
+    } finally {
+      (server as any).closeAllConnections?.();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("partial stream then close => no retry", async () => {
+    let requestCount = 0;
+    const server = http.createServer((_req, res) => {
+      requestCount++;
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+      });
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "partial token" } }] })}\n\n`);
+      setTimeout(() => {
+        res.destroy(new Error("socket destroyed mid-stream"));
+      }, 20);
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const port = (server.address() as any).port;
+
+    try {
+      const client = new UniversalLLMClient({
+        baseUrl: `http://127.0.0.1:${port}/v1`,
+        model: "gpt-4o",
+        maxRetries: 3,
+        initialBackoffMs: 10,
+      });
+
+      const { stream } = await client.streamCompletion([{ role: "user", content: "test" }]);
+      const chunks: string[] = [];
+      await assert.rejects(
+        async () => {
+          for await (const chunk of stream) {
+            if (chunk.content) chunks.push(chunk.content);
+          }
+        },
+        (err: any) => {
+          assert.ok(err);
+          return true;
+        }
+      );
+
+      assert.equal(requestCount, 1); // No retry after partial stream!
+      assert.deepEqual(chunks, ["partial token"]);
+    } finally {
+      (server as any).closeAllConnections?.();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("abort during backoff => immediate rejection", async () => {
+    let requestCount = 0;
+    const server = http.createServer((_req, res) => {
+      requestCount++;
+      res.writeHead(429, {
+        "Content-Type": "application/json",
+        "Retry-After": "20", // 20s backoff
+      });
+      res.end(JSON.stringify({ error: { message: "Rate limit" } }));
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const port = (server.address() as any).port;
+    const abortController = new AbortController();
+
+    try {
+      const client = new UniversalLLMClient({
+        baseUrl: `http://127.0.0.1:${port}/v1`,
+        model: "gpt-4o",
+      });
+
+      const start = Date.now();
+      setTimeout(() => abortController.abort(), 50);
+
+      await assert.rejects(
+        async () => {
+          await client.streamCompletion(
+            [{ role: "user", content: "test" }],
+            undefined,
+            abortController.signal
+          );
+        },
+        (err: any) => {
+          assert.equal(err.name, "AbortError");
+          return true;
+        }
+      );
+
+      assert.ok(Date.now() - start < 1000, "Should abort immediately without waiting 20s");
+      assert.equal(requestCount, 1);
+    } finally {
+      (server as any).closeAllConnections?.();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("stream stall watchdog aborts with classified timeout", async () => {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+      });
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "first chunk" } }] })}\n\n`);
+      // Intentionally do not send anything more
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const port = (server.address() as any).port;
+
+    try {
+      const client = new UniversalLLMClient({
+        baseUrl: `http://127.0.0.1:${port}/v1`,
+        model: "gpt-4o",
+        streamIdleTimeoutMs: 100, // 100ms idle threshold
+      });
+
+      const { stream } = await client.streamCompletion([{ role: "user", content: "test" }]);
+      const chunks: string[] = [];
+
+      await assert.rejects(
+        async () => {
+          for await (const chunk of stream) {
+            if (chunk.content) chunks.push(chunk.content);
+          }
+        },
+        (err: any) => {
+          assert.ok(err instanceof NetworkError);
+          assert.equal(err.code, "ETIMEDOUT");
+          assert.ok(err.message.includes("stream stalled"));
+          return true;
+        }
+      );
+
+      assert.deepEqual(chunks, ["first chunk"]);
+    } finally {
+      (server as any).closeAllConnections?.();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
 });

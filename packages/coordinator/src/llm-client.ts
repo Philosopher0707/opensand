@@ -162,6 +162,138 @@ export class UniversalLLMClient {
    * Yields StreamDelta as tokens and tool chunks arrive, and returns
    * the consolidated assistant response at the end.
    */
+
+  private calculateBackoff(attempt: number, retryAfterHeader?: string | null): number {
+    if (retryAfterHeader) {
+      const trimmed = retryAfterHeader.trim();
+      if (/^\d+$/.test(trimmed)) {
+        const secs = parseInt(trimmed, 10);
+        if (!isNaN(secs) && secs >= 0) {
+          return Math.min(secs * 1000, 30000);
+        }
+      }
+      const parsedDate = Date.parse(trimmed);
+      if (!isNaN(parsedDate)) {
+        const diff = parsedDate - Date.now();
+        return Math.min(Math.max(0, diff), 30000);
+      }
+    }
+
+    const base = (this.config.initialBackoffMs ?? 500) * Math.pow(2, attempt - 1);
+    const maxBackoff = this.config.maxBackoffMs ?? 30000;
+    const jitter = Math.random() * Math.min(200, base * 0.2);
+    return Math.min(base + jitter, maxBackoff);
+  }
+
+  private async sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) {
+      const err = new Error("This operation was aborted");
+      err.name = "AbortError";
+      throw err;
+    }
+    if (ms <= 0) return;
+    return new Promise<void>((resolve, reject) => {
+      let timer: NodeJS.Timeout | null = null;
+      const onAbort = () => {
+        if (timer) clearTimeout(timer);
+        const err = new Error("This operation was aborted");
+        err.name = "AbortError";
+        reject(err);
+      };
+      timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, ms);
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
+  private async *wrapWithStallWatchdog(
+    source: AsyncIterable<Uint8Array>,
+    idleTimeoutMs: number,
+    endpoint: string,
+    signal?: AbortSignal
+  ): AsyncIterable<Uint8Array> {
+    let timer: NodeJS.Timeout | null = null;
+    let isStalled = false;
+    let triggerStall: (() => void) | null = null;
+
+    const resetTimer = () => {
+      if (timer) clearTimeout(timer);
+      isStalled = false;
+      timer = setTimeout(() => {
+        isStalled = true;
+        if (triggerStall) {
+          triggerStall();
+        }
+      }, idleTimeoutMs);
+    };
+
+    try {
+      resetTimer();
+      const iterator = source[Symbol.asyncIterator]();
+      while (true) {
+        if (signal?.aborted) {
+          break;
+        }
+        if (isStalled) {
+          throw new NetworkError(
+            `LLM API stream stalled: no data received for ${idleTimeoutMs}ms from ${endpoint}`,
+            endpoint,
+            "ETIMEDOUT"
+          );
+        }
+
+        const stallPromise = new Promise<never>((_, reject) => {
+          triggerStall = () => {
+            reject(
+              new NetworkError(
+                `LLM API stream stalled: no data received for ${idleTimeoutMs}ms from ${endpoint}`,
+                endpoint,
+                "ETIMEDOUT"
+              )
+            );
+          };
+        });
+
+        let abortPromise: Promise<never> | undefined;
+        let abortHandler: (() => void) | undefined;
+        if (signal) {
+          abortPromise = new Promise<never>((_, reject) => {
+            abortHandler = () => {
+              const err = new Error("This operation was aborted");
+              err.name = "AbortError";
+              reject(err);
+            };
+            signal.addEventListener("abort", abortHandler, { once: true });
+          });
+        }
+
+        const promises: Promise<any>[] = [iterator.next(), stallPromise];
+        if (abortPromise) promises.push(abortPromise);
+
+        let result: IteratorResult<Uint8Array>;
+        try {
+          result = await Promise.race(promises);
+        } finally {
+          triggerStall = null;
+          if (abortHandler && signal) {
+            signal.removeEventListener("abort", abortHandler);
+          }
+        }
+
+        if (result.done) {
+          break;
+        }
+
+        resetTimer();
+        yield result.value;
+      }
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   async streamCompletion(
     messages: ChatMessage[],
     tools?: ToolDefinition[],
@@ -194,91 +326,136 @@ export class UniversalLLMClient {
       ? buildAnthropicPayload(messages, tools, this.config)
       : this.buildOpenAIPayload(messages, tools);
 
-    const timeoutMs = this.config.timeoutMs ?? 120000;
-    // Use an explicit ref'd timer instead of AbortSignal.timeout():
-    // the built-in signal's timer does not hold the event loop open in
-    // Node 22, so a pending fetch with no other handles lets the loop
-    // drain ("event loop has already resolved") before the timeout fires.
-    const timeoutController = new AbortController();
-    const timeoutTimer = setTimeout(() => timeoutController.abort(), timeoutMs);
-    const combinedSignal = signal
-      ? AbortSignal.any([signal, timeoutController.signal])
-      : timeoutController.signal;
-
+    const maxRetries = this.config.maxRetries ?? 3;
+    let attempt = 0;
     const fetchFn = this.config.fetch ?? globalThis.fetch;
-    let response: Response;
-    try {
-      response = await fetchFn(endpoint, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: combinedSignal,
-      });
-    } catch (networkErr: any) {
-      if (timeoutController.signal.aborted && !signal?.aborted) {
-        throw classifyNetworkError(networkErr, endpoint, timeoutMs, true);
-      }
-      if (networkErr?.name === "AbortError" || signal?.aborted) {
-        throw networkErr;
-      }
-      throw classifyNetworkError(networkErr, endpoint, timeoutMs, false);
-    } finally {
-      clearTimeout(timeoutTimer);
-    }
+    const timeoutMs = this.config.timeoutMs ?? 120000;
+    let response!: Response;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      let detail = errorText;
+    while (true) {
+      if (signal?.aborted) {
+        const err = new Error("This operation was aborted");
+        err.name = "AbortError";
+        throw err;
+      }
+
+      const timeoutController = new AbortController();
+      const timeoutTimer = setTimeout(() => timeoutController.abort(), timeoutMs);
+      const combinedSignal = signal
+        ? AbortSignal.any([signal, timeoutController.signal])
+        : timeoutController.signal;
+
       try {
-        const parsed = JSON.parse(errorText);
-        if (parsed.error?.message) {
-          detail = parsed.error.message;
-        } else if (parsed.message) {
-          detail = parsed.message;
+        response = await fetchFn(endpoint, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal: combinedSignal,
+        });
+      } catch (networkErr: any) {
+        clearTimeout(timeoutTimer);
+        if (signal?.aborted || (networkErr?.name === "AbortError" && signal?.aborted)) {
+          throw networkErr;
         }
-      } catch {
-        // Retain raw errorText
+
+        const isTimeout = timeoutController.signal.aborted && !signal?.aborted;
+        const classified = classifyNetworkError(networkErr, endpoint, timeoutMs, isTimeout);
+
+        const isRetryableNetwork =
+          classified.code === "ECONNRESET" ||
+          classified.code === "ETIMEDOUT" ||
+          classified.code === "EPIPE";
+
+        if (isRetryableNetwork && attempt < maxRetries && !signal?.aborted) {
+          attempt++;
+          const delayMs = this.calculateBackoff(attempt);
+          await this.sleepWithAbort(delayMs, signal);
+          continue;
+        }
+
+        throw classified;
+      } finally {
+        clearTimeout(timeoutTimer);
       }
 
-      if (response.status === 401) {
-        throw new Error(
-          `Authentication failed (401 Unauthorized) at ${endpoint}.\n` +
-          `  Detail: ${detail}\n` +
-          `  Fix: Provide an API key via --api-key, export OPENAI_API_KEY, or use a local model (--endpoint http://127.0.0.1:11434/v1).`
-        );
+      if (!response.ok) {
+        const status = response.status;
+        const isRetryableStatus =
+          status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+
+        if (isRetryableStatus && attempt < maxRetries && !signal?.aborted) {
+          attempt++;
+          const retryAfter =
+            response.headers?.get?.("retry-after") ??
+            response.headers?.get?.("Retry-After") ??
+            (response.headers as any)?.["retry-after"] ??
+            (response.headers as any)?.["Retry-After"];
+          const delayMs = this.calculateBackoff(attempt, retryAfter);
+          await this.sleepWithAbort(delayMs, signal);
+          continue;
+        }
+
+        const errorText = await response.text();
+        let detail = errorText;
+        try {
+          const parsed = JSON.parse(errorText);
+          if (parsed.error?.message) {
+            detail = parsed.error.message;
+          } else if (parsed.message) {
+            detail = parsed.message;
+          }
+        } catch {
+          // Retain raw errorText
+        }
+
+        if (response.status === 401) {
+          throw new Error(
+            `Authentication failed (401 Unauthorized) at ${endpoint}.\n` +
+            `  Detail: ${detail}\n` +
+            `  Fix: Provide an API key via --api-key, export OPENAI_API_KEY, or use a local model (--endpoint http://127.0.0.1:11434/v1).`
+          );
+        }
+
+        if (response.status === 403) {
+          throw new Error(
+            `Access forbidden (403 Forbidden) at ${endpoint}.\n` +
+            `  Detail: ${detail}\n` +
+            `  Fix: Check your API key permissions and model access.`
+          );
+        }
+
+        if (response.status === 404) {
+          throw new Error(
+            `Model or endpoint not found (404 Not Found) at ${endpoint}.\n` +
+            `  Detail: ${detail}\n` +
+            `  Fix: Check available models (e.g. 'ollama list') and specify with --model <name>.`
+          );
+        }
+
+        if (response.status === 429) {
+          throw new Error(
+            `Rate limit or quota exceeded (429 Too Many Requests) at ${endpoint}.\n` +
+            `  Detail: ${detail}`
+          );
+        }
+
+        throw new Error(`LLM API request failed [${response.status} ${response.statusText}]: ${detail}`);
       }
 
-      if (response.status === 403) {
-        throw new Error(
-          `Access forbidden (403 Forbidden) at ${endpoint}.\n` +
-          `  Detail: ${detail}\n` +
-          `  Fix: Check your API key permissions and model access.`
-        );
-      }
-
-      if (response.status === 404) {
-        throw new Error(
-          `Model or endpoint not found (404 Not Found) at ${endpoint}.\n` +
-          `  Detail: ${detail}\n` +
-          `  Fix: Check available models (e.g. 'ollama list') and specify with --model <name>.`
-        );
-      }
-
-      if (response.status === 429) {
-        throw new Error(
-          `Rate limit or quota exceeded (429 Too Many Requests) at ${endpoint}.\n` +
-          `  Detail: ${detail}`
-        );
-      }
-
-      throw new Error(`LLM API request failed [${response.status} ${response.statusText}]: ${detail}`);
+      break;
     }
 
     if (!response.body) {
       throw new Error("LLM API returned empty response body");
     }
 
-    const rawStream = response.body as unknown as AsyncIterable<Uint8Array>;
+    const idleTimeoutMs = this.config.streamIdleTimeoutMs ?? 60000;
+    const rawStream = this.wrapWithStallWatchdog(
+      response.body as unknown as AsyncIterable<Uint8Array>,
+      idleTimeoutMs,
+      endpoint,
+      signal
+    );
 
     if (isAnthropic) {
       let state = {
@@ -399,6 +576,9 @@ export class UniversalLLMClient {
       } catch (streamErr: any) {
         if (signal?.aborted || streamErr?.name === "AbortError") {
           return;
+        }
+        if (streamErr instanceof NetworkError) {
+          throw streamErr;
         }
         throw classifyNetworkError(streamErr, endpoint, timeoutMs, false);
       }
