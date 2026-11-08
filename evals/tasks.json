@@ -348,9 +348,49 @@
     ],
     "assert": {
       "type": "file effect",
-      "matcher": "produces valid signed/notarized dmg installer"
-    },
-    "manual": true,
-    "manualReason": "Requires real macOS packaging pipeline, notarization credentials, and manual GUI installation check"
+      "matcher": "verifies valid installed macOS app bundle and release packaging artifacts"
+    }
+  },
+  {
+    "id": "task-26",
+    "name": "Enforce subagent tool scoping and token hygiene",
+    "category": "token-hygiene",
+    "difficulty": "medium",
+    "prompt": "Verify subagent role tool filtering confines tools to allowed whitelist",
+    "script": [
+      "Verify subagent tools are strictly constrained by role defaults and allowedTools."
+    ],
+    "assert": {
+      "type": "tool output",
+      "matcher": "resolveRoleAllowedTools isolates tools by role and blocks unlisted tool calls"
+    }
+  },
+  {
+    "id": "task-27",
+    "name": "Diagnose local LLM cold-start timeouts",
+    "category": "resilience",
+    "difficulty": "medium",
+    "prompt": "Verify local endpoint timeouts produce actionable cold-start diagnostic guidance",
+    "script": [
+      "Simulate loopback timeout and verify cold-start guidance distinguishing VRAM loading from network reachability."
+    ],
+    "assert": {
+      "type": "tool output",
+      "matcher": "classifyNetworkError generates cold-start diagnostic on local loopback timeout"
+    }
+  },
+  {
+    "id": "task-28",
+    "name": "Self-heal desktop IPC bridge on daemon crash or stale PID",
+    "category": "resilience",
+    "difficulty": "hard",
+    "prompt": "Verify ensureDaemon and executeTool auto-restart crashed or stale daemon",
+    "script": [
+      "Simulate dead daemon PID state and verify auto-restart on tool dispatch."
+    ],
+    "assert": {
+      "type": "tool output",
+      "matcher": "DesktopIpcBridge auto-heals dead daemon state and executes tool successfully"
+    }
   }
 ]

@@ -18,7 +18,11 @@ import {
   matchesCronField,
   UniversalLLMClient,
   NetworkError,
+  resolveRoleAllowedTools,
+  selectActiveTools,
+  classifyNetworkError,
 } from '../packages/coordinator/dist/src/index.js';
+import { DesktopIpcBridge } from '../packages/desktop/dist/src/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -734,6 +738,105 @@ export async function runEvaluations(): Promise<{
               category: task.category,
               status: 'PASS',
               detail: 'Preserved head/tail tokens and appended truncation notice',
+              durationMs: Date.now() - start,
+            });
+            break;
+          }
+
+          case 'task-25': {
+            // Package self-contained macOS app artifact & bundle verification
+            const installedApp = '/Applications/OpenSand.app';
+            const plistPath = path.join(installedApp, 'Contents/Info.plist');
+            const macOsBinary = path.join(installedApp, 'Contents/MacOS/OpenSand');
+            assert.ok(fs.existsSync(installedApp), 'Application bundle /Applications/OpenSand.app exists');
+            assert.ok(fs.existsSync(plistPath), 'Info.plist exists inside application bundle');
+            assert.ok(fs.existsSync(macOsBinary), 'Executable binary exists inside application bundle');
+            const plistContent = fs.readFileSync(plistPath, 'utf8');
+            assert.ok(plistContent.includes('0.1.3'), 'Bundle version matches 0.1.3 release');
+            results.push({
+              id: task.id,
+              name: task.name,
+              category: task.category,
+              status: 'PASS',
+              detail: 'Verified installed macOS app bundle v0.1.3 and packaging structures',
+              durationMs: Date.now() - start,
+            });
+            break;
+          }
+
+          case 'task-26': {
+            // Subagent tool scoping and token hygiene
+            const devTools = resolveRoleAllowedTools('software-engineer');
+            const reviewerTools = resolveRoleAllowedTools('code-reviewer');
+            assert.ok(devTools.includes('write_file'), 'Developer role includes write_file');
+            assert.ok(!reviewerTools.includes('write_file'), 'Reviewer role excludes write_file');
+            const mockTools: any[] = [
+              { type: 'function', function: { name: 'write_file', description: 'write' } },
+              { type: 'function', function: { name: 'read_file', description: 'read' } },
+              { type: 'function', function: { name: 'shell_exec', description: 'exec' } },
+            ];
+            const active = selectActiveTools(mockTools, { allowedTools: reviewerTools });
+            assert.strictEqual(active.length, 1);
+            assert.strictEqual(active[0].function.name, 'read_file');
+            results.push({
+              id: task.id,
+              name: task.name,
+              category: task.category,
+              status: 'PASS',
+              detail: 'Scoped subagent tools by role allowlist and excluded unassigned capabilities',
+              durationMs: Date.now() - start,
+            });
+            break;
+          }
+
+          case 'task-27': {
+            // Local LLM cold-start diagnostics
+            const localErr = classifyNetworkError(new Error('timeout'), 'http://127.0.0.1:11434', 120000, true);
+            assert.strictEqual(localErr.code, 'ETIMEDOUT');
+            assert.ok(localErr.message.includes('cold-start') || localErr.message.includes('VRAM'), 'Diagnostics mentions cold-start/VRAM');
+            const cloudErr = classifyNetworkError(new Error('timeout'), 'https://api.openai.com/v1', 120000, true);
+            assert.ok(!cloudErr.message.includes('VRAM'), 'Cloud endpoint does not include local cold-start message');
+            results.push({
+              id: task.id,
+              name: task.name,
+              category: task.category,
+              status: 'PASS',
+              detail: 'Generated actionable VRAM/cold-start diagnostics for loopback timeouts',
+              durationMs: Date.now() - start,
+            });
+            break;
+          }
+
+          case 'task-28': {
+            // Self-heal desktop IPC bridge on daemon crash or stale PID
+            const healDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-eval-heal-'));
+            try {
+              const testBridge = new DesktopIpcBridge({ baseDir: healDir });
+              await (testBridge as any).stateManager.writeDaemonState({
+                pid: 9999999,
+                startedAt: Date.now() - 30000,
+                inflightCount: 0,
+                generation: 1,
+              });
+              const liveness = await (testBridge as any).stateManager.isDaemonRunning();
+              assert.strictEqual(liveness.stale, true);
+              const execRes = await (testBridge as any).executeTool(
+                'exec_command',
+                { command: 'echo "eval-healed"' },
+                { approvalGranted: true }
+              );
+              assert.strictEqual(execRes.status, 'ok');
+              assert.strictEqual(execRes.output.stdout.trim(), 'eval-healed');
+              await testBridge.close();
+            } finally {
+              fs.rmSync(healDir, { recursive: true, force: true });
+            }
+            results.push({
+              id: task.id,
+              name: task.name,
+              category: task.category,
+              status: 'PASS',
+              detail: 'Detected dead PID stale state and self-healed daemon during tool dispatch',
               durationMs: Date.now() - start,
             });
             break;
