@@ -152,4 +152,23 @@ describe("ToolRegistry", () => {
     assert.equal(res.status, "ok");
     assert.equal(res.output.sum, 42);
   });
+
+  it("allows unregistering custom tools", async () => {
+    const registry = new ToolRegistry();
+    registry.registerCustomTool({
+      definition: {
+        type: "function",
+        function: {
+          name: "temp_tool",
+          description: "Temporary tool",
+          parameters: { type: "object", properties: {} },
+        },
+      },
+      handler: async () => "ok",
+    });
+    assert.equal(registry.getDefinitions().length, 5);
+    const removed = registry.unregisterCustomTool("temp_tool");
+    assert.equal(removed, true);
+    assert.equal(registry.getDefinitions().length, 4);
+  });
 });

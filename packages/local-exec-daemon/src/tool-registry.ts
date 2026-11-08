@@ -6,9 +6,14 @@ import {
   WriteFileInput,
   ListDirectoryInput,
   PermissionGates,
+  PtySpawnInput,
+  PtyWriteInput,
+  PtyReadInput,
+  PtyKillInput,
 } from "./types.js";
 import { runCommandOperation } from "./command-runner.js";
 import { readFileOperation, writeFileOperation, listDirectoryOperation } from "./file-ops.js";
+import { PtySessionManager } from "./pty-manager.js";
 
 export interface ToolExecutionContext {
   permissionGates?: PermissionGates;
@@ -141,14 +146,152 @@ export const CORE_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
   },
 };
 
+export const PTY_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
+  pty_spawn: {
+    type: "function",
+    function: {
+      name: "pty_spawn",
+      description: "Spawn an interactive pseudo-terminal (PTY) or long-running process session.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description: "The command string to execute in the PTY session.",
+          },
+          args: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional command-line arguments.",
+          },
+          cwd: {
+            type: "string",
+            description: "Optional working directory.",
+          },
+          env: {
+            type: "object",
+            description: "Optional environment variables.",
+          },
+          cols: {
+            type: "number",
+            description: "Terminal column width (default: 80).",
+          },
+          rows: {
+            type: "number",
+            description: "Terminal row height (default: 24).",
+          },
+        },
+        required: ["command"],
+      },
+    },
+  },
+  pty_write: {
+    type: "function",
+    function: {
+      name: "pty_write",
+      description: "Write input data (keystrokes/commands) to an active PTY session's stdin.",
+      parameters: {
+        type: "object",
+        properties: {
+          session_id: {
+            type: "string",
+            description: "The ID of the target PTY session.",
+          },
+          data: {
+            type: "string",
+            description: "Data to write to stdin.",
+          },
+        },
+        required: ["session_id", "data"],
+      },
+    },
+  },
+  pty_read: {
+    type: "function",
+    function: {
+      name: "pty_read",
+      description: "Read buffered terminal output from a PTY session with optional character offset.",
+      parameters: {
+        type: "object",
+        properties: {
+          session_id: {
+            type: "string",
+            description: "The ID of the target PTY session.",
+          },
+          offset: {
+            type: "number",
+            description: "Optional character offset to read from.",
+          },
+        },
+        required: ["session_id"],
+      },
+    },
+  },
+  pty_kill: {
+    type: "function",
+    function: {
+      name: "pty_kill",
+      description: "Terminate an active PTY session by sending a POSIX signal.",
+      parameters: {
+        type: "object",
+        properties: {
+          session_id: {
+            type: "string",
+            description: "The ID of the target PTY session.",
+          },
+          signal: {
+            type: "string",
+            description: "Optional POSIX signal to send (default: SIGTERM).",
+          },
+        },
+        required: ["session_id"],
+      },
+    },
+  },
+};
+
+export interface ToolRegistryOptions {
+  ptyManager?: PtySessionManager;
+  enablePty?: boolean;
+}
+
 export class ToolRegistry {
   private customTools = new Map<string, CustomToolRegistration>();
+  private ptyManager: PtySessionManager;
+  private ptyToolsRegistered: boolean = false;
+
+  constructor(options?: ToolRegistryOptions) {
+    this.ptyManager = options?.ptyManager ?? new PtySessionManager();
+    if (options?.enablePty) {
+      this.registerPtyTools(this.ptyManager);
+    }
+  }
+
+  /**
+   * Enable and register PTY tools with an optional custom PtySessionManager.
+   */
+  registerPtyTools(manager?: PtySessionManager): void {
+    if (manager) {
+      this.ptyManager = manager;
+    }
+    this.ptyToolsRegistered = true;
+  }
+
+  /**
+   * Access the underlying PtySessionManager.
+   */
+  getPtyManager(): PtySessionManager {
+    return this.ptyManager;
+  }
 
   /**
    * Return OpenAI-compatible function calling schemas for all registered tools.
    */
   getDefinitions(): ToolDefinition[] {
     const list = Object.values(CORE_TOOL_DEFINITIONS);
+    if (this.ptyToolsRegistered) {
+      list.push(...Object.values(PTY_TOOL_DEFINITIONS));
+    }
     for (const custom of this.customTools.values()) {
       list.push(custom.definition);
     }
@@ -160,10 +303,14 @@ export class ToolRegistry {
    */
   registerCustomTool(registration: CustomToolRegistration): void {
     const name = registration.definition.function.name;
-    if (CORE_TOOL_DEFINITIONS[name]) {
+    if (CORE_TOOL_DEFINITIONS[name] || PTY_TOOL_DEFINITIONS[name]) {
       throw new Error(`Cannot override core tool: ${name}`);
     }
     this.customTools.set(name, registration);
+  }
+
+  unregisterCustomTool(name: string): boolean {
+    return this.customTools.delete(name);
   }
 
   /**
@@ -301,7 +448,113 @@ export class ToolRegistry {
         };
       }
 
-      // 5. Custom Registered Tool
+      // 5. PTY Tool: pty_spawn
+      if (name === "pty_spawn") {
+        const input = args as PtySpawnInput;
+        if (!input.command || typeof input.command !== "string") {
+          return {
+            status: "error",
+            error: {
+              code: "INVALID_ARGUMENT",
+              message: "Missing or invalid 'command' string argument.",
+            },
+          };
+        }
+
+        const gates = context?.permissionGates;
+        const isApproved = context?.approvalGranted ?? false;
+        const allowlisted = gates?.standingAllowlist
+          ? this.isCommandAllowlisted(input.command, gates.standingAllowlist)
+          : false;
+
+        if (gates && !gates.computerUseAllowed && !isApproved && !allowlisted) {
+          return {
+            status: "permission_pending",
+            approvalId: context?.approvalId ?? `req-${Date.now()}`,
+            error: {
+              code: "PERMISSION_REQUIRED",
+              message: `Execution of PTY command requires approval: "${input.command}"`,
+            },
+          };
+        }
+
+        const session = await this.ptyManager.createSession(input);
+        return {
+          status: "ok",
+          output: {
+            session_id: session.id,
+            ...session.getSnapshot(),
+          },
+        };
+      }
+
+      // 6. PTY Tool: pty_write
+      if (name === "pty_write") {
+        const input = args as PtyWriteInput;
+        if (!input.session_id || typeof input.session_id !== "string" || typeof input.data !== "string") {
+          return {
+            status: "error",
+            error: {
+              code: "INVALID_ARGUMENT",
+              message: "Missing or invalid 'session_id' or 'data' argument.",
+            },
+          };
+        }
+
+        await this.ptyManager.writeToSession(input.session_id, input.data);
+        return {
+          status: "ok",
+          output: {
+            session_id: input.session_id,
+            bytesWritten: Buffer.byteLength(input.data, "utf-8"),
+          },
+        };
+      }
+
+      // 7. PTY Tool: pty_read
+      if (name === "pty_read") {
+        const input = args as PtyReadInput;
+        if (!input.session_id || typeof input.session_id !== "string") {
+          return {
+            status: "error",
+            error: {
+              code: "INVALID_ARGUMENT",
+              message: "Missing or invalid 'session_id' string argument.",
+            },
+          };
+        }
+
+        const output = this.ptyManager.readSession(input.session_id, input.offset);
+        return {
+          status: "ok",
+          output,
+        };
+      }
+
+      // 8. PTY Tool: pty_kill
+      if (name === "pty_kill") {
+        const input = args as PtyKillInput;
+        if (!input.session_id || typeof input.session_id !== "string") {
+          return {
+            status: "error",
+            error: {
+              code: "INVALID_ARGUMENT",
+              message: "Missing or invalid 'session_id' string argument.",
+            },
+          };
+        }
+
+        const killed = await this.ptyManager.killSession(input.session_id, input.signal);
+        return {
+          status: "ok",
+          output: {
+            session_id: input.session_id,
+            killed,
+          },
+        };
+      }
+
+      // 9. Custom Registered Tool
       const custom = this.customTools.get(name);
       if (custom) {
         if (custom.requiresGate === "computerUse" && context?.permissionGates && !context.permissionGates.computerUseAllowed) {

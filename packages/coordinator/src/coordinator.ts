@@ -13,6 +13,7 @@ import {
 import { TranscriptManager } from "./transcript-manager.js";
 import { buildSystemPrompt, SystemPromptContext } from "./system-prompt.js";
 import { VaultStore } from "./vault-store.js";
+import { McpManager } from "./mcp-manager.js";
 import { LifecycleHooks, HookDispatcher } from "./hooks.js";
 import {
   truncateToolOutput,
@@ -39,6 +40,7 @@ export interface CoordinatorOptions {
   sessionsBaseDir?: string;
   /** Delegation depth: how many delegate_to_agent hops above this coordinator. */
   subagentDepth?: number;
+  mcpManager?: McpManager;
 }
 
 export class AgentCoordinator {
@@ -51,6 +53,7 @@ export class AgentCoordinator {
   public maxContextTokens: number;
   public readonly vaultStore?: VaultStore;
   public readonly hookDispatcher: HookDispatcher;
+  public readonly mcpManager?: McpManager;
 
   private messages: ChatMessage[] = [];
   private declaredCapabilities = new Set<string>();
@@ -76,6 +79,7 @@ export class AgentCoordinator {
     }
     this.maxTurnIterations = options.maxTurnIterations ?? 150;
     this.subagentDepth = options.subagentDepth ?? 0;
+    this.mcpManager = options.mcpManager;
 
     // Initialize system message
     const systemPrompt = buildSystemPrompt(options.systemPromptContext);

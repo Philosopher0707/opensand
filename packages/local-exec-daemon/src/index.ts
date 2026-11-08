@@ -6,3 +6,5 @@ export * from "./state-manager.js";
 export * from "./tool-registry.js";
 export * from "./policy-engine.js";
 export * from "./daemon.js";
+export * from "./pty-session.js";
+export * from "./pty-manager.js";

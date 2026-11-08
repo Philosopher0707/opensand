@@ -106,3 +106,60 @@ export interface ListDirectoryOutput {
   entries: DirectoryEntry[];
 }
 
+export interface PtySessionOptions {
+  command: string;
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+  cols?: number;
+  rows?: number;
+}
+
+export interface PtySessionSnapshot {
+  id: string;
+  pid: number;
+  running: boolean;
+  exitCode: number | null;
+  signal: string | null;
+  durationMs: number;
+}
+
+export interface PtySessionChunk {
+  type: "stdout" | "stderr" | "exit";
+  text?: string;
+  exitCode?: number | null;
+}
+
+export interface PtySpawnInput {
+  command: string;
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+  cols?: number;
+  rows?: number;
+}
+
+export interface PtyWriteInput {
+  session_id: string;
+  data: string;
+}
+
+export interface PtyReadInput {
+  session_id: string;
+  offset?: number;
+}
+
+export interface PtyReadOutput {
+  id: string;
+  output: string;
+  offset: number;
+  nextOffset: number;
+  running: boolean;
+  exitCode: number | null;
+  signal: string | null;
+}
+
+export interface PtyKillInput {
+  session_id: string;
+  signal?: string;
+}

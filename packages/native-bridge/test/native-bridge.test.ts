@@ -36,7 +36,7 @@ describe("NativeBridge", () => {
     assert.ok(names.includes("web_search"));
     assert.ok(names.includes("fetch_web_page"));
     assert.ok(names.includes("safari_inspect_active_tab"));
-    assert.equal(defs.length, 14); // 4 core + 10 native
+    assert.equal(defs.length, 18); // 4 core + 4 pty + 10 native
   });
 
   it("enforces deviceTools gate on recognize_screen_text", async () => {

@@ -130,7 +130,7 @@ export function buildToolDiscoverySummary(defs: ToolDefinition[]): ToolDiscovery
     name: d.function.name,
     description: d.function.description,
     parameters: Object.keys((d.function.parameters as any)?.properties || {}),
-    capabilities: TOOL_CAPABILITY_HINTS[d.function.name] ?? ["core"],
+    capabilities: TOOL_CAPABILITY_HINTS[d.function.name] ?? (d.function.name.includes("__") ? ["mcp", d.function.name.split("__")[0]] : ["core"]),
   }));
   const capabilities = [...new Set(tools.flatMap((tool) => tool.capabilities))].sort();
   return { totalTools: tools.length, capabilities, tools };
@@ -189,6 +189,9 @@ export const TOOL_CAPABILITY_HINTS: Record<string, string[]> = {
   github_app_action: ["connectors", "github"],
   list_gallery_templates: ["templates", "gallery"],
   install_gallery_template: ["templates", "gallery"],
+  list_mcp_servers: ["mcp"],
+  add_mcp_server: ["mcp"],
+  remove_mcp_server: ["mcp"],
 };
 
 /** Rough per-tool prompt-token cost (name + description + params). */
@@ -485,8 +488,12 @@ export function selectActiveToolsForModel(
   const wanted = new Set(capabilities.map((c) => c.toLowerCase().trim()));
   return tools.filter((t) => {
     if (CORE_TOOL_NAMES.has(t.function.name)) return true;
-    const hints = TOOL_CAPABILITY_HINTS[t.function.name] ?? [];
-    return hints.some((h) => wanted.has(h));
+    let hints = TOOL_CAPABILITY_HINTS[t.function.name];
+    if (!hints && t.function.name.includes("__")) {
+      const [server] = t.function.name.split("__");
+      hints = ["mcp", server];
+    }
+    return (hints ?? []).some((h) => wanted.has(h));
   });
 }
 

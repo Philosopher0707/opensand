@@ -32,6 +32,7 @@ import {
 } from "./template-gallery.js";
 import { GitHubClient, GitHubActions } from "./github-client.js";
 import { SlackClient, LinearClient } from "./provider-clients.js";
+import { McpManager } from "./mcp-manager.js";
 
 export interface RegisterOrchestratorToolsOptions {
   daemon: LocalExecDaemon;
@@ -48,6 +49,7 @@ export interface RegisterOrchestratorToolsOptions {
   attachmentManager?: AttachmentManager;
   connectorManager?: ConnectorManager;
   templateGallery?: TemplateGallery;
+  mcpManager?: McpManager;
   /** Injectable GitHub client; defaults to one built from ambient credentials. */
   githubClient?: GitHubActions;
   /** Injectable Slack client; defaults to one built from ambient credentials. */
@@ -76,6 +78,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   attachmentManager: AttachmentManager;
   connectorManager: ConnectorManager;
   templateGallery: TemplateGallery;
+  mcpManager: McpManager;
 } {
   const { daemon } = options;
   const store = options.store ?? new AgentStore();
@@ -103,6 +106,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
     getToken: () => connectorManager.getRawCredentials("linear")?.token ?? null,
   });
   const sessionsBaseDir = options.sessionsBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
+  const mcpManager = options.mcpManager ?? new McpManager({ daemon });
   const habitExtractor = options.habitExtractor ?? new HabitExtractor({ sessionsDir: sessionsBaseDir });
 
   // 1. Tool: create_agent (Parity with CreateGrokBotAgent / CreateGrokBotAgentFromTemplate)
@@ -2429,5 +2433,144 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
     },
   });
 
-  return { store, taskStore, habitExtractor, memoryStore, vaultStore, skillStore, routineEngine, roomManager, gitManager, workspaceSentinel, attachmentManager, connectorManager, templateGallery };
+  // 55. Tool: list_mcp_servers
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "list_mcp_servers",
+        description: "List all configured Model Context Protocol (MCP) servers, connection states, transports, and registered tools.",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+    },
+
+    handler: async () => {
+      const servers = await mcpManager.listServers();
+      return JSON.stringify({ total: servers.length, servers }, null, 2);
+    },
+  });
+
+  // 56. Tool: add_mcp_server
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "add_mcp_server",
+        description: "Configure and connect an external Model Context Protocol (MCP) server dynamically via stdio command or SSE streaming URL, mounting its tools into the agent registry.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "Unique name of the MCP server (e.g. sqlite, postgres, github, slack).",
+            },
+            transport: {
+              type: "string",
+              enum: ["stdio", "sse"],
+              description: "Transport protocol (stdio or sse). Defaults to sse if url is provided, otherwise stdio.",
+            },
+            command: {
+              type: "string",
+              description: "Executable command for stdio transport.",
+            },
+            args: {
+              type: "array",
+              items: { type: "string" },
+              description: "Command-line arguments for stdio transport.",
+            },
+            url: {
+              type: "string",
+              description: "Streaming SSE endpoint URL for SSE transport.",
+            },
+            env: {
+              type: "object",
+              description: "Optional environment variables for stdio transport.",
+            },
+            headers: {
+              type: "object",
+              description: "Optional HTTP headers for SSE transport.",
+            },
+            cwd: {
+              type: "string",
+              description: "Optional working directory.",
+            },
+          },
+          required: ["name"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const name = args.name as string;
+      if (!name || typeof name !== "string") {
+        throw new Error("Missing or invalid server name argument.");
+      }
+      try {
+        const tools = await mcpManager.addServer(
+          name,
+          {
+            transport: args.transport as any,
+            command: args.command as any,
+            args: args.args as any,
+            url: args.url as any,
+            env: args.env as any,
+            headers: args.headers as any,
+            cwd: args.cwd as any,
+          },
+          daemon
+        );
+        return JSON.stringify({
+          status: "connected",
+          server: name,
+          registeredToolsCount: tools.length,
+          tools: tools.map((t: any) => t.name),
+        }, null, 2);
+      } catch (err: any) {
+        return JSON.stringify({
+          status: "error",
+          server: name,
+          message: err.message,
+        }, null, 2);
+      }
+    },
+  });
+
+  // 57. Tool: remove_mcp_server
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "remove_mcp_server",
+        description: "Disconnect an external Model Context Protocol (MCP) server and unmount its tools from the agent registry.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "Name of the MCP server to disconnect and unmount.",
+            },
+          },
+          required: ["name"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const name = args.name as string;
+      if (!name || typeof name !== "string") {
+        throw new Error("Missing or invalid server name argument.");
+      }
+      const removed = await mcpManager.removeServer(name, daemon);
+      return JSON.stringify({
+        status: "removed",
+        server: name,
+        removed,
+      }, null, 2);
+    },
+  });
+
+  return { store, taskStore, habitExtractor, memoryStore, vaultStore, skillStore, routineEngine, roomManager, gitManager, workspaceSentinel, attachmentManager, connectorManager, templateGallery, mcpManager };
 }

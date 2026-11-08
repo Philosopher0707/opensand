@@ -1,3 +1,4 @@
+import { PtySessionManager } from "./pty-manager.js";
 import { StateManager } from "./state-manager.js";
 import { ToolRegistry, ToolExecutionContext, CustomToolRegistration } from "./tool-registry.js";
 import { PolicyEngine, PolicyDecision } from "./policy-engine.js";
@@ -21,6 +22,7 @@ export class LocalExecDaemon {
   public readonly state: StateManager;
   public readonly tools: ToolRegistry;
   public readonly policy: PolicyEngine;
+  public readonly pty: PtySessionManager;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private inflightCount = 0;
   private generation = 1;
@@ -30,7 +32,8 @@ export class LocalExecDaemon {
 
   constructor(options: DaemonOptions = {}) {
     this.state = new StateManager(options.stateDir);
-    this.tools = new ToolRegistry();
+    this.pty = new PtySessionManager();
+    this.tools = new ToolRegistry({ ptyManager: this.pty, enablePty: true });
     this.policy = new PolicyEngine({ storageDir: options.stateDir });
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 5000;
   }
@@ -105,6 +108,7 @@ export class LocalExecDaemon {
 
     this.isRunning = false;
     await this.pulseDaemonState();
+    await this.pty.closeAll().catch(() => {});
   }
 
   private async pulseDaemonState(): Promise<void> {
@@ -138,6 +142,10 @@ export class LocalExecDaemon {
    */
   registerCustomTool(registration: CustomToolRegistration): void {
     this.tools.registerCustomTool(registration);
+  }
+
+  unregisterCustomTool(name: string): boolean {
+    return this.tools.unregisterCustomTool(name);
   }
 
   /**

@@ -2,11 +2,21 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as crypto from "node:crypto";
-import { McpClient, McpServerConfig, McpToolDefinition } from "./mcp-client.js";
+import { McpClient, McpServerConfig, McpToolDefinition, McpTransport } from "./mcp-client.js";
 import { LocalExecDaemon, ToolDefinition } from "@opensand/local-exec-daemon";
 
 export interface McpConfigFile {
   mcpServers?: Record<string, McpServerConfig>;
+}
+
+export interface McpServerSummary {
+  name: string;
+  transport: McpTransport;
+  status: "connected" | "disconnected" | "error";
+  command?: string;
+  url?: string;
+  toolCount: number;
+  tools: string[];
 }
 
 export interface McpManagerOptions {
@@ -20,6 +30,7 @@ export class McpManager {
   private inMemoryConfig?: McpConfigFile;
   private daemon?: LocalExecDaemon;
   private clients = new Map<string, McpClient>();
+  private serverTools = new Map<string, McpToolDefinition[]>();
 
   constructor(options: McpManagerOptions = {}) {
     this.configPath = options.configPath ?? path.join(os.homedir(), ".opensand", "mcp.json");
@@ -51,6 +62,11 @@ export class McpManager {
    * Save MCP server definitions to configuration file.
    */
   async saveConfig(config: McpConfigFile): Promise<void> {
+    if (this.inMemoryConfig) {
+      this.inMemoryConfig = config;
+      return;
+    }
+
     const dir = path.dirname(this.configPath);
     await fs.mkdir(dir, { recursive: true, mode: 0o700 });
     const tmp = `${this.configPath}.${Date.now()}.${crypto.randomBytes(6).toString("hex")}.tmp`;
@@ -80,6 +96,7 @@ export class McpManager {
         const tools = await client.listTools();
 
         this.clients.set(serverName, client);
+        this.serverTools.set(serverName, tools);
 
         if (targetDaemon) {
           this.registerServerTools(serverName, client, tools, targetDaemon);
@@ -95,11 +112,139 @@ export class McpManager {
   }
 
   /**
+   * Add or update an MCP server, connect it immediately, and mount its tools.
+   */
+  async addServer(
+    serverName: string,
+    serverConfig: McpServerConfig,
+    daemon?: LocalExecDaemon
+  ): Promise<McpToolDefinition[]> {
+    const targetDaemon = daemon ?? this.daemon;
+
+    // Remove existing client if present
+    if (this.clients.has(serverName)) {
+      await this.removeServer(serverName, targetDaemon);
+    }
+
+    const client = new McpClient({
+      serverName,
+      config: serverConfig,
+    });
+
+    await client.start();
+    await client.initialize();
+    const tools = await client.listTools();
+
+    this.clients.set(serverName, client);
+    this.serverTools.set(serverName, tools);
+
+    if (targetDaemon) {
+      this.registerServerTools(serverName, client, tools, targetDaemon);
+    }
+
+    // Persist to configuration
+    const config = await this.loadConfig();
+    if (!config.mcpServers) {
+      config.mcpServers = {};
+    }
+    config.mcpServers[serverName] = serverConfig;
+    await this.saveConfig(config);
+
+    return tools;
+  }
+
+  /**
+   * Remove and disconnect an MCP server, unmounting its tools.
+   */
+  async removeServer(serverName: string, daemon?: LocalExecDaemon): Promise<boolean> {
+    const targetDaemon = daemon ?? this.daemon;
+    const client = this.clients.get(serverName);
+
+    if (client) {
+      try {
+        await client.close();
+      } catch {
+        // Ignore errors on closing
+      }
+      this.clients.delete(serverName);
+    }
+
+    if (targetDaemon) {
+      const registeredTools = this.serverTools.get(serverName) || [];
+      for (const tool of registeredTools) {
+        targetDaemon.unregisterCustomTool(`${serverName}__${tool.name}`);
+      }
+    }
+    this.serverTools.delete(serverName);
+
+    // Update persisted configuration
+    const config = await this.loadConfig();
+    if (config.mcpServers && config.mcpServers[serverName]) {
+      delete config.mcpServers[serverName];
+      await this.saveConfig(config);
+    }
+
+    return true;
+  }
+
+  /**
+   * List all configured and active MCP servers.
+   */
+  async listServers(): Promise<McpServerSummary[]> {
+    const config = await this.loadConfig();
+    const servers = config.mcpServers || {};
+    const result: McpServerSummary[] = [];
+
+    const allNames = new Set([...Object.keys(servers), ...this.clients.keys()]);
+
+    for (const name of allNames) {
+      const cfg = servers[name];
+      const client = this.clients.get(name);
+      const tools = this.serverTools.get(name) || [];
+
+      const transport: McpTransport = client?.transport ?? cfg?.transport ?? (cfg?.url ? "sse" : "stdio");
+      const status: "connected" | "disconnected" | "error" = client?.running ? "connected" : "disconnected";
+
+      result.push({
+        name,
+        transport,
+        status,
+        command: cfg?.command,
+        url: cfg?.url,
+        toolCount: tools.length,
+        tools: tools.map((t) => t.name),
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Get cached tool definitions for a server.
+   */
+  getServerTools(serverName: string): McpToolDefinition[] {
+    return this.serverTools.get(serverName) || [];
+  }
+
+  /**
+   * Get the active McpClient for a server.
+   */
+  getServerClient(serverName: string): McpClient | undefined {
+    return this.clients.get(serverName);
+  }
+
+  /**
    * Register a manual client (e.g. for testing with mock streams).
    */
-  registerClient(serverName: string, client: McpClient, tools: McpToolDefinition[], daemon?: LocalExecDaemon): void {
+  registerClient(
+    serverName: string,
+    client: McpClient,
+    tools: McpToolDefinition[],
+    daemon?: LocalExecDaemon
+  ): void {
     const targetDaemon = daemon ?? this.daemon;
     this.clients.set(serverName, client);
+    this.serverTools.set(serverName, tools);
 
     if (targetDaemon) {
       this.registerServerTools(serverName, client, tools, targetDaemon);
@@ -166,5 +311,6 @@ export class McpManager {
       }
     }
     this.clients.clear();
+    this.serverTools.clear();
   }
 }
