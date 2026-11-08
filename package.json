@@ -10,9 +10,12 @@
     "dev:desktop": "pnpm --filter @opensand/desktop dev",
     "package:cli": "bash scripts/package-cli.sh",
     "stage:desktop": "rm -rf dist/stage && pnpm --filter @opensand/desktop... run build && pnpm --filter @opensand/desktop deploy --prod --legacy dist/stage",
-    "package:app": "pnpm stage:desktop && electron-builder --mac --publish never",
+    "package:app": "node scripts/sync-versions.js --check && pnpm stage:desktop && electron-builder --mac --publish never",
     "package": "bash scripts/package-cli.sh && pnpm package:app",
     "package:mac": "pnpm package:app",
+    "sync-versions": "node scripts/sync-versions.js",
+    "version:sync": "node scripts/sync-versions.js",
+    "version:check": "node scripts/sync-versions.js --check",
     "eval": "node --experimental-strip-types evals/eval-runner.ts"
   },
   "devDependencies": {

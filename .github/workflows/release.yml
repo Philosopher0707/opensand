@@ -28,11 +28,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build packages
-        run: pnpm -r run build
-
       - name: Run verification suite
-        run: pnpm -r run test
+        run: SKIP_INSTALL=1 bash scripts/verify.sh
 
       - name: Check Provenance Review Gate
         run: bash scripts/provenance-gate.sh
