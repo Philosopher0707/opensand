@@ -1,3 +1,4 @@
+import * as http from "node:http";
 import test from "node:test";
 import * as assert from "node:assert";
 import * as fs from "node:fs";
@@ -147,6 +148,88 @@ test("OrchestratorTools - registers meta-tools into daemon and executes create_a
 
     await daemon.stop();
   } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("delegate_to_agent scopes subagent tools by fallback role defaults and explicit allowedTools", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-delegate-scope-"));
+  let capturedTools: any[] = [];
+
+  const server = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => {
+      try {
+        const payload = JSON.parse(body);
+        capturedTools = payload.tools || [];
+      } catch {
+        capturedTools = [];
+      }
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end("data: " + JSON.stringify({ choices: [{ delta: { content: "Subagent completed task." } }] }) + "\n\ndata: [DONE]\n\n");
+    });
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const port = (server.address() as any).port;
+
+  const daemon = new LocalExecDaemon({ stateDir: path.join(tmpDir, "state") });
+  await daemon.start();
+  await daemon.state.writePermissionGates({ computerUseAllowed: true });
+
+  try {
+    const store = new AgentStore(path.join(tmpDir, "agents"));
+    registerOrchestratorTools({
+      daemon,
+      store,
+      defaultEndpoint: `http://127.0.0.1:${port}/v1`,
+      defaultModel: "mock-subagent-model",
+      sessionsBaseDir: path.join(tmpDir, "sessions"),
+    });
+
+    // 1. Agent with role "Senior Application Security Engineer" and NO explicit allowedTools
+    const secAgent = await store.createAgent({
+      name: "SecuritySpecialist",
+      role: "Senior Application Security Engineer",
+      systemPrompt: "Audit secrets and vulnerabilities.",
+    });
+
+    const res1 = await daemon.executeTool("delegate_to_agent", {
+      agent_id_or_name: secAgent.id,
+      task: "Audit repo for leaks",
+    });
+    assert.strictEqual(res1.status, "ok");
+    const payload1 = JSON.parse(res1.output);
+    assert.strictEqual(payload1.status, "completed");
+    assert.strictEqual(payload1.response, "Subagent completed task.");
+
+    // Verify subagent tools sent to LLM match fallback role tools for security
+    const toolNames1 = capturedTools.map((t: any) => t.function.name).sort();
+    assert.deepStrictEqual(toolNames1, ["exec_command", "list_directory", "read_file", "vault_list_secrets"]);
+
+    // 2. Agent with explicit allowedTools whitelist: ["read_file"]
+    const strictAgent = await store.createAgent({
+      name: "StrictReader",
+      role: "Senior Application Security Engineer",
+      systemPrompt: "Read only",
+      allowedTools: ["read_file"],
+    });
+
+    const res2 = await daemon.executeTool("delegate_to_agent", {
+      agent_id_or_name: strictAgent.id,
+      task: "Inspect readme",
+    });
+    assert.strictEqual(res2.status, "ok");
+    const payload2 = JSON.parse(res2.output);
+    assert.strictEqual(payload2.status, "completed");
+
+    // Verify subagent tools sent to LLM are strictly constrained to explicit allowedTools
+    const toolNames2 = capturedTools.map((t: any) => t.function.name);
+    assert.deepStrictEqual(toolNames2, ["read_file"]);
+  } finally {
+    await daemon.stop();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });

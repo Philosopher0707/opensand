@@ -15,7 +15,7 @@ import { WorkspaceSentinel, createAutonomousHealer } from "./workspace-sentinel.
 import { AttachmentManager } from "./attachment-manager.js";
 import { UniversalLLMClient } from "./llm-client.js";
 import { AgentCoordinator } from "./coordinator.js";
-import { buildToolDiscoverySummary } from "./token-hygiene.js";
+import { buildToolDiscoverySummary, resolveRoleAllowedTools, recommendToolScopeMode } from "./token-hygiene.js";
 import { resolveAgentModel } from "./model-resolution.js";
 import {
   ConnectorManager,
@@ -226,11 +226,14 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       }
 
       // Create isolated LLM client for this subagent
+      const subagentModel = resolveAgentModel(agent.model, options.defaultModel);
       const subagentLlm = new UniversalLLMClient({
         baseUrl: agent.endpoint || options.defaultEndpoint || "http://127.0.0.1:11434/v1",
-        model: resolveAgentModel(agent.model, options.defaultModel),
+        model: subagentModel,
         apiKey: options.defaultApiKey,
       });
+
+      const effectiveAllowedTools = resolveRoleAllowedTools(agent.role, agent.allowedTools);
 
       const subsessionId = `sub_${agent.id}_${Date.now()}`;
       const subCoordinator = new AgentCoordinator({
@@ -238,7 +241,11 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         daemon,
         sessionId: subsessionId,
         sessionsBaseDir,
-        allowedTools: agent.allowedTools,
+        allowedTools: effectiveAllowedTools,
+        toolScopeMode: recommendToolScopeMode(subagentModel, undefined, {
+          role: agent.role,
+          allowedTools: effectiveAllowedTools,
+        }),
         systemPromptContext: {
           userInstructions: agent.systemPrompt,
         },

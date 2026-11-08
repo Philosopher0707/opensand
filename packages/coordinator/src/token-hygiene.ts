@@ -294,10 +294,102 @@ const TOOL_CATEGORY_PATTERNS: Array<{ pattern: RegExp; toolNames: string[] }> = 
 ];
 
 /**
+ * Standard tool configurations per agent persona role for subagent tool scoping and token hygiene.
+ */
+export const DEFAULT_ROLE_TOOLS: Record<string, string[]> = {
+  "code-reviewer": ["git_diff", "git_status", "read_file", "list_directory", "exec_command"],
+  "reviewer": ["git_diff", "git_status", "read_file", "list_directory", "exec_command"],
+  "security-auditor": ["read_file", "list_directory", "exec_command", "vault_list_secrets"],
+  "security": ["read_file", "list_directory", "exec_command", "vault_list_secrets"],
+  "refactoring-architect": ["read_file", "edit_file", "write_file", "list_directory", "exec_command", "git_status"],
+  "architect": ["read_file", "edit_file", "write_file", "list_directory", "exec_command", "git_status"],
+  "project-lead": ["linear_create_issue", "show_app_access", "create_agent_task", "list_agent_tasks", "update_agent_task"],
+  "pm": ["linear_create_issue", "show_app_access", "create_agent_task", "list_agent_tasks", "update_agent_task"],
+  "devops": ["exec_command", "read_file", "write_file", "edit_file", "list_directory"],
+  "infrastructure": ["exec_command", "read_file", "write_file", "edit_file", "list_directory"],
+  "qa": ["read_file", "list_directory", "exec_command", "git_status", "git_diff"],
+  "tester": ["read_file", "list_directory", "exec_command", "git_status", "git_diff"],
+  "notifier": ["slack_post_message", "show_app_access", "recall_memories"],
+  "collaboration": ["slack_post_message", "show_app_access", "recall_memories"],
+  "reverse-engineer": ["read_file", "list_directory", "exec_command", "discover_tools"],
+  "maintainer": ["github_app_action", "show_app_access", "git_status", "git_diff", "git_commit"],
+  "researcher": ["read_file", "list_directory", "exec_command", "discover_tools"],
+  "engineer": ["read_file", "edit_file", "write_file", "list_directory", "exec_command", "git_status", "git_diff", "git_commit"],
+  "developer": ["read_file", "edit_file", "write_file", "list_directory", "exec_command", "git_status", "git_diff", "git_commit"],
+};
+
+/**
+ * Resolve default allowed tools for a specified agent role name.
+ */
+export function getRoleDefaultTools(role?: string): string[] | undefined {
+  if (!role) return undefined;
+  const normalized = role.toLowerCase().trim();
+  if (DEFAULT_ROLE_TOOLS[normalized]) {
+    return [...DEFAULT_ROLE_TOOLS[normalized]];
+  }
+  if (normalized.includes("reviewer") || normalized.includes("review")) {
+    return [...DEFAULT_ROLE_TOOLS["reviewer"]];
+  }
+  if (normalized.includes("security")) {
+    return [...DEFAULT_ROLE_TOOLS["security"]];
+  }
+  if (normalized.includes("architect")) {
+    return [...DEFAULT_ROLE_TOOLS["architect"]];
+  }
+  if (normalized.includes("project") || normalized.includes("delivery") || normalized.includes("agile")) {
+    return [...DEFAULT_ROLE_TOOLS["project-lead"]];
+  }
+  if (normalized.includes("infra") || normalized.includes("devops") || normalized.includes("operations")) {
+    return [...DEFAULT_ROLE_TOOLS["infrastructure"]];
+  }
+  if (normalized.includes("notifier") || normalized.includes("collab")) {
+    return [...DEFAULT_ROLE_TOOLS["notifier"]];
+  }
+  if (normalized.includes("reverse") || normalized.includes("archaeology")) {
+    return [...DEFAULT_ROLE_TOOLS["reverse-engineer"]];
+  }
+  if (normalized.includes("maintainer") || normalized.includes("github")) {
+    return [...DEFAULT_ROLE_TOOLS["maintainer"]];
+  }
+  if (normalized.includes("qa") || normalized.includes("test")) {
+    return [...DEFAULT_ROLE_TOOLS["qa"]];
+  }
+  if (normalized.includes("engineer") || normalized.includes("developer") || normalized.includes("coder")) {
+    return [...DEFAULT_ROLE_TOOLS["engineer"]];
+  }
+  if (normalized.includes("research")) {
+    return [...DEFAULT_ROLE_TOOLS["researcher"]];
+  }
+  return undefined;
+}
+
+/**
+ * Resolves allowedTools from an explicit allowedTools array or fallback role definition.
+ */
+export function resolveRoleAllowedTools(role?: string, allowedTools?: string[]): string[] | undefined {
+  if (Array.isArray(allowedTools)) {
+    return [...allowedTools];
+  }
+  if (role) {
+    return getRoleDefaultTools(role);
+  }
+  return undefined;
+}
+
+export interface SelectActiveToolsOptions {
+  query?: string;
+  mode?: "core" | "auto" | "all";
+  role?: string;
+  allowedTools?: string[];
+}
+
+/**
  * Filter tool definitions adaptively to minimize prompt token overhead.
  * - 'core': only essential file/command tools (~11 tools vs 61 tools, ~83% token savings)
  * - 'auto': core tools + keyword-hinted categories + model-declared capabilities
  * - 'all': all registered tools
+ *
+ * When an allowedTools list or role is provided, tools are strictly filtered by that whitelist.
  *
  * The model-driven path is selectActiveToolsForModel(): it takes the
  * capabilities the model declared (from discover_tools, which lists every
@@ -307,15 +399,61 @@ const TOOL_CATEGORY_PATTERNS: Array<{ pattern: RegExp; toolNames: string[] }> = 
  */
 export function selectActiveTools(
   tools: ToolDefinition[],
-  query?: string,
-  mode: "core" | "auto" | "all" = "auto"
+  queryOrOptions?: string | string[] | SelectActiveToolsOptions,
+  modeOrOptions?: "core" | "auto" | "all" | { role?: string; allowedTools?: string[] } | string[],
+  options?: { role?: string; allowedTools?: string[] } | string[]
 ): ToolDefinition[] {
-  if (mode === "all" || !tools || tools.length === 0) {
-    return tools;
+  if (!tools || tools.length === 0) {
+    return [];
   }
 
-  if (mode === "core" || !query) {
-    return tools.filter((t) => CORE_TOOL_NAMES.has(t.function.name));
+  let query: string | undefined;
+  let mode: "core" | "auto" | "all" | undefined;
+  let role: string | undefined;
+  let allowedTools: string[] | undefined;
+
+  if (queryOrOptions && typeof queryOrOptions === "object" && !Array.isArray(queryOrOptions)) {
+    query = queryOrOptions.query;
+    mode = queryOrOptions.mode;
+    role = queryOrOptions.role;
+    allowedTools = queryOrOptions.allowedTools;
+  } else if (Array.isArray(queryOrOptions)) {
+    allowedTools = queryOrOptions;
+  } else {
+    query = queryOrOptions;
+    if (typeof modeOrOptions === "string") {
+      mode = modeOrOptions;
+    } else if (Array.isArray(modeOrOptions)) {
+      allowedTools = modeOrOptions;
+    } else if (modeOrOptions && typeof modeOrOptions === "object") {
+      role = modeOrOptions.role;
+      allowedTools = modeOrOptions.allowedTools;
+    }
+
+    if (Array.isArray(options)) {
+      allowedTools = options;
+    } else if (options && typeof options === "object") {
+      role = options.role ?? role;
+      allowedTools = options.allowedTools ?? allowedTools;
+    }
+  }
+
+  const effectiveAllowed = resolveRoleAllowedTools(role, allowedTools);
+
+  // If role/allowedTools were specified, default mode to 'all' of those tools unless explicitly specified
+  const effectiveMode: "core" | "auto" | "all" = mode ?? (effectiveAllowed !== undefined ? "all" : "auto");
+
+  let candidateTools = tools;
+  if (effectiveAllowed !== undefined) {
+    candidateTools = tools.filter((t) => effectiveAllowed.includes(t.function.name));
+  }
+
+  if (effectiveMode === "all" || candidateTools.length === 0) {
+    return candidateTools;
+  }
+
+  if (effectiveMode === "core" || !query) {
+    return candidateTools.filter((t) => CORE_TOOL_NAMES.has(t.function.name));
   }
 
   // Mode is 'auto': core + keyword-hinted tools (legacy, kept for back-compat)
@@ -329,7 +467,7 @@ export function selectActiveTools(
     }
   }
 
-  return tools.filter((t) => activeToolNames.has(t.function.name));
+  return candidateTools.filter((t) => activeToolNames.has(t.function.name));
 }
 
 /**
@@ -352,12 +490,54 @@ export function selectActiveToolsForModel(
   });
 }
 
+export interface RecommendScopeModeOptions {
+  role?: string;
+  allowedTools?: string[];
+}
+
 /**
  * Recommend a scope mode for a model without paying the full tool-schema
  * cost when it isn't needed. Cloud models with >= 100k context default
  * to 'all' (cheap); local/small models keep 'auto'/'core'.
+ * Subagents with constrained allowedTools or focused roles default to 'all'.
  */
-export function recommendToolScopeMode(modelName?: string, maxContextTokens?: number): "core" | "auto" | "all" {
+export function recommendToolScopeMode(
+  modelName?: string,
+  maxContextTokensOrOptions?: number | string | string[] | RecommendScopeModeOptions,
+  options?: RecommendScopeModeOptions | string[] | string
+): "core" | "auto" | "all" {
+  let maxContextTokens: number | undefined;
+  let role: string | undefined;
+  let allowedTools: string[] | undefined;
+
+  if (typeof maxContextTokensOrOptions === "number") {
+    maxContextTokens = maxContextTokensOrOptions;
+  } else if (typeof maxContextTokensOrOptions === "string") {
+    role = maxContextTokensOrOptions;
+  } else if (Array.isArray(maxContextTokensOrOptions)) {
+    allowedTools = maxContextTokensOrOptions;
+  } else if (maxContextTokensOrOptions && typeof maxContextTokensOrOptions === "object") {
+    role = maxContextTokensOrOptions.role;
+    allowedTools = maxContextTokensOrOptions.allowedTools;
+  }
+
+  if (typeof options === "string") {
+    role = options;
+  } else if (Array.isArray(options)) {
+    allowedTools = options;
+  } else if (options && typeof options === "object") {
+    role = options.role ?? role;
+    allowedTools = options.allowedTools ?? allowedTools;
+  }
+
+  const effectiveAllowed = resolveRoleAllowedTools(role, allowedTools);
+
+  // If a subagent has an explicitly constrained tool list (<= 25 tools), recommend 'all'
+  // so the subagent has access to all its intended tools without keyword suppression.
+  if (effectiveAllowed !== undefined && effectiveAllowed.length <= 25) {
+    return "all";
+  }
+
   const tokens = maxContextTokens ?? getModelMaxContextTokens(modelName);
   return tokens >= 100000 ? "all" : "auto";
 }

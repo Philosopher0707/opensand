@@ -1,4 +1,4 @@
-import { LocalExecDaemon, ToolExecutionResult, PolicyDecision } from "@opensand/local-exec-daemon";
+import { LocalExecDaemon, ToolExecutionResult, PolicyDecision, ToolDefinition } from "@opensand/local-exec-daemon";
 import { isParallelSafeTool } from "./tool-parallelism.js";
 import { UniversalLLMClient, ConsolidatedAssistantResponse } from "./llm-client.js";
 import {
@@ -67,7 +67,7 @@ export class AgentCoordinator {
     this.transcript = new TranscriptManager(this.sessionId, options.sessionsBaseDir);
     this.allowedTools = options.allowedTools;
     this.maxContextTokens = options.maxContextTokens ?? getModelMaxContextTokens(options.llmClient?.model);
-    this.toolScopeMode = options.toolScopeMode ?? recommendToolScopeMode(options.llmClient?.model, this.maxContextTokens);
+    this.toolScopeMode = options.toolScopeMode ?? recommendToolScopeMode(options.llmClient?.model, this.maxContextTokens, { allowedTools: this.allowedTools });
     this.vaultStore = options.vaultStore;
     this.hookDispatcher = new HookDispatcher(options.hooks);
     this.onApprovalRequired = options.onApprovalRequired;
@@ -107,6 +107,22 @@ export class AgentCoordinator {
   /**
    * Run a full multi-turn conversational tool-calling interaction turn.
    */
+  /**
+   * Returns active tool definitions for the current turn, strictly constrained by allowedTools whitelist when present.
+   */
+  public getActiveToolDefinitions(userQuery?: string): ToolDefinition[] {
+    let toolDefs = this.daemon.getToolDefinitions();
+    if (this.allowedTools !== undefined) {
+      toolDefs = toolDefs.filter((d) => this.allowedTools!.includes(d.function.name));
+    } else if (this.declaredCapabilities.size > 0) {
+      // Model has declared capabilities (via discover_tools) — scope by them
+      toolDefs = selectActiveToolsForModel(toolDefs, [...this.declaredCapabilities]);
+    } else {
+      toolDefs = selectActiveTools(toolDefs, userQuery, this.toolScopeMode);
+    }
+    return toolDefs;
+  }
+
   async runTurn(userQuery: string, signal?: AbortSignal): Promise<string> {
     if (!this.initialized) {
       this.initialized = true;
@@ -156,15 +172,7 @@ export class AgentCoordinator {
       iterations++;
       this.emit({ type: "phase_started", phase: "thinking", iteration: iterations, maxIterations: this.maxTurnIterations });
 
-      let toolDefs = this.daemon.getToolDefinitions();
-      if (this.allowedTools && this.allowedTools.length > 0) {
-        toolDefs = toolDefs.filter((d) => this.allowedTools!.includes(d.function.name));
-      } else if (this.declaredCapabilities.size > 0) {
-        // Model has declared capabilities (via discover_tools) — scope by them
-        toolDefs = selectActiveToolsForModel(toolDefs, [...this.declaredCapabilities]);
-      } else {
-        toolDefs = selectActiveTools(toolDefs, userQuery, this.toolScopeMode);
-      }
+      const toolDefs = this.getActiveToolDefinitions(userQuery);
 
       const { stream, getConsolidated } = await this.llmClient.streamCompletion(
         this.messages,
@@ -231,7 +239,7 @@ export class AgentCoordinator {
         this.emit({ type: "tool_call_started", toolCall: tc });
 
         // Enforce agent allowedTools whitelist policy
-        if (this.allowedTools && this.allowedTools.length > 0 && !this.allowedTools.includes(tc.function.name)) {
+        if (this.allowedTools !== undefined && !this.allowedTools.includes(tc.function.name)) {
           const unauthorizedResult: ToolExecutionResult = {
             status: "error",
             error: {

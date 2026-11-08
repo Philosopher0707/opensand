@@ -6,6 +6,9 @@ import {
   selectActiveTools,
   selectActiveToolsForModel,
   recommendToolScopeMode,
+  getRoleDefaultTools,
+  resolveRoleAllowedTools,
+  DEFAULT_ROLE_TOOLS,
   getModelMaxContextTokens,
   CORE_TOOL_NAMES,
 } from "../src/token-hygiene.js";
@@ -204,6 +207,89 @@ describe("Token Efficiency & Hygiene System", () => {
 
   it("CORE_TOOL_NAMES always includes discover_tools", () => {
     assert.ok(CORE_TOOL_NAMES.has("discover_tools"));
+  });
+
+  it("selectActiveTools filters tools by role or allowedTools array", () => {
+    const emptyParams = { type: "object" as const, properties: {} };
+    const mockTools: ToolDefinition[] = [
+      { type: "function", function: { name: "exec_command", description: "exec", parameters: emptyParams } },
+      { type: "function", function: { name: "read_file", description: "read", parameters: emptyParams } },
+      { type: "function", function: { name: "write_file", description: "write", parameters: emptyParams } },
+      { type: "function", function: { name: "git_diff", description: "diff", parameters: emptyParams } },
+      { type: "function", function: { name: "git_status", description: "status", parameters: emptyParams } },
+      { type: "function", function: { name: "vault_list_secrets", description: "vault", parameters: emptyParams } },
+      { type: "function", function: { name: "vault_store_secret", description: "vault", parameters: emptyParams } },
+      { type: "function", function: { name: "create_routine", description: "routine", parameters: emptyParams } },
+      { type: "function", function: { name: "create_room", description: "room", parameters: emptyParams } },
+    ];
+
+    // 1. Direct allowedTools array
+    const byArray = selectActiveTools(mockTools, ["read_file", "write_file"]);
+    assert.strictEqual(byArray.length, 2);
+    assert.deepStrictEqual(byArray.map((t) => t.function.name).sort(), ["read_file", "write_file"]);
+
+    // 2. Options object with allowedTools
+    const byOptions = selectActiveTools(mockTools, { allowedTools: ["git_diff", "git_status"] });
+    assert.strictEqual(byOptions.length, 2);
+    assert.deepStrictEqual(byOptions.map((t) => t.function.name).sort(), ["git_diff", "git_status"]);
+
+    // 3. Empty allowedTools array restricts to zero tools
+    const emptyAllowed = selectActiveTools(mockTools, { allowedTools: [] });
+    assert.strictEqual(emptyAllowed.length, 0);
+
+    // 4. Role-based fallback tool resolution: Security auditor
+    const bySecRole = selectActiveTools(mockTools, { role: "Senior Application Security Engineer" });
+    const secNames = bySecRole.map((t) => t.function.name).sort();
+    assert.deepStrictEqual(secNames, ["exec_command", "read_file", "vault_list_secrets"]);
+
+    // 5. Role-based fallback tool resolution: Code reviewer
+    const byReviewerRole = selectActiveTools(mockTools, { role: "Lead Code Reviewer" });
+    const revNames = byReviewerRole.map((t) => t.function.name).sort();
+    assert.deepStrictEqual(revNames, ["exec_command", "git_diff", "git_status", "read_file"]);
+
+    // 6. Explicit allowedTools overrides role fallback
+    const override = selectActiveTools(mockTools, {
+      role: "Lead Code Reviewer",
+      allowedTools: ["read_file"],
+    });
+    assert.strictEqual(override.length, 1);
+    assert.strictEqual(override[0].function.name, "read_file");
+
+    // 7. Fourth-parameter options with query
+    const param4 = selectActiveTools(mockTools, "Inspect changes", "auto", { allowedTools: ["git_diff", "git_status"] });
+    assert.strictEqual(param4.length, 2);
+    assert.ok(param4.every((t) => ["git_diff", "git_status"].includes(t.function.name)));
+  });
+
+  it("recommendToolScopeMode adapts when allowedTools or role is supplied", () => {
+    // Standard cloud model defaults to all
+    assert.strictEqual(recommendToolScopeMode("gpt-4o", 128000), "all");
+
+    // Small local model defaults to auto
+    assert.strictEqual(recommendToolScopeMode("llama-3-8b", 8192), "auto");
+
+    // Small local model with constrained allowedTools (<= 25 tools) recommends all for complete subagent access
+    assert.strictEqual(recommendToolScopeMode("llama-3-8b", 8192, { allowedTools: ["read_file", "write_file"] }), "all");
+    assert.strictEqual(recommendToolScopeMode("llama-3-8b", 8192, ["read_file", "write_file"]), "all");
+
+    // Small local model with recognized role recommends all
+    assert.strictEqual(recommendToolScopeMode("llama-3-8b", 8192, { role: "code-reviewer" }), "all");
+    assert.strictEqual(recommendToolScopeMode("llama-3-8b", { role: "security-auditor" }), "all");
+  });
+
+  it("resolveRoleAllowedTools resolves explicit tools and fallback role defaults", () => {
+    // Explicit tools take priority
+    assert.deepStrictEqual(resolveRoleAllowedTools("security", ["read_file"]), ["read_file"]);
+    assert.deepStrictEqual(resolveRoleAllowedTools(undefined, ["read_file", "write_file"]), ["read_file", "write_file"]);
+    assert.deepStrictEqual(resolveRoleAllowedTools("security", []), []);
+
+    // Role fallbacks
+    assert.ok(resolveRoleAllowedTools("code-reviewer")?.includes("git_diff"));
+    assert.ok(resolveRoleAllowedTools("Senior Application Security Engineer")?.includes("vault_list_secrets"));
+    assert.ok(resolveRoleAllowedTools("Software Architect")?.includes("edit_file"));
+    assert.ok(resolveRoleAllowedTools("Agile Project Lead")?.includes("linear_create_issue"));
+    assert.strictEqual(resolveRoleAllowedTools("unknown_arbitrary_role"), undefined);
+    assert.strictEqual(resolveRoleAllowedTools(undefined, undefined), undefined);
   });
 
 });

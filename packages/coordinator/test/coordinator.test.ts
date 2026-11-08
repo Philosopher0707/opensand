@@ -376,6 +376,98 @@ describe("AgentCoordinator Integration", () => {
     assert.match(toolMsg.content || "", /UNAUTHORIZED_TOOL/);
   });
 
+  it("strictly constrains exposed and active tool definitions to allowedTools whitelist", async () => {
+    const client = new UniversalLLMClient({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
+    });
+
+    // 1. Constrained to specific whitelist
+    const coordinator1 = new AgentCoordinator({
+      llmClient: client,
+      daemon,
+      allowedTools: ["read_file", "write_file"],
+      sessionsBaseDir: path.join(tempDir, "sessions"),
+    });
+
+    const activeTools1 = coordinator1.getActiveToolDefinitions("Perform git and file tasks");
+    assert.strictEqual(activeTools1.length, 2);
+    assert.deepStrictEqual(activeTools1.map((t) => t.function.name).sort(), ["read_file", "write_file"]);
+
+    // 2. Empty allowedTools array strictly exposes 0 tools
+    const coordinatorEmpty = new AgentCoordinator({
+      llmClient: client,
+      daemon,
+      allowedTools: [],
+      sessionsBaseDir: path.join(tempDir, "sessions"),
+    });
+
+    const activeToolsEmpty = coordinatorEmpty.getActiveToolDefinitions("Any prompt");
+    assert.strictEqual(activeToolsEmpty.length, 0);
+
+    // 3. Turn execution with allowedTools: [] intercepts and blocks any tool call
+    let callCount = 0;
+    const mockFetch = async (_url: any, init: any): Promise<Response> => {
+      callCount++;
+      const encoder = new TextEncoder();
+      const payload = JSON.parse(init.body as string);
+      // Verify tool definitions sent to LLM is empty array
+      assert.strictEqual(payload.tools?.length ?? 0, 0);
+
+      let chunks: string[] = [];
+      if (callCount === 1) {
+        chunks = [
+          `data: ${JSON.stringify({
+            choices: [{
+              delta: {
+                content: "Calling blocked tool",
+                tool_calls: [{
+                  index: 0,
+                  id: "call_blocked",
+                  type: "function",
+                  function: { name: "read_file", arguments: JSON.stringify({ path: "file.txt" }) }
+                }]
+              }
+            }]
+          })}\n\n`,
+          "data: [DONE]\n\n"
+        ];
+      } else {
+        chunks = [
+          `data: ${JSON.stringify({ choices: [{ delta: { content: "Acknowledged." } }] })}\n\n`,
+          "data: [DONE]\n\n"
+        ];
+      }
+
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const c of chunks) controller.enqueue(encoder.encode(c));
+          controller.close();
+        }
+      });
+      return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    };
+
+    const emptyClient = new UniversalLLMClient({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      fetch: mockFetch as any,
+    });
+
+    const emptyCoordinator = new AgentCoordinator({
+      llmClient: emptyClient,
+      daemon,
+      allowedTools: [],
+      sessionsBaseDir: path.join(tempDir, "sessions"),
+    });
+
+    const res = await emptyCoordinator.runTurn("Read file");
+    assert.strictEqual(res, "Acknowledged.");
+    const blockedMsg = emptyCoordinator.history.find((m) => m.role === "tool");
+    assert.ok(blockedMsg);
+    assert.match(blockedMsg.content || "", /UNAUTHORIZED_TOOL/);
+  });
+
   it("answers ephemeral side-questions via askSideQuestion without mutating session history (BTW prompt parity)", async () => {
     let callCount = 0;
     const mockFetch = async (_url: any, init: any): Promise<Response> => {
