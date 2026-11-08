@@ -8,6 +8,7 @@ import {
   PermissionGates,
   ToolDefinition,
   ToolExecutionResult,
+  DaemonLivenessResult,
 } from "./types.js";
 
 export interface DaemonOptions {
@@ -40,6 +41,25 @@ export class LocalExecDaemon {
 
   get inflight(): number {
     return this.inflightCount;
+  }
+
+  async isDaemonRunning(): Promise<DaemonLivenessResult> {
+    return this.state.isDaemonRunning();
+  }
+
+  public async ensureStarted(): Promise<void> {
+    if (this.isRunning) {
+      const probe = await this.state.isDaemonRunning();
+      if (!probe.running || (probe.pid && probe.pid !== process.pid)) {
+        await this.stop();
+        await this.start();
+      } else {
+        await this.pulseDaemonState().catch(() => {});
+      }
+      return;
+    }
+
+    await this.start();
   }
 
   async start(): Promise<void> {

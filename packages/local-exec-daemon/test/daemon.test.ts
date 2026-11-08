@@ -52,4 +52,36 @@ describe("LocalExecDaemon", () => {
     assert.equal(res.status, "ok");
     assert.equal(res.output.stdout.trim(), "daemon tool execution");
   });
+
+  it("ensureStarted() starts stopped daemon and self-heals corrupted state", async () => {
+    const healDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-daemon-heal-"));
+    try {
+      const healDaemon = new LocalExecDaemon({ stateDir: healDir, heartbeatIntervalMs: 50 });
+      assert.equal(healDaemon.running, false);
+
+      // 1. Calling ensureStarted on stopped daemon starts it
+      await healDaemon.ensureStarted();
+      assert.equal(healDaemon.running, true);
+      const state1 = await healDaemon.state.readDaemonState();
+      assert.equal(state1?.pid, process.pid);
+
+      // 2. Calling ensureStarted on already running daemon keeps it running
+      await healDaemon.ensureStarted();
+      assert.equal(healDaemon.running, true);
+
+      // 3. Simulating state deletion while daemon claims running causes self-healing restart
+      await fs.rm(path.join(healDir, "local-exec-daemon.json"), { force: true });
+      await healDaemon.ensureStarted();
+      assert.equal(healDaemon.running, true);
+      const state2 = await healDaemon.state.readDaemonState();
+      assert.equal(state2?.pid, process.pid);
+      assert.ok((state2?.generation ?? 0) >= (state1?.generation ?? 0));
+
+      await healDaemon.stop();
+      assert.equal(healDaemon.running, false);
+    } finally {
+      await fs.rm(healDir, { recursive: true, force: true });
+    }
+  });
+
 });

@@ -5,6 +5,13 @@
  */
 export type { ToolDefinition, ToolExecutionResult } from "@opensand/shared";
 
+export interface DaemonLivenessResult {
+  running: boolean;
+  pid?: number;
+  generation?: number;
+  stale: boolean;
+}
+
 export interface DaemonState {
   pid: number;
   startedAt: number;

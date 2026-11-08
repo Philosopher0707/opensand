@@ -36,6 +36,8 @@ export interface OpenSandBridgeApi {
   approveTool: (approvalId: string, decision: ApprovalDecision) => Promise<{ success: boolean }>;
   listPendingApprovals?: () => Promise<ToolApprovalRequest[]>;
   getToolDiscovery?: () => Promise<ToolDiscoverySummary>;
+  executeTool?: (name: string, args: Record<string, any>, context?: any) => Promise<any>;
+  ensureDaemon?: () => Promise<any>;
   getSessions: () => Promise<SessionSummary[]>;
   loadSession: (sessionId: string) => Promise<{ events: unknown[]; transcript: string; agentId?: string; roomId?: string }>;
   deleteSession?: (sessionId: string) => Promise<{ success: boolean }>;

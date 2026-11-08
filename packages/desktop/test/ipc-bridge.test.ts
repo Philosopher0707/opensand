@@ -682,3 +682,65 @@ test('DesktopIpcBridge - close() removes workspaceSentinel listener and frees re
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+
+test("DesktopIpcBridge - ensureDaemon restores stopped and stale daemon automatically", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-bridge-daemon-heal-"));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+
+    // 1. Initially daemon is not started
+    assert.strictEqual(bridge.daemon.running, false);
+
+    // 2. ensureDaemon starts it
+    const daemon = await bridge.ensureDaemon();
+    assert.strictEqual(daemon, bridge.daemon);
+    assert.strictEqual(bridge.daemon.running, true);
+
+    const liveness1 = await bridge.stateManager.isDaemonRunning();
+    assert.strictEqual(liveness1.running, true);
+    assert.strictEqual(liveness1.stale, false);
+    assert.strictEqual(liveness1.pid, process.pid);
+
+    // 3. Stop daemon explicitly and verify ensureDaemon restores it
+    await bridge.daemon.stop();
+    assert.strictEqual(bridge.daemon.running, false);
+
+    await bridge.ensureDaemon();
+    assert.strictEqual(bridge.daemon.running, true);
+
+    // 4. Simulate a stale/crashed daemon state with dead PID
+    await bridge.daemon.stop();
+    await bridge.stateManager.writeDaemonState({
+      pid: 999999,
+      startedAt: Date.now() - 60000,
+      inflightCount: 0,
+      generation: 10,
+    });
+
+    const staleLiveness = await bridge.stateManager.isDaemonRunning();
+    assert.strictEqual(staleLiveness.stale, true);
+    assert.strictEqual(staleLiveness.running, false);
+
+    // ensureDaemon must detect stale state, clean it up, and start afresh
+    await bridge.ensureDaemon();
+    assert.strictEqual(bridge.daemon.running, true);
+
+    const healedLiveness = await bridge.stateManager.isDaemonRunning();
+    assert.strictEqual(healedLiveness.running, true);
+    assert.strictEqual(healedLiveness.stale, false);
+    assert.strictEqual(healedLiveness.pid, process.pid);
+
+    // 5. executeTool automatically calls ensureDaemon and executes tool
+    await bridge.daemon.stop();
+    assert.strictEqual(bridge.daemon.running, false);
+    const execRes = await bridge.executeTool("exec_command", { command: "echo 'auto-healed'" }, { approvalGranted: true });
+    assert.strictEqual(bridge.daemon.running, true);
+    assert.strictEqual(execRes.status, "ok");
+    assert.strictEqual(execRes.output.stdout.trim(), "auto-healed");
+
+    await bridge.close();
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

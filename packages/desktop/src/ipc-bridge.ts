@@ -237,11 +237,54 @@ export class DesktopIpcBridge extends EventEmitter {
         // ignore
       }
     }
+    if (this.daemon && this.daemon.running) {
+      try {
+        await this.daemon.stop();
+      } catch {
+        // ignore
+      }
+    }
     this.removeAllListeners();
   }
 
   public async dispose(): Promise<void> {
     return this.close();
+  }
+
+  /**
+   * Ensures the local execution daemon is active and healthy.
+   * If not running, starts it. If stale/dead PID detected, cleans up and restarts.
+   */
+  public async ensureDaemon(): Promise<LocalExecDaemon> {
+    const liveness = await this.stateManager.isDaemonRunning();
+    if (liveness.stale) {
+      if (this.daemon.running) {
+        await this.daemon.stop();
+      }
+      await this.stateManager.cleanup();
+      await this.daemon.start();
+      return this.daemon;
+    }
+
+    if (!this.daemon.running || !liveness.running) {
+      await this.daemon.ensureStarted();
+      return this.daemon;
+    }
+
+    return this.daemon;
+  }
+
+  /**
+   * Dispatches a tool execution through the local-exec daemon,
+   * guaranteeing the daemon is healthy and running first.
+   */
+  public async executeTool(
+    name: string,
+    args: Record<string, any>,
+    context?: any
+  ): Promise<any> {
+    await this.ensureDaemon();
+    return this.daemon.executeTool(name, args, context);
   }
 
   public getSettings(): DesktopSettings {
@@ -439,6 +482,7 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async createSessionCoordinator(sessionId?: string, agentId?: string): Promise<AgentCoordinator> {
+    await this.ensureDaemon();
     await this.ensureApiKeyResolved();
     const activeSessionId = sessionId || this.currentSessionId || `session_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     const mapKey = this.coordinatorKey(activeSessionId, agentId);
@@ -599,6 +643,9 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async requestUserApproval(toolName: string, args: Record<string, unknown>, reason?: string): Promise<boolean> {
+    if (this.daemon && !this.daemon.running) {
+      this.ensureDaemon().catch(() => {});
+    }
     let mustPrompt = false;
 
     // Safety Ceiling: Destructive shell commands (rm -rf /, raw disks, fork bombs) must never auto-approve
@@ -647,6 +694,7 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async getToolDiscovery(): Promise<ToolDiscoverySummary> {
+    await this.ensureDaemon();
     return buildToolDiscoverySummary(this.daemon.getToolDefinitions());
   }
 
