@@ -1,7 +1,7 @@
 import * as http from "node:http";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { UniversalLLMClient, NetworkError } from "../src/llm-client.js";
+import { UniversalLLMClient, NetworkError, classifyNetworkError, isLocalEndpoint } from "../src/llm-client.js";
 import { ChatMessage } from "../src/types.js";
 
 describe("UniversalLLMClient", () => {
@@ -252,7 +252,50 @@ describe("UniversalLLMClient", () => {
     );
   });
 
-  it("handles request timeout with NetworkError", async () => {
+  it("handles local endpoint timeout with cold-start diagnostic guidance", async () => {
+    const mockFetch = async (_url: any, init: any): Promise<Response> => {
+      return new Promise((_, reject) => {
+        if (init.signal) {
+          init.signal.addEventListener("abort", () => {
+            const err: any = new Error("The operation was aborted");
+            err.name = "TimeoutError";
+            reject(err);
+          });
+        }
+      });
+    };
+
+    const localEndpoints = [
+      "http://127.0.0.1:11434/v1",
+      "http://localhost:11434/v1",
+      "http://0.0.0.0:8000/v1",
+    ];
+
+    for (const baseUrl of localEndpoints) {
+      const client = new UniversalLLMClient({
+        baseUrl,
+        model: "qwen3:8b",
+        timeoutMs: 50,
+        fetch: mockFetch as any,
+      });
+
+      await assert.rejects(
+        async () => {
+          await client.streamCompletion([{ role: "user", content: "test" }]);
+        },
+        (err: any) => {
+          assert.ok(err instanceof NetworkError);
+          assert.equal(err.code, "ETIMEDOUT");
+          assert.ok(err.message.includes("timed out after 50ms"));
+          assert.ok(err.message.includes("loading weights into VRAM/memory"));
+          assert.ok(err.message.includes("Ollama or vLLM cold-start"));
+          return true;
+        }
+      );
+    }
+  });
+
+  it("handles non-local endpoint timeout with standard timeout message without cold-start diagnostics", async () => {
     const mockFetch = async (_url: any, init: any): Promise<Response> => {
       return new Promise((_, reject) => {
         if (init.signal) {
@@ -266,8 +309,8 @@ describe("UniversalLLMClient", () => {
     };
 
     const client = new UniversalLLMClient({
-      baseUrl: "http://127.0.0.1:11434/v1",
-      model: "qwen3:8b",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
       timeoutMs: 50,
       fetch: mockFetch as any,
     });
@@ -279,10 +322,47 @@ describe("UniversalLLMClient", () => {
       (err: any) => {
         assert.ok(err instanceof NetworkError);
         assert.equal(err.code, "ETIMEDOUT");
-        assert.ok(err.message.includes("timed out after 50ms"));
+        assert.equal(
+          err.message,
+          "LLM API request timed out after 50ms waiting for response from https://api.openai.com/v1/chat/completions"
+        );
+        assert.ok(!err.message.includes("cold-start"));
+        assert.ok(!err.message.includes("VRAM"));
         return true;
       }
     );
+  });
+
+  it("isLocalEndpoint identifies loopback addresses accurately", () => {
+    assert.equal(isLocalEndpoint("http://127.0.0.1:11434/v1"), true);
+    assert.equal(isLocalEndpoint("http://localhost:8080/v1"), true);
+    assert.equal(isLocalEndpoint("http://0.0.0.0:8000/v1"), true);
+    assert.equal(isLocalEndpoint("http://[::1]:11434"), true);
+    assert.equal(isLocalEndpoint("127.0.0.1:11434"), true);
+    assert.equal(isLocalEndpoint("localhost:11434"), true);
+    assert.equal(isLocalEndpoint("https://api.openai.com/v1"), false);
+    assert.equal(isLocalEndpoint("https://api.anthropic.com/v1"), false);
+    assert.equal(isLocalEndpoint("https://my-remote-server.com:11434"), false);
+  });
+
+  it("classifyNetworkError timeout contracts and cold-start diagnostics", () => {
+    const originalErr = new Error("Operation timed out");
+    const localErr = classifyNetworkError(originalErr, "http://127.0.0.1:11434/v1", 30000, true);
+    assert.equal(localErr.name, "NetworkError");
+    assert.equal(localErr.code, "ETIMEDOUT");
+    assert.equal(localErr.endpoint, "http://127.0.0.1:11434/v1");
+    assert.equal(localErr.cause, originalErr);
+    assert.ok(localErr.message.includes("30000ms"));
+    assert.ok(localErr.message.includes("loading weights into VRAM/memory (such as Ollama or vLLM cold-start)"));
+
+    const remoteErr = classifyNetworkError(originalErr, "https://api.openai.com/v1", 30000, true);
+    assert.equal(remoteErr.name, "NetworkError");
+    assert.equal(remoteErr.code, "ETIMEDOUT");
+    assert.equal(remoteErr.endpoint, "https://api.openai.com/v1");
+    assert.equal(remoteErr.cause, originalErr);
+    assert.equal(remoteErr.message, "LLM API request timed out after 30000ms waiting for response from https://api.openai.com/v1");
+    assert.ok(!remoteErr.message.includes("cold-start"));
+    assert.ok(!remoteErr.message.includes("VRAM"));
   });
 
   it("handles network unreachable (ENETUNREACH) with NetworkError", async () => {

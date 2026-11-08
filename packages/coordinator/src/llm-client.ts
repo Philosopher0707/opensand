@@ -31,6 +31,22 @@ export class NetworkError extends Error {
   }
 }
 
+export function isLocalEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint.includes("://") ? endpoint : `http://${endpoint}`);
+    const host = url.hostname.toLowerCase();
+    return (
+      host === "127.0.0.1" ||
+      host === "localhost" ||
+      host === "0.0.0.0" ||
+      host === "::1" ||
+      host === "[::1]"
+    );
+  } catch {
+    return /(?:^|[:/@])(127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\]|::1)(?:[:/]|$)/i.test(endpoint);
+  }
+}
+
 export function classifyNetworkError(
   err: any,
   endpoint: string,
@@ -38,8 +54,12 @@ export function classifyNetworkError(
   isTimeout = false
 ): NetworkError {
   if (isTimeout) {
+    const isLocal = isLocalEndpoint(endpoint);
+    const message = isLocal
+      ? `LLM API request timed out after ${timeoutMs}ms waiting for response from ${endpoint}. The local model server may be loading weights into VRAM/memory (such as Ollama or vLLM cold-start).`
+      : `LLM API request timed out after ${timeoutMs}ms waiting for response from ${endpoint}`;
     return new NetworkError(
-      `LLM API request timed out after ${timeoutMs}ms waiting for response from ${endpoint}`,
+      message,
       endpoint,
       "ETIMEDOUT",
       err
