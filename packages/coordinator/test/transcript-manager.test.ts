@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { TranscriptManager, listSessions } from "../src/transcript-manager.js";
+import {
+  TranscriptManager,
+  listSessions,
+  writeAtomic,
+  reconcileTurnInvariants,
+} from "../src/transcript-manager.js";
 import { ChatMessage } from "../src/types.js";
 
 describe("TranscriptManager", () => {
@@ -106,6 +111,144 @@ describe("TranscriptManager", () => {
     assert.equal(loaded[2].content, "tool output");
     assert.equal(loaded[3].role, "assistant");
     assert.equal(loaded[3].content, "final answer");
+  });
+
+  it("discards unparseable truncated tail from interrupted writes and reports warning", async () => {
+    const truncatedSessId = "sess-truncated-tail";
+    const truncManager = new TranscriptManager(truncatedSessId, tempDir);
+    await truncManager.ensureDirectory();
+
+    // Line 1: valid user turn
+    // Line 2: valid assistant turn
+    // Line 3: truncated mid-write JSON line (simulating kill -9 mid-append)
+    const jsonlContent = [
+      JSON.stringify({ role: "user", content: "hello world" }),
+      JSON.stringify({ role: "assistant", content: "greeting acknowledged" }),
+      '{"role":"assistant","content":"partial text that was cut off mid-wri',
+    ].join("\n");
+
+    await fs.writeFile(path.join(truncManager.directory, "transcript.jsonl"), jsonlContent, "utf-8");
+
+    const { messages, report } = await truncManager.loadHistoryDetailed();
+    assert.equal(messages.length, 2);
+    assert.equal(messages[0].content, "hello world");
+    assert.equal(messages[1].content, "greeting acknowledged");
+
+    assert.equal(report.recoveredMessages, 2);
+    assert.equal(report.discardedEntries, 1);
+    assert.equal(report.warnings.length, 1);
+    assert.equal(report.warnings[0].type, "truncated_tail_discarded");
+    assert.equal(report.warnings[0].lineNumber, 3);
+    assert.ok(report.warnings[0].rawSnippet?.includes("partial text"));
+    assert.ok(report.warnings[0].remedy.includes("incomplete trailing line"));
+  });
+
+  it("skips corrupt mid-file lines, preserves valid surrounding entries, and records line warnings", async () => {
+    const corruptSessId = "sess-corrupt-mid";
+    const corruptManager = new TranscriptManager(corruptSessId, tempDir);
+    await corruptManager.ensureDirectory();
+
+    // Line 1: valid user turn
+    // Line 2: corrupted mid-file line
+    // Line 3: valid assistant turn
+    // Line 4: valid user follow-up
+    const jsonlContent = [
+      JSON.stringify({ role: "user", content: "turn 1" }),
+      '{INVALID_JSON_CORRUPT_BYTES}',
+      JSON.stringify({ role: "assistant", content: "response 1" }),
+      JSON.stringify({ role: "user", content: "turn 2" }),
+    ].join("\n");
+
+    await fs.writeFile(path.join(corruptManager.directory, "transcript.jsonl"), jsonlContent, "utf-8");
+
+    const { messages, report } = await corruptManager.loadHistoryDetailed();
+    assert.equal(messages.length, 3);
+    assert.equal(messages[0].content, "turn 1");
+    assert.equal(messages[1].content, "response 1");
+    assert.equal(messages[2].content, "turn 2");
+
+    assert.equal(report.recoveredMessages, 3);
+    assert.equal(report.discardedEntries, 1);
+    assert.equal(report.warnings.length, 1);
+    assert.equal(report.warnings[0].type, "corrupt_line_skipped");
+    assert.equal(report.warnings[0].lineNumber, 2);
+    assert.ok(report.warnings[0].rawSnippet?.includes("INVALID_JSON"));
+  });
+
+  it("reconciles orphaned tool calls with matching stubbed tool responses and reports warning", async () => {
+    const orphanSessId = "sess-orphaned-tools";
+    const orphanManager = new TranscriptManager(orphanSessId, tempDir);
+    await orphanManager.ensureDirectory();
+
+    // Assistant called two tools (call_1 and call_2), but only call_1 completed before crash
+    const jsonlContent = [
+      JSON.stringify({ role: "user", content: "do some work" }),
+      JSON.stringify({
+        role: "assistant",
+        content: "calling tools",
+        tool_calls: [
+          { id: "call_1", type: "function", function: { name: "readFile", arguments: '{"path":"a.txt"}' } },
+          { id: "call_2", type: "function", function: { name: "executeCommand", arguments: '{"cmd":"npm test"}' } },
+        ],
+      }),
+      JSON.stringify({ role: "tool", tool_call_id: "call_1", result: "file content" }),
+      // Notice: tool result for call_2 is MISSING
+    ].join("\n");
+
+    await fs.writeFile(path.join(orphanManager.directory, "transcript.jsonl"), jsonlContent, "utf-8");
+
+    const { messages, report } = await orphanManager.loadHistoryDetailed();
+    assert.equal(messages.length, 4); // user, assistant, tool 1, tool 2 (stubbed)
+    assert.equal(messages[0].role, "user");
+    assert.equal(messages[1].role, "assistant");
+    assert.equal(messages[2].role, "tool");
+    assert.equal(messages[2].tool_call_id, "call_1");
+    assert.equal(messages[2].content, "file content");
+
+    assert.equal(messages[3].role, "tool");
+    assert.equal(messages[3].tool_call_id, "call_2");
+    assert.ok(messages[3].content?.includes("Execution interrupted"));
+
+    assert.equal(report.recoveredMessages, 4);
+    assert.ok(report.warnings.some((w) => w.type === "orphaned_tool_calls_reconciled"));
+  });
+
+  it("supports pruning strategy for orphaned tool calls", async () => {
+    const messages: ChatMessage[] = [
+      { role: "user", content: "run task" },
+      {
+        role: "assistant",
+        content: "starting",
+        tool_calls: [
+          { id: "call_a", type: "function", function: { name: "toolA", arguments: "{}" } },
+          { id: "call_b", type: "function", function: { name: "toolB", arguments: "{}" } },
+        ],
+      },
+      { role: "tool", tool_call_id: "call_a", content: "done A" },
+    ];
+
+    const { messages: reconciled, warnings } = reconcileTurnInvariants(messages, { strategy: "prune" });
+    assert.equal(reconciled.length, 3);
+    const assistant = reconciled[1];
+    assert.equal(assistant.role, "assistant");
+    assert.equal(assistant.tool_calls?.length, 1);
+    assert.equal(assistant.tool_calls?.[0].id, "call_a");
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0].type, "orphaned_tool_calls_reconciled");
+  });
+
+  it("writeAtomic writes data atomically and replaces destination without partial states", async () => {
+    const testFile = path.join(tempDir, "atomic-test.txt");
+    await writeAtomic(testFile, "initial content");
+    assert.equal(await fs.readFile(testFile, "utf-8"), "initial content");
+
+    await writeAtomic(testFile, "updated content");
+    assert.equal(await fs.readFile(testFile, "utf-8"), "updated content");
+
+    // Also verify TranscriptManager's writeAtomic instance method
+    await manager.writeAtomic("sub-file.json", JSON.stringify({ ok: true }));
+    const saved = await fs.readFile(path.join(manager.directory, "sub-file.json"), "utf-8");
+    assert.deepEqual(JSON.parse(saved), { ok: true });
   });
 
   it("listSessions on a mkdtemp dir returns newest-first, reads title/turns from messages.json, ignores empty dirs, returns [] for missing dir", async () => {

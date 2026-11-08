@@ -17,6 +17,7 @@ export interface CliConfig {
   listTasks?: boolean;
   provider?: string;
   resume?: string;
+  explicitFlags?: Set<string>;
 }
 
 export function loadUserConfig(customPath?: string): Partial<CliConfig> {
@@ -90,6 +91,7 @@ export function validateConfig(config: CliConfig): { valid: boolean; warning?: s
 
 export function parseCliArgs(args: string[], customConfigFile?: string): CliConfig {
   const userConfig = loadUserConfig(customConfigFile);
+  const explicitFlags = new Set<string>();
 
   const config: CliConfig = {
     endpoint:
@@ -113,41 +115,57 @@ export function parseCliArgs(args: string[], customConfigFile?: string): CliConf
 
     if (arg === "--endpoint" && i + 1 < args.length) {
       config.endpoint = args[++i];
+      explicitFlags.add("endpoint");
     } else if (arg === "--model" && i + 1 < args.length) {
       config.model = args[++i];
+      explicitFlags.add("model");
     } else if (arg === "--api-key" && i + 1 < args.length) {
       config.apiKey = args[++i];
+      explicitFlags.add("apiKey");
+    } else if (arg === "--provider" && i + 1 < args.length) {
+      config.provider = args[++i];
+      explicitFlags.add("provider");
     } else if (arg === "--system-prompt" && i + 1 < args.length) {
       config.systemPromptFile = args[++i];
+      explicitFlags.add("systemPrompt");
     } else if (arg === "--bot" && i + 1 < args.length) {
       config.bot = args[++i];
+      explicitFlags.add("bot");
     } else if (arg === "--auto-approve" || arg === "-y") {
       config.autoApprove = true;
+      explicitFlags.add("autoApprove");
     } else if (arg === "--list-tools") {
       config.listTools = true;
+      explicitFlags.add("listTools");
     } else if (arg === "--list-bots") {
       config.listBots = true;
+      explicitFlags.add("listBots");
     } else if (arg === "--list-tasks") {
       config.listTasks = true;
+      explicitFlags.add("listTasks");
     } else if (arg === "--worktree") {
+      explicitFlags.add("worktree");
       if (i + 1 < args.length && !args[i + 1].startsWith("-")) {
         config.worktree = args[++i];
       } else {
         config.worktree = `opensand-worktree-${Date.now()}`;
       }
     } else if (arg === "completion" || arg === "--completion") {
+      explicitFlags.add("completion");
       if (i + 1 < args.length && (args[i + 1] === "zsh" || args[i + 1] === "bash")) {
         config.completion = args[++i] as 'bash' | 'zsh';
       } else {
         config.completion = "bash";
       }
     } else if (arg === "--resume") {
+      explicitFlags.add("resume");
       if (i + 1 < args.length && !args[i + 1].startsWith("-")) {
         config.resume = args[++i];
       } else {
         config.resume = "latest";
       }
     } else if (arg === "--continue" || arg === "-c") {
+      explicitFlags.add("resume");
       config.resume = "latest";
     } else if (!arg.startsWith("-")) {
       positional.push(arg);
@@ -158,5 +176,6 @@ export function parseCliArgs(args: string[], customConfigFile?: string): CliConf
     config.query = positional.join(" ");
   }
 
+  config.explicitFlags = explicitFlags;
   return config;
 }

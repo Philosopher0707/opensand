@@ -19,9 +19,13 @@ import {
   ApprovalDecision,
   listSessions,
   SessionSummary,
+  SessionLockManager,
+  SessionLockedError,
+  SessionLockHandle,
+  loadSessionMetadata,
 } from "@opensand/coordinator";
 import { sigIntAction, formatResumeHint } from "./interrupt.js";
-import { matchSession } from "./sessions.js";
+import { matchSession, validateResumeEnvironment } from "./sessions.js";
 import { parseCliArgs, CliConfig, probeLocalOllama, validateConfig } from "./config.js";
 import { TerminalUI } from "./terminal-ui.js";
 import { runDoctorProbes } from "./doctor.js";
@@ -485,6 +489,53 @@ Examples:
     }
   }
 
+  let sessionLockHandle: SessionLockHandle | undefined;
+
+  const exitCleanup = () => {
+    if (sessionLockHandle) {
+      try {
+        fsSync.unlinkSync(sessionLockHandle.lockPath);
+      } catch {}
+    }
+  };
+  process.on("exit", exitCleanup);
+
+  if (activeSessionId) {
+    const lockManager = new SessionLockManager();
+    try {
+      sessionLockHandle = await lockManager.acquire(activeSessionId);
+    } catch (err) {
+      if (err instanceof SessionLockedError) {
+        ui.printError(`Session ${activeSessionId} is locked by active process (PID ${err.pid ?? "unknown"}).`);
+        process.exitCode = 1;
+        process.off("exit", exitCleanup);
+        await daemon.stop();
+        return;
+      }
+      throw err;
+    }
+
+    const sessionMeta = await loadSessionMetadata(activeSessionId);
+    const resumeCheck = validateResumeEnvironment(sessionMeta, config);
+    if (!resumeCheck.valid) {
+      if (config.query) {
+        ui.printError(resumeCheck.error || `Resume validation failed for session ${activeSessionId}`);
+        process.exitCode = 1;
+        await sessionLockHandle.release();
+        process.off("exit", exitCleanup);
+        await daemon.stop();
+        return;
+      } else if (resumeCheck.warning) {
+        ui.printWarning(resumeCheck.warning);
+      }
+    }
+
+    config.endpoint = resumeCheck.endpoint;
+    config.model = resumeCheck.model;
+    if (resumeCheck.apiKey) config.apiKey = resumeCheck.apiKey;
+    if (resumeCheck.provider) config.provider = resumeCheck.provider;
+  }
+
   let coordinator = createCoordinator(userInstructions, config.model, config.endpoint, activeSessionId);
 
   ui.printBanner(config.model, config.endpoint);
@@ -535,6 +586,11 @@ Examples:
       }
     } finally {
       process.off("SIGINT", onSigInt);
+      process.off("exit", exitCleanup);
+      if (sessionLockHandle) {
+        await sessionLockHandle.release();
+        sessionLockHandle = undefined;
+      }
       await daemon.stop();
     }
     return;
@@ -742,13 +798,43 @@ Available OpenSand REPL Commands:
           }
           continue;
         }
+        const lockManager = new SessionLockManager();
+        let newLock: SessionLockHandle | undefined;
+        try {
+          newLock = await lockManager.acquire(target.sessionId);
+        } catch (err) {
+          if (err instanceof SessionLockedError) {
+            ui.printError(`Session '${target.sessionId}' is locked by active process (PID ${err.pid ?? "unknown"}).`);
+            continue;
+          }
+          throw err;
+        }
+
+        const sessionMeta = await loadSessionMetadata(target.sessionId);
+        const resumeCheck = validateResumeEnvironment(sessionMeta, config);
+        if (!resumeCheck.valid && resumeCheck.warning) {
+          ui.printWarning(resumeCheck.warning);
+        }
+
+        if (sessionLockHandle) {
+          await sessionLockHandle.release();
+        }
+        sessionLockHandle = newLock;
         activeSessionId = target.sessionId;
+        config.endpoint = resumeCheck.endpoint;
+        config.model = resumeCheck.model;
+        if (resumeCheck.apiKey) config.apiKey = resumeCheck.apiKey;
+
         coordinator = createCoordinator(userInstructions, config.model, config.endpoint, activeSessionId);
         console.log(`Resumed session ${target.sessionId} (${target.turns} user turns)`);
         continue;
       }
 
       if (trimmed === "/new") {
+        if (sessionLockHandle) {
+          await sessionLockHandle.release();
+          sessionLockHandle = undefined;
+        }
         activeSessionId = undefined;
         coordinator = createCoordinator(userInstructions, config.model, config.endpoint);
         console.log(`Started a new session ${coordinator.sessionId}`);
@@ -1113,6 +1199,11 @@ Available OpenSand REPL Commands:
   } finally {
     rl.off("SIGINT", onRlSigInt);
     rl.close();
+    process.off("exit", exitCleanup);
+    if (sessionLockHandle) {
+      await sessionLockHandle.release();
+      sessionLockHandle = undefined;
+    }
     await daemon.stop();
   }
 }

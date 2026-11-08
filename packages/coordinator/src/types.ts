@@ -8,3 +8,32 @@ export type {
   ApprovalHandler, ApprovalDecisionHandler, TurnEventListener, TurnPhase, TurnEvent, SubagentInfo,
 } from "@opensand/shared";
 export type { ToolDefinition, ToolExecutionResult } from "@opensand/local-exec-daemon";
+
+export interface SessionRecoveryWarning {
+  type: "truncated_tail_discarded" | "corrupt_line_skipped" | "orphaned_tool_calls_reconciled";
+  lineNumber?: number;
+  rawSnippet?: string;
+  remedy: string;
+}
+
+export interface SessionRecoveryReport {
+  recoveredMessages: number;
+  discardedEntries: number;
+  warnings: SessionRecoveryWarning[];
+}
+
+export interface SessionMetadata {
+  sessionId: string;
+  createdAt: string;
+  updatedAt: string;
+  model: string;
+  endpoint: string;
+  provider?: string;
+  title?: string;
+}
+
+export interface SessionLockInfo {
+  pid: number;
+  startedAt: number;
+  hostname: string;
+}
