@@ -38,6 +38,7 @@ jobs:
         run: pnpm package:mac
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
           ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
 
       - name: Upload Release Assets
