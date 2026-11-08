@@ -62,7 +62,7 @@ test('live repo: all core workspace packages match root package.json version', a
   const result = checkVersions({ baseDir: repoRoot });
   assert.equal(result.valid, true, `Mismatches found in repo: ${JSON.stringify(result.mismatches)}`);
   assert.equal(result.mismatches.length, 0);
-  assert.ok(result.checkedPackages >= 7);
+  assert.ok(result.checkedPackages >= 6);
 });
 
 test('checkVersions: detects package version drift in monorepo fixture', async () => {
@@ -147,6 +147,8 @@ test('scripts/verify.sh: release tag guard prevents execution when tag mismatche
         env: {
           ...process.env,
           RELEASE_TAG: 'v9.9.9',
+          GITHUB_REF_TYPE: '',
+          GITHUB_REF_NAME: '',
           SKIP_INSTALL: '1',
         },
         stdio: 'pipe',

@@ -14,19 +14,19 @@ node scripts/sync-versions.js --check
 
 # Release tag guard: when in release context, ensure tag matches package version
 RELEASE_TAG="${RELEASE_TAG:-}"
-if [[ "${GITHUB_REF_TYPE:-}" == "tag" && -n "${GITHUB_REF_NAME:-}" ]]; then
-  RELEASE_TAG="${GITHUB_REF_NAME}"
-elif [[ "${GITHUB_REF:-}" =~ ^refs/tags/(.*)$ ]]; then
-  RELEASE_TAG="${BASH_REMATCH[1]}"
-elif [[ -n "${RELEASE_TAG:-}" ]]; then
-  :
-elif [[ -n "${TAG:-}" ]]; then
-  RELEASE_TAG="${TAG}"
-elif [[ "${RELEASE:-}" == "1" || "${RELEASE_CONTEXT:-}" == "1" ]]; then
-  RELEASE_TAG=$(git describe --tags --exact-match 2>/dev/null || true)
-  if [[ -z "$RELEASE_TAG" ]]; then
-    echo "verify error: Release context requested but HEAD has no matching git tag!" >&2
-    exit 1
+if [[ -z "${RELEASE_TAG:-}" ]]; then
+  if [[ "${GITHUB_REF_TYPE:-}" == "tag" && -n "${GITHUB_REF_NAME:-}" ]]; then
+    RELEASE_TAG="${GITHUB_REF_NAME}"
+  elif [[ "${GITHUB_REF:-}" =~ ^refs/tags/(.*)$ ]]; then
+    RELEASE_TAG="${BASH_REMATCH[1]}"
+  elif [[ -n "${TAG:-}" ]]; then
+    RELEASE_TAG="${TAG}"
+  elif [[ "${RELEASE:-}" == "1" || "${RELEASE_CONTEXT:-}" == "1" ]]; then
+    RELEASE_TAG=$(git describe --tags --exact-match 2>/dev/null || true)
+    if [[ -z "$RELEASE_TAG" ]]; then
+      echo "verify error: Release context requested but HEAD has no matching git tag!" >&2
+      exit 1
+    fi
   fi
 fi
 
