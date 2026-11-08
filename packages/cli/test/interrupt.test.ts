@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { shouldExitOnSigInt, sigIntAction, DOUBLE_SIGINT_WINDOW_MS } from "../src/interrupt.js";
+import { shouldExitOnSigInt, sigIntAction, DOUBLE_SIGINT_WINDOW_MS, formatResumeHint } from "../src/interrupt.js";
 
 describe("Interrupt / SIGINT exit logic", () => {
   it("returns true when now is within window of lastAt", () => {
@@ -31,5 +31,15 @@ describe("sigIntAction", () => {
     assert.equal(sigIntAction(false, 1000, 1200), "exit");
     assert.equal(sigIntAction(false, 0, 1200), "arm");
     assert.equal(sigIntAction(false, 1000, 3000), "arm");
+  });
+});
+
+describe("formatResumeHint", () => {
+  it("formats resume hint with the session id", () => {
+    const sessionId = "session-test-uuid-123";
+    assert.equal(
+      formatResumeHint(sessionId),
+      "To resume this session, run:\n  opensand --resume session-test-uuid-123"
+    );
   });
 });

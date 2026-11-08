@@ -20,7 +20,7 @@ import {
   listSessions,
   SessionSummary,
 } from "@opensand/coordinator";
-import { sigIntAction } from "./interrupt.js";
+import { sigIntAction, formatResumeHint } from "./interrupt.js";
 import { matchSession } from "./sessions.js";
 import { parseCliArgs, CliConfig, probeLocalOllama, validateConfig } from "./config.js";
 import { TerminalUI } from "./terminal-ui.js";
@@ -565,7 +565,7 @@ Examples:
       return;
     }
     if (action === "exit") {
-      console.log("\nExiting OpenSand.");
+      console.log(`\nExiting OpenSand.\n${formatResumeHint(coordinator.sessionId)}`);
       process.exitCode = 130;
       exiting = true;
       rl.close();
@@ -586,7 +586,7 @@ Examples:
       } catch (err: any) {
         if (err?.code === "ABORT_ERR" || err?.name === "AbortError") {
           if (!exiting) {
-            console.log("\nExiting OpenSand.");
+            console.log(`\nExiting OpenSand.\n${formatResumeHint(coordinator.sessionId)}`);
           }
           break;
         }

@@ -23,3 +23,7 @@ export function sigIntAction(
   if (hasActiveTurn) return "cancel";
   return shouldExitOnSigInt(lastAt, now, windowMs) ? "exit" : "arm";
 }
+
+export function formatResumeHint(sessionId: string): string {
+  return `To resume this session, run:\n  opensand --resume ${sessionId}`;
+}
