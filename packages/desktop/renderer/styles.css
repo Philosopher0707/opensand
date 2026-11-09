@@ -148,6 +148,31 @@ body {
   height: 100vh;
 }
 
+/* macOS traffic-light clearance and window drag regions (Electron only).
+   With titleBarStyle 'hiddenInset' the native buttons sit in the top-left
+   10–55 × 10–26 px box, so the sidebar needs headroom and a collapsed
+   topbar needs a left gutter; the empty top strips become the drag handle. */
+body.is-electron .sidebar {
+  padding-top: 38px;
+}
+
+body.is-electron .sidebar-header,
+body.is-electron .topbar {
+  -webkit-app-region: drag;
+}
+
+body.is-electron .sidebar-header button,
+body.is-electron .sidebar-header .brand,
+body.is-electron .topbar button,
+body.is-electron .topbar input,
+body.is-electron .topbar .badge-tokens {
+  -webkit-app-region: no-drag;
+}
+
+body.is-electron .sidebar.collapsed ~ .main-panel .topbar {
+  padding-left: 84px;
+}
+
 /* Sidebar (Faithful to OpenBot True Architecture, Collapsible) */
 .sidebar {
   width: 280px;
@@ -657,7 +682,10 @@ body {
   color: var(--text-main);
   white-space: nowrap;
   letter-spacing: -0.01em;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .active-session-title {
@@ -694,6 +722,37 @@ body {
 .topbar-actions-group {
   padding-right: 8px;
   border-right: 1px solid var(--border-color-subtle);
+}
+
+/* Narrow windows (the 960px default with the sidebar open) must not clip the
+   topbar: drop the passive badges first, then the secondary action buttons. */
+@media (max-width: 1180px) {
+  #badgeActiveBot,
+  #badgeModel,
+  #activeSessionTitle,
+  #badgeTokens {
+    display: none;
+  }
+
+  .topbar-left {
+    min-width: 110px;
+  }
+}
+
+@media (max-width: 1024px) {
+  #btnQuickOcr,
+  #btnQuickWindow,
+  #btnOpenCompact {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  #btnOpenBtw,
+  #btnOpenRollback,
+  #btnViewLearnedRules {
+    display: none;
+  }
 }
 
 .badge {
@@ -765,6 +824,8 @@ body {
   flex-direction: column;
   gap: 20px;
   user-select: text;
+  /* Anchors the floating "jump to latest" pill above the composer, not over it. */
+  position: relative;
 }
 
 .welcome-banner {
@@ -1521,6 +1582,8 @@ textarea#promptInput {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  row-gap: 6px;
   padding: 6px 10px;
   background: rgba(0, 0, 0, 0.12);
   border-top: 1px solid var(--border-color-subtle);
@@ -1530,13 +1593,25 @@ textarea#promptInput {
 .input-actions-left {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  row-gap: 6px;
   gap: 8px;
+  min-width: 0;
 }
 
 .input-actions-right {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  row-gap: 6px;
   gap: 10px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+/* Keep the model name intact; narrow composers wrap the action row instead. */
+.input-actions-left .badge-model {
+  flex-shrink: 0;
 }
 
 .btn-attach {

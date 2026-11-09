@@ -6,6 +6,10 @@ import { renderMarkdown, renderMarkdownCached, escapeHtml } from './modules/chat
 import { createApprovalQueue } from './modules/chat/approval-queue.js';
 import { createArtifactCanvas } from './modules/chat/canvas.js';
 
+// Native title bar is hiddenInset on macOS; CSS keys traffic-light clearance off this.
+// The packaged app runs in HTTP mode without a preload bridge, so detect via userAgent.
+if (navigator.userAgent.includes('Electron')) document.body.classList.add('is-electron');
+
 // Dual-mode backend client: native Electron IPC or local HTTP/SSE
 class OpenSandClient {
   constructor() {
