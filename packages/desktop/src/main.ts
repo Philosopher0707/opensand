@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
 import { getOnboardingState } from './onboarding.js';
 import { DesktopServer } from './desktop-server.js';
@@ -39,6 +40,16 @@ export class DesktopApp {
     }
 
     await app.whenReady();
+
+    // Packaged builds get their icon from the app bundle; an unpackaged `electron .`
+    // dev run otherwise shows the generic Electron icon in the Dock.
+    if (!app.isPackaged && process.platform === 'darwin' && app.dock) {
+      try {
+        app.dock.setIcon(fileURLToPath(new URL('../../../../build/icon.png', import.meta.url)));
+      } catch {
+        // Non-fatal: dev-mode dock icon is cosmetic only.
+      }
+    }
 
     app.on('second-instance', () => {
       if (this.mainWindow) {
