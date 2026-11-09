@@ -4,6 +4,20 @@ All notable changes to OpenSand will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Enterprise-grade SVG icon system across the desktop renderer, replacing all emoji icons
+  (sidebar brand mark, session avatars, footer nav, topbar actions, hero prompt cards, composer
+  buttons) with a consistent sprite-based stroke-icon set, plus supporting design tokens in
+  `styles.css`.
+
+### Known Issues
+- The packaged `.app` (`electron-builder` output) is ad-hoc signed and may be silently rejected
+  by macOS AMFI/Gatekeeper on some systems with no user-facing prompt. See
+  [Troubleshooting #5](docs/troubleshooting.md#5-opensandapp-does-nothing-when-opened-no-window-no-dialog)
+  for the cause and the local dev-mode workaround (`pnpm -C packages/desktop dev`).
+
 ## [v0.1.0] - 2026-11-07
 
 ### Added
