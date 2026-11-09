@@ -8,12 +8,59 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- Inline icon sprite: one stroke system for every surface (no emoji icons). -->
+  <svg class="icon-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <symbol id="i-spark" viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13l0-8Z"/></symbol>
+      <symbol id="i-bot" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></symbol>
+      <symbol id="i-package" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0V8Z"/><path d="M12 17v5"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-panel-left" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
+      <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 15a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v9Z"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-window" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 9v11"/></symbol>
+      <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3 11.2V16h6v-1.8A6 6 0 0 0 12 3Z"/></symbol>
+      <symbol id="i-rewind" viewBox="0 0 24 24"><path d="M11 5 4 12l7 7V5Z"/><path d="M20 5l-7 7 7 7V5Z"/></symbol>
+      <symbol id="i-compact" viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 3h8v4M9 12h6"/></symbol>
+      <symbol id="i-brain" viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-1 5.8V15a4 4 0 0 0 4 4h1V4H9Z"/><path d="M15 4a3 3 0 0 1 3 3 3 3 0 0 1 1 5.8V15a4 4 0 0 1-4 4h-1V4h1Z"/></symbol>
+      <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="M21 15l-5-5L5 21"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="8" r=".6"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3Z"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"/></symbol>
+      <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="M21 11.5l-8.5 8.5a5 5 0 0 1-7-7L14 4.5a3.5 3.5 0 0 1 5 5L10 18a2 2 0 0 1-3-3l8-8"/></symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8"/></symbol>
+      <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+      <symbol id="i-square" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></symbol>
+      <symbol id="i-code" viewBox="0 0 24 24"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13 5l-2 14"/></symbol>
+      <symbol id="i-folder-search" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v3"/><circle cx="14" cy="16" r="4"/><path d="M17 19l4 4"/></symbol>
+      <symbol id="i-git-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10M18 9c0 4-4 4-6 4H6"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M17 20a6 6 0 0 0-2-4.5"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></symbol>
+      <symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+      <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9l3 3-3 3M13 15h4"/></symbol>
+      <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></symbol>
+      <symbol id="i-store" viewBox="0 0 24 24"><path d="M4 9h16l-1-5H5L4 9Z"/><path d="M4 9v11h16V9M9 20v-6h6v6"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+    </defs>
+  </svg>
   <div class="app-layout">
     <!-- Sidebar (OpenBot True Architecture: Roster Spine + Footer Nav) -->
     <aside class="sidebar">
       <div class="sidebar-header">
         <div class="brand" id="brandHomeBtn" role="button" title="OpenSand Home">
-          <div class="brand-avatar" id="botStatusAvatar">⚡</div>
+          <div class="brand-avatar" id="botStatusAvatar"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-spark"></use></svg></div>
           <div class="brand-info">
             <span class="brand-title">OpenSand</span>
             <span class="status-indicator" id="botStatusText">Ready</span>
@@ -47,15 +94,15 @@
       <div class="sidebar-footer">
         <nav class="sidebar-footer-nav" aria-label="Primary destinations">
           <button class="footer-nav-btn" data-view="templates" id="navBtnBots" title="Bots & Personas">
-            <span class="footer-nav-icon">🤖</span>
+            <span class="footer-nav-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bot"></use></svg></span>
             <span class="footer-nav-label">Bots</span>
           </button>
           <button class="footer-nav-btn" data-view="skills" id="navBtnCapabilities" title="Skills, Memory & Routines">
-            <span class="footer-nav-icon">📦</span>
+            <span class="footer-nav-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg></span>
             <span class="footer-nav-label">Capabilities</span>
           </button>
           <button class="footer-nav-btn" data-view="boundaries" id="navBtnConnections" title="Boundaries, Webhooks & Graphs">
-            <span class="footer-nav-icon">🔌</span>
+            <span class="footer-nav-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg></span>
             <span class="footer-nav-label">Connections</span>
           </button>
         </nav>
@@ -68,20 +115,20 @@
           </button>
           <div class="account-popup hidden" id="accountPopup">
             <button class="account-popup-item" id="btnMenuSentinel">
-              <span class="popup-icon">🛡️</span>
+              <span class="popup-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"></use></svg></span>
               <span>Admin / Sentinel</span>
             </button>
             <button class="account-popup-item" id="btnMenuSettings">
-              <span class="popup-icon">⚙️</span>
+              <span class="popup-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg></span>
               <span>Settings</span>
             </button>
             <button class="account-popup-item" id="btnMenuToggleTheme">
-              <span class="popup-icon">🌓</span>
+              <span class="popup-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg></span>
               <span>Toggle Theme</span>
             </button>
             <div class="popup-divider"></div>
             <button class="account-popup-item danger" id="btnMenuClearSessions">
-              <span class="popup-icon">🗑️</span>
+              <span class="popup-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"></use></svg></span>
               <span>Clear History</span>
             </button>
           </div>
@@ -102,27 +149,27 @@
             </svg>
           </button>
           <button id="btnBackToChat" class="btn btn-ghost btn-xs hidden" title="Back to Dialogue">← Chat</button>
-          <h1 class="view-header-title" id="viewHeaderTitle">💬 Chat & Dialogue</h1>
-          <span class="badge badge-bot" id="badgeActiveBot">🤖 Default Assistant</span>
+          <h1 class="view-header-title" id="viewHeaderTitle">Chat &amp; Dialogue</h1>
+          <span class="badge badge-bot" id="badgeActiveBot">Default Assistant</span>
           <span class="badge badge-model" id="badgeModel" title="Active Model">Model</span>
           <span class="active-session-title" id="activeSessionTitle">New Session</span>
         </div>
 
         <div class="topbar-meta">
           <div class="topbar-actions-group">
-            <button id="btnQuickOcr" class="btn btn-icon-sm" title="Recognize Screen Text">👁 <span class="btn-text-sm">OCR</span></button>
-            <button id="btnQuickWindow" class="btn btn-icon-sm" title="Capture Window">🪟 <span class="btn-text-sm">Window</span></button>
-            <button id="btnOpenBtw" class="btn btn-icon-sm" title="Glass BTW Ephemeral Side-Question">💡 <span class="btn-text-sm">BTW</span></button>
-            <button id="btnOpenRollback" class="btn btn-icon-sm" title="Rollback Turns">⏪ <span class="btn-text-sm">Rewind</span></button>
-            <button id="btnOpenCompact" class="btn btn-icon-sm" title="Auto-Compact History">🧹 <span class="btn-text-sm">Compact</span></button>
-            <button id="btnViewLearnedRules" class="btn btn-icon-sm" title="View Learned Rules">🧠 <span class="btn-text-sm">Habits</span></button>
-            <button id="btnToggleCanvas" class="btn btn-icon-sm" title="Toggle Artifact Canvas (Cmd+Shift+A)">🖼️ <span class="btn-text-sm">Canvas</span></button>
-            <button id="btnToggleDetail" class="btn btn-icon-sm" title="Toggle Bot Profile & Details (Cmd+I)">ℹ️ <span class="btn-text-sm">Details</span></button>
+            <button id="btnQuickOcr" class="btn btn-icon-sm" title="Recognize screen text" aria-label="Recognize screen text"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-eye"></use></svg></button>
+            <button id="btnQuickWindow" class="btn btn-icon-sm" title="Capture window" aria-label="Capture window"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-window"></use></svg></button>
+            <button id="btnOpenBtw" class="btn btn-icon-sm" title="Ask a side question (BTW)" aria-label="Ask a side question"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bulb"></use></svg></button>
+            <button id="btnOpenRollback" class="btn btn-icon-sm" title="Roll back turns" aria-label="Roll back turns"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rewind"></use></svg></button>
+            <button id="btnOpenCompact" class="btn btn-icon-sm" title="Compact history" aria-label="Compact history"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-compact"></use></svg></button>
+            <button id="btnViewLearnedRules" class="btn btn-icon-sm" title="View learned rules" aria-label="View learned rules"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-brain"></use></svg></button>
+            <button id="btnToggleCanvas" class="btn btn-icon-sm" title="Toggle artifact canvas (Cmd+Shift+A)" aria-label="Toggle artifact canvas"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"></use></svg></button>
+            <button id="btnToggleDetail" class="btn btn-icon-sm" title="Bot profile and details (Cmd+I)" aria-label="Bot profile and details"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg></button>
           </div>
           <div class="topbar-status-group">
-            <span class="badge badge-tokens" id="badgeTokens" title="Context Token Utilization">⚡ 0 tokens</span>
-            <span class="badge badge-success" id="badgeAutoApprove">Safe Mode</span>
-            <button id="btnToggleTheme" class="btn btn-icon-sm" title="Toggle Light/Dark Theme">🌓</button>
+            <span class="badge badge-tokens" id="badgeTokens" title="Context token utilization"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-spark"></use></svg><span>0 tokens</span></span>
+            <span class="badge badge-success" id="badgeAutoApprove"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"></use></svg><span>Safe Mode</span></span>
+            <button id="btnToggleTheme" class="btn btn-icon-sm" title="Toggle light or dark theme" aria-label="Toggle light or dark theme"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg></button>
           </div>
         </div>
       </header>
@@ -142,28 +189,28 @@
                 <p class="hero-subtitle">Local-first, universal clean-room coding agent.</p>
                 <div class="hero-prompt-grid">
                   <button class="hero-prompt-card prompt-chip" data-query="Conduct a comprehensive architectural and code health audit of this repository.">
-                    <div class="card-icon">🏗️</div>
+                    <div class="card-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg></div>
                     <div class="card-body">
                       <div class="card-title">Code Health Audit</div>
                       <div class="card-desc">Comprehensive architectural and quality review</div>
                     </div>
                   </button>
                   <button class="hero-prompt-card prompt-chip" data-query="Inspect the files in the current repository and summarize the structure.">
-                    <div class="card-icon">🔍</div>
+                    <div class="card-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder-search"></use></svg></div>
                     <div class="card-body">
                       <div class="card-title">Inspect Repository</div>
                       <div class="card-desc">Analyze codebase files, dependencies & tree</div>
                     </div>
                   </button>
                   <button class="hero-prompt-card prompt-chip" data-query="Convene an agent graph cycle to plan and execute task decomposition.">
-                    <div class="card-icon">⚡</div>
+                    <div class="card-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-spark"></use></svg></div>
                     <div class="card-body">
                       <div class="card-title">Agent Graph Cycles</div>
                       <div class="card-desc">Autonomous cyclical planning and execution loops</div>
                     </div>
                   </button>
                   <button class="hero-prompt-card prompt-chip" data-query="Audit active policy boundaries and workspace sentinel safety tripwires.">
-                    <div class="card-icon">🛡️</div>
+                    <div class="card-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"></use></svg></div>
                     <div class="card-body">
                       <div class="card-title">Security Sentinel</div>
                       <div class="card-desc">Audit fail-closed boundaries & tripwires</div>
@@ -185,29 +232,29 @@
                 <div id="attachmentStrip" class="attachment-strip hidden" role="list" aria-label="Staged Attachments"></div>
                 <div class="input-textarea-row">
                   <div id="queueIndicator" class="queue-indicator hidden"></div>
-                  <textarea id="promptInput" placeholder="Ask OpenSand to code, inspect, or run commands... (/ for skills, @ for bots, # for files)" rows="1"></textarea>
+                  <textarea id="promptInput" placeholder="Ask OpenSand…   / skills   ·   @ bots   ·   # files" rows="1"></textarea>
                 </div>
                 <div class="input-actions-bar">
                   <div class="input-actions-left">
                     <button id="btnStageFile" class="btn-attach" type="button" title="Attach file or screenshot">
-                      📎 <span>Attach</span>
+                      <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-paperclip"></use></svg> <span>Attach</span>
                     </button>
                     <button id="btnDictate" class="btn-attach" type="button" title="Voice dictation (Click to speak)">
-                      🎙️ <span>Dictate</span>
+                      <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mic"></use></svg> <span>Dictate</span>
                     </button>
                     <input type="file" id="fileAttachmentInput" class="hidden" multiple />
                     <span class="badge badge-model" id="composerModelBadge">Model</span>
                   </div>
                   <div class="input-actions-right">
                     <button id="btnToggleSafeMode" class="btn-attach" title="Toggle Auto-Approval Mode">
-                      🛡️ <span id="composerAutoApproveText">Safe Mode</span>
+                      <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"></use></svg> <span id="composerAutoApproveText">Safe Mode</span>
                     </button>
                     <button id="btnSend" class="btn btn-primary btn-sm">
-                      <span>Send</span>
+                      <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-up"></use></svg><span>Send</span>
                       <kbd class="kbd-hint">⌘↵</kbd>
                     </button>
                     <button id="btnStop" class="btn btn-danger btn-sm hidden" title="Stop generating (Esc)">
-                      <span>Stop</span>
+                      <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-square"></use></svg><span>Stop</span>
                       <kbd class="kbd-hint">Esc</kbd>
                     </button>
                   </div>
@@ -222,7 +269,7 @@
             <div class="canvas-tab-strip" id="canvasTabStrip" role="tablist" aria-label="Open files"></div>
             <div class="canvas-header">
               <div class="canvas-header-left">
-                <span class="canvas-icon" id="canvasIcon">📄</span>
+                <span class="canvas-icon" id="canvasIcon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-file"></use></svg></span>
                 <span class="canvas-title" id="canvasTitle" title="Artifact Title">Artifact</span>
                 <span class="badge badge-canvas" id="canvasTypeBadge">Code</span>
               </div>
@@ -232,10 +279,10 @@
                   <button class="canvas-tab" data-tab="preview" id="canvasTabPreview">Preview</button>
                   <button class="canvas-tab" data-tab="diff" id="canvasTabDiff">Diff</button>
                 </div>
-                <button class="btn-canvas-action" id="btnCopyCanvas" title="Copy Content">📋 <span class="canvas-action-text">Copy</span></button>
-                <button class="btn-canvas-action" id="btnDownloadCanvas" title="Download Artifact">💾</button>
-                <button class="btn-canvas-action" id="btnExpandCanvas" title="Toggle Fullscreen">⛶</button>
-                <button class="btn-canvas-action btn-close-canvas" id="btnCloseCanvas" title="Close Canvas (Esc)">✕</button>
+                <button class="btn-canvas-action" id="btnCopyCanvas" title="Copy content"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"></use></svg> <span class="canvas-action-text">Copy</span></button>
+                <button class="btn-canvas-action" id="btnDownloadCanvas" title="Download artifact" aria-label="Download artifact"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"></use></svg></button>
+                <button class="btn-canvas-action" id="btnExpandCanvas" title="Toggle fullscreen" aria-label="Toggle fullscreen"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-expand"></use></svg></button>
+                <button class="btn-canvas-action btn-close-canvas" id="btnCloseCanvas" title="Close canvas (Esc)" aria-label="Close canvas"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
               </div>
             </div>
             <div class="canvas-body" id="canvasBody">
@@ -265,16 +312,16 @@
       <div id="viewRooms" class="view-panel hidden">
         <div class="dashboard-container">
           <div class="subnav-tabs" data-group="connections">
-            <button class="subnav-tab" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
-            <button class="subnav-tab" data-view="webhooks">⚡ Inbound Webhooks</button>
-            <button class="subnav-tab" data-view="connectors">🔌 3rd-Party Connectors</button>
-            <button class="subnav-tab" data-view="attachments">📎 Context Files</button>
-            <button class="subnav-tab" data-view="graphs">🕸️ Agent Graphs</button>
-            <button class="subnav-tab active" data-view="rooms">👥 Team Rooms</button>
+            <button class="subnav-tab" data-view="boundaries"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"></use></svg>Fail-Closed Boundaries</button>
+            <button class="subnav-tab" data-view="webhooks"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-spark"></use></svg>Inbound Webhooks</button>
+            <button class="subnav-tab" data-view="connectors"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>3rd-Party Connectors</button>
+            <button class="subnav-tab" data-view="attachments"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-paperclip"></use></svg>Context Files</button>
+            <button class="subnav-tab" data-view="graphs"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg>Agent Graphs</button>
+            <button class="subnav-tab active" data-view="rooms"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-users"></use></svg>Team Rooms</button>
           </div>
           <div class="dashboard-header">
             <div>
-              <div class="dashboard-title">👥 Multi-Agent Collaborative Rooms</div>
+              <div class="dashboard-title">Multi-Agent Collaborative Rooms</div>
               <div class="dashboard-subtitle">Round-table discussion spaces where specialist personas deliberate and synthesize consensus.</div>
             </div>
             <button id="btnOpenCreateRoom" class="btn btn-primary">+ Create Room</button>
@@ -289,10 +336,10 @@
       <div id="viewRoutines" class="view-panel hidden">
         <div class="dashboard-container">
           <div class="subnav-tabs" data-group="capabilities">
-            <button class="subnav-tab" data-view="skills">🧩 Recipe Skills</button>
-            <button class="subnav-tab" data-view="memories">🧠 7-Layer Memory</button>
-            <button class="subnav-tab active" data-view="routines">⏱ Scheduled Routines</button>
-            <button class="subnav-tab" data-view="vault">🔐 Encrypted Vault</button>
+            <button class="subnav-tab" data-view="skills"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>Recipe Skills</button>
+            <button class="subnav-tab" data-view="memories"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-brain"></use></svg>7-Layer Memory</button>
+            <button class="subnav-tab active" data-view="routines"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg>Scheduled Routines</button>
+            <button class="subnav-tab" data-view="vault"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>Encrypted Vault</button>
           </div>
           <div class="dashboard-header">
             <div>
@@ -311,14 +358,14 @@
       <div id="viewSkills" class="view-panel hidden">
         <div class="dashboard-container">
           <div class="subnav-tabs" data-group="capabilities">
-            <button class="subnav-tab active" data-view="skills">🧩 Recipe Skills</button>
-            <button class="subnav-tab" data-view="memories">🧠 7-Layer Memory</button>
-            <button class="subnav-tab" data-view="routines">⏱ Scheduled Routines</button>
-            <button class="subnav-tab" data-view="vault">🔐 Encrypted Vault</button>
+            <button class="subnav-tab active" data-view="skills"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>Recipe Skills</button>
+            <button class="subnav-tab" data-view="memories"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-brain"></use></svg>7-Layer Memory</button>
+            <button class="subnav-tab" data-view="routines"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg>Scheduled Routines</button>
+            <button class="subnav-tab" data-view="vault"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>Encrypted Vault</button>
           </div>
           <div class="dashboard-header">
             <div>
-              <div class="dashboard-title">🧩 Modular Recipe Skills Library</div>
+              <div class="dashboard-title">Modular Recipe Skills Library</div>
               <div class="dashboard-subtitle">Modular SKILL.md recipe guidelines with YAML frontmatter mounted to agent personas.</div>
             </div>
             <div style="display: flex; gap: 8px;">
@@ -335,14 +382,14 @@
       <div id="viewVault" class="view-panel hidden">
         <div class="dashboard-container">
           <div class="subnav-tabs" data-group="capabilities">
-            <button class="subnav-tab" data-view="skills">🧩 Recipe Skills</button>
-            <button class="subnav-tab" data-view="memories">🧠 7-Layer Memory</button>
-            <button class="subnav-tab" data-view="routines">⏱ Scheduled Routines</button>
-            <button class="subnav-tab active" data-view="vault">🔐 Encrypted Vault</button>
+            <button class="subnav-tab" data-view="skills"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>Recipe Skills</button>
+            <button class="subnav-tab" data-view="memories"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-brain"></use></svg>7-Layer Memory</button>
+            <button class="subnav-tab" data-view="routines"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg>Scheduled Routines</button>
+            <button class="subnav-tab active" data-view="vault"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>Encrypted Vault</button>
           </div>
           <div class="dashboard-header">
             <div>
-              <div class="dashboard-title">🔐 Local Encrypted Secrets Vault</div>
+              <div class="dashboard-title">Local Encrypted Secrets Vault</div>
               <div class="dashboard-subtitle">AES-256-GCM hardware-keyed encrypted secrets & credentials with automatic output scrubbing.</div>
             </div>
             <div style="display: flex; gap: 8px;">
@@ -363,14 +410,14 @@
       <div id="viewMemories" class="view-panel hidden">
         <div class="dashboard-container">
           <div class="subnav-tabs" data-group="capabilities">
-            <button class="subnav-tab" data-view="skills">🧩 Recipe Skills</button>
-            <button class="subnav-tab active" data-view="memories">🧠 7-Layer Memory</button>
-            <button class="subnav-tab" data-view="routines">⏱ Scheduled Routines</button>
-            <button class="subnav-tab" data-view="vault">🔐 Encrypted Vault</button>
+            <button class="subnav-tab" data-view="skills"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>Recipe Skills</button>
+            <button class="subnav-tab active" data-view="memories"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-brain"></use></svg>7-Layer Memory</button>
+            <button class="subnav-tab" data-view="routines"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg>Scheduled Routines</button>
+            <button class="subnav-tab" data-view="vault"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>Encrypted Vault</button>
           </div>
           <div class="dashboard-header">
             <div>
-              <div class="dashboard-title">🧠 7-Layer Memory & Team Review Queue</div>
+              <div class="dashboard-title">7-Layer Memory & Team Review Queue</div>
               <div class="dashboard-subtitle">Discrete facts across user, agent, and team tiers with human-in-the-loop review governance.</div>
             </div>
             <button id="btnOpenAddMemory" class="btn btn-primary">+ Add Memory Fact</button>
@@ -388,16 +435,16 @@
       <div id="viewAttachments" class="view-panel hidden">
         <div class="dashboard-container">
           <div class="subnav-tabs" data-group="connections">
-            <button class="subnav-tab" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
-            <button class="subnav-tab" data-view="webhooks">⚡ Inbound Webhooks</button>
-            <button class="subnav-tab" data-view="connectors">🔌 3rd-Party Connectors</button>
-            <button class="subnav-tab active" data-view="attachments">📎 Context Files</button>
-            <button class="subnav-tab" data-view="graphs">🕸️ Agent Graphs</button>
-            <button class="subnav-tab" data-view="rooms">👥 Team Rooms</button>
+            <button class="subnav-tab" data-view="boundaries"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"></use></svg>Fail-Closed Boundaries</button>
+            <button class="subnav-tab" data-view="webhooks"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-spark"></use></svg>Inbound Webhooks</button>
+            <button class="subnav-tab" data-view="connectors"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>3rd-Party Connectors</button>
+            <button class="subnav-tab active" data-view="attachments"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-paperclip"></use></svg>Context Files</button>
+            <button class="subnav-tab" data-view="graphs"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg>Agent Graphs</button>
+            <button class="subnav-tab" data-view="rooms"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-users"></use></svg>Team Rooms</button>
           </div>
           <div class="dashboard-header">
             <div>
-              <div class="dashboard-title">📎 Staged Context Attachments</div>
+              <div class="dashboard-title">Staged Context Attachments</div>
               <div class="dashboard-subtitle">Grok Bot Parity: File staging and deterministic SHA-256 byte digest context attachments.</div>
             </div>
             <div style="display: flex; gap: 8px;">
@@ -414,12 +461,12 @@
       <div id="viewTemplates" class="view-panel hidden">
         <div class="dashboard-container">
           <div class="subnav-tabs" data-group="bots">
-            <button class="subnav-tab active" data-view="templates">🤖 Local Personas</button>
-            <button class="subnav-tab" data-view="gallery">🏪 Community Agent Store</button>
+            <button class="subnav-tab active" data-view="templates"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bot"></use></svg>Local Personas</button>
+            <button class="subnav-tab" data-view="gallery"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-store"></use></svg>Community Agent Store</button>
           </div>
           <div class="dashboard-header">
             <div>
-              <div class="dashboard-title">🤖 Bots & Personas</div>
+              <div class="dashboard-title">Bots & Personas</div>
               <div class="dashboard-subtitle">Configure autonomous agent personas, custom system instructions, tool whitelists, and template exports.</div>
             </div>
             <div style="display: flex; gap: 8px;">
@@ -449,12 +496,12 @@
       <div id="viewGallery" class="view-panel hidden">
         <div class="dashboard-container">
           <div class="subnav-tabs" data-group="bots">
-            <button class="subnav-tab" data-view="templates">🤖 Local Personas</button>
-            <button class="subnav-tab active" data-view="gallery">🏪 Community Agent Store</button>
+            <button class="subnav-tab" data-view="templates"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bot"></use></svg>Local Personas</button>
+            <button class="subnav-tab active" data-view="gallery"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-store"></use></svg>Community Agent Store</button>
           </div>
           <div class="dashboard-header">
             <div>
-              <div class="dashboard-title">🏪 Community Agent Store & Template Gallery</div>
+              <div class="dashboard-title">Community Agent Store & Template Gallery</div>
               <div class="dashboard-subtitle">Browse, preview, and one-click install battle-tested specialist agent personas into your local fleet.</div>
             </div>
             <div style="display: flex; gap: 8px;">
@@ -489,7 +536,7 @@
         <div class="dashboard-container">
           <div class="dashboard-header">
             <div>
-              <div class="dashboard-title">🛡️ Workspace Sentinel & Self-Healing Loop</div>
+              <div class="dashboard-title">Workspace Sentinel & Self-Healing Loop</div>
               <div class="dashboard-subtitle">Frontier 2: Automated background filesystem watcher with real-time test/type diagnostics and autonomous healer turn loop.</div>
             </div>
             <button id="btnOpenCreateWatcher" class="btn btn-primary">+ New Watcher</button>
@@ -511,16 +558,16 @@
       <div id="viewGraphs" class="view-panel hidden">
         <div class="dashboard-container">
           <div class="subnav-tabs" data-group="connections">
-            <button class="subnav-tab" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
-            <button class="subnav-tab" data-view="webhooks">⚡ Inbound Webhooks</button>
-            <button class="subnav-tab" data-view="connectors">🔌 3rd-Party Connectors</button>
-            <button class="subnav-tab" data-view="attachments">📎 Context Files</button>
-            <button class="subnav-tab active" data-view="graphs">🕸️ Agent Graphs</button>
-            <button class="subnav-tab" data-view="rooms">👥 Team Rooms</button>
+            <button class="subnav-tab" data-view="boundaries"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"></use></svg>Fail-Closed Boundaries</button>
+            <button class="subnav-tab" data-view="webhooks"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-spark"></use></svg>Inbound Webhooks</button>
+            <button class="subnav-tab" data-view="connectors"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>3rd-Party Connectors</button>
+            <button class="subnav-tab" data-view="attachments"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-paperclip"></use></svg>Context Files</button>
+            <button class="subnav-tab active" data-view="graphs"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg>Agent Graphs</button>
+            <button class="subnav-tab" data-view="rooms"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-users"></use></svg>Team Rooms</button>
           </div>
           <div class="dashboard-header">
             <div>
-              <div class="dashboard-title">🕸️ Agent Graphs & Cyclical Node Loops</div>
+              <div class="dashboard-title">Agent Graphs & Cyclical Node Loops</div>
               <div class="dashboard-subtitle">Declarative state graphs enabling multi-node reflection, self-repair loops, and conditional state routing.</div>
             </div>
             <button id="btnRunCodingGraph" class="btn btn-primary">▶ Run Self-Reflecting Graph</button>
@@ -542,16 +589,16 @@
       <div id="viewBoundaries" class="view-panel hidden">
         <div class="dashboard-container">
           <div class="subnav-tabs" data-group="connections">
-            <button class="subnav-tab active" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
-            <button class="subnav-tab" data-view="webhooks">⚡ Inbound Webhooks</button>
-            <button class="subnav-tab" data-view="connectors">🔌 3rd-Party Connectors</button>
-            <button class="subnav-tab" data-view="attachments">📎 Context Files</button>
-            <button class="subnav-tab" data-view="graphs">🕸️ Agent Graphs</button>
-            <button class="subnav-tab" data-view="rooms">👥 Team Rooms</button>
+            <button class="subnav-tab active" data-view="boundaries"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"></use></svg>Fail-Closed Boundaries</button>
+            <button class="subnav-tab" data-view="webhooks"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-spark"></use></svg>Inbound Webhooks</button>
+            <button class="subnav-tab" data-view="connectors"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>3rd-Party Connectors</button>
+            <button class="subnav-tab" data-view="attachments"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-paperclip"></use></svg>Context Files</button>
+            <button class="subnav-tab" data-view="graphs"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg>Agent Graphs</button>
+            <button class="subnav-tab" data-view="rooms"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-users"></use></svg>Team Rooms</button>
           </div>
           <div class="dashboard-header">
             <div>
-              <div class="dashboard-title">🚧 Fail-Closed Policy Boundaries (/admin/boundaries parity)</div>
+              <div class="dashboard-title">Fail-Closed Policy Boundaries (/admin/boundaries parity)</div>
               <div class="dashboard-subtitle">Declarative security rules evaluating tool names, command patterns, and filesystem paths before execution.</div>
             </div>
             <button id="btnOpenCreateRule" class="btn btn-primary">+ New Rule</button>
@@ -573,16 +620,16 @@
       <div id="viewWebhooks" class="view-panel hidden">
         <div class="dashboard-container">
           <div class="subnav-tabs" data-group="connections">
-            <button class="subnav-tab" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
-            <button class="subnav-tab active" data-view="webhooks">⚡ Inbound Webhooks</button>
-            <button class="subnav-tab" data-view="connectors">🔌 3rd-Party Connectors</button>
-            <button class="subnav-tab" data-view="attachments">📎 Context Files</button>
-            <button class="subnav-tab" data-view="graphs">🕸️ Agent Graphs</button>
-            <button class="subnav-tab" data-view="rooms">👥 Team Rooms</button>
+            <button class="subnav-tab" data-view="boundaries"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"></use></svg>Fail-Closed Boundaries</button>
+            <button class="subnav-tab active" data-view="webhooks"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-spark"></use></svg>Inbound Webhooks</button>
+            <button class="subnav-tab" data-view="connectors"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>3rd-Party Connectors</button>
+            <button class="subnav-tab" data-view="attachments"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-paperclip"></use></svg>Context Files</button>
+            <button class="subnav-tab" data-view="graphs"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg>Agent Graphs</button>
+            <button class="subnav-tab" data-view="rooms"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-users"></use></svg>Team Rooms</button>
           </div>
           <div class="dashboard-header">
             <div>
-              <div class="dashboard-title">⚡ Inbound Proactive Webhooks & Triggers</div>
+              <div class="dashboard-title">Inbound Proactive Webhooks & Triggers</div>
               <div class="dashboard-subtitle">Trigger background routines, agent graphs, or autonomous turns from GitHub PRs, CI pipelines, and external webhooks.</div>
             </div>
             <button id="btnOpenCreateWebhook" class="btn btn-primary">+ New Webhook</button>
@@ -604,16 +651,16 @@
       <div id="viewConnectors" class="view-panel hidden">
         <div class="dashboard-container">
           <div class="subnav-tabs" data-group="connections">
-            <button class="subnav-tab" data-view="boundaries">🚧 Fail-Closed Boundaries</button>
-            <button class="subnav-tab" data-view="webhooks">⚡ Inbound Webhooks</button>
-            <button class="subnav-tab active" data-view="connectors">🔌 3rd-Party Connectors</button>
-            <button class="subnav-tab" data-view="attachments">📎 Context Files</button>
-            <button class="subnav-tab" data-view="graphs">🕸️ Agent Graphs</button>
-            <button class="subnav-tab" data-view="rooms">👥 Team Rooms</button>
+            <button class="subnav-tab" data-view="boundaries"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"></use></svg>Fail-Closed Boundaries</button>
+            <button class="subnav-tab" data-view="webhooks"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-spark"></use></svg>Inbound Webhooks</button>
+            <button class="subnav-tab active" data-view="connectors"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>3rd-Party Connectors</button>
+            <button class="subnav-tab" data-view="attachments"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-paperclip"></use></svg>Context Files</button>
+            <button class="subnav-tab" data-view="graphs"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg>Agent Graphs</button>
+            <button class="subnav-tab" data-view="rooms"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-users"></use></svg>Team Rooms</button>
           </div>
           <div class="dashboard-header">
             <div>
-              <div class="dashboard-title">🔌 3rd-Party App OAuth Connectors (/connections parity)</div>
+              <div class="dashboard-title">3rd-Party App OAuth Connectors (/connections parity)</div>
               <div class="dashboard-subtitle">Connect Slack, Linear, and GitHub App integrations to empower agents to collaborate across work tools.</div>
             </div>
             <button id="btnRefreshConnectors" class="btn btn-secondary">↻ Refresh</button>

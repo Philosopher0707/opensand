@@ -10,6 +10,17 @@ import { createArtifactCanvas } from './modules/chat/canvas.js';
 // The packaged app runs in HTTP mode without a preload bridge, so detect via userAgent.
 if (navigator.userAgent.includes('Electron')) document.body.classList.add('is-electron');
 
+// Inline sprite helper: dynamic surfaces use the same stroke icons as index.html.
+const uiIcon = (name, cls = 'icon') => `<svg class="${cls}" aria-hidden="true" focusable="false"><use href="#i-${name}"></use></svg>`;
+
+// The brand mark stays a single spark; state is shown by the label and a pulse.
+function setBotAvatar(state) {
+  const el = document.getElementById('botStatusAvatar');
+  if (!el) return;
+  if (!el.querySelector('svg')) el.innerHTML = uiIcon('spark');
+  el.dataset.state = state;
+}
+
 // Dual-mode backend client: native Electron IPC or local HTTP/SSE
 class OpenSandClient {
   constructor() {
@@ -740,20 +751,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentView = 'chat';
 
   const viewTitles = {
-    chat: '💬 Chat & Dialogue',
-    graphs: '🕸️ Agent Graphs & Cyclical Loops',
-    sentinel: '🛡️ Workspace Sentinel & Self-Healing',
-    rooms: '👥 Multi-Agent Collaborative Rooms',
-    routines: '⏱ Scheduled Background Routines',
-    skills: '🧩 Modular Recipe Skills Library',
-    templates: '🤖 Bots & Personas',
-    gallery: '🏪 Community Agent Store & Template Gallery',
-    boundaries: '🚧 Fail-Closed Policy Boundaries',
-    vault: '🔐 Local Encrypted Secrets Vault',
-    memories: '🧠 7-Layer Discrete Fact Memory',
-    webhooks: '⚡ Inbound Proactive Webhooks',
-    attachments: '📎 Staged Context Attachments',
-    connectors: '🔌 3rd-Party App OAuth Connectors',
+    chat: 'Chat & Dialogue',
+    graphs: 'Agent Graphs & Cyclical Loops',
+    sentinel: 'Workspace Sentinel & Self-Healing',
+    rooms: 'Multi-Agent Collaborative Rooms',
+    routines: 'Scheduled Background Routines',
+    skills: 'Modular Recipe Skills Library',
+    templates: 'Bots & Personas',
+    gallery: 'Community Agent Store & Template Gallery',
+    boundaries: 'Fail-Closed Policy Boundaries',
+    vault: 'Local Encrypted Secrets Vault',
+    memories: '7-Layer Discrete Fact Memory',
+    webhooks: 'Inbound Proactive Webhooks',
+    attachments: 'Staged Context Attachments',
+    connectors: '3rd-Party App OAuth Connectors',
   };
 
   function switchView(viewName) {
@@ -859,6 +870,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   const botList = document.getElementById('botList');
   const taskList = document.getElementById('taskList');
   const activeSessionTitle = document.getElementById('activeSessionTitle');
+  const sessionTitles = new Map();
+
+  function setSessionLabel(title) {
+    if (!activeSessionTitle) return;
+    const label = (title || '').trim() || 'Untitled session';
+    activeSessionTitle.textContent = label;
+    activeSessionTitle.title = label;
+  }
   const badgeActiveBot = document.getElementById('badgeActiveBot');
   const badgeModel = document.getElementById('badgeModel');
   const badgeAutoApprove = document.getElementById('badgeAutoApprove');
@@ -1194,14 +1213,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       const shimmer = currentAssistantMessage.contentEl.querySelector('.typing-shimmer');
       if (shimmer) shimmer.remove();
       if (reason && !currentAssistantText.trim() && !currentAssistantThought.trim()) {
-        currentAssistantMessage.contentEl.innerHTML = `<div style="color: var(--text-muted); margin-top: 8px;">⏹ ${escapeHtml(reason)}</div>`;
+        currentAssistantMessage.contentEl.innerHTML = `<div class="turn-note" style="color: var(--text-muted); margin-top: 8px;">${escapeHtml(reason)}</div>`;
       }
       const runningLines = currentAssistantMessage.toolsEl.querySelectorAll('.tool-line-running');
       runningLines.forEach((el) => updateToolLineStatus(el, 'failed'));
     }
     queuedQueries = [];
     updateQueueIndicator();
-    if (botStatusAvatar) botStatusAvatar.textContent = '⚡';
+    if (botStatusAvatar) setBotAvatar('ready');
     if (botStatusText) botStatusText.textContent = 'Ready';
     activeTurnExtraChars = 0;
     refreshTokenBadge();
@@ -1216,7 +1235,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const theme = saved || (prefersDark ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', theme);
     if (btnToggleTheme) {
-      btnToggleTheme.textContent = theme === 'dark' ? '🌙' : '☀️';
+      btnToggleTheme.innerHTML = uiIcon(theme === 'dark' ? 'moon' : 'sun');
       btnToggleTheme.title = `Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Theme`;
     }
   }
@@ -1227,7 +1246,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const next = current === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', next);
       localStorage.setItem('opensand-theme', next);
-      btnToggleTheme.textContent = next === 'dark' ? '🌙' : '☀️';
+      btnToggleTheme.innerHTML = uiIcon(next === 'dark' ? 'moon' : 'sun');
       btnToggleTheme.title = `Switch to ${next === 'dark' ? 'Light' : 'Dark'} Theme`;
     };
   }
@@ -1317,13 +1336,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       const agents = await client.getAgents();
       const current = agents.find((a) => a.id === activeAgentId);
       if (current) {
-        if (detailBotAvatar) detailBotAvatar.textContent = current.kind === 'ROOM' ? '👥' : '⚡';
+        if (detailBotAvatar) detailBotAvatar.innerHTML = uiIcon(current.kind === 'ROOM' ? 'users' : 'spark');
         if (detailBotName) detailBotName.textContent = current.name;
         if (detailBotRole) detailBotRole.textContent = current.role || 'Autonomous Specialist';
         if (detailBotModelCode) detailBotModelCode.textContent = current.model || badgeModel?.textContent || 'stealth/crouton-alpha';
         if (detailBotPromptPreview) detailBotPromptPreview.textContent = current.systemPrompt || 'Standard clean-room coding instructions.';
       } else {
-        if (detailBotAvatar) detailBotAvatar.textContent = '🤖';
+        if (detailBotAvatar) detailBotAvatar.innerHTML = uiIcon('bot');
         if (detailBotName) detailBotName.textContent = 'OpenSand Assistant';
         if (detailBotRole) detailBotRole.textContent = 'Universal Clean-Room Coding Agent';
         if (detailBotModelCode) detailBotModelCode.textContent = badgeModel?.textContent || 'stealth/crouton-alpha';
@@ -1460,7 +1479,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         badgeModel.title = `Active Model: ${modelName} (${s.endpoint || ''})`;
       }
       if (badgeAutoApprove) {
-        badgeAutoApprove.textContent = s.autoApprove ? '⚡ Auto-Approve' : '🛡 Safe Mode';
+        badgeAutoApprove.innerHTML = `${uiIcon(s.autoApprove ? 'spark' : 'shield')}<span>${s.autoApprove ? 'Auto-Approve' : 'Safe Mode'}</span>`;
         badgeAutoApprove.className = s.autoApprove ? 'badge badge-warning' : 'badge badge-success';
       }
 
@@ -1508,7 +1527,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const rawPct = (currentTokens / maxTokens) * 100;
     const activeModelName = model || latestTelemetryData.model || badgeModel?.textContent || 'model';
 
-    badgeTokens.textContent = `⚡ ${formatTokenCount(currentTokens)} / ${formatTokenCount(maxTokens)} (${pctStr})`;
+    badgeTokens.innerHTML = `${uiIcon('spark')}<span>${formatTokenCount(currentTokens)} / ${formatTokenCount(maxTokens)} (${pctStr})</span>`;
     badgeTokens.title = `Context Window: ${currentTokens.toLocaleString()} / ${maxTokens.toLocaleString()} tokens (${pctStr}) for ${activeModelName}. Click to compact dialogue.`;
     badgeTokens.className = 'badge badge-tokens';
     if (rawPct > 80) {
@@ -1598,14 +1617,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const defaultItem = document.createElement('div');
     defaultItem.className = `bot-item ${activeAgentId === null ? 'active' : ''}`;
     defaultItem.innerHTML = `
-      <span class="bot-icon">🤖</span>
+      <span class="bot-icon">${uiIcon('bot')}</span>
       <div class="bot-item-info">
         <span class="bot-item-name">Default Assistant</span>
       </div>
     `;
     defaultItem.onclick = () => {
       activeAgentId = null;
-      badgeActiveBot.textContent = '🤖 Default Assistant';
+      badgeActiveBot.textContent = 'Default Assistant';
       persistAgent();
     };
     botList.appendChild(defaultItem);
@@ -1613,20 +1632,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     for (const a of agents) {
       const item = document.createElement('div');
       item.className = `bot-item ${activeAgentId === a.id ? 'active' : ''}`;
-      const icon = a.kind === 'ROOM' ? '👥' : '⚡';
+      const icon = uiIcon(a.kind === 'ROOM' ? 'users' : 'spark');
       item.innerHTML = `
         <span class="bot-icon">${icon}</span>
         <div class="bot-item-info">
           <span class="bot-item-name">${escapeHtml(a.name)}</span>
           ${a.role ? `<span class="bot-item-role">${escapeHtml(a.role)}</span>` : ''}
         </div>
-        <button class="btn-delete-bot" title="Delete bot" data-bot-id="${escapeHtml(a.id)}">🗑️</button>
+        <button class="btn-delete-bot" title="Delete bot" data-bot-id="${escapeHtml(a.id)}" aria-label="Delete bot">${uiIcon('trash')}</button>
       `;
       item.title = a.role || a.name;
       item.onclick = (e) => {
         if (e.target.closest('.btn-delete-bot')) return;
         activeAgentId = a.id;
-        badgeActiveBot.textContent = `${icon} ${a.name}`;
+        badgeActiveBot.textContent = a.name;
         persistAgent();
       };
 
@@ -1638,7 +1657,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             await client.deleteAgent(a.id);
             if (activeAgentId === a.id) {
               activeAgentId = null;
-              badgeActiveBot.textContent = '🤖 Default Assistant';
+              badgeActiveBot.textContent = 'Default Assistant';
             }
             refreshBots();
             refreshTokenBadge();
@@ -1721,6 +1740,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     for (const s of filtered) {
+      sessionTitles.set(s.id, s.title || '');
       const item = document.createElement('div');
       item.className = `session-channel-item ${s.id === currentSessionId ? 'active' : ''}`;
       const timeStr = relativeTime(s.updatedAt || s.createdAt);
@@ -1728,7 +1748,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const countSnippet = s.messageCount ? `${s.messageCount} messages` : 'New conversation';
 
       item.innerHTML = `
-        <div class="channel-avatar">🤖</div>
+        <div class="channel-avatar" aria-hidden="true">${escapeHtml((title.trim()[0] || '?').toUpperCase())}</div>
         <div class="channel-info">
           <div class="channel-line-1">
             <span class="channel-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
@@ -1736,7 +1756,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           </div>
           <div class="channel-line-2">
             <span class="channel-snippet">${escapeHtml(countSnippet)}</span>
-            <button class="btn-delete-session" title="Delete conversation" data-session-id="${escapeHtml(s.id)}">🗑️</button>
+            <button class="btn-delete-session" title="Delete conversation" data-session-id="${escapeHtml(s.id)}" aria-label="Delete conversation">${uiIcon('trash')}</button>
           </div>
         </div>
       `;
@@ -1786,7 +1806,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       card.className = 'dashboard-card';
       card.innerHTML = `
         <div class="card-top">
-          <div class="card-title">👥 ${escapeHtml(r.name)}</div>
+          <div class="card-title">${escapeHtml(r.name)}</div>
           <span class="badge badge-bot">${r.memberAgentIds.length} Agents</span>
         </div>
         <div class="card-desc">${escapeHtml(r.description || 'No description.')}</div>
@@ -1910,7 +1930,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       card.className = 'dashboard-card';
       card.innerHTML = `
         <div class="card-top">
-          <div class="card-title">🧩 ${escapeHtml(s.name)}</div>
+          <div class="card-title">${escapeHtml(s.name)}</div>
           <span class="badge">${escapeHtml(s.category || 'general')}</span>
         </div>
         <div class="card-desc">${escapeHtml(s.description || 'No description.')}</div>
@@ -1957,7 +1977,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         card.className = 'dashboard-card';
         card.innerHTML = `
           <div class="card-top">
-            <div class="card-title">🔑 ${escapeHtml(s.name)}</div>
+            <div class="card-title">${escapeHtml(s.name)}</div>
             <span class="badge badge-success">Encrypted</span>
           </div>
           <div class="card-desc">${escapeHtml(s.description || 'Environment secret token')}</div>
@@ -1986,7 +2006,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         card.className = 'dashboard-card';
         card.innerHTML = `
           <div class="card-top">
-            <div class="card-title">👤 ${escapeHtml(c.title)}</div>
+            <div class="card-title">${escapeHtml(c.title)}</div>
             <span class="badge">${escapeHtml(c.username || 'user')}</span>
           </div>
           <div class="card-desc"><strong>Sites:</strong> ${escapeHtml((c.sites || []).join(', ') || 'Any')}</div>
@@ -2061,7 +2081,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         card.className = 'dashboard-card';
         card.innerHTML = `
           <div class="card-top">
-            <div class="card-title">🧠 ${escapeHtml(m.tier || 'fact').toUpperCase()}</div>
+            <div class="card-title">${escapeHtml(m.tier || 'fact').toUpperCase()}</div>
             <span class="badge badge-bot">${escapeHtml(m.scope || 'user')}</span>
           </div>
           <div class="card-desc">${escapeHtml(m.text)}</div>
@@ -2093,7 +2113,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const sizeKb = Math.round(((att.byteLength || 0) / 1024) * 10) / 10;
       card.innerHTML = `
         <div class="card-top">
-          <div class="card-title">📎 ${escapeHtml(att.fileName || 'Attachment')}</div>
+          <div class="card-title">${escapeHtml(att.fileName || 'Attachment')}</div>
           <span class="badge badge-success">Staged</span>
         </div>
         <div class="card-desc" style="word-break: break-all;"><strong>Path:</strong> ${escapeHtml(att.filePath || 'in-memory')}</div>
@@ -2140,10 +2160,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (grid) {
         const card = document.createElement('div');
-        card.className = 'dashboard-card';
+        card.className = 'dashboard-card agent-template-card';
         card.innerHTML = `
           <div class="card-top">
-            <div class="card-title">🤖 ${escapeHtml(a.name)}</div>
+            <div class="card-title">${escapeHtml(a.name)}</div>
             <span class="badge badge-bot">${escapeHtml(a.role)}</span>
           </div>
           <div class="card-desc">${escapeHtml((a.systemPrompt || '').slice(0, 120))}...</div>
@@ -2171,7 +2191,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               await client.deleteAgent(a.id);
               if (activeAgentId === a.id) {
                 activeAgentId = null;
-                badgeActiveBot.textContent = '🤖 Default Assistant';
+                badgeActiveBot.textContent = 'Default Assistant';
               }
               refreshBots();
               refreshTokenBadge();
@@ -2527,7 +2547,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         card.className = 'dashboard-card';
         card.innerHTML = `
           <div class="card-top">
-            <div class="card-title">🛡️ ${escapeHtml(w.id)}</div>
+            <div class="card-title">${escapeHtml(w.id)}</div>
             <span class="badge ${w.autoHeal ? 'badge-success' : ''}">${w.autoHeal ? 'Auto-Heal Active' : 'Passive'}</span>
           </div>
           <div class="card-desc"><strong>Target:</strong> ${escapeHtml(w.targetDir)}</div>
@@ -2611,7 +2631,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       card.innerHTML = `
         <div class="card-top">
-          <div class="card-title">🕸️ ${escapeHtml(g.name)}</div>
+          <div class="card-title">${escapeHtml(g.name)}</div>
           <span class="badge badge-success">Cycle Limit: ${g.cycleLimit || 3}</span>
         </div>
         <div class="card-desc">${escapeHtml(g.description)}</div>
@@ -2718,7 +2738,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         card.innerHTML = `
           <div class="card-top">
-            <div class="card-title">🛡️ ${escapeHtml(p.name)}</div>
+            <div class="card-title">${escapeHtml(p.name)}</div>
             <span class="badge ${actionBadgeClass}">${escapeHtml(p.action)}</span>
           </div>
           <div class="card-desc">${escapeHtml(p.description || 'No description.')}</div>
@@ -2790,7 +2810,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         card.innerHTML = `
           <div class="card-top">
-            <div class="card-title">⚡ ${escapeHtml(w.name)}</div>
+            <div class="card-title">${escapeHtml(w.name)}</div>
             <span class="badge badge-success">Triggers: ${w.triggerCount || 0}</span>
           </div>
           <div class="card-desc"><strong>Target:</strong> ${escapeHtml(w.targetType.toUpperCase())} ➔ ${escapeHtml(w.targetId)}</div>
@@ -3207,13 +3227,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Tool Line Rhythm Component (OpenBot parity)
   function inferToolIcon(name) {
     const n = (name || '').toLowerCase();
-    if (n.includes('file') || n.includes('dir') || n.includes('artifact') || n.includes('source') || n.includes('patch')) return '📄';
-    if (n.includes('cmd') || n.includes('command') || n.includes('exec') || n.includes('bash') || n.includes('shell') || n.includes('rizin')) return '💻';
-    if (n.includes('search') || n.includes('grep') || n.includes('find') || n.includes('bytes') || n.includes('strings') || n.includes('xrefs')) return '🔍';
-    if (n.includes('web') || n.includes('browser') || n.includes('fetch') || n.includes('curl') || n.includes('network') || n.includes('packet')) return '🌐';
-    if (n.includes('agent') || n.includes('task') || n.includes('routine') || n.includes('room') || n.includes('sentinel') || n.includes('memory') || n.includes('vault')) return '🤖';
-    if (n.includes('ocr') || n.includes('window') || n.includes('screen') || n.includes('display')) return '👁️';
-    return '⚡';
+    if (n.includes('file') || n.includes('dir') || n.includes('artifact') || n.includes('source') || n.includes('patch')) return uiIcon('file');
+    if (n.includes('cmd') || n.includes('command') || n.includes('exec') || n.includes('bash') || n.includes('shell') || n.includes('rizin')) return uiIcon('terminal');
+    if (n.includes('search') || n.includes('grep') || n.includes('find') || n.includes('bytes') || n.includes('strings') || n.includes('xrefs')) return uiIcon('search');
+    if (n.includes('web') || n.includes('browser') || n.includes('fetch') || n.includes('curl') || n.includes('network') || n.includes('packet')) return uiIcon('globe');
+    if (n.includes('agent') || n.includes('task') || n.includes('routine') || n.includes('room') || n.includes('sentinel') || n.includes('memory') || n.includes('vault')) return uiIcon('bot');
+    if (n.includes('ocr') || n.includes('window') || n.includes('screen') || n.includes('display')) return uiIcon('eye');
+    return uiIcon('spark');
   }
 
   function formatToolName(name) {
@@ -3401,7 +3421,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     summary.innerHTML = `
       <div class="tool-group-summary-left">
         <span class="tool-group-chevron">▶</span>
-        <span class="tool-group-icon">⚙️</span>
+        <span class="tool-group-icon">${uiIcon('settings')}</span>
         <span class="tool-group-label">Running tool operation...</span>
       </div>
       <div class="tool-group-summary-right">
@@ -3504,7 +3524,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const codeText = copyBtn.dataset.code || (codeBlock ? codeBlock.querySelector('code')?.textContent : '');
       if (codeText) {
         navigator.clipboard.writeText(codeText).then(() => {
-          copyBtn.textContent = '✓ Copied!';
+          copyBtn.textContent = 'Copied!';
           copyBtn.classList.add('copied');
           setTimeout(() => {
             copyBtn.textContent = 'Copy';
@@ -3525,7 +3545,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const rawText = toolLine?._rawResult || toolLine?.querySelector('.tool-result-pre')?.textContent || '';
       if (rawText) {
         navigator.clipboard.writeText(rawText).then(() => {
-          copyToolBtn.textContent = '✓ Copied!';
+          copyToolBtn.textContent = 'Copied!';
           copyToolBtn.classList.add('copied');
           setTimeout(() => {
             copyToolBtn.textContent = 'Copy Output';
@@ -3545,9 +3565,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const textToCopy = msg?._rawContent || contentEl?.innerText || '';
       if (textToCopy) {
         navigator.clipboard.writeText(textToCopy).then(() => {
-          copyMsgBtn.textContent = '✓';
+          copyMsgBtn.innerHTML = uiIcon('check');
           setTimeout(() => {
-            copyMsgBtn.textContent = '📋';
+            copyMsgBtn.innerHTML = uiIcon('copy');
           }, 1500);
         });
       }
@@ -3900,7 +3920,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       <div class="thought-accordion ${isStreaming ? 'thought-streaming' : ''}">
         <div class="thought-header">
           <span class="thought-toggle">${shouldBeOpen ? '▼' : '▶'}</span>
-          <span class="thought-icon">${isStreaming ? '⏳' : '💭'}</span>
+          <span class="thought-icon">${isStreaming ? uiIcon('clock') : uiIcon('brain')}</span>
           <span class="thought-label">${escapeHtml(headerTitle)}</span>
         </div>
         <div class="thought-body ${shouldBeOpen ? '' : 'hidden'}">${escapeHtml(trimmed)}</div>
@@ -4074,7 +4094,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentSessionId = sessionId;
     persistSession();
     switchView('chat');
-    activeSessionTitle.textContent = `Session: ${sessionId}`;
+    setSessionLabel(sessionTitles.get(sessionId));
     messageFeed.innerHTML = '';
     welcomeBanner.classList.add('hidden');
 
@@ -4107,7 +4127,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     forceResetTurnState();
     currentSessionId = null;
     localStorage.removeItem(SESSION_KEY);
-    activeSessionTitle.textContent = 'New Session';
+    setSessionLabel(null);
     messageFeed.innerHTML = '';
     welcomeBanner.classList.remove('hidden');
     switchView('chat');
@@ -4187,7 +4207,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const avatar = document.createElement('div');
     avatar.className = 'message-avatar';
-    avatar.textContent = role === 'user' ? '👤' : '🤖';
+    avatar.innerHTML = role === 'user' ? uiIcon('user') : uiIcon('spark');
 
     const body = document.createElement('div');
     body.className = 'message-body';
@@ -4212,7 +4232,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnCopy = document.createElement('button');
     btnCopy.className = 'btn-msg-action btn-copy-msg';
     btnCopy.title = 'Copy message';
-    btnCopy.textContent = '📋';
+    btnCopy.innerHTML = uiIcon('copy');
 
     actionsEl.appendChild(timeLabel);
     actionsEl.appendChild(btnCopy);
@@ -4331,13 +4351,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       const chip = document.createElement('div');
       chip.className = 'attachment-chip';
 
-      let visual = '<span class="attachment-chip-icon">📄</span>';
+      let visual = `<span class="attachment-chip-icon">${uiIcon('file')}</span>`;
       if (att.previewUrl) {
         visual = `<img src="${att.previewUrl}" class="attachment-thumb" alt="${escapeHtml(att.name)}" />`;
       } else if (att.type?.includes('image')) {
-        visual = '<span class="attachment-chip-icon">🖼️</span>';
+        visual = `<span class="attachment-chip-icon">${uiIcon('image')}</span>`;
       } else if (att.type?.includes('code') || att.name?.endsWith('.ts') || att.name?.endsWith('.js') || att.name?.endsWith('.py')) {
-        visual = '<span class="attachment-chip-icon">💻</span>';
+        visual = `<span class="attachment-chip-icon">${uiIcon('terminal')}</span>`;
       }
 
       chip.innerHTML = `
@@ -4793,7 +4813,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     promptInput.value = '';
     promptInput.style.height = 'auto';
     setTurnBusy(true);
-    botStatusAvatar.textContent = '⏳';
+    setBotAvatar('busy');
     botStatusText.textContent = 'Thinking...';
 
     autoScrollEnabled = true;
@@ -4822,7 +4842,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (res && res.sessionId) {
         if (currentSessionId !== res.sessionId) {
           currentSessionId = res.sessionId;
-          activeSessionTitle.textContent = `Session: ${currentSessionId}`;
+          setSessionLabel(sessionTitles.get(currentSessionId));
           persistSession();
         }
       }
@@ -4834,7 +4854,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       setTurnBusy(false);
       queuedQueries = [];
       updateQueueIndicator();
-      botStatusAvatar.textContent = '⚡';
+      setBotAvatar('ready');
       botStatusText.textContent = 'Ready';
       activeTurnExtraChars = 0;
       refreshTokenBadge();
@@ -4965,7 +4985,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const sessId = event.data?.sessionId || event.sessionId;
       if (sessId && currentSessionId !== sessId) {
         currentSessionId = sessId;
-        activeSessionTitle.textContent = `Session: ${currentSessionId}`;
+        setSessionLabel(sessionTitles.get(currentSessionId));
         persistSession();
       }
     }
@@ -5026,7 +5046,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentAssistantMessage.activeTextBlock._mdLen = curSegLen;
         smartScrollToBottom();
 
-        botStatusAvatar.textContent = '✍️';
+        setBotAvatar('writing');
         botStatusText.textContent = 'Generating...';
 
         const totalLiveDelta = Math.ceil((activeTurnExtraChars + currentAssistantText.length) / 3.8);
@@ -5047,7 +5067,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentAssistantThought += thought;
         renderThoughtBlock(currentAssistantMessage.thoughtEl, currentAssistantThought, true);
         smartScrollToBottom();
-        botStatusAvatar.textContent = '💭';
+        setBotAvatar('thinking');
         botStatusText.textContent = 'Thinking...';
       }
     }
@@ -5092,7 +5112,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         lastToolArgs.set(toolName, parsedArgs);
 
-        botStatusAvatar.textContent = '⚙️';
+        setBotAvatar('working');
         botStatusText.textContent = `Running ${toolName}...`;
 
         const argsStr = typeof toolCall.args === 'string' ? toolCall.args : JSON.stringify(toolCall.args || {});
@@ -5112,7 +5132,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       smartScrollToBottom();
 
-      botStatusAvatar.textContent = '⏳';
+      setBotAvatar('busy');
       botStatusText.textContent = 'Processing...';
 
       // Auto-open Artifact Canvas on file write / edit / git_diff (Grok Bot & OpenBot Parity)
@@ -5203,7 +5223,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
       setTurnBusy(false);
-      botStatusAvatar.textContent = '⚡';
+      setBotAvatar('ready');
       botStatusText.textContent = 'Ready';
       activeTurnExtraChars = 0;
       refreshTokenBadge();
@@ -5222,12 +5242,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!currentAssistantText.trim() && !currentAssistantThought.trim()) {
           currentAssistantMessage.contentEl.innerHTML = '';
         }
-        currentAssistantMessage.contentEl.innerHTML += `<div style="color: var(--text-muted); margin-top: 8px;">⏹ Stopped.</div>`;
+        currentAssistantMessage.contentEl.innerHTML += `<div class="turn-note" style="color: var(--text-muted); margin-top: 8px;">Stopped.</div>`;
       }
       setTurnBusy(false);
       queuedQueries = [];
       updateQueueIndicator();
-      botStatusAvatar.textContent = '⚡';
+      setBotAvatar('ready');
       botStatusText.textContent = 'Ready';
       activeTurnExtraChars = 0;
       refreshTokenBadge();
@@ -5243,7 +5263,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       setTurnBusy(false);
       queuedQueries = [];
       updateQueueIndicator();
-      botStatusAvatar.textContent = '⚡';
+      setBotAvatar('ready');
       botStatusText.textContent = 'Ready';
       activeTurnExtraChars = 0;
       refreshTokenBadge();
@@ -5490,7 +5510,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!modelContextHint) return;
     const match = cachedModelList.find((m) => m.id === modelId || m.id?.toLowerCase() === (modelId || '').toLowerCase());
     if (match && match.context_length) {
-      modelContextHint.textContent = `⚡ Context: ${match.context_length.toLocaleString()} tokens`;
+      modelContextHint.textContent = `Context: ${match.context_length.toLocaleString()} tokens`;
       modelContextHint.style.color = 'var(--accent)';
     } else {
       modelContextHint.textContent = '';
@@ -5982,7 +6002,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const liveAgents = await client.getAgents();
     if (Array.isArray(liveAgents) && liveAgents.some((a) => a.id === activeAgentId)) {
       const picked = liveAgents.find((a) => a.id === activeAgentId);
-      badgeActiveBot.textContent = `${picked.kind === 'ROOM' ? '👥' : '⚡'} ${picked.name}`;
+      badgeActiveBot.textContent = picked.name;
     } else {
       activeAgentId = null;
       localStorage.removeItem(AGENT_KEY);

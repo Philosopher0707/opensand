@@ -9,7 +9,7 @@
   --border-color-subtle: rgba(255, 255, 255, 0.04);
   --text-main: #f4f4f5;
   --text-muted: #94a3b8;
-  --text-faint: #64748b;
+  --text-faint: #74839a;
   --text-code: #e2e8f0;
   --accent: #3b82f6;
   --accent-hover: #2563eb;
@@ -25,6 +25,15 @@
   --radius-md: 10px;
   --radius-lg: 14px;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+
+  /* Surfaces, elevation and motion (one system for every surface). */
+  --bg-subtle: rgba(255, 255, 255, 0.04);
+  --bg-hover: rgba(255, 255, 255, 0.07);
+  --topbar-bg: rgba(9, 9, 11, 0.82);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 24px -8px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 18px 48px -12px rgba(0, 0, 0, 0.55);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* Syntax colours — dark. Chosen for contrast against --bg-code (#121215). */
   --tok-comment: #6b7a90;
@@ -60,7 +69,7 @@
   --border-color-subtle: rgba(15, 23, 42, 0.04);
   --text-main: #0f172a;
   --text-muted: #475569;
-  --text-faint: #94a3b8;
+  --text-faint: #5f6f85;
   --text-code: #1e293b;
   --accent: #2563eb;
   --accent-hover: #1d4ed8;
@@ -72,6 +81,12 @@
   --warning-soft: rgba(217, 119, 6, 0.1);
   --danger: #dc2626;
   --danger-soft: rgba(220, 38, 38, 0.1);
+  --bg-subtle: rgba(15, 23, 42, 0.035);
+  --bg-hover: rgba(15, 23, 42, 0.06);
+  --topbar-bg: rgba(248, 250, 252, 0.85);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 8px 24px -8px rgba(15, 23, 42, 0.16);
+  --shadow-lg: 0 18px 48px -12px rgba(15, 23, 42, 0.22);
 
   /* Syntax colours — light. Darkened against #f1f5f9 so nothing washes out. */
   --tok-comment: #6b7280;
@@ -108,6 +123,38 @@ body {
   height: 100vh;
   overflow: hidden;
   user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Inline sprite + one stroke icon size for every surface. */
+.icon-sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -2px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accent-soft);
 }
 
 /* Universal Hidden Utility */
@@ -116,10 +163,13 @@ body {
 }
 
 .btn-icon-sm {
-  padding: 4px 8px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
   font-size: 12px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-color);
@@ -134,7 +184,7 @@ body {
 .btn-icon-sm:hover {
   background: var(--bg-card-hover);
   color: var(--text-main);
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: var(--border-color);
 }
 
 @media (max-width: 1024px) {
@@ -241,11 +291,52 @@ body.is-electron .sidebar.collapsed ~ .main-panel .topbar {
   color: white;
 }
 
+.brand-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.15;
+}
+
 .brand-title {
-  font-weight: 700;
-  font-size: 14.5px;
+  font-weight: 650;
+  font-size: 13.5px;
   display: block;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
+}
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.status-indicator::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+.brand-avatar .icon {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2;
+}
+
+.brand-avatar[data-state="busy"] .icon,
+.brand-avatar[data-state="thinking"] .icon,
+.brand-avatar[data-state="working"] .icon,
+.brand-avatar[data-state="writing"] .icon {
+  animation: brand-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes brand-pulse {
+  50% { opacity: 0.45; }
 }
 
 .btn-icon-ghost {
@@ -320,10 +411,11 @@ body.is-electron .sidebar.collapsed ~ .main-panel .topbar {
 }
 
 .session-channel-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 7px 8px;
+  padding: 7px 8px 7px 10px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.12s ease;
@@ -359,8 +451,27 @@ body.is-electron .sidebar.collapsed ~ .main-panel .topbar {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
   flex-shrink: 0;
+}
+
+.session-channel-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.session-channel-item.active .channel-avatar {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
 }
 
 .channel-info {
@@ -494,8 +605,15 @@ body.is-electron .sidebar.collapsed ~ .main-panel .topbar {
 
 .footer-nav-icon {
   width: 20px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 14px;
+}
+
+.footer-nav-icon .icon {
+  width: 15px;
+  height: 15px;
 }
 
 .footer-nav-label {
@@ -635,7 +753,7 @@ body.is-electron .sidebar.collapsed ~ .main-panel .topbar {
   justify-content: space-between;
   padding: 0 16px;
   flex-shrink: 0;
-  background-color: rgba(9, 9, 11, 0.85);
+  background-color: var(--topbar-bg);
   backdrop-filter: blur(12px);
   gap: 12px;
 }
@@ -802,7 +920,7 @@ body.is-electron .sidebar.collapsed ~ .main-panel .topbar {
 .context-meter-bar {
   width: 100%;
   height: 3px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--bg-subtle);
   overflow: hidden;
   position: relative;
   flex-shrink: 0;
@@ -878,20 +996,18 @@ body.is-electron .sidebar.collapsed ~ .main-panel .topbar {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
+  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s var(--ease-out), box-shadow 0.16s ease;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   text-align: left;
   color: inherit;
   width: 100%;
 }
 
 .hero-prompt-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
   border-color: var(--accent);
   background: rgba(59, 130, 246, 0.06);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-}
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
 }
 
 .hero-prompt-card .card-icon {
@@ -1540,13 +1656,13 @@ body.is-electron .sidebar.collapsed ~ .main-panel .topbar {
 }
 
 .input-wrapper {
-  max-width: 860px;
+  max-width: 900px;
   width: 100%;
   margin: 0 auto;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  box-shadow: 0 12px 36px -10px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--border-color-subtle);
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--border-color-subtle);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1556,7 +1672,7 @@ body.is-electron .sidebar.collapsed ~ .main-panel .topbar {
 
 .input-wrapper:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 16px 44px -8px rgba(59, 130, 246, 0.25), 0 0 0 1px var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-md);
 }
 
 .input-textarea-row {
@@ -1585,7 +1701,7 @@ textarea#promptInput {
   flex-wrap: wrap;
   row-gap: 6px;
   padding: 6px 10px;
-  background: rgba(0, 0, 0, 0.12);
+  background: var(--bg-subtle);
   border-top: 1px solid var(--border-color-subtle);
   gap: 8px;
 }
@@ -1619,7 +1735,8 @@ textarea#promptInput {
   border: 1px solid var(--border-color);
   color: var(--text-muted);
   border-radius: var(--radius-sm);
-  padding: 4px 8px;
+  height: 28px;
+  padding: 0 9px;
   font-size: 12px;
   cursor: pointer;
   display: inline-flex;
@@ -1631,6 +1748,19 @@ textarea#promptInput {
 .btn-attach:hover {
   color: var(--text-main);
   border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.btn-attach .icon {
+  width: 14px;
+  height: 14px;
+}
+
+#btnSend .icon,
+#btnStop .icon {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.2;
 }
 
 .kbd-hint {
@@ -1661,6 +1791,7 @@ textarea#promptInput {
 .btn-primary {
   background-color: var(--accent);
   color: white;
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-primary:hover {
@@ -1674,7 +1805,7 @@ textarea#promptInput {
 }
 
 .btn-secondary:hover {
-  background-color: #27272a;
+  background-color: var(--bg-card-hover);
 }
 
 .btn-success {
@@ -1774,7 +1905,7 @@ textarea#promptInput {
 .approval-args-box {
   margin-top: 6px;
   padding: 8px;
-  background-color: #0d0d0f;
+  background-color: var(--bg-code);
   border-radius: 4px;
   max-height: 180px;
   overflow-y: auto;
@@ -3738,3 +3869,388 @@ textarea#promptInput {
 .subagent-depth-1{margin-left:12px}
 .subagent-depth-2{margin-left:24px}
 .subagent-depth-3{margin-left:36px}
+
+/* ==========================================================================
+   Enterprise polish: icon tiles, modal rhythm, scrollbars, reduced motion.
+   Appended last so these override the legacy component rules above.
+   ========================================================================== */
+
+.hero-prompt-card .card-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.hero-prompt-card .card-icon .icon {
+  width: 17px;
+  height: 17px;
+}
+
+.hero-prompt-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 1.4;
+}
+
+.badge .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.badge-tokens span {
+  white-space: nowrap;
+}
+
+[data-theme="light"] .badge-tokens {
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  border-color: rgba(37, 99, 235, 0.25);
+}
+
+[data-theme="light"] .badge-tokens.warn {
+  background: rgba(217, 119, 6, 0.1);
+  color: #b45309;
+  border-color: rgba(217, 119, 6, 0.3);
+}
+
+[data-theme="light"] .badge-tokens.danger {
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+  border-color: rgba(220, 38, 38, 0.25);
+}
+
+[data-theme="light"] .badge-success {
+  color: #047857;
+  border-color: rgba(5, 150, 105, 0.28);
+  background: rgba(5, 150, 105, 0.08);
+}
+
+.popup-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+}
+
+.popup-icon .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.btn-delete-session {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-delete-session .icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* Message chrome: avatars and copy action use the same stroke set. */
+.message-avatar .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.message-assistant .message-avatar {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+
+.message-user .message-avatar {
+  color: white;
+}
+
+.btn-msg-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-msg-action .icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* Settings modal: section rhythm, scrollable body, clear primary action. */
+.modal-card {
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-header h3 {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+#settingsModal .modal-card {
+  width: 560px;
+  gap: 0;
+}
+
+#settingsModal .modal-header {
+  margin-bottom: 18px;
+}
+
+#settingsModal .modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: min(62vh, 560px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+#settingsModal .form-group {
+  margin-bottom: 0;
+}
+
+#settingsModal .form-group-checkbox {
+  margin-top: 0;
+  padding: 10px 12px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-color-subtle);
+  border-radius: var(--radius-sm);
+}
+
+#settingsModal .form-control {
+  height: 38px;
+}
+
+#settingsModal .btn-secondary {
+  height: 36px;
+}
+
+#settingsModal .modal-actions {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color-subtle);
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Quiet scrollbars in the roster, chat and modal bodies. */
+.sidebar-roster-container::-webkit-scrollbar,
+.chat-container::-webkit-scrollbar,
+#settingsModal .modal-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar-roster-container::-webkit-scrollbar-thumb,
+.chat-container::-webkit-scrollbar-thumb,
+#settingsModal .modal-body::-webkit-scrollbar-thumb {
+  background: var(--bg-hover);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.sidebar-roster-container::-webkit-scrollbar-track,
+.chat-container::-webkit-scrollbar-track,
+#settingsModal .modal-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Dashboard sections size to content; the container scrolls instead of
+   collapsing grids (the persona roster was 0px tall in flex layout). */
+.dashboard-container > * {
+  flex-shrink: 0;
+}
+
+/* Persona cards: role badge gets its own line so long roles never overflow. */
+.agent-template-card .card-top {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.agent-template-card .card-top .badge {
+  align-self: flex-start;
+  max-width: 100%;
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-template-card .card-title {
+  line-height: 1.3;
+}
+
+/* Toolbar actions are quiet until hover; boxes on every icon read as noise. */
+.topbar .btn-icon-sm {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+.topbar .btn-icon-sm:hover {
+  background: var(--bg-hover);
+  border-color: transparent;
+  color: var(--text-main);
+}
+
+/* Narrow windows: one column of prompt cards keeps descriptions readable. */
+@media (max-width: 900px) {
+  .hero-greeting {
+    font-size: 24px;
+  }
+
+  .hero-prompt-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-prompt-card .card-desc {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+/* Subnav tabs use the stroke icons; keep them aligned with labels. */
+.subnav-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.subnav-tab .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.dashboard-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-title .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+/* Icon sizing inside the compact chips and tool rows. */
+.tool-line-icon .icon,
+.tool-group-icon .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.bot-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bot-icon .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.attachment-chip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attachment-chip-icon .icon,
+.thought-icon .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.btn-delete-bot .icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* Readability: keep the conversation column aligned with the composer. */
+.message-feed {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* The view title is primary: shed passive badges before truncating it. */
+@media (max-width: 1500px) {
+  #badgeActiveBot {
+    display: none;
+  }
+}
+
+@media (max-width: 1400px) {
+  #badgeModel {
+    display: none;
+  }
+}
+
+@media (max-width: 1300px) {
+  #activeSessionTitle {
+    display: none;
+  }
+}
+
+@media (max-width: 1280px) {
+  #badgeActiveBot {
+    display: none;
+  }
+}
+
+/* Light theme: tinted badges need darker text to stay legible. */
+[data-theme="light"] .badge-bot {
+  background: rgba(109, 40, 217, 0.08);
+  color: #6d28d9;
+  border-color: rgba(109, 40, 217, 0.22);
+}
+
+[data-theme="light"] .badge-model {
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  border-color: rgba(37, 99, 235, 0.22);
+}
+
+[data-theme="light"] .badge-warning {
+  background: rgba(217, 119, 6, 0.1);
+  color: #b45309;
+  border-color: rgba(217, 119, 6, 0.3);
+}
+
+[data-theme="light"] .badge-danger {
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+  border-color: rgba(220, 38, 38, 0.25);
+}
