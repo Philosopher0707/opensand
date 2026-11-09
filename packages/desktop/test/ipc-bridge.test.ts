@@ -21,6 +21,12 @@ test.afterEach(async () => {
 });
 import { StateManager } from '@opensand/local-exec-daemon';
 
+// The bridge may still be flushing state/ when a test's finally block runs; ENOTEMPTY
+// retries absorb that race (seen as a Linux-only CI flake).
+function rmTmp(dir: string) {
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
+}
+
 test('DesktopIpcBridge - manages settings and persistent config', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-test-'));
 
@@ -45,7 +51,7 @@ test('DesktopIpcBridge - manages settings and persistent config', () => {
     assert.strictEqual(parsed.model, 'gpt-4o');
     assert.strictEqual(parsed.autoApprove, true);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -82,7 +88,7 @@ test('DesktopIpcBridge - handles approval resolutions and standing allowlist', a
     const gates = await stateManager.readPermissionGates();
     assert.ok(gates.standingAllowlist.includes('git'));
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -102,7 +108,7 @@ test('DesktopIpcBridge - handles rejection', async () => {
     const resolvedVal = await resPromise;
     assert.strictEqual(resolvedVal, false);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -130,7 +136,7 @@ test('DesktopIpcBridge - lists and loads session transcripts', async () => {
     assert.strictEqual(loaded.events.length, 2);
     assert.ok(loaded.transcript.includes('<user_query>'));
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -154,7 +160,7 @@ test('DesktopIpcBridge - loads sessions and infers agentId for legacy sub_agent 
 
     await assert.rejects(() => bridge.loadSession('../agents'), /Invalid sessionId/);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -185,7 +191,7 @@ test('DesktopIpcBridge - preserves active coordinator and emits session_started 
     assert.strictEqual(res.sessionId, sessId1);
     assert.strictEqual(startedSessionId, sessId1);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -233,7 +239,7 @@ test('DesktopIpcBridge - cancelTurn aborts the active turn and is safe when idle
     const idle2 = await bridge.cancelTurn();
     assert.strictEqual(idle2.cancelled, false);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -313,7 +319,7 @@ test('DesktopIpcBridge - getTokenTelemetry calculates accurate context windows a
     assert.strictEqual(tSession.turnsCount, 1);
     assert.ok(tSession.estimatedTokens > 0);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -353,7 +359,7 @@ test('DesktopIpcBridge - config.json never stores the raw apiKey and is written 
     assert.ok(secret, 'default-api-key must be vaulted');
     assert.strictEqual(secret.value, 'sk-secret-12345');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -389,7 +395,7 @@ test('DesktopIpcBridge - legacy plaintext apiKey in config.json is migrated to t
     assert.ok(!('apiKey' in JSON.parse(raw)), 'apiKey stripped on save');
     assert.ok(!raw.includes('sk-legacy-key'));
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -416,7 +422,7 @@ test('DesktopIpcBridge - approveTool accepts {action} decisions (string form nor
     assert.strictEqual(await pending, true);
     assert.strictEqual(activeApprovals.size, 0);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -434,7 +440,7 @@ test('DesktopIpcBridge - approval reason is optional and tolerated when absent',
     assert.strictEqual(result.success, true);
     assert.strictEqual(await pending, false);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -460,7 +466,7 @@ test('DesktopIpcBridge - coordinator map is keyed by (sessionId, agentId)', asyn
     assert.strictEqual(bridge.getCoordinatorFor('sess-B', undefined), c3);
     assert.strictEqual(bridge.getCoordinatorFor('sess-A', 'agent-1'), c4);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -478,7 +484,7 @@ test('DesktopIpcBridge - a blank endpoint never replaces the working one', () =>
     const parsed = JSON.parse(fs.readFileSync(path.join(tmpDir, 'config.json'), 'utf8'));
     assert.strictEqual(parsed.endpoint, 'https://openrouter.ai/api/v1');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -497,7 +503,7 @@ test('DesktopIpcBridge - settings change drops cached per-session coordinators',
     const after = await bridge.createSessionCoordinator('sess-A', undefined);
     assert.notStrictEqual(after, before, 'an open session must pick up the new model settings');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -561,7 +567,7 @@ test('DesktopIpcBridge - autoApprove safety ceiling enforces prompt on dangerous
     const policyRes = await policyPromise;
     assert.strictEqual(policyRes, true);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -601,7 +607,7 @@ test('DesktopIpcBridge - lists pending approvals as isolated copies and removes 
     assert.strictEqual(await second, false);
     assert.deepStrictEqual(await bridge.listPendingApprovals(), []);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -626,7 +632,7 @@ test('DesktopIpcBridge - dispatchTurnEvent forwards subagent delegation as a Des
     (bridge as any).dispatchTurnEvent({ type: 'text_delta', text: 'parent' });
     assert.ok(seen.some((e) => e.type === 'token' && e.data.token === 'parent'));
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 test('DesktopIpcBridge - dispatchTurnEvent forwards nested subagent delegation preserving parent link', () => {
@@ -650,7 +656,7 @@ test('DesktopIpcBridge - dispatchTurnEvent forwards nested subagent delegation p
     assert.strictEqual(inner.subagent.parentSessionId, 'sub_agent_cto_1793839209000');
     assert.deepStrictEqual(inner.data, { type: 'text_delta', text: 'inner' });
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 test('DesktopIpcBridge - tool discovery matches daemon discover_tools parity', async () => {
@@ -665,7 +671,7 @@ test('DesktopIpcBridge - tool discovery matches daemon discover_tools parity', a
     assert.ok(discovery.tools.some((tool) => tool.name === 'create_agent'));
     assert.ok(discovery.capabilities.includes('core'));
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -679,7 +685,7 @@ test('DesktopIpcBridge - close() removes workspaceSentinel listener and frees re
     const countAfterClose = workspaceSentinel.listenerCount('diagnostic');
     assert.strictEqual(countAfterClose, countWithBridge - 1);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
 
@@ -741,6 +747,6 @@ test("DesktopIpcBridge - ensureDaemon restores stopped and stale daemon automati
 
     await bridge.close();
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmTmp(tmpDir);
   }
 });
