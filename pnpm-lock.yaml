@@ -107,6 +107,15 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/protocol:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   packages/shared:
     devDependencies:
       '@types/node':
