@@ -9,6 +9,19 @@ import {
   SessionMetadata,
 } from "./types.js";
 import { ToolExecutionResult } from "@opensand/local-exec-daemon";
+import {
+  EventChainIntegrityError,
+  EventLogReader,
+  EventLogWriter,
+  SessionEvent,
+} from "@opensand/shared";
+import {
+  EVENT,
+  formatHumanReadable,
+  projectMessages,
+  projectTranscriptJsonl,
+  projectTranscriptText,
+} from "./event-projections.js";
 
 /**
  * Write to temp file (.tmp) and atomic rename (fs.rename), preventing partial/zero-byte files on interruption.
@@ -100,6 +113,7 @@ export class TranscriptManager {
   private baseDir: string;
   private sessionId: string;
   private sessionDir: string;
+  private eventLog?: EventLogWriter;
 
   constructor(sessionId: string, customBaseDir?: string) {
     this.sessionId = sessionId;
@@ -124,63 +138,47 @@ export class TranscriptManager {
     await writeAtomic(targetPath, content);
   }
 
-  /**
-   * Append a structured event object to transcript.jsonl.
-   */
-  async appendJsonl(event: Record<string, any>): Promise<void> {
-    await this.ensureDirectory();
-    const entry = JSON.stringify({
-      timestamp: new Date().toISOString(),
-      sessionId: this.sessionId,
-      ...event,
-    }) + "\n";
+  private get log(): EventLogWriter {
+    this.eventLog ??= new EventLogWriter(this.sessionDir, { sessionId: this.sessionId });
+    return this.eventLog;
+  }
 
-    await fs.appendFile(path.join(this.sessionDir, "transcript.jsonl"), entry, { encoding: "utf-8", mode: 0o600 });
+  private async readEvents(): Promise<SessionEvent[]> {
+    return (await new EventLogReader(this.sessionDir).readWithRecovery()).events;
+  }
+
+  /**
+   * Append one session event to event-log.jsonl, the sole persistent record of the session.
+   */
+  async recordEvent(kind: string, data: Record<string, unknown>): Promise<SessionEvent> {
+    return this.log.append({ kind, data });
+  }
+
+  /**
+   * Record how a fresh or migrated session starts. A session with no log gets its
+   * current messages as a snapshot; a resumed one records only a changed system prompt.
+   */
+  async recordBaseline(messages: ChatMessage[], meta: { model: string }): Promise<void> {
+    const events = await this.readEvents();
+    if (events.length === 0) {
+      await this.log.appendBatch([
+        { kind: EVENT.sessionCreated, data: { model: meta.model } },
+        { kind: EVENT.snapshot, data: { messages } },
+      ]);
+      return;
+    }
+
+    const projected = projectMessages(events);
+    if (projected[0]?.role !== "system" || projected[0].content !== messages[0]?.content) {
+      await this.recordEvent(EVENT.system, { content: messages[0]?.content ?? "" });
+    }
   }
 
   /**
    * Format message history into human-readable Grok Bot transcript parity format.
    */
   formatHumanReadable(messages: ChatMessage[]): string {
-    const sections: string[] = [];
-
-    for (const msg of messages) {
-      if (msg.role === "system") {
-        continue;
-      }
-
-      if (msg.role === "user") {
-        sections.push(`<user_query>\n${msg.content ?? ""}\n</user_query>`);
-        continue;
-      }
-
-      if (msg.role === "assistant") {
-        if (msg.content) {
-          sections.push(`assistant:\n${msg.content}`);
-        }
-        if (msg.tool_calls && msg.tool_calls.length > 0) {
-          for (const tc of msg.tool_calls) {
-            sections.push(`[Tool call]\nTool: ${tc.function.name}\nArguments: ${tc.function.arguments}`);
-          }
-        }
-        continue;
-      }
-
-      if (msg.role === "tool") {
-        sections.push(`[Tool result]\n${msg.content ?? ""}`);
-        continue;
-      }
-    }
-
-    return sections.join("\n\n") + "\n";
-  }
-
-  /**
-   * Save messages array directly to messages.json in session directory using atomic write.
-   */
-  async saveMessages(messages: ChatMessage[]): Promise<void> {
-    await this.ensureDirectory();
-    await this.writeAtomic("messages.json", JSON.stringify(messages, null, 2));
+    return formatHumanReadable(messages);
   }
 
   /**
@@ -204,6 +202,29 @@ export class TranscriptManager {
     }
   }
 
+  private async loadFromEventLog(report: SessionRecoveryReport): Promise<ChatMessage[] | null> {
+    try {
+      const { events, discardedTrailingBytes } = await new EventLogReader(this.sessionDir).readWithRecovery();
+      if (discardedTrailingBytes > 0) {
+        report.discardedEntries++;
+        report.warnings.push({
+          type: "truncated_tail_discarded",
+          lineNumber: events.length + 1,
+          remedy: `Discarded ${discardedTrailingBytes} bytes of an unfinished event at the end of the event log`,
+        });
+      }
+      return events.length > 0 ? projectMessages(events) : null;
+    } catch (err) {
+      if (!(err instanceof EventChainIntegrityError)) throw err;
+      report.warnings.push({
+        type: "corrupt_line_skipped",
+        lineNumber: err.seq,
+        remedy: `Event log failed verification (${err.message}); loaded legacy files instead`,
+      });
+      return null;
+    }
+  }
+
   /**
    * Load history with full recovery and integrity reporting:
    * - Discard unparseable trailing line if process was killed mid-write.
@@ -221,23 +242,29 @@ export class TranscriptManager {
     };
 
     let messages: ChatMessage[] = [];
-    let loadedFromMessagesJson = false;
+    let loaded = false;
 
-    if (!options?.ignoreMessagesJson) {
+    const fromLog = await this.loadFromEventLog(report);
+    if (fromLog) {
+      messages = fromLog;
+      loaded = true;
+    }
+
+    if (!loaded && !options?.ignoreMessagesJson) {
       const messagesPath = path.join(this.sessionDir, "messages.json");
       try {
         const raw = await fs.readFile(messagesPath, "utf-8");
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
           messages = parsed as ChatMessage[];
-          loadedFromMessagesJson = true;
+          loaded = true;
         }
       } catch {
         // Fall through to transcript.jsonl
       }
     }
 
-    if (!loadedFromMessagesJson) {
+    if (!loaded) {
       const jsonlPath = path.join(this.sessionDir, "transcript.jsonl");
       try {
         const raw = await fs.readFile(jsonlPath, "utf-8");
@@ -358,13 +385,14 @@ export class TranscriptManager {
   }
 
   /**
-   * Save formatted transcript.txt and messages.json to disk using atomic writes.
+   * Regenerate messages.json, transcript.txt and transcript.jsonl from event-log.jsonl.
    */
-  async writeHumanReadableTranscript(messages: ChatMessage[]): Promise<void> {
+  async writeProjections(): Promise<void> {
     await this.ensureDirectory();
-    const formatted = this.formatHumanReadable(messages);
-    await this.writeAtomic("transcript.txt", formatted);
-    await this.saveMessages(messages);
+    const events = await this.readEvents();
+    await this.writeAtomic("messages.json", JSON.stringify(projectMessages(events), null, 2));
+    await this.writeAtomic("transcript.txt", projectTranscriptText(events));
+    await this.writeAtomic("transcript.jsonl", projectTranscriptJsonl(events));
   }
 }
 

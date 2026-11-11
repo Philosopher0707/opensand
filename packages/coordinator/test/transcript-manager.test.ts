@@ -25,13 +25,24 @@ describe("TranscriptManager", () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it("appends structured JSONL turn events", async () => {
-    await manager.appendJsonl({ role: "user", content: "hello world" });
-    await manager.appendJsonl({ role: "assistant", content: "hi there" });
+  it("records turn events to event-log.jsonl and projects them to transcript.jsonl", async () => {
+    await manager.recordEvent("turn.started", { message: { role: "user", content: "hello world" } });
+    await manager.recordEvent("model.completion", { message: { role: "assistant", content: "hi there" } });
+    await manager.writeProjections();
 
-    const content = await fs.readFile(path.join(manager.directory, "transcript.jsonl"), "utf-8");
-    const lines = content.trim().split("\n").map((l) => JSON.parse(l));
+    const events = (await fs.readFile(path.join(manager.directory, "event-log.jsonl"), "utf-8"))
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    assert.equal(events.length, 2);
+    assert.equal(events[0].sessionId, sessionId);
+    assert.equal(events[0].kind, "turn.started");
+    assert.equal(events[1].kind, "model.completion");
 
+    const lines = (await fs.readFile(path.join(manager.directory, "transcript.jsonl"), "utf-8"))
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     assert.equal(lines.length, 2);
     assert.equal(lines[0].sessionId, sessionId);
     assert.equal(lines[0].content, "hello world");
@@ -75,12 +86,13 @@ describe("TranscriptManager", () => {
     assert.match(formatted, /\[Tool result\]\nfile1\.txt\nfile2\.txt/);
     assert.match(formatted, /assistant:\nI found file1\.txt and file2\.txt\./);
 
-    await manager.writeHumanReadableTranscript(messages);
-    const saved = await fs.readFile(path.join(manager.directory, "transcript.txt"), "utf-8");
+    const formatManager = new TranscriptManager("format-session", tempDir);
+    await formatManager.recordBaseline(messages, { model: "test-model" });
+    await formatManager.writeProjections();
+    const saved = await fs.readFile(path.join(formatManager.directory, "transcript.txt"), "utf-8");
     assert.equal(saved, formatted);
 
-    // Verify messages.json was saved and loadHistory() can hydrate
-    const hydrated = await manager.loadHistory();
+    const hydrated = await formatManager.loadHistory();
     assert.equal(hydrated.length, messages.length);
     assert.equal(hydrated[1].role, "user");
     assert.equal(hydrated[1].content, "list files in workspace");
@@ -92,14 +104,22 @@ describe("TranscriptManager", () => {
     const fallbackSessionId = "fallback-session-456";
     const fallbackManager = new TranscriptManager(fallbackSessionId, tempDir);
 
-    await fallbackManager.appendJsonl({ role: "user", content: "first question" });
-    await fallbackManager.appendJsonl({
-      role: "assistant",
-      content: null,
-      tool_calls: [{ id: "call_a", type: "function", function: { name: "test_tool", arguments: "{}" } }],
-    });
-    await fallbackManager.appendJsonl({ role: "tool", tool_call_id: "call_a", result: "tool output" });
-    await fallbackManager.appendJsonl({ role: "assistant", content: "final answer" });
+    await fs.mkdir(fallbackManager.directory, { recursive: true });
+    const legacyEntries = [
+      { role: "user", content: "first question" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [{ id: "call_a", type: "function", function: { name: "test_tool", arguments: "{}" } }],
+      },
+      { role: "tool", tool_call_id: "call_a", result: "tool output" },
+      { role: "assistant", content: "final answer" },
+    ];
+    await fs.writeFile(
+      path.join(fallbackManager.directory, "transcript.jsonl"),
+      legacyEntries.map((e) => JSON.stringify(e) + "\n").join(""),
+      "utf-8"
+    );
 
     const loaded = await fallbackManager.loadHistory();
     assert.equal(loaded.length, 4);
