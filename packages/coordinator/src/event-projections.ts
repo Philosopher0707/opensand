@@ -11,7 +11,16 @@ export const EVENT = {
   turnCompacted: "turn.compacted",
   modelCompletion: "model.completion",
   toolCompleted: "tool.completed",
+  restorePoint: "workspace.restorePoint",
+  restorePointFailed: "workspace.restorePointFailed",
+  restore: "workspace.restore",
 } as const;
+
+const LEGACY_EVENT_NAMES: Record<string, string | undefined> = {
+  [EVENT.restorePoint]: "restore_point",
+  [EVENT.restorePointFailed]: "restore_point_failed",
+  [EVENT.restore]: "restore",
+};
 
 export interface FoldChange {
   index: number;
@@ -110,6 +119,8 @@ export function projectTranscriptJsonl(events: SessionEvent[]): string {
       for (const message of ev.data.messages as ChatMessage[]) pushEntry(ev, message);
     } else if (ev.kind === EVENT.turnStarted || ev.kind === EVENT.modelCompletion || ev.kind === EVENT.toolCompleted) {
       pushEntry(ev, ev.data.message as ChatMessage);
+    } else if (LEGACY_EVENT_NAMES[ev.kind]) {
+      lines.push(JSON.stringify({ timestamp: ev.ts, sessionId: ev.sessionId, event: LEGACY_EVENT_NAMES[ev.kind], ...ev.data }) + "\n");
     }
   }
   return lines.join("");

@@ -439,13 +439,9 @@ export class AgentCoordinator {
                 skipReason: manifest.skipReason,
               };
               this.restorePoints.push(point);
-              await this.transcript.appendJsonl({
-                event: "restore_point",
-                restorePoint: point,
-              }).catch(() => {});
+              await this.transcript.recordEvent(EVENT.restorePoint, { restorePoint: point }).catch(() => {});
             } catch (err: any) {
-              await this.transcript.appendJsonl({
-                event: "restore_point_failed",
+              await this.transcript.recordEvent(EVENT.restorePointFailed, {
                 restorePointId,
                 error: err?.message || String(err),
               }).catch(() => {});
@@ -621,11 +617,7 @@ ${question}`;
    */
   async restoreTo(id: string): Promise<RevertResult> {
     const result = revertWorkspaceSnapshot(this.workspaceDir, id);
-    await this.transcript.appendJsonl({
-      event: "restore",
-      restorePointId: id,
-      result,
-    }).catch(() => {});
+    await this.transcript.recordEvent(EVENT.restore, { restorePointId: id, result }).catch(() => {});
     return result;
   }
 

@@ -189,6 +189,18 @@ describe("projection outputs", () => {
     assert.equal(lines[1].sessionId, "s1");
   });
 
+  it("keeps restore-point records in the legacy jsonl and out of the messages", () => {
+    const withRestores = [
+      ...events,
+      ev(20, EVENT.restorePoint, { restorePoint: { id: "s1_1", filesCount: 2 } }, "2026-01-01T00:00:20.000Z"),
+      ev(21, EVENT.restore, { restorePointId: "s1_1", result: { restored: 2 } }, "2026-01-01T00:00:21.000Z"),
+    ];
+    const lines = projectTranscriptJsonl(withRestores).trim().split("\n").map((l) => JSON.parse(l));
+    assert.deepEqual(lines.slice(-2).map((l) => l.event), ["restore_point", "restore"]);
+    assert.deepEqual(lines[lines.length - 2].restorePoint, { id: "s1_1", filesCount: 2 });
+    assert.deepEqual(projectMessages(withRestores), projectMessages(events));
+  });
+
   it("renders the human-readable transcript from the projected messages", () => {
     const text = projectTranscriptText(events);
     assert.equal(text, formatHumanReadable(projectMessages(events)));
