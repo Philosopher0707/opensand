@@ -3,6 +3,7 @@ export * from "./sse-parser.js";
 export * from "./llm-client.js";
 export * from "./system-prompt.js";
 export * from "./transcript-manager.js";
+export * from "./event-projections.js";
 export * from "./session-lock.js";
 export * from "./anthropic-adapter.js";
 export * from "./anthropic-client.js";
@@ -34,5 +35,4 @@ export * from "./connectors.js";
 export * from "./template-gallery.js";
 export * from "./github-client.js";
 export * from "./provider-clients.js";
-
-export * from './errors.js';
+export * from "./errors.js";

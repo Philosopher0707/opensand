@@ -30,6 +30,9 @@ export interface SessionMetadata {
   endpoint: string;
   provider?: string;
   title?: string;
+  agentId?: string;
+  roomId?: string;
+  turnCount?: number;
 }
 
 export interface SessionLockInfo {

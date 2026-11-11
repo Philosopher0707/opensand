@@ -1,8 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { ChatMessage } from './types.js';
+import { writeEventLogSync, AppendEventInput } from './event-log.js';
 
 /** Bump this whenever a persisted shape under ~/.opensand changes. */
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 export interface StateMigration {
   /** Version this migration produces. Must be greater than the previous one. */
@@ -11,10 +13,190 @@ export interface StateMigration {
 }
 
 /**
- * Ordered migrations. v1 is the baseline: a missing schema file is treated as 0
- * and stamped to 1 without touching data.
+ * Migrates a single session directory to v2 (hash-chained event-log.jsonl).
  */
-export const STATE_MIGRATIONS: StateMigration[] = [];
+export function migrateSessionDirToV2(sessionDir: string): boolean {
+  const logPath = path.join(sessionDir, 'event-log.jsonl');
+  if (fs.existsSync(logPath)) return false;
+
+  const messagesPath = path.join(sessionDir, 'messages.json');
+  const metaPath = path.join(sessionDir, 'meta.json');
+  const metadataPath = path.join(sessionDir, 'metadata.json');
+  const transcriptJsonlPath = path.join(sessionDir, 'transcript.jsonl');
+
+  let meta: Record<string, any> = {};
+  if (fs.existsSync(metaPath)) {
+    try {
+      meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+    } catch {
+      // ignore
+    }
+  } else if (fs.existsSync(metadataPath)) {
+    try {
+      meta = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+    } catch {
+      // ignore
+    }
+  }
+
+  const sessionId = (typeof meta.sessionId === 'string' && meta.sessionId) || path.basename(sessionDir);
+  const createdAt = (typeof meta.createdAt === 'string' && meta.createdAt) || new Date().toISOString();
+
+  let messages: ChatMessage[] = [];
+  if (fs.existsSync(messagesPath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(messagesPath, 'utf8'));
+      if (Array.isArray(parsed)) {
+        messages = parsed as ChatMessage[];
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const eventsToAppend: AppendEventInput[] = [];
+
+  eventsToAppend.push({
+    kind: 'session.created',
+    node: 'plan',
+    sessionId,
+    ts: createdAt,
+    data: {
+      sessionId,
+      title: meta.title,
+      model: meta.model,
+      agentId: meta.agentId,
+      roomId: meta.roomId,
+      createdAt,
+    },
+  });
+
+  if (messages.length > 0) {
+    for (const msg of messages) {
+      if (msg.role === 'user') {
+        eventsToAppend.push({
+          kind: 'turn.started',
+          node: 'user',
+          sessionId,
+          data: msg,
+        });
+      } else if (msg.role === 'assistant') {
+        eventsToAppend.push({
+          kind: 'model.completion',
+          node: 'act',
+          sessionId,
+          data: msg,
+        });
+      } else if (msg.role === 'tool') {
+        eventsToAppend.push({
+          kind: 'tool.completed',
+          node: 'act',
+          sessionId,
+          data: msg,
+        });
+      } else if (msg.role === 'system') {
+        eventsToAppend.push({
+          kind: 'session.system',
+          node: 'plan',
+          sessionId,
+          data: msg,
+        });
+      }
+    }
+  } else if (fs.existsSync(transcriptJsonlPath)) {
+    try {
+      const lines = fs.readFileSync(transcriptJsonlPath, 'utf8').trim().split('\n');
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const entry = JSON.parse(line);
+          if (entry && typeof entry === 'object') {
+            const role = entry.role;
+            let kind = entry.kind || 'session.event';
+            let node = entry.node || 'act';
+            if (role === 'user') {
+              kind = 'turn.started';
+              node = 'user';
+            } else if (role === 'assistant') {
+              kind = 'model.completion';
+              node = 'act';
+            } else if (role === 'tool') {
+              kind = 'tool.completed';
+              node = 'act';
+            } else if (role === 'system') {
+              kind = 'session.system';
+              node = 'plan';
+            }
+            eventsToAppend.push({
+              kind,
+              node,
+              sessionId,
+              ts: entry.timestamp || new Date().toISOString(),
+              data: entry,
+            });
+          }
+        } catch {
+          // skip invalid json
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (eventsToAppend.length <= 1 && messages.length === 0 && !fs.existsSync(transcriptJsonlPath)) {
+    return false;
+  }
+
+  writeEventLogSync(logPath, eventsToAppend);
+  return true;
+}
+
+export function migrateStateDirToV2(stateDir: string): void {
+  const sessionsDir = path.join(stateDir, 'sessions');
+  if (fs.existsSync(sessionsDir) && fs.statSync(sessionsDir).isDirectory()) {
+    for (const ent of fs.readdirSync(sessionsDir, { withFileTypes: true })) {
+      if (ent.isDirectory()) {
+        migrateSessionDirToV2(path.join(sessionsDir, ent.name));
+      }
+    }
+  }
+
+  if (
+    fs.existsSync(path.join(stateDir, 'messages.json')) ||
+    fs.existsSync(path.join(stateDir, 'transcript.jsonl')) ||
+    fs.existsSync(path.join(stateDir, 'meta.json'))
+  ) {
+    migrateSessionDirToV2(stateDir);
+  }
+
+  for (const ent of fs.readdirSync(stateDir, { withFileTypes: true })) {
+    if (ent.isDirectory() && ent.name !== 'sessions' && ent.name !== 'state-backups') {
+      const sub = path.join(stateDir, ent.name);
+      if (
+        fs.existsSync(path.join(sub, 'messages.json')) ||
+        fs.existsSync(path.join(sub, 'transcript.jsonl')) ||
+        fs.existsSync(path.join(sub, 'meta.json'))
+      ) {
+        migrateSessionDirToV2(sub);
+      }
+    }
+  }
+}
+
+/**
+ * Ordered migrations.
+ * v1 is the baseline: a missing schema file is treated as 0 and stamped to 1 without touching data.
+ * v2 migrates legacy session files (messages.json, meta.json, transcript.jsonl) to hash-chained event-log.jsonl.
+ */
+export const STATE_MIGRATIONS: StateMigration[] = [
+  {
+    to: 2,
+    up: (stateDir: string) => {
+      migrateStateDirToV2(stateDir);
+    },
+  },
+];
 
 export interface MigrationOptions {
   currentVersion?: number;

@@ -63,7 +63,11 @@ import {
   GalleryTemplateItem,
   GalleryQueryOptions,
   buildToolDiscoverySummary,
+  projectMessages,
+  projectMetadata,
+  projectHumanReadable,
 } from '@opensand/coordinator';
+import { EventLogWriter, readEventLogSync, parseEventLogContent, writeEventLogSync } from "@opensand/shared";
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
 import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSummary, DesktopEvent, ToolDiscoverySummary } from './types.js';
@@ -441,7 +445,17 @@ export class DesktopIpcBridge extends EventEmitter {
   /** Read sessions/<id>/meta.json written at coordinator creation. */
   private readSessionMeta(sessionId: string): { agentId?: string; roomId?: string; title?: string } {
     try {
-      const metaPath = path.join(this.baseDir, 'sessions', sessionId, 'meta.json');
+      const sessDir = path.join(this.baseDir, 'sessions', sessionId);
+      const logPath = path.join(sessDir, 'event-log.jsonl');
+      if (fs.existsSync(logPath)) {
+        const events = readEventLogSync(logPath);
+        if (events.length > 0) {
+          const meta = projectMetadata(events);
+          return { agentId: meta.agentId, roomId: meta.roomId, title: meta.title };
+        }
+      }
+
+      const metaPath = path.join(sessDir, 'meta.json');
       if (!fs.existsSync(metaPath)) return {};
       const raw = fs.readFileSync(metaPath, 'utf8');
       const meta = JSON.parse(raw) as Record<string, unknown>;
@@ -459,6 +473,22 @@ export class DesktopIpcBridge extends EventEmitter {
     try {
       const sessDir = path.join(this.baseDir, 'sessions', sessionId);
       fs.mkdirSync(sessDir, { recursive: true, mode: 0o700 });
+      const logPath = path.join(sessDir, 'event-log.jsonl');
+      if (!fs.existsSync(logPath)) {
+        writeEventLogSync(logPath, [
+          {
+            kind: 'session.created',
+            node: 'plan',
+            sessionId,
+            data: {
+              sessionId,
+              agentId: agentId ?? null,
+              model: model ?? this.settings.model,
+              createdAt: new Date().toISOString(),
+            },
+          },
+        ]);
+      }
       const metaPath = path.join(sessDir, 'meta.json');
       const meta: Record<string, unknown> = {
         sessionId,
@@ -805,11 +835,21 @@ export class DesktopIpcBridge extends EventEmitter {
     for (const ent of entries) {
       if (ent.isDirectory()) {
         const sessDir = path.join(sessionsDir, ent.name);
+        const logPath = path.join(sessDir, 'event-log.jsonl');
         const jsonlPath = path.join(sessDir, 'transcript.jsonl');
         let messageCount = 0;
         let title = ent.name;
 
-        if (fs.existsSync(jsonlPath)) {
+        if (fs.existsSync(logPath)) {
+          try {
+            const events = readEventLogSync(logPath);
+            messageCount = projectMessages(events).length;
+            const meta = projectMetadata(events);
+            if (meta.title) title = meta.title;
+          } catch {
+            // fallback
+          }
+        } else if (fs.existsSync(jsonlPath)) {
           try {
             const lines = fs.readFileSync(jsonlPath, 'utf8').trim().split('\n').filter(Boolean);
             messageCount = lines.length;
@@ -858,13 +898,27 @@ export class DesktopIpcBridge extends EventEmitter {
       throw new Error('Path traversal detected');
     }
 
+    const logPath = path.join(sessionDir, 'event-log.jsonl');
     const jsonlPath = path.join(sessionDir, 'transcript.jsonl');
     const txtPath = path.join(sessionDir, 'transcript.txt');
 
     const events: unknown[] = [];
     let transcript = '';
 
-    if (fs.existsSync(jsonlPath)) {
+    if (fs.existsSync(logPath)) {
+      try {
+        const raw = fs.readFileSync(logPath, 'utf8');
+        const parseResult = parseEventLogContent(raw);
+        for (const ev of parseResult.events) {
+          events.push(ev);
+        }
+        transcript = projectHumanReadable(parseResult.events);
+      } catch {
+        // Fall back to legacy if unparseable
+      }
+    }
+
+    if (events.length === 0 && fs.existsSync(jsonlPath)) {
       const lines = fs.readFileSync(jsonlPath, 'utf8').trim().split('\n').filter(Boolean);
       for (const line of lines) {
         try {
@@ -875,7 +929,7 @@ export class DesktopIpcBridge extends EventEmitter {
       }
     }
 
-    if (fs.existsSync(txtPath)) {
+    if (!transcript && fs.existsSync(txtPath)) {
       transcript = fs.readFileSync(txtPath, 'utf8');
     }
 
@@ -898,6 +952,18 @@ export class DesktopIpcBridge extends EventEmitter {
     }
     const sessionDir = path.join(this.baseDir, "sessions", sessionId);
     if (!fs.existsSync(sessionDir)) return false;
+
+    const logPath = path.join(sessionDir, "event-log.jsonl");
+    if (fs.existsSync(logPath)) {
+      const writer = new EventLogWriter(logPath, { sessionId });
+      await writer.append({
+        kind: "session.renamed",
+        node: "user",
+        sessionId,
+        data: { title: newTitle },
+      });
+    }
+
     const metaPath = path.join(sessionDir, "meta.json");
     let meta: Record<string, unknown> = {};
     if (fs.existsSync(metaPath)) {

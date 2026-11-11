@@ -69,3 +69,68 @@ test('DesktopIpcBridge - session rename, export, and search', async () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+import { writeEventLogSync, readEventLogSync, verifyEventLogChain } from '@opensand/shared';
+
+test('DesktopIpcBridge - event-log.jsonl source of truth for list, load, rename, and export', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-event-session-test-'));
+
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    const sessionsDir = path.join(tmpDir, 'sessions');
+    const sessDir = path.join(sessionsDir, 'sess-v2');
+    fs.mkdirSync(sessDir, { recursive: true });
+
+    writeEventLogSync(path.join(sessDir, 'event-log.jsonl'), [
+      {
+        kind: 'session.created',
+        node: 'plan',
+        sessionId: 'sess-v2',
+        data: { title: 'Event Log Session' },
+      },
+      {
+        kind: 'turn.started',
+        node: 'user',
+        sessionId: 'sess-v2',
+        data: { role: 'user', content: 'What is the speed of sound?' },
+      },
+      {
+        kind: 'model.completion',
+        node: 'act',
+        sessionId: 'sess-v2',
+        data: { role: 'assistant', content: 'The speed of sound in air is ~343 m/s.' },
+      },
+    ]);
+
+    // 1. List
+    const sessions = await bridge.getSessions();
+    const found = sessions.find((s) => s.id === 'sess-v2');
+    assert.ok(found);
+    assert.strictEqual(found.title, 'Event Log Session');
+    assert.strictEqual(found.messageCount, 2);
+
+    // 2. Load
+    const loaded = await bridge.loadSession('sess-v2');
+    assert.ok(loaded);
+    assert.strictEqual(loaded.events.length, 3);
+    assert.ok(loaded.transcript.includes('What is the speed of sound?'));
+    assert.ok(loaded.transcript.includes('343 m/s'));
+
+    // 3. Rename
+    const renameOk = await bridge.renameSession('sess-v2', 'Renamed Event Log Session');
+    assert.strictEqual(renameOk, true);
+
+    const logPath = path.join(sessDir, 'event-log.jsonl');
+    const updatedEvents = readEventLogSync(logPath);
+    assert.strictEqual(updatedEvents.length, 4);
+    assert.strictEqual(updatedEvents[3].kind, 'session.renamed');
+    assert.strictEqual(updatedEvents[3].data.title, 'Renamed Event Log Session');
+    assert.strictEqual(verifyEventLogChain(updatedEvents), true);
+
+    const updatedList = await bridge.getSessions();
+    const updatedFound = updatedList.find((s) => s.id === 'sess-v2');
+    assert.strictEqual(updatedFound?.title, 'Renamed Event Log Session');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

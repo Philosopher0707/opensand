@@ -1,6 +1,15 @@
 import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import {
+  EventLogWriter,
+  EventLogReader,
+  parseEventLogContent,
+  EventChainIntegrityError,
+  SessionEvent,
+  AppendEventInput,
+} from "@opensand/shared";
 import {
   ChatMessage,
   ToolCall,
@@ -9,6 +18,12 @@ import {
   SessionMetadata,
 } from "./types.js";
 import { ToolExecutionResult } from "@opensand/local-exec-daemon";
+import {
+  projectMessages,
+  projectMetadata,
+  projectHumanReadable,
+  projectTranscriptJsonl,
+} from "./event-projections.js";
 
 /**
  * Write to temp file (.tmp) and atomic rename (fs.rename), preventing partial/zero-byte files on interruption.
@@ -100,15 +115,28 @@ export class TranscriptManager {
   private baseDir: string;
   private sessionId: string;
   private sessionDir: string;
+  private eventWriter: EventLogWriter;
+  private eventReader: EventLogReader;
 
   constructor(sessionId: string, customBaseDir?: string) {
     this.sessionId = sessionId;
     this.baseDir = customBaseDir ?? path.join(os.homedir(), ".opensand", "sessions");
     this.sessionDir = path.join(this.baseDir, this.sessionId);
+    const logPath = path.join(this.sessionDir, "event-log.jsonl");
+    this.eventWriter = new EventLogWriter(logPath, { sessionId: this.sessionId });
+    this.eventReader = new EventLogReader(logPath);
   }
 
   get directory(): string {
     return this.sessionDir;
+  }
+
+  get writer(): EventLogWriter {
+    return this.eventWriter;
+  }
+
+  get reader(): EventLogReader {
+    return this.eventReader;
   }
 
   async ensureDirectory(): Promise<void> {
@@ -125,10 +153,55 @@ export class TranscriptManager {
   }
 
   /**
-   * Append a structured event object to transcript.jsonl.
+   * Append an event directly to event-log.jsonl.
+   */
+  async appendEvent(event: AppendEventInput): Promise<SessionEvent> {
+    await this.ensureDirectory();
+    return this.eventWriter.append(event);
+  }
+
+  /**
+   * Append a structured event object to the hash-chained event log (and transcript.jsonl).
    */
   async appendJsonl(event: Record<string, any>): Promise<void> {
     await this.ensureDirectory();
+
+    let kind = event.kind;
+    let node = event.node;
+    if (!kind) {
+      if (event.role === "user") {
+        kind = "turn.started";
+        node = "user";
+      } else if (event.role === "assistant") {
+        kind = "model.completion";
+        node = "act";
+      } else if (event.role === "tool") {
+        kind = "tool.completed";
+        node = "act";
+      } else if (event.role === "system") {
+        if (event.event === "rollback") {
+          kind = "turn.rollback";
+          node = "repair";
+        } else if (event.event === "compacted") {
+          kind = "turn.compacted";
+          node = "plan";
+        } else {
+          kind = "session.system";
+          node = "plan";
+        }
+      } else {
+        kind = "session.event";
+        node = "act";
+      }
+    }
+
+    await this.eventWriter.append({
+      kind,
+      node,
+      sessionId: this.sessionId,
+      data: event,
+    });
+
     const entry = JSON.stringify({
       timestamp: new Date().toISOString(),
       sessionId: this.sessionId,
@@ -181,6 +254,25 @@ export class TranscriptManager {
   async saveMessages(messages: ChatMessage[]): Promise<void> {
     await this.ensureDirectory();
     await this.writeAtomic("messages.json", JSON.stringify(messages, null, 2));
+
+    const currentEvents = await this.eventReader.readAll();
+    const projected = projectMessages(currentEvents);
+    if (JSON.stringify(projected) !== JSON.stringify(messages)) {
+      const logPath = path.join(this.sessionDir, "event-log.jsonl");
+      await fs.rm(logPath, { force: true });
+      const tempWriter = new EventLogWriter(logPath, { sessionId: this.sessionId });
+      for (const msg of messages) {
+        if (msg.role === "user") {
+          await tempWriter.append({ kind: "turn.started", node: "user", data: msg, sessionId: this.sessionId });
+        } else if (msg.role === "assistant") {
+          await tempWriter.append({ kind: "model.completion", node: "act", data: msg, sessionId: this.sessionId });
+        } else if (msg.role === "tool") {
+          await tempWriter.append({ kind: "tool.completed", node: "act", data: msg, sessionId: this.sessionId });
+        } else if (msg.role === "system") {
+          await tempWriter.append({ kind: "session.system", node: "plan", data: msg, sessionId: this.sessionId });
+        }
+      }
+    }
   }
 
   /**
@@ -192,9 +284,22 @@ export class TranscriptManager {
   }
 
   /**
-   * Load session metadata from metadata.json in session directory.
+   * Load session metadata: queries event log projection first, falls back to metadata.json.
    */
   async loadMetadata(): Promise<SessionMetadata | undefined> {
+    const eventLogPath = path.join(this.sessionDir, "event-log.jsonl");
+    if (fsSync.existsSync(eventLogPath)) {
+      try {
+        const raw = await fs.readFile(eventLogPath, "utf-8");
+        const res = parseEventLogContent(raw);
+        if (res.events.length > 0) {
+          return projectMetadata(res.events);
+        }
+      } catch {
+        // Fall back
+      }
+    }
+
     const metaPath = path.join(this.sessionDir, "metadata.json");
     try {
       const raw = await fs.readFile(metaPath, "utf-8");
@@ -205,10 +310,33 @@ export class TranscriptManager {
   }
 
   /**
+   * Regenerates projection files (messages.json, metadata.json, transcript.txt, transcript.jsonl)
+   * on demand from the hash-chained event log.
+   */
+  async regenerateProjections(): Promise<void> {
+    const events = await this.eventReader.readAll();
+    if (events.length === 0) return;
+
+    const messages = projectMessages(events);
+    const meta = projectMetadata(events);
+    const humanTxt = projectHumanReadable(events);
+    const jsonlTxt = projectTranscriptJsonl(events);
+
+    await this.writeAtomic("messages.json", JSON.stringify(messages, null, 2));
+    await this.writeAtomic("metadata.json", JSON.stringify(meta, null, 2));
+    await this.writeAtomic("transcript.txt", humanTxt);
+    if (jsonlTxt) {
+      await this.writeAtomic("transcript.jsonl", jsonlTxt);
+    }
+  }
+
+  /**
    * Load history with full recovery and integrity reporting:
-   * - Discard unparseable trailing line if process was killed mid-write.
-   * - Skip corrupt mid-file lines and record line-indexed warnings.
-   * - Enforce tool-turn invariants (reconcileTurnInvariants).
+   * - Reads event log as single source of truth when present.
+   * - Discards unparseable trailing line if process was killed mid-write.
+   * - Validates hash chain integrity and throws EventChainIntegrityError on tampering.
+   * - Falls back to legacy messages.json / transcript.jsonl if event-log.jsonl is not present.
+   * - Enforces tool-turn invariants (reconcileTurnInvariants).
    */
   async loadHistoryDetailed(options?: {
     ignoreMessagesJson?: boolean;
@@ -219,6 +347,33 @@ export class TranscriptManager {
       discardedEntries: 0,
       warnings: [],
     };
+
+    const eventLogPath = path.join(this.sessionDir, "event-log.jsonl");
+    if (fsSync.existsSync(eventLogPath)) {
+      try {
+        const raw = await fs.readFile(eventLogPath, "utf-8");
+        const readResult = parseEventLogContent(raw);
+
+        if (readResult.hadTrailingCorruption && readResult.discardedTrailingBytes) {
+          report.discardedEntries++;
+          report.warnings.push({
+            type: "truncated_tail_discarded",
+            lineNumber: readResult.events.length + 1,
+            rawSnippet: "[trailing uncommitted partial bytes]",
+            remedy: "Discarded incomplete trailing line at EOF",
+          });
+        }
+
+        const messages = projectMessages(readResult.events, { strategy: options?.strategy });
+        report.recoveredMessages = messages.length;
+        return { messages, report };
+      } catch (err: any) {
+        if (err instanceof EventChainIntegrityError) {
+          throw err;
+        }
+        // Fall through to legacy if unparseable
+      }
+    }
 
     let messages: ChatMessage[] = [];
     let loadedFromMessagesJson = false;
@@ -242,7 +397,6 @@ export class TranscriptManager {
       try {
         const raw = await fs.readFile(jsonlPath, "utf-8");
         const rawLines = raw.split("\n");
-        // Pop trailing empty line produced by final \n
         if (rawLines.length > 0 && rawLines[rawLines.length - 1] === "") {
           rawLines.pop();
         }
@@ -406,9 +560,8 @@ export interface RetentionResult {
 }
 
 /**
- * Totally pure retention planner: given the session directory listing,
- * decide which directories to remove. Kept separate from I/O so it is
- * fully unit-testable without touching the filesystem.
+ * Pure retention planner: given the session directory listing,
+ * decide which directories to remove.
  */
 export function planRetention(
   candidates: RetentionCandidate[],
@@ -422,7 +575,6 @@ export function planRetention(
   const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
   const keepRecentMs = keepRecentDays * 24 * 60 * 60 * 1000;
 
-  // Most recent first
   const sorted = [...candidates].sort((a, b) => b.mtimeMs - a.mtimeMs);
 
   const removed: RetentionCandidate[] = [];
@@ -489,40 +641,58 @@ export async function listSessions(sessionsBaseDir?: string): Promise<SessionSum
     if (!entry.isDirectory()) continue;
     try {
       const sessionDir = path.join(baseDir, entry.name);
+      const eventLogPath = path.join(sessionDir, "event-log.jsonl");
       const jsonlPath = path.join(sessionDir, "transcript.jsonl");
       const messagesPath = path.join(sessionDir, "messages.json");
 
       let mtimeMs: number | undefined;
       let hasTranscript = false;
-
-      try {
-        const jsonlStat = await fs.stat(jsonlPath);
-        mtimeMs = jsonlStat.mtimeMs;
-        hasTranscript = true;
-      } catch {
-        // transcript.jsonl not present
-      }
-
       let title: string | undefined;
       let turns = 0;
 
-      try {
-        const raw = await fs.readFile(messagesPath, "utf-8");
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
+      // Check event-log.jsonl first (event log is single truth)
+      if (fsSync.existsSync(eventLogPath)) {
+        try {
+          const logStat = await fs.stat(eventLogPath);
+          mtimeMs = logStat.mtimeMs;
           hasTranscript = true;
-          for (const msg of parsed) {
-            if (msg && msg.role === "user") {
-              turns++;
-              if (title === undefined && typeof msg.content === "string") {
-                title = msg.content.slice(0, 80);
+
+          const raw = await fs.readFile(eventLogPath, "utf-8");
+          const parseResult = parseEventLogContent(raw);
+          const meta = projectMetadata(parseResult.events);
+          title = meta.title;
+          turns = meta.turnCount ?? 0;
+        } catch {
+          // fall through
+        }
+      }
+
+      if (!hasTranscript) {
+        try {
+          const jsonlStat = await fs.stat(jsonlPath);
+          mtimeMs = jsonlStat.mtimeMs;
+          hasTranscript = true;
+        } catch {
+          // transcript.jsonl not present
+        }
+
+        try {
+          const raw = await fs.readFile(messagesPath, "utf-8");
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            hasTranscript = true;
+            for (const msg of parsed) {
+              if (msg && msg.role === "user") {
+                turns++;
+                if (title === undefined && typeof msg.content === "string") {
+                  title = msg.content.slice(0, 80);
+                }
               }
             }
           }
+        } catch {
+          // Corrupt/unreadable messages.json
         }
-      } catch {
-        // Corrupt/unreadable messages.json: loadHistory falls back to transcript.jsonl,
-        // so keep listing the session (with no title) instead of hiding it.
       }
 
       if (!hasTranscript) {
