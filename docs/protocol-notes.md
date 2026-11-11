@@ -51,3 +51,47 @@ Schemas and handlers are OpenSand's own; see the file for each tool's `inputSche
 `SKILL.md` with YAML frontmatter between `---` fences: `name`, `description`, and free-form keys.
 Falls back to the first `# H1` for the name, then to the filename; a file named `SKILL.md` takes its
 name from its parent directory. Written from the observed format, not from upstream parser code.
+
+## 5. OSP Evolution: Mapping Legacy Contracts to OSP
+
+Phase 2 replaces the fragmented legacy transports—Connect-Web gRPC-Web emulation (`rpc-gateway.ts`) and Express HTTP API routes (`desktop-server.ts`)—with the unified, line-delimited **OpenSand Protocol (OSP)** (`docs/design/osp-protocol.md`).
+
+OSP establishes a standalone, long-running engine process (`opensand engine --stdio` or local domain socket) communicating with all clients (Desktop Shell, Terminal CLI, VS Code extension, and webhooks) through a typed RPC and event-streaming contract.
+
+### 5.1 Connect-Web RPC Mapping (`packages/desktop/src/rpc-gateway.ts`)
+
+| Legacy Service / Method | OSP Namespace / Method / Event | Architectural Rationale & Transition Path |
+|---|---|---|
+| `aiserver.v1.GrokBotService/SubmitQuery` | `mission.Missions.start` or `session.Sessions.create` | Moves user turns from an ephemeral in-memory turn loop into first-class graph-executed missions or sessions backed by the hash-chained event log. |
+| `aiserver.v1.GrokBotService/RollBackGrokBotConversation` | `timeline.Timeline.restore` | Replaces destructive in-memory array slicing (`messages.slice(0, -turns)`) with non-destructive checkpoint and git snapshot restoration. |
+| `aiserver.v1.GrokBotService/AskSideQuestion` | Ephemeral inspection query via `engine.Engine` | Side-questions execute out-of-band without polluting the mission graph or append-only event log. |
+| `aiserver.v1.GrokBotService/CompactHistory` | Projected log checkpoint (`timeline.Timeline`) | The log is append-only and never mutated. Compaction creates checkpoint projections without rewriting history. |
+| `aiserver.v1.GrokBotService/GetTokenTelemetry` | `engine.Engine.status` / mission budget metrics | Token telemetry and spend are tracked monotonically in `mission.Missions.get` (`budgetSpentUsd`) and engine status. |
+| `aiserver.v1.GrokBotService/EnsureSandBox`<br>`EnsureSandBoxWindow`<br>`RecreateSandBox` | Internal Executor process lifecycle | Shell no longer manages ad-hoc sandbox windows. The Executor manages isolated sandbox profiles per command run. |
+| `aiserver.v1.AgentStoreService/ListAgents`<br>`GetAgent`<br>`CreateAgent`<br>`DeleteAgent` | Subagent mesh & configuration store | Agent roles and subagents are declared in project/user configuration; engine instantiates roles dynamically. |
+| `aiserver.v1.AgentStoreService/ExportAgentTemplate`<br>`ImportAgentTemplate` | Portable template store (`packages/coordinator/src/template-store.ts`) | Maintained as portable template imports/exports integrated with engine workspace configuration. |
+| `aiserver.v1.SandBoxService/ExecCommand`<br>`ReadFile`<br>`WriteFile`<br>`ListDirectory` | Executor capability-checked tool calls (`tool.*` events) | Eliminates unauthenticated, direct client execution RPCs. All file and command actions execute through capability-checked tools in the Executor. |
+| `aiserver.v1.DashboardService/ListTasks`<br>`CreateTask` | `mission.Missions.list`<br>`mission.Missions.start` | Replaces task records with state-graph mission orchestration. |
+| `aiserver.v1.DashboardService/ListRoutines`<br>`TriggerRoutine` | Trigger-based mission dispatch | Routines are stored as automation triggers that dispatch `mission.Missions.start` with predefined check commands and budgets. |
+| `aiserver.v1.DashboardService/ListRooms`<br>`CreateRoom`<br>`RunRoomDiscussion` | Multi-agent mission tournament / mesh (`opensand-next.md` §3.4, §3.5) | Evolved into parallel multi-attempt tournaments and collaborative model mesh. |
+| `aiserver.v1.DashboardService/ListSecrets` | Capability grants (`~/.opensand/grants.json`) | Replaces plaintext secret listing with epoch-guarded grants, OS keychain references, and secure credential prompts. |
+| `aiserver.v1.DashboardService/ListMemories` | Event log memory projection | Memory mutations become audited `memory.*` events in the log rather than ad-hoc JSON updates. |
+| `aiserver.v1.DashboardService/ListAttachments` | Workspace staging / mission attachments | File attachments are staged directly in the workspace or referenced by sha256 in mission parameters. |
+
+### 5.2 HTTP API Routes Mapping (`packages/desktop/src/desktop-server.ts`)
+
+| Legacy Route | HTTP Method | OSP Target / Mechanism | Architectural Rationale & Transition Path |
+|---|---|---|---|
+| `/api/attachments` | `GET`, `POST`, `DELETE` | Workspace staging / mission resource references | Integrated into workspace file storage; staged files are tracked with content hashes in mission parameters. |
+| `/api/templates/:agentId`<br>`/api/templates/import` | `GET`, `POST` | Agent template registry in Engine | Templates export/import clean declarative YAML/JSON configurations. |
+| `/api/btw` | `POST` | Ephemeral side-query via Engine | Side inquiries do not append to the append-only event log. |
+| `/api/rollback` | `POST` | `timeline.Timeline.restore` | Restores filesystem snapshot and timeline pointer instead of mutating session JSON files on disk. |
+| `/api/policies`<br>`/api/policies/audit` | `GET`, `POST` | `inbox.Approvals.*` & Epoch Grants | Replaced by epoch-checked capability system; all policy overrides and approvals require monotonic epoch validation. |
+| `/api/webhooks` | `GET`, `POST`, `DELETE` | Engine trigger subsystem | Incoming webhooks dispatch autonomous missions into the mission runner with isolated sandbox targets. |
+
+### 5.3 Compatibility Bridge Strategy
+
+During the Phase 2 migration:
+1. `packages/desktop/src/rpc-gateway.ts` and `packages/desktop/src/desktop-server.ts` are retained as an adapter layer translating legacy HTTP/Connect-Web calls into OSP messages.
+2. New clients (CLI, updated Desktop shell, VS Code extension) connect directly to the Engine via stdio or domain socket speaking native OSP JSON Lines.
+3. Once all UI views transition to the OSP client bridge (Phase 5), the legacy HTTP routes and Connect-Web gateway will be formally decommissioned.

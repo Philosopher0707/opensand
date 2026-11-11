@@ -132,7 +132,7 @@ Events are asynchronous broadcasts emitted by the engine to subscribed clients:
 |---|---|---|---|
 | `engine.Engine.ping` | `{}` | `{ "timestamp": string }` | Round-trip liveness ping. |
 | `engine.Engine.status` | `{}` | `{ "version": string, "pid": number, "activeMissions": number, "uptimeMs": number }` | Returns engine runtime status. |
-| `engine.Engine.reconnect` | `{ "missionId": string, "lastSeq": number }` | `{ "replayedEvents": number, "currentSeq": number }` | Re-establishes event stream; replays all events from `lastSeq + 1` to head. |
+| `engine.Engine.reconnect` | `{ "missionId"?: string, "sessionId"?: string, "lastSeq": number }` | `{ "replayedEvents": number, "currentSeq": number }` | Re-establishes event stream; replays all events from `lastSeq + 1` to head. |
 | `engine.Engine.shutdown` | `{ "force"?: boolean }` | `{ "success": boolean }` | Gracefully shuts down the engine process. |
 
 ### 3.2 `mission.Missions` Namespace (Mission Orchestration)
@@ -180,6 +180,26 @@ interface ApprovalItem {
 | `timeline.Timeline.restore` | `{ "missionId": string, "checkpointId": string }` | `{ "restored": boolean, "snapshotId": string }` | Restores workspace and engine state to checkpoint. |
 | `timeline.Timeline.fork` | `{ "missionId": string, "checkpointId": string, "newTitle"?: string }` | `{ "newMissionId": string, "forkedFromSeq": number }` | Creates a new mission attempt branched from checkpoint. |
 
+#### Timeline Data Structures:
+```typescript
+interface TimelineNode {
+  nodeId: string;
+  name: "plan" | "act" | "check" | "repair" | "review" | "receipt";
+  status: "pending" | "running" | "completed" | "failed";
+  seqStart: number;
+  seqEnd?: number;
+  durationMs?: number;
+}
+
+interface Checkpoint {
+  checkpointId: string;
+  seq: number;
+  snapshotId: string;
+  label: string;
+  createdAt: string;
+}
+```
+
 ### 3.5 `session.Sessions` Namespace (Interactive Chat Parity)
 
 | Method | Parameters | Returns | Description |
@@ -189,6 +209,46 @@ interface ApprovalItem {
 | `session.Sessions.list` | `{}` | `{ "sessions": Array<SessionSummary> }` | Lists all sessions. |
 | `session.Sessions.rename` | `{ "sessionId": string, "title": string }` | `{ "success": boolean }` | Renames session title. |
 | `session.Sessions.delete` | `{ "sessionId": string }` | `{ "success": boolean }` | Deletes a session and its projected files. |
+
+#### Session Data Structures:
+```typescript
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  createdAt: string;
+  seq?: number;
+}
+
+interface SessionSummary {
+  sessionId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+}
+```
+
+### 3.6 Streaming Events Catalog
+
+Events are asynchronous notifications emitted by the engine over active OSP transports (stdio, domain socket, or WebSocket/SSE). Every event maps directly to an append operation in the underlying hash-chained event log, carrying an immutable monotonic `seq` number.
+
+| Event Name | Class | Payload Schema | Description |
+|---|---|---|---|
+| `mission.Missions.started` | `mission.Missions` | `{ "missionId": string, "title": string, "workspaceRoot": string, "budgetUsd": number }` | Autonomous mission started on state graph. |
+| `mission.Missions.nodeStarted` | `mission.Missions` | `{ "missionId": string, "node": string, "attempt": number }` | Graph transition into state node (`plan`, `act`, `check`, `repair`, `review`, `receipt`). |
+| `mission.Missions.nodeCompleted` | `mission.Missions` | `{ "missionId": string, "node": string, "exitCode"?: number, "durationMs": number, "snapshotId"?: string }` | State node execution finished. |
+| `mission.Missions.toolStarted` | `mission.Missions` | `{ "missionId": string, "tool": string, "callId": string, "params": object }` | Tool execution dispatched to Executor sandbox. |
+| `mission.Missions.toolCompleted` | `mission.Missions` | `{ "missionId": string, "tool": string, "callId": string, "exitCode": number, "durationMs": number, "snapshotId": string }` | Tool execution finished in Executor sandbox. |
+| `mission.Missions.checkCompleted` | `mission.Missions` | `{ "missionId": string, "exitCode": number, "durationMs": number, "passed": boolean }` | Automated harness check script completed. |
+| `mission.Missions.paused` | `mission.Missions` | `{ "missionId": string, "checkpointId": string, "reason": string }` | Mission paused at checkpoint. |
+| `mission.Missions.resumed` | `mission.Missions` | `{ "missionId": string, "checkpointId": string }` | Mission resumed from checkpoint. |
+| `mission.Missions.completed` | `mission.Missions` | `{ "missionId": string, "receipt": object, "totalCostUsd": number }` | Mission completed with verifiable receipt. |
+| `mission.Missions.failed` | `mission.Missions` | `{ "missionId": string, "error": string, "node": string }` | Mission execution failed or budget exceeded. |
+| `inbox.Approvals.requested` | `inbox.Approvals` | `ApprovalItem` | Action parked requiring user approval in inbox. |
+| `inbox.Approvals.resolved` | `inbox.Approvals` | `{ "approvalId": string, "decision": string, "epoch": number }` | Approval answered and grant updated. |
+| `session.Sessions.messageAppended` | `session.Sessions` | `{ "sessionId": string, "message": ChatMessage }` | Message appended to interactive chat session. |
+| `engine.Engine.heartbeat` | `engine.Engine` | `{ "timestamp": string, "uptimeMs": number }` | Engine keep-alive pulse (default interval: 15s). |
 
 ---
 
@@ -209,8 +269,10 @@ Client                                                  Engine
 ```
 
 1. When a client reconnects after transport disruption or engine restart, it sends `engine.Engine.reconnect` with the highest sequence number it has processed (`lastSeq`).
-2. The engine reads the mission's append-only `log.jsonl`, serializes events from `lastSeq + 1` to the current log head, and streams them in order.
-3. Once replay completes, the engine sends the RPC response and transitions the client to live event streaming.
+2. The engine reads the mission or session append-only `log.jsonl`, serializes events from `lastSeq + 1` to the current log head, and streams them in order.
+3. If `lastSeq` is greater than the engine head sequence, the engine detects sequence desynchronization and returns `4004` (`ChainIntegrityError`).
+4. Once replay completes, the engine sends the RPC response (`replayedEvents`) and seamlessly transitions the client to live event streaming.
+5. Clients enforce idempotent processing: events with `seq <= lastSeenSeq` are safely discarded.
 
 ---
 
