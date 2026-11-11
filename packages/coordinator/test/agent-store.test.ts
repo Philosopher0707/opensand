@@ -206,7 +206,7 @@ test("delegate_to_agent scopes subagent tools by fallback role defaults and expl
 
     // Verify subagent tools sent to LLM match fallback role tools for security
     const toolNames1 = capturedTools.map((t: any) => t.function.name).sort();
-    assert.deepStrictEqual(toolNames1, ["exec_command", "list_directory", "read_file", "vault_list_secrets"]);
+    assert.deepStrictEqual(toolNames1, ["exec_command", "glob", "grep", "list_directory", "read_file", "vault_list_secrets"]);
 
     // 2. Agent with explicit allowedTools whitelist: ["read_file"]
     const strictAgent = await store.createAgent({

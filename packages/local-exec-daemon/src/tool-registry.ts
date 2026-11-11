@@ -4,6 +4,9 @@ import {
   ExecCommandInput,
   ReadFileInput,
   WriteFileInput,
+  EditFileInput,
+  GrepInput,
+  GlobInput,
   ListDirectoryInput,
   PermissionGates,
   PtySpawnInput,
@@ -12,7 +15,14 @@ import {
   PtyKillInput,
 } from "./types.js";
 import { runCommandOperation } from "./command-runner.js";
-import { readFileOperation, writeFileOperation, listDirectoryOperation } from "./file-ops.js";
+import {
+  readFileOperation,
+  writeFileOperation,
+  editFileOperation,
+  grepOperation,
+  globOperation,
+  listDirectoryOperation,
+} from "./file-ops.js";
 import { PtySessionManager } from "./pty-manager.js";
 
 export interface ToolExecutionContext {
@@ -141,6 +151,93 @@ export const CORE_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
           },
         },
         required: ["path"],
+      },
+    },
+  },
+  edit_file: {
+    type: "function",
+    function: {
+      name: "edit_file",
+      description: "Perform exact string replacement in a file. Errors if old_string is absent, not unique (unless replace_all is true), or identical to new_string.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "The absolute or relative path to the file to edit.",
+          },
+          old_string: {
+            type: "string",
+            description: "The exact existing text content to find and replace.",
+          },
+          new_string: {
+            type: "string",
+            description: "The new text content to substitute in place of old_string.",
+          },
+          replace_all: {
+            type: "boolean",
+            description: "Whether to replace all occurrences if old_string matches more than once (default: false).",
+          },
+        },
+        required: ["path", "old_string", "new_string"],
+      },
+    },
+  },
+  grep: {
+    type: "function",
+    function: {
+      name: "grep",
+      description: "Search file contents under the workspace using regular expressions, returning file:line:text matches.",
+      parameters: {
+        type: "object",
+        properties: {
+          pattern: {
+            type: "string",
+            description: "The regular expression pattern to search for.",
+          },
+          path: {
+            type: "string",
+            description: "Optional file or directory path to search within (default: workspace root).",
+          },
+          glob: {
+            type: "string",
+            description: "Optional glob pattern to filter searched files (e.g. '*.ts' or '**/*.json').",
+          },
+          case_insensitive: {
+            type: "boolean",
+            description: "Whether regex matching should be case-insensitive (default: false).",
+          },
+          max_results: {
+            type: "number",
+            description: "Maximum number of matching lines to return before capping (default: 200).",
+          },
+        },
+        required: ["pattern"],
+      },
+    },
+  },
+  glob: {
+    type: "function",
+    function: {
+      name: "glob",
+      description: "Find files and directories matching a glob pattern (**, *, ?) under the workspace.",
+      parameters: {
+        type: "object",
+        properties: {
+          pattern: {
+            type: "string",
+            description: "The glob pattern to match paths against.",
+          },
+          path: {
+            type: "string",
+            description: "Optional root path to search from (default: workspace root).",
+          },
+          max_results: {
+            type: "number",
+            description: "Maximum number of matched paths to return before capping (default: 200).",
+          },
+        },
+        required: ["pattern"],
       },
     },
   },
@@ -420,6 +517,77 @@ export class ToolRegistry {
         const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
         const allowOutsideWorkspace = input.allowOutsideWorkspace ?? context?.allowOutsideWorkspace;
         const output = await writeFileOperation({ ...input, workspaceRoot, allowOutsideWorkspace });
+        return {
+          status: "ok",
+          output,
+        };
+      }
+
+      // Core Tool: edit_file
+      if (name === "edit_file") {
+        const input = args as EditFileInput;
+        if (
+          !input.path ||
+          typeof input.path !== "string" ||
+          typeof input.old_string !== "string" ||
+          typeof input.new_string !== "string"
+        ) {
+          return {
+            status: "error",
+            error: {
+              code: "INVALID_ARGUMENT",
+              message: "Missing or invalid 'path', 'old_string', or 'new_string' argument.",
+            },
+          };
+        }
+
+        const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
+        const allowOutsideWorkspace = input.allowOutsideWorkspace ?? context?.allowOutsideWorkspace;
+        const output = await editFileOperation({ ...input, workspaceRoot, allowOutsideWorkspace });
+        return {
+          status: "ok",
+          output,
+        };
+      }
+
+      // Core Tool: grep
+      if (name === "grep") {
+        const input = args as GrepInput;
+        if (!input.pattern || typeof input.pattern !== "string") {
+          return {
+            status: "error",
+            error: {
+              code: "INVALID_ARGUMENT",
+              message: "Missing or invalid 'pattern' string argument.",
+            },
+          };
+        }
+
+        const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
+        const allowOutsideWorkspace = input.allowOutsideWorkspace ?? context?.allowOutsideWorkspace;
+        const output = await grepOperation({ ...input, workspaceRoot, allowOutsideWorkspace });
+        return {
+          status: "ok",
+          output,
+        };
+      }
+
+      // Core Tool: glob
+      if (name === "glob") {
+        const input = args as GlobInput;
+        if (!input.pattern || typeof input.pattern !== "string") {
+          return {
+            status: "error",
+            error: {
+              code: "INVALID_ARGUMENT",
+              message: "Missing or invalid 'pattern' string argument.",
+            },
+          };
+        }
+
+        const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
+        const allowOutsideWorkspace = input.allowOutsideWorkspace ?? context?.allowOutsideWorkspace;
+        const output = await globOperation({ ...input, workspaceRoot, allowOutsideWorkspace });
         return {
           status: "ok",
           output,

@@ -1146,6 +1146,38 @@ export class DesktopServer {
       return;
     }
 
+    // API: GET /api/restore-points
+    if (pathname === "/api/restore-points" && req.method === "GET") {
+      try {
+        const restorePoints = await this.bridge.listRestorePoints();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ restorePoints }));
+      } catch (err: any) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
+    // API: POST /api/restore
+    if (pathname === "/api/restore" && req.method === "POST") {
+      try {
+        const body = await this.readJsonBody(req);
+        if (!body?.id || typeof body.id !== "string") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Missing or invalid restore point id" }));
+          return;
+        }
+        const result = await this.bridge.restoreTo(body.id);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      } catch (err: any) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
     // API: POST /api/compact (Context Window Auto-Compaction)
     if (pathname === '/api/compact' && req.method === 'POST') {
       const body = await this.readJsonBody(req);

@@ -53,7 +53,7 @@ Failed Command: ${event.checkCommand || 'N/A'}
 Error details:
 ${errorDetails}
 
-Please diagnose the issue, explain the cause, and use the available file editing tools (such as edit_file or write_file) or execute_command to fix the error. Once fixed, ensure the code builds or passes tests.`;
+Please diagnose the issue, explain the cause, and use the available file editing tools (such as edit_file or write_file) or exec_command to fix the error. Once fixed, ensure the code builds or passes tests.`;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
