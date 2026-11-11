@@ -375,7 +375,10 @@ export class ToolRegistry {
           };
         }
 
-        const output = await runCommandOperation(input);
+        const output = await runCommandOperation({
+          ...input,
+          workspaceRoot: input.workspaceRoot ?? context?.workspaceRoot,
+        });
         return {
           status: "ok",
           output,

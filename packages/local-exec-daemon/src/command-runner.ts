@@ -1,6 +1,8 @@
+import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { ExecCommandInput, ExecCommandOutput } from "./types.js";
 import { validateBashCommand } from "./bash-validator.js";
+import { generateMacosSandboxProfile } from "./sandbox/macos-profile.js";
 
 export async function runCommandOperation(input: ExecCommandInput): Promise<ExecCommandOutput> {
   // 1. Pre-flight bash validation
@@ -49,7 +51,24 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
       }
     }
 
-    const child = spawn("/bin/bash", ["-c", input.command], {
+    let spawnCommand = "/bin/bash";
+    let spawnArgs = ["-c", input.command];
+
+    if (process.platform === "darwin" && fs.existsSync("/usr/bin/sandbox-exec")) {
+      const sandboxProfile = input.sandboxProfile ?? "workspace-write";
+      const workspaceRoot = input.workspaceRoot ?? cwd;
+      const profileString = generateMacosSandboxProfile({
+        workspaceRoot,
+        profile: sandboxProfile,
+        allowNetwork: input.allowNetwork,
+      });
+      spawnCommand = "/usr/bin/sandbox-exec";
+      spawnArgs = ["-p", profileString, "/bin/bash", "-c", input.command];
+    } else if (process.platform !== "darwin") {
+      // Non-darwin platforms fallback to standard spawn until bubblewrap in PR 2
+    }
+
+    const child = spawn(spawnCommand, spawnArgs, {
       cwd,
       env: { ...sanitizedEnv, ...(input.env ?? {}) },
       stdio: ["ignore", "pipe", "pipe"],

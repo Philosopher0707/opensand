@@ -45,6 +45,9 @@ export interface ExecCommandInput {
   cwd?: string;
   timeout_ms?: number;
   env?: Record<string, string>;
+  sandboxProfile?: "read-only" | "workspace-write" | "full";
+  workspaceRoot?: string;
+  allowNetwork?: boolean;
 }
 
 export interface ExecCommandOutput {
