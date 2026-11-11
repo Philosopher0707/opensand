@@ -8,3 +8,4 @@ export * from "./policy-engine.js";
 export * from "./daemon.js";
 export * from "./pty-session.js";
 export * from "./pty-manager.js";
+export * from "./sandbox/index.js";
