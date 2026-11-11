@@ -10,6 +10,8 @@
 const PARALLEL_SAFE_TOOLS = new Set<string>([
   // Local daemon: inspection and discovery
   "read_file",
+  "grep",
+  "glob",
   "list_directory",
   "list_agents",
   "list_agent_tasks",

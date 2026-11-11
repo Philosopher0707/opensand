@@ -135,6 +135,16 @@ export function createDefaultRpcGateway(bridge: DesktopIpcBridge): RpcGateway {
     return await bridge.rollbackTurns(typeof req.turns === 'number' ? req.turns : 1);
   });
 
+  gateway.register("aiserver.v1.GrokBotService", "ListRestorePoints", async () => {
+    return await bridge.listRestorePoints();
+  });
+
+  gateway.register("aiserver.v1.GrokBotService", "RestoreToPoint", async (req) => {
+    if (!req.id || typeof req.id !== "string") throw new RpcError("invalid_argument", "Missing id in RestoreToPointRequest");
+    return await bridge.restoreTo(req.id);
+  });
+
+
   gateway.register('aiserver.v1.GrokBotService', 'AskSideQuestion', async (req) => {
     if (!req.question) throw new RpcError('invalid_argument', 'Missing question in AskSideQuestionRequest');
     const answer = await bridge.askSideQuestion(req.question);

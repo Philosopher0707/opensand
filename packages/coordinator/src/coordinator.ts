@@ -1,3 +1,10 @@
+import {
+  createWorkspaceSnapshot,
+  revertWorkspaceSnapshot,
+  listWorkspaceSnapshots,
+  RestorePoint,
+  RevertResult,
+} from "@opensand/shared";
 import { LocalExecDaemon, ToolExecutionResult, PolicyDecision, ToolDefinition } from "@opensand/local-exec-daemon";
 import { isParallelSafeTool } from "./tool-parallelism.js";
 import { UniversalLLMClient, ConsolidatedAssistantResponse } from "./llm-client.js";
@@ -38,6 +45,8 @@ export interface CoordinatorOptions {
   onEvent?: TurnEventListener;
   maxTurnIterations?: number;
   sessionsBaseDir?: string;
+  workspaceDir?: string;
+  workspaceRoot?: string;
   /** Delegation depth: how many delegate_to_agent hops above this coordinator. */
   subagentDepth?: number;
   mcpManager?: McpManager;
@@ -54,7 +63,10 @@ export class AgentCoordinator {
   public readonly vaultStore?: VaultStore;
   public readonly hookDispatcher: HookDispatcher;
   public readonly mcpManager?: McpManager;
+  public readonly workspaceDir: string;
 
+  private turnCount: number = 0;
+  private restorePoints: RestorePoint[] = [];
   private messages: ChatMessage[] = [];
   private declaredCapabilities = new Set<string>();
   private onApprovalRequired?: ApprovalHandler;
@@ -80,6 +92,7 @@ export class AgentCoordinator {
     this.maxTurnIterations = options.maxTurnIterations ?? 150;
     this.subagentDepth = options.subagentDepth ?? 0;
     this.mcpManager = options.mcpManager;
+    this.workspaceDir = options.workspaceDir ?? options.workspaceRoot ?? process.cwd();
 
     // Initialize system message
     const systemPrompt = buildSystemPrompt(options.systemPromptContext);
@@ -169,6 +182,8 @@ export class AgentCoordinator {
     this.emit({ type: "user_message", content: userQuery });
     await this.transcript.appendJsonl({ role: "user", content: userQuery });
 
+    const currentTurnIndex = this.turnCount++;
+    let turnSnapshotTaken = false;
     let iterations = 0;
 
     // 2. Multi-turn Agent Tool Loop
@@ -409,6 +424,31 @@ export class AgentCoordinator {
         }
         if (!isParallelSafeTool(item.tc.function.name)) {
           await flushParallel();
+          if (!turnSnapshotTaken) {
+            turnSnapshotTaken = true;
+            const restorePointId = `${this.sessionId}_${currentTurnIndex}`;
+            try {
+              const manifest = createWorkspaceSnapshot(this.workspaceDir, restorePointId);
+              const point: RestorePoint = {
+                id: restorePointId,
+                timestamp: manifest.timestamp,
+                filesCount: manifest.files?.length ?? 0,
+                skipped: manifest.skipped,
+                skipReason: manifest.skipReason,
+              };
+              this.restorePoints.push(point);
+              await this.transcript.appendJsonl({
+                event: "restore_point",
+                restorePoint: point,
+              }).catch(() => {});
+            } catch (err: any) {
+              await this.transcript.appendJsonl({
+                event: "restore_point_failed",
+                restorePointId,
+                error: err?.message || String(err),
+              }).catch(() => {});
+            }
+          }
           if (item.execution && item.args) {
             const execResult = await this.daemon.executeTool(item.tc.function.name, item.args, {
               approvalGranted: item.execution.approvalGranted,
@@ -558,6 +598,34 @@ ${question}`;
    * Roll back the conversation by N user turns (Grok Bot RollBackGrokBotConversation parity).
    * Rewinds the in-memory message history and rewrites the on-disk transcript.
    */
+  /**
+   * List all restore points available for this coordinator workspace/session.
+   */
+  async listRestorePoints(): Promise<RestorePoint[]> {
+    const diskPoints = listWorkspaceSnapshots(this.workspaceDir);
+    const pointMap = new Map<string, RestorePoint>();
+    for (const dp of diskPoints) {
+      pointMap.set(dp.id, dp);
+    }
+    for (const mp of this.restorePoints) {
+      pointMap.set(mp.id, mp);
+    }
+    return Array.from(pointMap.values()).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  }
+
+  /**
+   * Restore the workspace directory to a recorded restore point.
+   */
+  async restoreTo(id: string): Promise<RevertResult> {
+    const result = revertWorkspaceSnapshot(this.workspaceDir, id);
+    await this.transcript.appendJsonl({
+      event: "restore",
+      restorePointId: id,
+      result,
+    }).catch(() => {});
+    return result;
+  }
+
   async rollbackTurns(turnCount = 1): Promise<{ removedMessages: number; remainingMessages: number }> {
     if (turnCount <= 0) {
       return { removedMessages: 0, remainingMessages: this.messages.length };

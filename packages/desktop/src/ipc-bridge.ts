@@ -1172,6 +1172,20 @@ export class DesktopIpcBridge extends EventEmitter {
     return this.coordinator.askSideQuestion(question);
   }
 
+  public async listRestorePoints(): Promise<any[]> {
+    if (!this.coordinator) {
+      return [];
+    }
+    return this.coordinator.listRestorePoints();
+  }
+
+  public async restoreTo(id: string): Promise<any> {
+    if (!this.coordinator) {
+      throw new Error("No active conversation coordinator available to restore");
+    }
+    return this.coordinator.restoreTo(id);
+  }
+
   public async rollbackTurns(turns = 1): Promise<{ removedMessages: number; remainingMessages: number }> {
     if (!this.coordinator) {
       throw new Error('No active conversation coordinator available to rollback');

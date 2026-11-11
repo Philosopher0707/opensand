@@ -1484,6 +1484,41 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
     },
   });
 
+  // Tool: git_diff (alias matching DEFAULT_ROLE_TOOLS and templates)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "git_diff",
+        description: "Get git diff statistics (insertions, deletions, files changed) and raw diff patch.",
+        parameters: {
+          type: "object",
+          properties: {
+            staged: {
+              type: "boolean",
+              description: "True to inspect staged (--cached) diff, false for working tree diff.",
+            },
+            repo_dir: {
+              type: "string",
+              description: "Optional repository path.",
+            },
+          },
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const diffSummary = await gitManager.getDiff(args.staged, args.repo_dir);
+      return JSON.stringify({
+        status: "success",
+        filesChanged: diffSummary.filesChanged,
+        insertions: diffSummary.insertions,
+        deletions: diffSummary.deletions,
+        diff: diffSummary.diff.slice(0, 15000),
+      }, null, 2);
+    },
+  });
+
   // 36. Tool: git_worktree_create
   daemon.registerCustomTool({
     definition: {
@@ -1531,6 +1566,39 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
             message: {
               type: "string",
               description: "Optional custom commit message (e.g. 'feat(auth): add vault integration'). If omitted, automatically inferred from staged files.",
+            },
+            repo_dir: {
+              type: "string",
+              description: "Optional repository path.",
+            },
+          },
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const commit = await gitManager.autoCommit(args.message, args.repo_dir);
+      return JSON.stringify({
+        status: "success",
+        message: `Committed ${commit.commitHash} on ${commit.branch}: "${commit.message}"`,
+        commit,
+      }, null, 2);
+    },
+  });
+
+  // Tool: git_commit (alias matching DEFAULT_ROLE_TOOLS and templates)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "git_commit",
+        description: "Stage all modified files and commit with a concise conventional commit message.",
+        parameters: {
+          type: "object",
+          properties: {
+            message: {
+              type: "string",
+              description: "Optional custom commit message.",
             },
             repo_dir: {
               type: "string",

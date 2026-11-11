@@ -238,7 +238,7 @@ describe("ToolRegistry PTY Tools Integration", () => {
     const registry = new ToolRegistry({ enablePty: true });
     const defs = registry.getDefinitions();
 
-    assert.equal(defs.length, 8);
+    assert.equal(defs.length, 11);
     const names = defs.map((d) => d.function.name);
     assert.ok(names.includes("pty_spawn"));
     assert.ok(names.includes("pty_write"));

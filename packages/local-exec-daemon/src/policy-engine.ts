@@ -172,7 +172,7 @@ export class PolicyEngine {
 
     // Phase 4: Default Fallback Action
     // Read-only tools are safe to allow by default unless specifically restricted
-    const isReadOnly = ['read_file', 'list_directory'].includes(context.tool) ||
+    const isReadOnly = ['read_file', 'list_directory', 'grep', 'glob'].includes(context.tool) ||
       context.tool.startsWith('inspect_');
 
     // exec_command is governed by the computer-use gate + standing allowlist
@@ -180,11 +180,11 @@ export class PolicyEngine {
     // is the symmetric case: policy already denies sensitive paths, so the
     // default action must not re-gate ordinary workspace writes.
     const isExec = context.tool === 'exec_command';
-    const isWrite = context.tool === 'write_file';
+    const isWrite = ['write_file', 'edit_file'].includes(context.tool);
     // CLI-registered tools (delegate_to_agent, create_agent, store_*, ...)
     // are trusted orchestrator tools; policy governs the system-boundary
     // tools (read/write/exec/network) and sensitive paths.
-    const isRegistered = !['read_file', 'write_file', 'list_directory', 'exec_command'].includes(context.tool);
+    const isRegistered = !['read_file', 'write_file', 'list_directory', 'exec_command', 'edit_file', 'grep', 'glob'].includes(context.tool);
     const fallbackAction = isReadOnly || isExec || isWrite || isRegistered ? 'ALLOW' : this.defaultAction;
     const decision: PolicyDecision = {
       action: fallbackAction,
