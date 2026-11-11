@@ -45,6 +45,12 @@ export interface ExecCommandInput {
   cwd?: string;
   timeout_ms?: number;
   env?: Record<string, string>;
+  sandboxProfile?: "read-only" | "workspace-write" | "full";
+  workspaceRoot?: string;
+  homeDir?: string;
+  tempDir?: string;
+  allowNetwork?: boolean;
+  customProfileString?: string;
 }
 
 export interface ExecCommandOutput {
@@ -77,6 +83,60 @@ export interface WriteFileInput {
   overwrite?: boolean;
   workspaceRoot?: string;
   allowOutsideWorkspace?: boolean;
+}
+
+
+export interface EditFileInput {
+  path: string;
+  old_string: string;
+  new_string: string;
+  replace_all?: boolean;
+  workspaceRoot?: string;
+  allowOutsideWorkspace?: boolean;
+}
+
+export interface EditFileOutput {
+  path: string;
+  replacementCount: number;
+  sha256: string;
+  bytesWritten: number;
+}
+
+export interface GrepInput {
+  pattern: string;
+  path?: string;
+  glob?: string;
+  case_insensitive?: boolean;
+  max_results?: number;
+  workspaceRoot?: string;
+  allowOutsideWorkspace?: boolean;
+}
+
+export interface GrepMatch {
+  file: string;
+  line: number;
+  text: string;
+}
+
+export interface GrepOutput {
+  matches: GrepMatch[];
+  lines: string[];
+  totalMatches: number;
+  truncated: boolean;
+}
+
+export interface GlobInput {
+  pattern: string;
+  path?: string;
+  max_results?: number;
+  workspaceRoot?: string;
+  allowOutsideWorkspace?: boolean;
+}
+
+export interface GlobOutput {
+  matches: string[];
+  totalMatches: number;
+  truncated: boolean;
 }
 
 export interface WriteFileOutput {

@@ -468,6 +468,24 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     assert.strictEqual(resCompact.statusCode, 400);
     assert.ok(JSON.parse(resCompact.body).error.includes('No active conversation coordinator'));
 
+    // Test GET /api/restore-points
+    const reqRestorePoints = new MockIncomingMessage("GET", "/api/restore-points");
+    const resRestorePoints = new MockServerResponse();
+    await (server as any).handleRequest(reqRestorePoints, resRestorePoints);
+    assert.strictEqual(resRestorePoints.statusCode, 200);
+    assert.deepStrictEqual(JSON.parse(resRestorePoints.body), { restorePoints: [] });
+
+    // Test POST /api/restore (validation error on missing id)
+    const reqRestoreMissing = new MockIncomingMessage("POST", "/api/restore");
+    const resRestoreMissing = new MockServerResponse();
+    const restoreMissingPromise = (server as any).handleRequest(reqRestoreMissing, resRestoreMissing);
+    reqRestoreMissing.emit("data", Buffer.from(JSON.stringify({})));
+    reqRestoreMissing.emit("end");
+    await restoreMissingPromise;
+    assert.strictEqual(resRestoreMissing.statusCode, 400);
+    assert.ok(JSON.parse(resRestoreMissing.body).error.includes("Missing or invalid restore point id"));
+
+
     // Test Token Telemetry API: GET /api/tokens (Model-aware dynamic context limit)
     const reqTokens = new MockIncomingMessage('GET', '/api/tokens');
     const resTokens = new MockServerResponse();

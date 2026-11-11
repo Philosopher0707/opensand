@@ -1,6 +1,9 @@
+import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { ExecCommandInput, ExecCommandOutput } from "./types.js";
 import { validateBashCommand } from "./bash-validator.js";
+import { generateMacosSandboxProfile } from "./sandbox/macos-profile.js";
+import { SandboxInitializationError } from "./sandbox/errors.js";
 
 export async function runCommandOperation(input: ExecCommandInput): Promise<ExecCommandOutput> {
   // 1. Pre-flight bash validation
@@ -49,11 +52,60 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
       }
     }
 
-    const child = spawn("/bin/bash", ["-c", input.command], {
-      cwd,
-      env: { ...sanitizedEnv, ...(input.env ?? {}) },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    let spawnCommand = "/bin/bash";
+    let spawnArgs = ["-c", input.command];
+    let isSandboxed = false;
+
+    // Sandbox is opt-in via input.sandboxProfile, input.customProfileString, or OPENSAND_SANDBOX=1
+    const sandboxRequested = Boolean(
+      input.sandboxProfile || input.customProfileString || process.env.OPENSAND_SANDBOX === "1"
+    );
+
+    if (sandboxRequested) {
+      if (process.platform === "darwin") {
+        if (!fs.existsSync("/usr/bin/sandbox-exec")) {
+          return reject(new SandboxInitializationError("/usr/bin/sandbox-exec binary not found"));
+        }
+
+        let profileString = input.customProfileString;
+        if (!profileString) {
+          const sandboxProfile = input.sandboxProfile ?? "workspace-write";
+          const workspaceRoot = input.workspaceRoot ?? cwd;
+
+          try {
+            profileString = generateMacosSandboxProfile({
+              workspaceRoot,
+              homeDir: input.homeDir,
+              tempDir: input.tempDir,
+              profile: sandboxProfile,
+              allowNetwork: input.allowNetwork,
+            });
+          } catch (err: any) {
+            return reject(new SandboxInitializationError(`Profile generation failed: ${err.message}`));
+          }
+        }
+
+        spawnCommand = "/usr/bin/sandbox-exec";
+        spawnArgs = ["-p", profileString, "/bin/bash", "-c", input.command];
+        isSandboxed = true;
+      } else {
+        // Non-darwin platforms fallback to standard spawn or recorded warning until bubblewrap in PR 2
+      }
+    }
+
+    let child;
+    try {
+      child = spawn(spawnCommand, spawnArgs, {
+        cwd,
+        env: { ...sanitizedEnv, ...(input.env ?? {}) },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (err: any) {
+      if (isSandboxed) {
+        return reject(new SandboxInitializationError(`Spawn failed: ${err.message}`));
+      }
+      return reject(err);
+    }
 
     const timer = setTimeout(() => {
       if (!isSettled) {
@@ -99,7 +151,11 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
       if (!isSettled) {
         isSettled = true;
         clearTimeout(timer);
-        reject(err);
+        if (isSandboxed) {
+          reject(new SandboxInitializationError(err.message));
+        } else {
+          reject(err);
+        }
       }
     });
 
@@ -107,6 +163,13 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
       if (!isSettled) {
         isSettled = true;
         clearTimeout(timer);
+
+        // Check if sandbox-exec itself failed during initialization (e.g. invalid profile syntax or container restriction)
+        if (isSandboxed && code === 65 && stderrBuffer.includes("sandbox-exec:")) {
+          reject(new SandboxInitializationError(stderrBuffer.trim()));
+          return;
+        }
+
         resolve({
           exitCode: code,
           signal: signal ? String(signal) : null,

@@ -11,7 +11,16 @@ try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { contextBridge, ipcRenderer } = require('electron');
 
-  if (contextBridge && ipcRenderer) {
+  // Verify origin: publish the bridge only to the app's own local-server origin.
+  let isAllowed = false;
+  try {
+    isAllowed = Boolean(ipcRenderer.sendSync('opensand:isAllowedOrigin'));
+  } catch {
+    const locOrigin = window?.location?.origin || '';
+    isAllowed = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(locOrigin);
+  }
+
+  if (isAllowed && contextBridge && ipcRenderer) {
     contextBridge.exposeInMainWorld('opensand', {
       sendQuery: (query: string, sessionId?: string, agentId?: string) =>
         ipcRenderer.invoke('opensand:sendQuery', { query, sessionId, agentId }),

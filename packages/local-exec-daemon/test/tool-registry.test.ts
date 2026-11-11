@@ -1,15 +1,16 @@
+import * as fs from "node:fs/promises";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { ToolRegistry } from "../src/tool-registry.js";
 
 describe("ToolRegistry", () => {
-  it("provides OpenAI-compatible tool definitions for 4 core tools", () => {
+  it("provides OpenAI-compatible tool definitions for 7 core tools", () => {
     const registry = new ToolRegistry();
     const defs = registry.getDefinitions();
 
-    assert.equal(defs.length, 4);
+    assert.equal(defs.length, 7);
     const names = defs.map((d) => d.function.name);
-    assert.deepEqual(names.sort(), ["exec_command", "list_directory", "read_file", "write_file"].sort());
+    assert.deepEqual(names.sort(), ["edit_file", "exec_command", "glob", "grep", "list_directory", "read_file", "write_file"].sort());
 
     for (const d of defs) {
       assert.equal(d.type, "function");
@@ -39,6 +40,46 @@ describe("ToolRegistry", () => {
     assert.equal(readRes.status, "ok");
     assert.equal(readRes.output.content, "registry test content");
   });
+
+  it("dispatches edit_file, grep, and glob operations", async () => {
+    const registry = new ToolRegistry();
+    const tempDir = `/tmp/opensand-reg-${Date.now()}`;
+    const tempFile = `${tempDir}/sub/code.txt`;
+
+    await registry.dispatch("write_file", {
+      path: tempFile,
+      content: "line 1: hello\nline 2: target word\nline 3: world\n",
+    });
+
+    // edit_file dispatch
+    const editRes = await registry.dispatch("edit_file", {
+      path: tempFile,
+      old_string: "target word",
+      new_string: "replacement string",
+    });
+    assert.equal(editRes.status, "ok");
+    assert.equal(editRes.output.replacementCount, 1);
+
+    // grep dispatch
+    const grepRes = await registry.dispatch("grep", {
+      pattern: "replacement",
+      path: tempDir,
+    });
+    assert.equal(grepRes.status, "ok");
+    assert.equal(grepRes.output.matches.length, 1);
+    assert.ok(grepRes.output.lines[0].includes("replacement string"));
+
+    // glob dispatch
+    const globRes = await registry.dispatch("glob", {
+      pattern: "**/*.txt",
+      path: tempDir,
+    });
+    assert.equal(globRes.status, "ok");
+    assert.equal(globRes.output.matches.length, 1);
+
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  });
+
 
   it("requires permission when computerUseAllowed is false and command is not allowlisted", async () => {
     const registry = new ToolRegistry();
@@ -147,7 +188,7 @@ describe("ToolRegistry", () => {
       },
     });
 
-    assert.equal(registry.getDefinitions().length, 5);
+    assert.equal(registry.getDefinitions().length, 8);
     const res = await registry.dispatch("calculate_sum", { a: 10, b: 32 });
     assert.equal(res.status, "ok");
     assert.equal(res.output.sum, 42);
@@ -166,9 +207,9 @@ describe("ToolRegistry", () => {
       },
       handler: async () => "ok",
     });
-    assert.equal(registry.getDefinitions().length, 5);
+    assert.equal(registry.getDefinitions().length, 8);
     const removed = registry.unregisterCustomTool("temp_tool");
     assert.equal(removed, true);
-    assert.equal(registry.getDefinitions().length, 4);
+    assert.equal(registry.getDefinitions().length, 7);
   });
 });
