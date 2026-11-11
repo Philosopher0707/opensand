@@ -7,9 +7,10 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 test('Automated Real-Window Test Harness (Layout Stability at 960x740 and Full Screen)', async (t) => {
-  // Headless Linux CI environments without a display server cannot open GUI BrowserWindows.
-  if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
-    const reason = 'Skipping Electron real-window test on Linux CI without DISPLAY/WAYLAND_DISPLAY';
+  // CI environments or headless Linux without a display server cannot launch real GUI BrowserWindows.
+  // In GitHub Actions macOS/Linux runners, launching a second concurrent Electron GUI instance causes SIGABRT or dyld load failures.
+  if (process.env.CI || (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY)) {
+    const reason = 'Skipping Electron real-window test on CI runner without desktop display session';
     console.log(`[window-harness.test] ${reason}`);
     t.skip(reason);
     return;
