@@ -7,7 +7,7 @@ import { createApprovalQueue } from './modules/chat/approval-queue.js';
 import { createArtifactCanvas } from './modules/chat/canvas.js';
 
 // Native title bar is hiddenInset on macOS; CSS keys traffic-light clearance off this.
-// The packaged app runs in HTTP mode without a preload bridge, so detect via userAgent.
+// Detected via userAgent for instant CSS styling, and via window.opensand for IPC bridge.
 if (navigator.userAgent.includes('Electron')) document.body.classList.add('is-electron');
 
 // Inline sprite helper: dynamic surfaces use the same stroke icons as index.html.
