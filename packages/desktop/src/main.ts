@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
 import { getOnboardingState } from './onboarding.js';
@@ -70,9 +72,10 @@ export class DesktopApp {
       const welcome = new URL(url);
       welcome.pathname = '/welcome';
       const target = onboarding.needsOnboarding ? welcome.toString() : url;
+      const origin = new URL(url).origin;
 
+      this.setupIpcHandlers(ipcMain, origin);
       this.createMainWindow(BrowserWindow, target);
-      this.setupIpcHandlers(ipcMain);
       this.setupTray();
 
       app.on('activate', () => {
@@ -99,6 +102,14 @@ export class DesktopApp {
     }
   }
 
+  private resolvePreloadPath(): string {
+    const candidateDist = fileURLToPath(new URL('./preload.cjs', import.meta.url));
+    const candidateAlt = path.join(import.meta.dirname, 'preload.cjs');
+    if (fs.existsSync(candidateDist)) return candidateDist;
+    if (fs.existsSync(candidateAlt)) return candidateAlt;
+    return candidateDist;
+  }
+
   private createMainWindow(BrowserWindow: any, serverUrl: string): void {
     const origin = new URL(serverUrl).origin;
 
@@ -114,6 +125,7 @@ export class DesktopApp {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        preload: this.resolvePreloadPath(),
       },
     });
 
@@ -151,7 +163,19 @@ export class DesktopApp {
     });
   }
 
-  private setupIpcHandlers(ipcMain: any): void {
+  private setupIpcHandlers(ipcMain: any, serverOrigin?: string): void {
+    if (serverOrigin) {
+      ipcMain.on('opensand:isAllowedOrigin', (event: any) => {
+        const senderUrl = event.senderFrame?.url || event.sender?.getURL() || '';
+        try {
+          const senderOrigin = new URL(senderUrl).origin;
+          event.returnValue = senderOrigin === serverOrigin;
+        } catch {
+          event.returnValue = false;
+        }
+      });
+    }
+
     ipcMain.handle('opensand:sendQuery', async (_: any, { query, sessionId, agentId }: { query: string; sessionId?: string; agentId?: string }) => {
       return this.bridge.sendQuery(query, sessionId, agentId);
     });

@@ -195,3 +195,8 @@
 
 ### 11.7 Local green is not CI green
 * **Rule:** After every push, read the actual CI run (`gh run view <id> --json status,conclusion`). Claim "green" only from that result, and if it fails, fix the cause before the next push instead of re-running until it passes.
+
+### 11.8 An unwired preload script leaves the native bridge dead
+* **Trap:** `preload.ts` existed in `packages/desktop/src/preload.ts` implementing `contextBridge.exposeInMainWorld('opensand', ...)`, but `packages/desktop/src/main.ts` omitted `preload` in `BrowserWindow.webPreferences`. As a result, `window.opensand` was permanently `undefined` in the real app, and `renderer/app.js` silently degraded to HTTP fallback without any error or test failure. Furthermore, in `"type": "module"` packages, compiling `preload.ts` to `preload.js` emits `export {};`, which causes sandboxed Electron CommonJS loaders to crash with `SyntaxError: Unexpected token 'export'`.
+* **Root Cause:** Unit tests exercised classes in isolation using in-memory stubs and never launched a real Electron window to verify that the bridge was exposed to the renderer window.
+* **Rule:** Electron sandboxed preloads must compile to CommonJS (`.cts` $\rightarrow$ `.cjs`). The preload path must be wired explicitly in `webPreferences.preload` using robust dist-relative path resolution (`import.meta.url` / `import.meta.dirname`). Every app bridge must have an automated real-Electron gate test in CI/test suites that launches the dev window and asserts `typeof window.<bridge> === 'object'` and round-trips an IPC call, proven to fail when the preload wiring is removed.
