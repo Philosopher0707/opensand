@@ -1,12 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { DENIED_SECRET_REL_PATHS } from "./constants.js";
 
 export type SandboxProfileType = "read-only" | "workspace-write" | "full";
 
 export interface GenerateMacosSandboxProfileOptions {
   workspaceRoot: string;
-  profile: SandboxProfileType;
+  homeDir?: string;
+  tempDir?: string;
+  profile?: SandboxProfileType;
   allowNetwork?: boolean;
 }
 
@@ -14,15 +17,45 @@ function escapeSchemeString(str: string): string {
   return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+function addCanonicalPaths(targetPath: string, pathSet: Set<string>): void {
+  const resolved = path.resolve(targetPath);
+  pathSet.add(resolved);
+
+  try {
+    pathSet.add(fs.realpathSync(resolved));
+  } catch {
+    try {
+      const parent = path.dirname(resolved);
+      const realParent = fs.realpathSync(parent);
+      pathSet.add(path.join(realParent, path.basename(resolved)));
+    } catch {}
+  }
+
+  // Handle common macOS symlink prefixes (/tmp <-> /private/tmp, /var <-> /private/var)
+  for (const p of Array.from(pathSet)) {
+    if (p.startsWith("/tmp/")) {
+      pathSet.add("/private" + p);
+    } else if (p.startsWith("/private/tmp/")) {
+      pathSet.add(p.replace(/^\/private/, ""));
+    } else if (p.startsWith("/var/")) {
+      pathSet.add("/private" + p);
+    } else if (p.startsWith("/private/var/")) {
+      pathSet.add(p.replace(/^\/private/, ""));
+    }
+  }
+}
+
 /**
  * Generate an Apple TinyScheme sandbox profile for execution under sandbox-exec.
  */
-export function generateMacosSandboxProfile(options: {
-  workspaceRoot: string;
-  profile: "read-only" | "workspace-write" | "full";
-  allowNetwork?: boolean;
-}): string {
-  const { workspaceRoot, profile, allowNetwork } = options;
+export function generateMacosSandboxProfile(options: GenerateMacosSandboxProfileOptions): string {
+  const {
+    workspaceRoot,
+    homeDir = os.homedir(),
+    tempDir,
+    profile = "workspace-write",
+    allowNetwork = false,
+  } = options;
 
   if (profile === "full") {
     const lines = ["(version 1)", "(allow default)"];
@@ -39,60 +72,43 @@ export function generateMacosSandboxProfile(options: {
     lines.push("(deny network*)");
   }
 
-  // Deny read access to sensitive user secrets & shell initialization files
-  const homeDirs = new Set<string>();
-  const home = os.homedir();
-  if (home) {
-    homeDirs.add(home);
-    try {
-      homeDirs.add(fs.realpathSync(home));
-    } catch {}
+  // 1. Deny read access to all paths under homeDir from DENIED_SECRET_REL_PATHS
+  const canonicalHomeDirs = new Set<string>();
+  if (homeDir) {
+    addCanonicalPaths(homeDir, canonicalHomeDirs);
   }
 
-  for (const h of homeDirs) {
-    lines.push(`(deny file-read* (subpath "${escapeSchemeString(path.join(h, ".ssh"))}"))`);
-    lines.push(`(deny file-read* (literal "${escapeSchemeString(path.join(h, ".ssh"))}"))`);
-    lines.push(`(deny file-read* (subpath "${escapeSchemeString(path.join(h, ".opensand", "vault"))}"))`);
-    lines.push(`(deny file-read* (literal "${escapeSchemeString(path.join(h, ".opensand", "vault"))}"))`);
-    lines.push(`(deny file-read* (literal "${escapeSchemeString(path.join(h, ".bashrc"))}"))`);
-    lines.push(`(deny file-read* (literal "${escapeSchemeString(path.join(h, ".bash_profile"))}"))`);
-    lines.push(`(deny file-read* (literal "${escapeSchemeString(path.join(h, ".zshrc"))}"))`);
-    lines.push(`(deny file-read* (literal "${escapeSchemeString(path.join(h, ".profile"))}"))`);
-    lines.push(`(deny file-read* (literal "${escapeSchemeString(path.join(h, ".zshenv"))}"))`);
-    lines.push(`(deny file-read* (literal "${escapeSchemeString(path.join(h, ".zprofile"))}"))`);
+  for (const h of canonicalHomeDirs) {
+    for (const relPath of DENIED_SECRET_REL_PATHS) {
+      const target = path.join(h, relPath);
+      lines.push(`(deny file-read* (subpath "${escapeSchemeString(target)}"))`);
+      lines.push(`(deny file-read* (literal "${escapeSchemeString(target)}"))`);
+    }
   }
 
-  // Deny all file writes by default
+  // 2. Deny all file writes by default
   lines.push("(deny file-write*)");
 
-  // Allow writes inside target workspace directory for workspace-write profile
+  // 3. Allow writes for workspace-write profile
   if (profile === "workspace-write") {
-    const resolvedWorkspace = path.resolve(workspaceRoot);
     const allowedWritePaths = new Set<string>();
-    allowedWritePaths.add(resolvedWorkspace);
 
-    // Canonicalize workspaceRoot using fs.realpathSync to handle symlinks (e.g. /tmp -> /private/tmp)
-    try {
-      allowedWritePaths.add(fs.realpathSync(resolvedWorkspace));
-    } catch {
-      try {
-        const parent = path.dirname(resolvedWorkspace);
-        const realParent = fs.realpathSync(parent);
-        allowedWritePaths.add(path.join(realParent, path.basename(resolvedWorkspace)));
-      } catch {}
+    // 3.1 Workspace root
+    addCanonicalPaths(workspaceRoot, allowedWritePaths);
+
+    // 3.2 Temp directory (if explicitly passed or default system temp)
+    const effectiveTempDir = tempDir ?? (process.env.TMPDIR || os.tmpdir());
+    if (effectiveTempDir) {
+      addCanonicalPaths(effectiveTempDir, allowedWritePaths);
     }
 
-    // Explicitly handle canonical macOS aliases (/tmp <-> /private/tmp, /var <-> /private/var)
-    for (const p of Array.from(allowedWritePaths)) {
-      if (p.startsWith("/tmp/")) {
-        allowedWritePaths.add("/private" + p);
-      } else if (p.startsWith("/private/tmp/")) {
-        allowedWritePaths.add(p.replace(/^\/private/, ""));
-      } else if (p.startsWith("/var/")) {
-        allowedWritePaths.add("/private" + p);
-      } else if (p.startsWith("/private/var/")) {
-        allowedWritePaths.add(p.replace(/^\/private/, ""));
-      }
+    // 3.3 Standard user caches
+    for (const h of canonicalHomeDirs) {
+      addCanonicalPaths(path.join(h, ".npm"), allowedWritePaths);
+      addCanonicalPaths(path.join(h, "Library", "Caches"), allowedWritePaths);
+      addCanonicalPaths(path.join(h, ".cache"), allowedWritePaths);
+      addCanonicalPaths(path.join(h, ".pnpm-store"), allowedWritePaths);
+      addCanonicalPaths(path.join(h, "Library", "pnpm"), allowedWritePaths);
     }
 
     for (const p of allowedWritePaths) {
@@ -100,9 +116,9 @@ export function generateMacosSandboxProfile(options: {
     }
   }
 
-  // Allow writes to ephemeral process IO devices
+  // 4. Always allow standard devices
   lines.push(
-    '(allow file-write* (literal "/dev/null") (literal "/dev/tty") (literal "/dev/zero") (literal "/dev/urandom") (literal "/dev/dtracehelper"))'
+    '(allow file-write* (literal "/dev/null") (literal "/dev/tty") (literal "/dev/zero") (literal "/dev/urandom") (literal "/dev/dtracehelper") (subpath "/dev/fd"))'
   );
 
   return lines.join("\n") + "\n";

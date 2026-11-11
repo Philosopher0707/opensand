@@ -47,7 +47,10 @@ export interface ExecCommandInput {
   env?: Record<string, string>;
   sandboxProfile?: "read-only" | "workspace-write" | "full";
   workspaceRoot?: string;
+  homeDir?: string;
+  tempDir?: string;
   allowNetwork?: boolean;
+  customProfileString?: string;
 }
 
 export interface ExecCommandOutput {
