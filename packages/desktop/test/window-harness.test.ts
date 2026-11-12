@@ -134,6 +134,8 @@ await import(${JSON.stringify(mainScript)});
     // Unset ELECTRON_RUN_AS_NODE so Electron runs as a real Electron GUI process.
     const env: NodeJS.ProcessEnv = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
+    // Hermetic: os.homedir() decides baseDir (~/.opensand). Never touch the real user's state or token.
+    env.HOME = tmpDir;
     delete env.OPENSAND_RENDERER;
     if (renderer === 'preact') env.OPENSAND_RENDERER = 'preact';
     delete env.OPENSAND_HARNESS_FORCE_OVERFLOW;

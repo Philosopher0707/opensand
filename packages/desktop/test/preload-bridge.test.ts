@@ -75,6 +75,8 @@ await import(${JSON.stringify(mainScript)});
     // Unset ELECTRON_RUN_AS_NODE so Electron runs as a real Electron GUI process.
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
+    // Hermetic: os.homedir() decides baseDir (~/.opensand). Never touch the real user's state or token.
+    env.HOME = tmpDir;
 
     let stdout = '';
     let stderr = '';
