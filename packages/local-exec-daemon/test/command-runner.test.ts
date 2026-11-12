@@ -33,6 +33,32 @@ describe("CommandRunner", () => {
     assert.match(res.stderr, /Command timed out/);
   });
 
+  it("kills a running command when the turn is cancelled", async () => {
+    const controller = new AbortController();
+    const started = Date.now();
+    setTimeout(() => controller.abort(), 150);
+
+    const res = await runCommandOperation(
+      { command: "sleep 10", timeout_ms: 60_000 },
+      { signal: controller.signal }
+    );
+
+    assert.equal(res.aborted, true);
+    assert.equal(res.signal, "SIGTERM");
+    assert.match(res.stderr, /aborted by user/);
+    assert.ok(Date.now() - started < 5_000, "abort must not wait for the timeout");
+  });
+
+  it("does not spawn when the signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    const res = await runCommandOperation({ command: "sleep 10" }, { signal: controller.signal });
+
+    assert.equal(res.aborted, true);
+    assert.equal(res.durationMs, 0);
+  });
+
   it("rejects dangerous bash commands before execution", async () => {
     await assert.rejects(
       async () => {

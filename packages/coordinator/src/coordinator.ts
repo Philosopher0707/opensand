@@ -265,6 +265,7 @@ export class AgentCoordinator {
             status: "error",
             error: {
               code: "UNAUTHORIZED_TOOL",
+              reason: "not_authorized",
               message: `Tool '${tc.function.name}' is not in this agent's authorized tools list: [${this.allowedTools.join(", ")}]`,
             },
           };
@@ -299,6 +300,7 @@ export class AgentCoordinator {
             status: "error",
             error: {
               code: "PRE_TOOL_HOOK_DENIED",
+              reason: "hook",
               message: preHook.reason || `Tool '${tc.function.name}' execution was denied by PreToolUse hook policy.`,
             },
           };
@@ -322,6 +324,7 @@ export class AgentCoordinator {
             status: "error",
             error: {
               code: "POLICY_DENIED",
+              reason: "policy",
               message: `Policy Boundary Violation: ${policy.reason}`,
             },
           };
@@ -368,6 +371,7 @@ export class AgentCoordinator {
               status: "error",
               error: {
                 code: "PERMISSION_DENIED",
+                reason: "user_rejected",
                 message: "Tool execution was rejected by user.",
               },
             };
@@ -409,6 +413,7 @@ export class AgentCoordinator {
             approvalGranted: item.execution.approvalGranted,
             permissionGates: item.execution.gates,
             subagent: this.buildDelegationContext(item.tc.function.name),
+            signal,
           });
         }));
         for (let i = 0; i < batch.length; i++) {
@@ -452,6 +457,7 @@ export class AgentCoordinator {
               approvalGranted: item.execution.approvalGranted,
               permissionGates: item.execution.gates,
               subagent: this.buildDelegationContext(item.tc.function.name),
+              signal,
             });
             await commitPrepared(item, execResult);
           }

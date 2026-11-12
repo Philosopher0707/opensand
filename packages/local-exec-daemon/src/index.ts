@@ -9,3 +9,4 @@ export * from "./daemon.js";
 export * from "./pty-session.js";
 export * from "./pty-manager.js";
 export * from "./sandbox/index.js";
+export * from "./denial-errors.js";

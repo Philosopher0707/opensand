@@ -860,6 +860,7 @@ describe("AgentCoordinator Policy Boundary", () => {
     assert.equal(result.status, "error");
     assert.equal(result.error.code, "POLICY_DENIED");
     assert.ok(result.error.message.includes("Policy Boundary Violation"));
+    assert.equal(result.error.reason, "policy");
   });
 
   it("policy REQUIRE_APPROVAL prompts the user for write_file (custom rule)", async () => {
@@ -888,6 +889,7 @@ describe("AgentCoordinator Policy Boundary", () => {
     const toolMsg = coordinator.history.find((m) => m.role === "tool");
     const result = JSON.parse(String(toolMsg?.content));
     assert.equal(result.error.code, "PERMISSION_DENIED");
+    assert.equal(result.error.reason, "user_rejected");
 
     const exists = await fs.stat(target).then(() => true).catch(() => false);
     assert.equal(exists, false);

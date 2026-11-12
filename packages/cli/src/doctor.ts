@@ -239,7 +239,7 @@ export async function runDoctorProbes(options: {
     });
   }
 
-  // Probe 9: Tool Registry Verification (61 Tools)
+  // Probe 9: Tool Registry Verification
   try {
     const daemon = new LocalExecDaemon({ stateDir: path.join(baseDir, "state") });
     await daemon.start();

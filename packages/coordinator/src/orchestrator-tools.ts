@@ -200,6 +200,45 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   });
 
   // 3. Tool: delegate_to_agent (Parity with GrokBot Subagent Delegation & SendPrompt)
+  // Background delegations are addressable later, mirroring GrokBot's AWAIT_TASK:
+  // a timeout is a first-class "still_running" outcome, not an error.
+  const delegations = new Map<
+    string,
+    {
+      agentId: string;
+      agentName: string;
+      sessionId: string;
+      status: "running" | "completed" | "failed";
+      response?: string;
+      error?: string;
+      promise: Promise<string>;
+    }
+  >();
+
+  const findDelegation = (id: string) => {
+    const direct = delegations.get(id);
+    if (direct) return direct;
+    for (const entry of delegations.values()) {
+      if (entry.agentId === id) return entry;
+    }
+    return undefined;
+  };
+
+  const settleWithin = async (entry: { promise: Promise<string> }, timeoutMs: number): Promise<boolean> => {
+    if (timeoutMs <= 0) {
+      await entry.promise.catch(() => {});
+      return true;
+    }
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), Math.min(timeoutMs, 600_000));
+      timer.unref?.();
+    });
+    const finished = await Promise.race([entry.promise.then(() => true).catch(() => true), timeout]);
+    if (timer) clearTimeout(timer);
+    return finished;
+  };
+
   daemon.registerCustomTool({
     definition: {
       type: "function",
@@ -216,6 +255,14 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
             task: {
               type: "string",
               description: "The prompt, instructions, or coding task for the subagent to execute.",
+            },
+            background: {
+              type: "boolean",
+              description: "Start the subagent and return immediately; collect it later with await_agent (default: false).",
+            },
+            timeout_ms: {
+              type: "number",
+              description: "Wait at most this long, then return status still_running while the subagent keeps working (default: wait until done).",
             },
           },
           required: ["agent_id_or_name", "task"],
@@ -281,7 +328,48 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         subagentDepth: (context?.subagent?.depth ?? 0),
       });
 
-      const finalResponse = await subCoordinator.runTurn(args.task);
+      const entry: {
+        agentId: string;
+        agentName: string;
+        sessionId: string;
+        status: "running" | "completed" | "failed";
+        response?: string;
+        error?: string;
+        promise: Promise<string>;
+      } = {
+        agentId: agent.id,
+        agentName: agent.name,
+        sessionId: subsessionId,
+        status: "running",
+        promise: Promise.resolve(""),
+      };
+      entry.promise = subCoordinator.runTurn(args.task)
+        .then((text) => {
+          entry.status = "completed";
+          entry.response = text;
+          return text;
+        })
+        .catch((error: any) => {
+          entry.status = "failed";
+          entry.error = error?.message ?? String(error);
+          throw error;
+        });
+      // Background or timed-out delegations must never surface an unhandled rejection.
+      entry.promise.catch(() => {});
+      delegations.set(subsessionId, entry);
+
+      const timeoutMs = Number(args.timeout_ms ?? 0);
+      const background = args.background === true;
+      const finished = background ? false : await settleWithin(entry, timeoutMs);
+
+      if (!finished) {
+        return JSON.stringify({
+          status: "still_running",
+          subagent: { id: agent.id, name: agent.name, role: agent.role, sessionId: subsessionId },
+          hint: `Call await_agent with agent_id "${subsessionId}" to collect the result.`,
+        }, null, 2);
+      }
+      if (entry.status === "failed") throw new Error(entry.error);
       return JSON.stringify({
         status: "completed",
         subagent: {
@@ -290,7 +378,63 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           role: agent.role,
           sessionId: subsessionId,
         },
-        response: finalResponse,
+        response: entry.response,
+      }, null, 2);
+    },
+  });
+
+  // 3b. Tool: await_agent (Parity with GrokBot AWAIT_TASK)
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "await_agent",
+        description: "Wait for a subagent started with delegate_to_agent. Returns completed, failed, or still_running after the timeout; a timeout is a normal result, not an error.",
+        parameters: {
+          type: "object",
+          properties: {
+            agent_id: {
+              type: "string",
+              description: "The delegation session id or agent id returned by delegate_to_agent.",
+            },
+            timeout_ms: {
+              type: "number",
+              description: "Maximum time to wait in milliseconds (default: 30000).",
+            },
+          },
+          required: ["agent_id"],
+        },
+      },
+    },
+    handler: async (args) => {
+      const entry = findDelegation(String(args.agent_id ?? ""));
+      if (!entry) {
+        return JSON.stringify({
+          status: "not_found",
+          error: `No running delegation for "${args.agent_id}". Use list_agents to inspect agents.`,
+        }, null, 2);
+      }
+      if (entry.status === "running") {
+        await settleWithin(entry, Number(args.timeout_ms ?? 30_000));
+      }
+      if (entry.status === "completed") {
+        return JSON.stringify({
+          status: "completed",
+          subagent: { id: entry.agentId, name: entry.agentName, sessionId: entry.sessionId },
+          response: entry.response,
+        }, null, 2);
+      }
+      if (entry.status === "failed") {
+        return JSON.stringify({
+          status: "failed",
+          subagent: { id: entry.agentId, name: entry.agentName, sessionId: entry.sessionId },
+          error: entry.error,
+        }, null, 2);
+      }
+      return JSON.stringify({
+        status: "still_running",
+        subagent: { id: entry.agentId, name: entry.agentName, sessionId: entry.sessionId },
+        hint: "Call await_agent again to keep waiting.",
       }, null, 2);
     },
   });

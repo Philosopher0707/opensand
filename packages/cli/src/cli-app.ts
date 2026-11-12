@@ -664,7 +664,7 @@ Examples:
       if (trimmed === "/help") {
         console.log(`
 Available OpenSand REPL Commands:
-  /tools              List all 61 active OS, orchestrator, and native tools
+  /tools              List all active OS, orchestrator, and native tools
   /bots, /agents      List all registered bot personas in Agent Store
   /bot <name>         Switch active bot persona (e.g. '/bot cto' or '/bot default')
   /btw <question>     Ask ephemeral side-question using current work context (BTW parity)
