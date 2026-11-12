@@ -3,3 +3,4 @@ export * from "./state-migrations.js";
 
 export * from './workspace-snapshot.js';
 export * from "./event-log.js";
+export * from "./state-graph.js";
