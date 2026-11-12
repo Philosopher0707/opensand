@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { withElectronLock } from './electron-lock.js';
 
 test('real-Electron dev window loads preload bridge and exposes window.opensand', async (t) => {
   // Headless Linux CI environments without a display server cannot open GUI BrowserWindows.
@@ -75,22 +76,24 @@ await import(${JSON.stringify(mainScript)});
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
 
-    const child = spawn(electronBin, [
-      `--user-data-dir=${tmpDir}`,
-      runnerScript,
-    ], {
-      cwd: pkgRoot,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', (d) => { stdout += d.toString(); });
-    child.stderr.on('data', (d) => { stderr += d.toString(); });
+    const exitCode = await withElectronLock(async () => {
+      const child = spawn(electronBin, [
+        `--user-data-dir=${tmpDir}`,
+        runnerScript,
+      ], {
+        cwd: pkgRoot,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
 
-    const exitCode = await new Promise<number>((resolve) => {
-      child.on('close', (code) => resolve(code ?? 0));
+      child.stdout.on('data', (d) => { stdout += d.toString(); });
+      child.stderr.on('data', (d) => { stderr += d.toString(); });
+
+      return new Promise<number>((resolve) => {
+        child.on('close', (code) => resolve(code ?? 0));
+      });
     });
 
     assert.strictEqual(
