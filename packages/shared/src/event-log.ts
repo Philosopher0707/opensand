@@ -237,12 +237,21 @@ export class EventLogWriter {
         prev = computeLineHash(line);
       }
 
+      const existed = await fs.stat(this.targetPath).then(() => true, () => false);
       const fh = await fs.open(this.targetPath, "a");
       try {
         await fh.appendFile(payload, "utf8");
         await fh.sync();
       } finally {
         await fh.close();
+      }
+      if (!existed) {
+        const dh = await fs.open(this.dir, "r");
+        try {
+          await dh.sync();
+        } finally {
+          await dh.close();
+        }
       }
       return appended;
     } finally {

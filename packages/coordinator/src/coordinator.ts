@@ -18,6 +18,7 @@ import {
   SubagentInfo,
 } from "./types.js";
 import { TranscriptManager } from "./transcript-manager.js";
+import { EVENT } from "./event-projections.js";
 import { buildSystemPrompt, SystemPromptContext } from "./system-prompt.js";
 import { VaultStore } from "./vault-store.js";
 import { McpManager } from "./mcp-manager.js";
@@ -159,6 +160,8 @@ export class AgentCoordinator {
         }
       }
 
+      await this.transcript.recordBaseline(this.messages, { model: this.llmClient.model });
+
       await this.hookDispatcher.dispatchSessionStart({
         sessionId: this.sessionId,
         systemPrompt: this.messages[0]?.content ?? undefined,
@@ -166,7 +169,12 @@ export class AgentCoordinator {
     }
 
     // 1. Fold historical tool results from older turns to prevent memory and token explosion
-    this.messages = foldHistoricalToolResults(this.messages, 2);
+    const folded = foldHistoricalToolResults(this.messages, 2);
+    const foldChanges = folded.flatMap((message, index) => (message === this.messages[index] ? [] : [{ index, message }]));
+    this.messages = folded;
+    if (foldChanges.length > 0) {
+      await this.transcript.recordEvent(EVENT.turnFolded, { changes: foldChanges });
+    }
 
     // 2. Trigger auto-compaction if context footprint exceeds threshold
     if (this.estimateTokens() > this.maxContextTokens) {
@@ -174,13 +182,11 @@ export class AgentCoordinator {
     }
 
     // 3. Record User Message
-    this.messages.push({
-      role: "user",
-      content: userQuery,
-    });
+    const userMessage: ChatMessage = { role: "user", content: userQuery };
+    this.messages.push(userMessage);
 
     this.emit({ type: "user_message", content: userQuery });
-    await this.transcript.appendJsonl({ role: "user", content: userQuery });
+    await this.transcript.recordEvent(EVENT.turnStarted, { message: userMessage });
 
     const currentTurnIndex = this.turnCount++;
     let turnSnapshotTaken = false;
@@ -218,17 +224,13 @@ export class AgentCoordinator {
 
       const assistantMsg = getConsolidated();
       this.messages.push(assistantMsg);
-      await this.transcript.appendJsonl({
-        role: "assistant",
-        content: assistantMsg.content,
-        tool_calls: assistantMsg.tool_calls,
-      });
+      await this.transcript.recordEvent(EVENT.modelCompletion, { message: assistantMsg });
 
       // If no tool calls, the model concluded its response
       if (!assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {
         const finalContent = assistantMsg.content ?? "";
         this.emit({ type: "turn_completed", finalContent });
-        await this.transcript.writeHumanReadableTranscript(this.messages);
+        await this.transcript.writeProjections();
         await this.hookDispatcher.dispatchStop({
           sessionId: this.sessionId,
           finalContent,
@@ -437,13 +439,9 @@ export class AgentCoordinator {
                 skipReason: manifest.skipReason,
               };
               this.restorePoints.push(point);
-              await this.transcript.appendJsonl({
-                event: "restore_point",
-                restorePoint: point,
-              }).catch(() => {});
+              await this.transcript.recordEvent(EVENT.restorePoint, { restorePoint: point }).catch(() => {});
             } catch (err: any) {
-              await this.transcript.appendJsonl({
-                event: "restore_point_failed",
+              await this.transcript.recordEvent(EVENT.restorePointFailed, {
                 restorePointId,
                 error: err?.message || String(err),
               }).catch(() => {});
@@ -474,7 +472,7 @@ export class AgentCoordinator {
     // Safety circuit breaker hit
     const fallbackMessage = `Execution limit reached: max turn iterations (${this.maxTurnIterations}) reached. Type 'continue' to proceed.`;
     this.emit({ type: "turn_completed", finalContent: fallbackMessage });
-    await this.transcript.writeHumanReadableTranscript(this.messages);
+    await this.transcript.writeProjections();
     await this.hookDispatcher.dispatchStop({
       sessionId: this.sessionId,
       finalContent: fallbackMessage,
@@ -549,8 +547,9 @@ export class AgentCoordinator {
       tailCharacters: 5000,
     });
     this.emit({ type: "tool_call_completed", toolCall: tc as any, result: execResult });
-    this.messages.push({ role: "tool", tool_call_id: tc.id, content: boundedContent });
-    await this.transcript.appendJsonl({ role: "tool", tool_call_id: tc.id, result: execResult });
+    const toolMessage: ChatMessage = { role: "tool", tool_call_id: tc.id, content: boundedContent };
+    this.messages.push(toolMessage);
+    await this.transcript.recordEvent(EVENT.toolCompleted, { message: toolMessage });
     await this.hookDispatcher.dispatchPostToolUse({
       sessionId: this.sessionId,
       toolName: tc.function.name,
@@ -618,11 +617,7 @@ ${question}`;
    */
   async restoreTo(id: string): Promise<RevertResult> {
     const result = revertWorkspaceSnapshot(this.workspaceDir, id);
-    await this.transcript.appendJsonl({
-      event: "restore",
-      restorePointId: id,
-      result,
-    }).catch(() => {});
+    await this.transcript.recordEvent(EVENT.restore, { restorePointId: id, result }).catch(() => {});
     return result;
   }
 
@@ -651,15 +646,12 @@ ${question}`;
     this.messages = this.messages.slice(0, cutIndex);
     const removedMessages = originalLength - this.messages.length;
 
-    // Rewrite human readable transcript
-    await this.transcript.writeHumanReadableTranscript(this.messages);
-    await this.transcript.appendJsonl({
-      role: "system",
-      event: "rollback",
+    await this.transcript.recordEvent(EVENT.turnRollback, {
+      keepLength: cutIndex,
       turnsRolledBack: turnCount,
       removedMessages,
-      remainingMessages: this.messages.length,
     });
+    await this.transcript.writeProjections();
 
     return { removedMessages, remainingMessages: this.messages.length };
   }
@@ -745,14 +737,14 @@ ${question}`;
     this.messages = [systemMessage, summaryMessage, ...recentMessages];
     const compactedTokens = this.estimateTokens();
 
-    await this.transcript.writeHumanReadableTranscript(this.messages);
-    await this.transcript.appendJsonl({
-      role: "system",
-      event: "compacted",
+    await this.transcript.recordEvent(EVENT.turnCompacted, {
+      keepFrom: cutMessageIndex,
+      summary: summaryText,
       compactedTurns: cutTurnIndex,
       originalTokens,
       compactedTokens,
     });
+    await this.transcript.writeProjections();
 
     return {
       originalTokens,
