@@ -41,6 +41,20 @@ export interface DesktopServerOptions {
  * - Client applications can exchange the token via POST /api/auth/token-exchange to obtain a secure HttpOnly cookie.
  * - Webhook ingestion (POST /api/webhooks/:name) is protected by per-IP rate limiting and signature verification.
  */
+/**
+ * Opt-in renderer selection. The default is renderer/ (app.js). Setting
+ * OPENSAND_RENDERER=preact serves the Vite build in dist/renderer-next, and
+ * falls back to the default (with a warning) if that build is missing.
+ */
+export function resolveRendererDir(distSrcDir: string, env: NodeJS.ProcessEnv = process.env): string {
+  const legacy = path.join(distSrcDir, '../../renderer');
+  if (env.OPENSAND_RENDERER !== 'preact') return legacy;
+  const next = path.join(distSrcDir, '../renderer-next');
+  if (fs.existsSync(path.join(next, 'index.html'))) return next;
+  console.warn('[OpenSand] OPENSAND_RENDERER=preact but dist/renderer-next is missing; run `pnpm --filter @opensand/desktop build`. Using the default renderer.');
+  return legacy;
+}
+
 export class DesktopServer {
   private server: http.Server | null = null;
   private bridge: DesktopIpcBridge;
@@ -109,7 +123,7 @@ export class DesktopServer {
 
     this.bridge = new DesktopIpcBridge({ baseDir: options.baseDir });
     this.rpcGateway = createDefaultRpcGateway(this.bridge);
-    this.rendererDir = path.join(__dirname, '../../renderer');
+    this.rendererDir = resolveRendererDir(__dirname);
 
     // Forward bridge events to SSE clients
     this.bridge.on('event', (event: DesktopEvent) => {
