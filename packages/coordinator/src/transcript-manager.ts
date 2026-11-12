@@ -114,6 +114,7 @@ export class TranscriptManager {
   private sessionId: string;
   private sessionDir: string;
   private eventLog?: EventLogWriter;
+  private eventLogCorrupted = false;
 
   constructor(sessionId: string, customBaseDir?: string) {
     this.sessionId = sessionId;
@@ -151,6 +152,9 @@ export class TranscriptManager {
    * Append one session event to event-log.jsonl, the sole persistent record of the session.
    */
   async recordEvent(kind: string, data: Record<string, unknown>): Promise<SessionEvent> {
+    if (this.eventLogCorrupted) {
+      throw new EventChainIntegrityError("Cannot append to corrupted event log");
+    }
     return this.log.append({ kind, data });
   }
 
@@ -159,6 +163,9 @@ export class TranscriptManager {
    * current messages as a snapshot; a resumed one records only a changed system prompt.
    */
   async recordBaseline(messages: ChatMessage[], meta: { model: string }): Promise<void> {
+    if (this.eventLogCorrupted) {
+      throw new EventChainIntegrityError("Cannot append to corrupted event log");
+    }
     const events = await this.readEvents();
     if (events.length === 0) {
       await this.log.appendBatch([
@@ -216,6 +223,7 @@ export class TranscriptManager {
       return events.length > 0 ? projectMessages(events) : null;
     } catch (err) {
       if (!(err instanceof EventChainIntegrityError)) throw err;
+      this.eventLogCorrupted = true;
       report.warnings.push({
         type: "corrupt_line_skipped",
         lineNumber: err.seq,
