@@ -2,6 +2,22 @@ export const GENESIS_PREV_HASH = "sha256:000000000000000000000000000000000000000
 
 export type EventGraphNode = "plan" | "act" | "check" | "review" | "repair" | "user" | string;
 
+export const EVENT = {
+  sessionCreated: "session.created",
+  sessionRenamed: "session.renamed",
+  snapshot: "session.snapshot",
+  system: "session.system",
+  turnStarted: "turn.started",
+  turnFolded: "turn.folded",
+  turnRollback: "turn.rollback",
+  turnCompacted: "turn.compacted",
+  modelCompletion: "model.completion",
+  toolCompleted: "tool.completed",
+  restorePoint: "workspace.restorePoint",
+  restorePointFailed: "workspace.restorePointFailed",
+  restore: "workspace.restore",
+} as const;
+
 export type EventKind =
   | "session.created"
   | "session.renamed"

@@ -66,6 +66,7 @@ import {
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
+import { EVENT, EventLogWriter, migrateSessionFolder } from '@opensand/shared';
 import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSummary, DesktopEvent, ToolDiscoverySummary } from './types.js';
 
 export interface IpcBridgeOptions {
@@ -440,18 +441,44 @@ export class DesktopIpcBridge extends EventEmitter {
 
   /** Read sessions/<id>/meta.json written at coordinator creation. */
   private readSessionMeta(sessionId: string): { agentId?: string; roomId?: string; title?: string } {
-    try {
-      const metaPath = path.join(this.baseDir, 'sessions', sessionId, 'meta.json');
-      if (!fs.existsSync(metaPath)) return {};
-      const raw = fs.readFileSync(metaPath, 'utf8');
-      const meta = JSON.parse(raw) as Record<string, unknown>;
-      const agentId = typeof meta.agentId === 'string' ? meta.agentId : undefined;
-      const roomId = typeof meta.roomId === 'string' ? meta.roomId : undefined;
-      const title = typeof meta.title === 'string' ? meta.title : undefined;
-      return { agentId, roomId, title };
-    } catch {
-      return {};
+    const result: { agentId?: string; roomId?: string; title?: string } = {};
+    const sessDir = path.join(this.baseDir, 'sessions', sessionId);
+    const metaPath = path.join(sessDir, 'meta.json');
+
+    if (fs.existsSync(metaPath)) {
+      try {
+        const raw = fs.readFileSync(metaPath, 'utf8');
+        const meta = JSON.parse(raw) as Record<string, unknown>;
+        if (typeof meta.agentId === 'string') result.agentId = meta.agentId;
+        if (typeof meta.roomId === 'string') result.roomId = meta.roomId;
+        if (typeof meta.title === 'string') result.title = meta.title;
+      } catch {
+        // Fall through
+      }
     }
+
+    const logPath = path.join(sessDir, 'event-log.jsonl');
+    if (fs.existsSync(logPath)) {
+      try {
+        const raw = fs.readFileSync(logPath, 'utf8');
+        const lines = raw.trim().split('\n').filter(Boolean);
+        for (let i = lines.length - 1; i >= 0; i--) {
+          try {
+            const ev = JSON.parse(lines[i]);
+            if (ev.kind === EVENT.sessionRenamed && ev.data && typeof ev.data.title === 'string') {
+              result.title = ev.data.title;
+              break;
+            }
+          } catch {
+            // ignore corrupt line
+          }
+        }
+      } catch {
+        // Fall through
+      }
+    }
+
+    return result;
   }
 
   /** Persist agent/model origin so a resumed session keeps its bot. */
@@ -898,13 +925,48 @@ export class DesktopIpcBridge extends EventEmitter {
     }
     const sessionDir = path.join(this.baseDir, "sessions", sessionId);
     if (!fs.existsSync(sessionDir)) return false;
+
+    // 1. If event-log.jsonl does not exist, migrate legacy folder first if present
+    const logPath = path.join(sessionDir, "event-log.jsonl");
+    if (!fs.existsSync(logPath)) {
+      migrateSessionFolder(sessionDir);
+    }
+
+    // 2. Append session.renamed event to event-log.jsonl
+    if (fs.existsSync(logPath)) {
+      try {
+        const writer = new EventLogWriter(sessionDir, { sessionId });
+        await writer.append({
+          kind: EVENT.sessionRenamed,
+          data: { title: newTitle },
+        });
+      } catch {
+        // best-effort append
+      }
+    }
+
+    // 3. Update projected meta.json
     const metaPath = path.join(sessionDir, "meta.json");
     let meta: Record<string, unknown> = {};
     if (fs.existsSync(metaPath)) {
       try { meta = JSON.parse(fs.readFileSync(metaPath, "utf8")); } catch {}
     }
+    meta.sessionId = sessionId;
     meta.title = newTitle;
+    meta.updatedAt = new Date().toISOString();
     fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf8");
+
+    // Also update metadata.json if present
+    const metadataPath = path.join(sessionDir, "metadata.json");
+    if (fs.existsSync(metadataPath)) {
+      try {
+        const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+        metadata.title = newTitle;
+        metadata.updatedAt = meta.updatedAt;
+        fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
+      } catch {}
+    }
+
     return true;
   }
 

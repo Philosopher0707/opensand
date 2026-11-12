@@ -1,20 +1,7 @@
-import type { SessionEvent } from "@opensand/shared";
+import { EVENT, type SessionEvent } from "@opensand/shared";
 import type { ChatMessage, SessionMetadata } from "./types.js";
 
-export const EVENT = {
-  sessionCreated: "session.created",
-  snapshot: "session.snapshot",
-  system: "session.system",
-  turnStarted: "turn.started",
-  turnFolded: "turn.folded",
-  turnRollback: "turn.rollback",
-  turnCompacted: "turn.compacted",
-  modelCompletion: "model.completion",
-  toolCompleted: "tool.completed",
-  restorePoint: "workspace.restorePoint",
-  restorePointFailed: "workspace.restorePointFailed",
-  restore: "workspace.restore",
-} as const;
+export { EVENT };
 
 const LEGACY_EVENT_NAMES: Record<string, string | undefined> = {
   [EVENT.restorePoint]: "restore_point",
@@ -130,7 +117,10 @@ export function projectMetadata(events: SessionEvent[]): SessionMetadata {
   const first = events[0];
   const last = events[events.length - 1];
   const created = [...events].reverse().find((ev) => ev.kind === EVENT.sessionCreated)?.data ?? {};
-  const firstQuery = events.find((ev) => ev.kind === EVENT.turnStarted)?.data.message.content;
+  const firstQuery = events.find((ev) => ev.kind === EVENT.turnStarted)?.data?.message?.content;
+  const renamed = [...events].reverse().find((ev) => ev.kind === EVENT.sessionRenamed);
+  const renamedTitle = renamed?.data?.title ?? renamed?.data?.newTitle;
+  const title = typeof renamedTitle === "string" ? renamedTitle : (typeof firstQuery === "string" ? firstQuery.slice(0, 80) : undefined);
 
   return {
     sessionId: first?.sessionId ?? "",
@@ -138,6 +128,6 @@ export function projectMetadata(events: SessionEvent[]): SessionMetadata {
     updatedAt: last?.ts ?? "",
     model: created.model ?? "",
     endpoint: "",
-    title: typeof firstQuery === "string" ? firstQuery.slice(0, 80) : undefined,
+    title,
   };
 }
