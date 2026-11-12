@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
+import { WorkspaceEscapeError } from "./denial-errors.js";
 import {
   ReadFileInput,
   ReadFileOutput,
@@ -44,7 +45,7 @@ export function resolveAndValidatePath(
   if (root && !allowOutsideWorkspace) {
     const rel = path.relative(root, resolved);
     if (rel.startsWith("..") || path.isAbsolute(rel)) {
-      throw new Error(`Path traversal blocked: target path "${targetPath}" resolves outside workspace root "${root}".`);
+      throw new WorkspaceEscapeError(`Path traversal blocked: target path "${targetPath}" resolves outside workspace root "${root}".`);
     }
   }
 

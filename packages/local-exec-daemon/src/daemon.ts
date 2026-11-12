@@ -181,6 +181,7 @@ export class LocalExecDaemon {
           status: 'error',
           error: {
             code: 'POLICY_DENIED',
+            reason: 'policy',
             message: `Policy Boundary Violation: ${decision.reason}`,
           },
         };
@@ -195,6 +196,7 @@ export class LocalExecDaemon {
           approvalId: context?.approvalId ?? `req-${Date.now()}`,
           error: {
             code: 'PERMISSION_REQUIRED',
+            reason: 'approval_required',
             message: `Policy requires approval: ${decision.reason}`,
           },
         };

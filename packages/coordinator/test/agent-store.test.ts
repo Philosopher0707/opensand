@@ -233,3 +233,66 @@ test("delegate_to_agent scopes subagent tools by fallback role defaults and expl
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test("delegate_to_agent timeout returns still_running, and await_agent collects the result", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-delegate-await-"));
+
+  const server = http.createServer((req, res) => {
+    req.on("data", () => {});
+    req.on("end", () => {
+      // Deliberately slower than the delegation timeout.
+      setTimeout(() => {
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.end("data: " + JSON.stringify({ choices: [{ delta: { content: "Late subagent answer." } }] }) + "\n\ndata: [DONE]\n\n");
+      }, 250);
+    });
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const port = (server.address() as any).port;
+
+  const daemon = new LocalExecDaemon({ stateDir: path.join(tmpDir, "state") });
+  await daemon.start();
+  await daemon.state.writePermissionGates({ computerUseAllowed: true });
+
+  try {
+    const store = new AgentStore(path.join(tmpDir, "agents"));
+    registerOrchestratorTools({
+      daemon,
+      store,
+      defaultEndpoint: `http://127.0.0.1:${port}/v1`,
+      defaultModel: "mock-subagent-model",
+      sessionsBaseDir: path.join(tmpDir, "sessions"),
+    });
+
+    const agent = await store.createAgent({
+      name: "SlowWorker",
+      role: "Software Engineer",
+      systemPrompt: "Work slowly.",
+      allowedTools: ["read_file"],
+    });
+
+    const first = await daemon.executeTool("delegate_to_agent", {
+      agent_id_or_name: agent.id,
+      task: "Think about it",
+      timeout_ms: 50,
+    });
+    assert.strictEqual(first.status, "ok");
+    const pending = JSON.parse((first as any).output);
+    assert.strictEqual(pending.status, "still_running");
+    assert.ok(pending.subagent.sessionId);
+
+    const second = await daemon.executeTool("await_agent", {
+      agent_id: pending.subagent.sessionId,
+      timeout_ms: 5_000,
+    });
+    assert.strictEqual(second.status, "ok");
+    const done = JSON.parse((second as any).output);
+    assert.strictEqual(done.status, "completed");
+    assert.strictEqual(done.response, "Late subagent answer.");
+  } finally {
+    await daemon.stop();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

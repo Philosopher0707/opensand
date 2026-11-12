@@ -27,12 +27,27 @@ export interface ToolDefinition {
   };
 }
 
+/**
+ * Why a tool call did not run. `error.code` names the failure; `reason` names
+ * who or what stopped it, so the model can tell "ask the user" from "change
+ * the path" from "do not retry".
+ */
+export type DenialReason =
+  | "user_rejected" // the user declined the approval prompt
+  | "approval_required" // needs approval and none was given yet
+  | "policy" // a policy rule denied it
+  | "hook" // a PreToolUse hook denied it
+  | "not_authorized" // the tool is not in this agent's allowed tools
+  | "workspace_escape" // a path resolved outside the workspace
+  | "safety_gate"; // the command safety gate blocked it
+
 export interface ToolExecutionResult<T = any> {
   status: "ok" | "error" | "permission_pending";
   output?: T;
   error?: {
     code: string;
     message: string;
+    reason?: DenialReason;
   };
   approvalId?: string;
 }

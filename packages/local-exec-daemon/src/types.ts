@@ -4,6 +4,7 @@
  * ToolDefinition / ToolExecutionResult are canonical in @opensand/shared.
  */
 export type { ToolDefinition, ToolExecutionResult } from "@opensand/shared";
+import type { SandboxDenial } from "./sandbox/denials.js";
 
 export interface DaemonLivenessResult {
   running: boolean;
@@ -59,6 +60,10 @@ export interface ExecCommandOutput {
   stdout: string;
   stderr: string;
   durationMs: number;
+  /** True when the turn's abort signal stopped the command before it finished. */
+  aborted?: boolean;
+  /** Accesses the sandbox refused, read from stderr. Only set for sandboxed commands that hit one. */
+  sandboxDenials?: SandboxDenial[];
 }
 
 export interface ReadFileInput {

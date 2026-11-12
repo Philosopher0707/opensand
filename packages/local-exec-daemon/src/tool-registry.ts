@@ -1,3 +1,4 @@
+import { ToolDenialError } from "./denial-errors.js";
 import {
   ToolDefinition,
   ToolExecutionResult,
@@ -31,6 +32,11 @@ export interface ToolExecutionContext {
   approvalId?: string;
   workspaceRoot?: string;
   allowOutsideWorkspace?: boolean;
+  /**
+   * Turn cancellation. Mirrors Grok Bot's ExecServerAbort: a long command is
+   * killed when the user cancels the turn instead of running to its timeout.
+   */
+  signal?: AbortSignal;
   /**
    * Subagent delegation context. Set by the turn loop so delegate_to_agent
    * can stream the child turn's events up to the UI and bound nesting depth.
@@ -467,15 +473,19 @@ export class ToolRegistry {
             approvalId: context?.approvalId ?? `req-${Date.now()}`,
             error: {
               code: "PERMISSION_REQUIRED",
+              reason: "approval_required",
               message: `Execution of bash command requires approval: "${input.command}"`,
             },
           };
         }
 
-        const output = await runCommandOperation({
-          ...input,
-          workspaceRoot: input.workspaceRoot ?? context?.workspaceRoot,
-        });
+        const output = await runCommandOperation(
+          {
+            ...input,
+            workspaceRoot: input.workspaceRoot ?? context?.workspaceRoot,
+          },
+          { signal: context?.signal }
+        );
         return {
           status: "ok",
           output,
@@ -644,6 +654,7 @@ export class ToolRegistry {
             approvalId: context?.approvalId ?? `req-${Date.now()}`,
             error: {
               code: "PERMISSION_REQUIRED",
+              reason: "approval_required",
               message: `Execution of PTY command requires approval: "${input.command}"`,
             },
           };
@@ -734,6 +745,7 @@ export class ToolRegistry {
             approvalId: context?.approvalId ?? `req-${Date.now()}`,
             error: {
               code: "PERMISSION_REQUIRED",
+              reason: "approval_required",
               message: `Tool '${name}' requires computerUse gate approval.`,
             },
           };
@@ -744,6 +756,7 @@ export class ToolRegistry {
             approvalId: context?.approvalId ?? `req-${Date.now()}`,
             error: {
               code: "PERMISSION_REQUIRED",
+              reason: "approval_required",
               message: `Tool '${name}' requires deviceTools gate approval.`,
             },
           };
@@ -765,6 +778,12 @@ export class ToolRegistry {
         },
       };
     } catch (err: any) {
+      if (err instanceof ToolDenialError) {
+        return {
+          status: "error",
+          error: { code: err.code, message: err.message, reason: err.reason },
+        };
+      }
       return {
         status: "error",
         error: {

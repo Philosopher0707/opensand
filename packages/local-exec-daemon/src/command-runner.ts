@@ -5,20 +5,36 @@ import { generateMacosSandboxProfile } from "./sandbox/macos-profile.js";
 import { SandboxInitializationError, type SandboxInitializationErrorOptions } from "./sandbox/errors.js";
 import { resolveSandboxLauncher } from "./sandbox/launcher.js";
 import { buildBwrapArgs } from "./sandbox/linux-bwrap.js";
+import { parseSandboxDenials } from "./sandbox/denials.js";
+import { SafetyGateError } from "./denial-errors.js";
 
-export async function runCommandOperation(input: ExecCommandInput): Promise<ExecCommandOutput> {
+export async function runCommandOperation(
+  input: ExecCommandInput,
+  options: { signal?: AbortSignal } = {}
+): Promise<ExecCommandOutput> {
   // 1. Pre-flight bash validation
   const validation = validateBashCommand(input.command);
   if (!validation.valid) {
     throw new Error(`Bash syntax error: ${validation.error}`);
   }
   if (validation.isDangerous) {
-    throw new Error(`Dangerous command blocked by safety gate: ${validation.dangerReason}`);
+    throw new SafetyGateError(`Dangerous command blocked by safety gate: ${validation.dangerReason}`);
   }
 
   const startTime = Date.now();
   const timeoutMs = input.timeout_ms ?? 60000;
   const cwd = input.cwd ?? process.cwd();
+
+  if (options.signal?.aborted) {
+    return {
+      exitCode: null,
+      signal: null,
+      stdout: "",
+      stderr: "[Command aborted by user]",
+      durationMs: 0,
+      aborted: true,
+    };
+  }
 
   return new Promise((resolve, reject) => {
     let stdoutBuffer = "";
@@ -172,6 +188,29 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
       }
     }, timeoutMs);
 
+    // ExecServerAbort equivalent: a cancelled turn kills the command instead of
+    // letting it run to its timeout.
+    const onAbort = () => {
+      if (isSettled) return;
+      isSettled = true;
+      clearTimeout(timer);
+      child.kill("SIGTERM");
+      setTimeout(() => {
+        try {
+          child.kill("SIGKILL");
+        } catch {}
+      }, 2000).unref();
+      resolve({
+        exitCode: null,
+        signal: "SIGTERM",
+        stdout: stdoutBuffer,
+        stderr: stderrBuffer + "\n[Command aborted by user]",
+        durationMs: Date.now() - startTime,
+        aborted: true,
+      });
+    };
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+
     const MAX_BUFFER_SIZE = 64 * 1024; // 64KB output buffer limit to prevent context flooding
 
     child.stdout?.on("data", (chunk: Buffer) => {
@@ -196,6 +235,7 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
       if (!isSettled) {
         isSettled = true;
         clearTimeout(timer);
+        options.signal?.removeEventListener("abort", onAbort);
         if (isSandboxed) {
           reject(new SandboxInitializationError(err.message, sandboxOpts));
         } else {
@@ -208,6 +248,7 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
       if (!isSettled) {
         isSettled = true;
         clearTimeout(timer);
+        options.signal?.removeEventListener("abort", onAbort);
 
         // bwrap exited before it set up the namespaces (bad option, no user namespaces, broken binary): the command never ran
         if (isBwrap && infoFdOutput.length === 0) {
@@ -221,13 +262,21 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
           return;
         }
 
-        resolve({
+        const output: ExecCommandOutput = {
           exitCode: code,
           signal: signal ? String(signal) : null,
           stdout: stdoutBuffer,
           stderr: stderrBuffer,
           durationMs: Date.now() - startTime,
-        });
+        };
+        if (isSandboxed && code !== 0) {
+          const denials = parseSandboxDenials(stderrBuffer, {
+            cwd,
+            networkDenied: !input.customProfileString && !input.allowNetwork,
+          });
+          if (denials.length > 0) output.sandboxDenials = denials;
+        }
+        resolve(output);
       }
     });
   });
