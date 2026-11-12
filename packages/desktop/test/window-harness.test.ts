@@ -5,12 +5,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { withElectronLock } from './electron-lock.js';
 
 test('Automated Real-Window Test Harness (Layout Stability at 960x740 and Full Screen)', async (t) => {
-  // CI environments or headless Linux without a display server cannot launch real GUI BrowserWindows.
-  // In GitHub Actions macOS/Linux runners, launching a second concurrent Electron GUI instance causes SIGABRT or dyld load failures.
-  if (process.env.CI || (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY)) {
-    const reason = 'Skipping Electron real-window test on CI runner without desktop display session';
+  // Headless Linux CI environments without a display server cannot open GUI BrowserWindows.
+  if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+    const reason = 'Skipping Electron real-window test on Linux CI without DISPLAY/WAYLAND_DISPLAY';
     console.log(`[window-harness.test] ${reason}`);
     t.skip(reason);
     return;
@@ -115,22 +115,24 @@ await import(${JSON.stringify(mainScript)});
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
 
-    const child = spawn(electronBin, [
-      `--user-data-dir=${tmpDir}`,
-      runnerScript,
-    ], {
-      cwd: pkgRoot,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', (d) => { stdout += d.toString(); });
-    child.stderr.on('data', (d) => { stderr += d.toString(); });
+    const exitCode = await withElectronLock(async () => {
+      const child = spawn(electronBin, [
+        `--user-data-dir=${tmpDir}`,
+        runnerScript,
+      ], {
+        cwd: pkgRoot,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
 
-    const exitCode = await new Promise<number>((resolve) => {
-      child.on('close', (code) => resolve(code ?? 0));
+      child.stdout.on('data', (d) => { stdout += d.toString(); });
+      child.stderr.on('data', (d) => { stderr += d.toString(); });
+
+      return new Promise<number>((resolve) => {
+        child.on('close', (code) => resolve(code ?? 0));
+      });
     });
 
     assert.strictEqual(
