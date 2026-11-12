@@ -252,3 +252,180 @@ test("canonicalJson sorts object keys recursively", () => {
     `{"a":1,"b":2,"c":{"x":10,"y":20}}`
   );
 });
+
+test("append benchmark: 5k appends proves O(1) tail read with last 100 mean < 3x first 100 mean", { timeout: 60_000 }, async () => {
+  const dir = tempDir();
+  try {
+    const logPath = path.join(dir, "event-log.jsonl");
+    const writer = new EventLogWriter(logPath, { sessionId: "sess-bench" });
+
+    const firstDurations: number[] = [];
+    const lastDurations: number[] = [];
+
+    const total = 5000;
+    for (let i = 1; i <= total; i++) {
+      const start = performance.now();
+      await writer.append({ kind: "bench.event", data: { i } });
+      const duration = performance.now() - start;
+
+      if (i <= 100) {
+        firstDurations.push(duration);
+      } else if (i > total - 100) {
+        lastDurations.push(duration);
+      }
+    }
+
+    const meanFirst = firstDurations.reduce((a, b) => a + b, 0) / firstDurations.length;
+    const meanLast = lastDurations.reduce((a, b) => a + b, 0) / lastDurations.length;
+
+    assert.ok(
+      meanLast < 3 * meanFirst,
+      `expected last 100 mean (${meanLast.toFixed(3)}ms) to be < 3x first 100 mean (${meanFirst.toFixed(3)}ms)`
+    );
+
+    const reader = new EventLogReader(logPath);
+    const verification = await reader.verifyChain();
+    assert.equal(verification.valid, true);
+    assert.equal(verification.totalEvents, total);
+  } finally {
+    fsSync.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a torn tail longer than 64 KiB (one huge unterminated line) is still truncated and chain continues", async () => {
+  const dir = tempDir();
+  try {
+    const logPath = path.join(dir, "event-log.jsonl");
+    const writer = new EventLogWriter(logPath, { sessionId: "sess-huge-tail" });
+    const committed = [];
+    for (let i = 1; i <= 3; i++) {
+      committed.push(await writer.append({ kind: `event.${i}`, data: { step: i } }));
+    }
+
+    const reader = new EventLogReader(logPath);
+    const headBefore = (await reader.verifyChain()).headHash;
+
+    // Append a huge unterminated fragment > 64 KiB (75 KiB) with NO trailing newline
+    const hugeTornFragment = `{"seq":4,"ts":"2026-11-12T00:00:00.000Z","kind":"huge.torn","data":"${"x".repeat(75 * 1024)}`;
+    await fs.appendFile(logPath, hugeTornFragment, "utf8");
+
+    // EventLogReader with recovery should discard the trailing bytes
+    const recovered = await reader.readWithRecovery();
+    assert.deepEqual(recovered.events, committed);
+    assert.ok(recovered.discardedTrailingBytes > 64 * 1024);
+
+    // EventLogWriter.append should seek from end, double chunk size past 64 KiB to find event 3,
+    // truncate the torn tail, and continue the chain
+    const ev4 = await writer.append({ kind: "event.recovered", data: { step: 4 } });
+    assert.equal(ev4.seq, 4);
+    assert.equal(ev4.prev, headBefore);
+
+    const allEvents = await reader.readAll();
+    assert.equal(allEvents.length, 4);
+    assert.equal(allEvents[3].kind, "event.recovered");
+
+    const verification = await reader.verifyChain();
+    assert.equal(verification.valid, true);
+    assert.equal(verification.totalEvents, 4);
+  } finally {
+    fsSync.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("two processes appending alternately: no seq gap, and verifyChain passes", { timeout: 30_000 }, async () => {
+  const dir = tempDir();
+  const logPath = path.join(dir, "event-log.jsonl");
+  const moduleUrl = new URL("../src/event-log.js", import.meta.url).href;
+
+  const childScript = `
+    import { EventLogWriter } from ${JSON.stringify(moduleUrl)};
+    import * as readline from "node:readline";
+
+    const writer = new EventLogWriter(process.env.EVENT_LOG_PATH, { sessionId: process.env.SESSION_ID });
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
+
+    for await (const line of rl) {
+      if (line.startsWith("GO ")) {
+        const round = Number(line.slice(3));
+        const ev = await writer.append({ kind: "proc.event", data: { round } });
+        process.stdout.write("ACK " + ev.seq + "\\n");
+      } else if (line === "EXIT") {
+        process.exit(0);
+      }
+    }
+  `;
+
+  const spawnWorker = (sessionId: string) => {
+    const child = spawn(process.execPath, ["--input-type=module", "-e", childScript], {
+      env: { ...process.env, EVENT_LOG_PATH: logPath, SESSION_ID: sessionId },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let buffer = "";
+    const waiters: Array<(seq: number) => void> = [];
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      buffer += chunk;
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        const match = /^ACK (\d+)$/.exec(line);
+        if (match) {
+          const waiter = waiters.shift();
+          if (waiter) waiter(Number(match[1]));
+        }
+      }
+    });
+
+    const step = (round: number): Promise<number> => {
+      return new Promise<number>((resolve) => {
+        waiters.push(resolve);
+        child.stdin.write(`GO ${round}\n`);
+      });
+    };
+
+    const stop = async () => {
+      child.stdin.write("EXIT\n");
+      child.stdin.end();
+      await new Promise<void>((resolve) => child.once("close", () => resolve()));
+    };
+
+    return { child, step, stop };
+  };
+
+  const procA = spawnWorker("proc-a");
+  const procB = spawnWorker("proc-b");
+
+  try {
+    const rounds = 20; // 20 each = 40 alternating events total
+    for (let r = 1; r <= rounds; r++) {
+      const seqA = await procA.step(r);
+      assert.equal(seqA, (r - 1) * 2 + 1);
+
+      const seqB = await procB.step(r);
+      assert.equal(seqB, r * 2);
+    }
+
+    await procA.stop();
+    await procB.stop();
+
+    const reader = new EventLogReader(logPath);
+    const events = await reader.readAll();
+    assert.equal(events.length, rounds * 2);
+
+    for (let i = 0; i < events.length; i++) {
+      assert.equal(events[i].seq, i + 1, `seq gap at index ${i}`);
+      const expectedSession = i % 2 === 0 ? "proc-a" : "proc-b";
+      assert.equal(events[i].sessionId, expectedSession);
+    }
+
+    const verification = await reader.verifyChain();
+    assert.equal(verification.valid, true);
+    assert.equal(verification.totalEvents, rounds * 2);
+  } finally {
+    procA.child.kill("SIGKILL");
+    procB.child.kill("SIGKILL");
+    fsSync.rmSync(dir, { recursive: true, force: true });
+  }
+});

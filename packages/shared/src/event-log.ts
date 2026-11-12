@@ -160,6 +160,15 @@ export class EventLogReader {
   }
 }
 
+/**
+ * EventLogWriter appends events to an append-only event log with concurrency control.
+ *
+ * Full verification is left to EventLogReader / verifyChain; append no longer verifies
+ * the chain on every write. Instead, appendUnderLock seeks from the tail of the log
+ * under the lock to find the last complete line, truncates any unterminated trailing
+ * fragment, and extracts the head state (seq and prev hash). Readers still detect a
+ * fork or a flipped byte across the log.
+ */
 export class EventLogWriter {
   private readonly targetPath: string;
   private readonly dir: string;
@@ -188,20 +197,104 @@ export class EventLogWriter {
     return run;
   }
 
+  private async readHeadFromTail(
+    fd: fs.FileHandle,
+    fileSize: number
+  ): Promise<{ seq: number; prev: string; tornTailBytes: number }> {
+    if (fileSize === 0) {
+      return { seq: 0, prev: GENESIS_PREV_HASH, tornTailBytes: 0 };
+    }
+
+    let chunkSize = 64 * 1024;
+    let lastCompleteLine: string | null = null;
+    let tornTailBytes = 0;
+
+    while (true) {
+      const bytesToRead = Math.min(fileSize, chunkSize);
+      const startOffset = fileSize - bytesToRead;
+      const buf = Buffer.allocUnsafe(bytesToRead);
+      const { bytesRead } = await fd.read(buf, 0, bytesToRead, startOffset);
+      const chunk = bytesRead === bytesToRead ? buf : buf.subarray(0, bytesRead);
+
+      const lastNewlineIndex = chunk.lastIndexOf(0x0a);
+      if (lastNewlineIndex === -1) {
+        if (startOffset === 0) {
+          tornTailBytes = fileSize;
+          lastCompleteLine = null;
+          break;
+        }
+        chunkSize *= 2;
+        continue;
+      }
+
+      const lastNewlineFileOffset = startOffset + lastNewlineIndex;
+      tornTailBytes = fileSize - (lastNewlineFileOffset + 1);
+
+      const prevNewlineIndex = chunk.lastIndexOf(0x0a, lastNewlineIndex - 1);
+      if (prevNewlineIndex !== -1) {
+        lastCompleteLine = chunk.subarray(prevNewlineIndex + 1, lastNewlineIndex).toString("utf8");
+        break;
+      }
+
+      if (startOffset === 0) {
+        lastCompleteLine = chunk.subarray(0, lastNewlineIndex).toString("utf8");
+        break;
+      }
+
+      chunkSize *= 2;
+    }
+
+    if (!lastCompleteLine) {
+      return { seq: 0, prev: GENESIS_PREV_HASH, tornTailBytes };
+    }
+
+    const lastEvent = parseRecord(lastCompleteLine, 0);
+    return {
+      seq: lastEvent.seq,
+      prev: computeLineHash(lastCompleteLine),
+      tornTailBytes,
+    };
+  }
+
   private async appendUnderLock(
     inputs: AppendEventInput[],
     lockOptions?: EventLogLockOptions
   ): Promise<SessionEvent[]> {
     const lock = await EventLogLock.acquire(this.dir, lockOptions);
     try {
-      const raw = await readRaw(this.targetPath);
-      const { entries, trailingFragmentBytes } = parseEventLogContent(raw);
-      if (trailingFragmentBytes > 0) {
-        await this.truncateTo(Buffer.byteLength(raw, "utf8") - trailingFragmentBytes);
+      let existed = true;
+      let seq = 0;
+      let prev = GENESIS_PREV_HASH;
+
+      let fd: fs.FileHandle | null = null;
+      try {
+        fd = await fs.open(this.targetPath, "r+");
+      } catch (err: any) {
+        if (err && err.code === "ENOENT") {
+          existed = false;
+        } else {
+          throw err;
+        }
       }
 
-      let seq = entries.length;
-      let prev = entries.length > 0 ? computeLineHash(entries[entries.length - 1].line) : GENESIS_PREV_HASH;
+      if (fd) {
+        try {
+          const stat = await fd.stat();
+          const fileSize = stat.size;
+          if (fileSize > 0) {
+            const head = await this.readHeadFromTail(fd, fileSize);
+            if (head.tornTailBytes > 0) {
+              await fd.truncate(fileSize - head.tornTailBytes);
+              await fd.sync();
+            }
+            seq = head.seq;
+            prev = head.prev;
+          }
+        } finally {
+          await fd.close();
+        }
+      }
+
       const appended: SessionEvent[] = [];
       let payload = "";
 
@@ -237,7 +330,6 @@ export class EventLogWriter {
         prev = computeLineHash(line);
       }
 
-      const existed = await fs.stat(this.targetPath).then(() => true, () => false);
       const fh = await fs.open(this.targetPath, "a");
       try {
         await fh.appendFile(payload, "utf8");
