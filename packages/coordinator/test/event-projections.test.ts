@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { EventLogReader, SessionEvent } from "@opensand/shared";
+import { EventLogReader, SessionEvent, migrateSessionFolder } from "@opensand/shared";
 import { LocalExecDaemon } from "@opensand/local-exec-daemon";
 import { UniversalLLMClient } from "../src/llm-client.js";
 import { AgentCoordinator } from "../src/coordinator.js";
@@ -179,6 +179,16 @@ describe("projection outputs", () => {
     assert.equal(meta.title, "q".repeat(80));
   });
 
+  it("applies session.renamed in projectMetadata to update the title", () => {
+    const renamedEvents = [
+      ...events,
+      ev(5, EVENT.sessionRenamed, { title: "Custom Session Title" }, "2026-01-01T00:00:15.000Z"),
+    ];
+    const meta = projectMetadata(renamedEvents);
+    assert.equal(meta.title, "Custom Session Title");
+    assert.equal(meta.updatedAt, "2026-01-01T00:00:15.000Z");
+  });
+
   it("writes only non-system messages to the legacy jsonl projection", () => {
     const lines = projectTranscriptJsonl(events).trim().split("\n").map((l) => JSON.parse(l));
     assert.deepEqual(
@@ -257,6 +267,67 @@ describe("TranscriptManager event log", () => {
 
     const kinds = (await new EventLogReader(tm.directory).readAll()).map((e) => e.kind);
     assert.deepEqual(kinds, [EVENT.sessionCreated, EVENT.snapshot]);
+  });
+
+  it("v2 migration: projectMessages over migrated log deep-equals legacy messages.json", async () => {
+    const sessDir = path.join(baseDir, "v2-legacy-equality");
+    await fs.mkdir(sessDir, { recursive: true });
+    const legacyMeta = { sessionId: "v2-legacy-equality", model: "model-v2", createdAt: "2026-01-01T10:00:00.000Z" };
+    const legacyMsgs: ChatMessage[] = [
+      { role: "system", content: "system instructions" },
+      { role: "user", content: "initial query" },
+      { role: "assistant", content: "agent response", tool_calls: [{ id: "call_1", type: "function", function: { name: "edit_file", arguments: "{}" } }] },
+      { role: "tool", tool_call_id: "call_1", content: "file updated" },
+    ];
+
+    await fs.writeFile(path.join(sessDir, "meta.json"), JSON.stringify(legacyMeta, null, 2));
+    await fs.writeFile(path.join(sessDir, "messages.json"), JSON.stringify(legacyMsgs, null, 2));
+
+    const rep = migrateSessionFolder(sessDir);
+    assert.equal(rep.status, "migrated");
+
+    const reader = new EventLogReader(sessDir);
+    const events = await reader.readAll();
+    assert.equal(events.length, 2);
+    assert.deepEqual(projectMessages(events), legacyMsgs);
+  });
+
+  it("v2 migration: session migrated by v2 and opened by TranscriptManager neither appends a second baseline nor breaks the chain", async () => {
+    const sessDir = path.join(baseDir, "v2-tm-open");
+    await fs.mkdir(sessDir, { recursive: true });
+    const legacyMeta = { sessionId: "v2-tm-open", model: "test-model-m", createdAt: "2026-01-01T10:00:00.000Z" };
+    const legacyMsgs: ChatMessage[] = [
+      { role: "system", content: "sys prompt" },
+      { role: "user", content: "user turn" },
+      { role: "assistant", content: "reply turn" },
+    ];
+
+    await fs.writeFile(path.join(sessDir, "meta.json"), JSON.stringify(legacyMeta, null, 2));
+    await fs.writeFile(path.join(sessDir, "messages.json"), JSON.stringify(legacyMsgs, null, 2));
+
+    const rep = migrateSessionFolder(sessDir);
+    assert.equal(rep.status, "migrated");
+
+    // Open with TranscriptManager
+    const tm = new TranscriptManager("v2-tm-open", baseDir);
+    const loaded = await tm.loadHistory();
+    assert.deepEqual(plain(loaded), plain(legacyMsgs));
+
+    // Call recordBaseline - should NOT append a second baseline
+    await tm.recordBaseline(loaded, { model: "test-model-m" });
+    const reader = new EventLogReader(sessDir);
+    const eventsAfterBaseline = await reader.readAll();
+    assert.equal(eventsAfterBaseline.length, 2, "must not append second baseline");
+
+    // Continue recording events on the live session
+    await tm.recordEvent(EVENT.modelCompletion, { message: { role: "assistant", content: "post-migration turn" } });
+    const eventsAfterNewTurn = await reader.readAll();
+    assert.equal(eventsAfterNewTurn.length, 3);
+    assert.equal(eventsAfterNewTurn[2].seq, 3);
+
+    const verification = await reader.verifyChain();
+    assert.equal(verification.valid, true);
+    assert.equal(verification.totalEvents, 3);
   });
 
   it("falls back to messages.json on a broken chain and refuses further appends", async () => {
