@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { withElectronLock } from './electron-lock.js';
+import { hermeticElectronEnv, makeTempHome } from './hermetic-env.js';
 
 test('real-Electron dev window loads preload bridge and exposes window.opensand', async (t) => {
   // Headless Linux CI environments without a display server cannot open GUI BrowserWindows.
@@ -26,6 +27,7 @@ test('real-Electron dev window loads preload bridge and exposes window.opensand'
   }
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-preload-test-'));
+  const tmpHome = makeTempHome('opensand-preload-home-');
   const runnerScript = path.join(tmpDir, 'runner.mjs');
   const mainScript = path.join(pkgRoot, 'dist', 'src', 'main.js');
 
@@ -73,8 +75,7 @@ await import(${JSON.stringify(mainScript)});
 
   try {
     // Unset ELECTRON_RUN_AS_NODE so Electron runs as a real Electron GUI process.
-    const env = { ...process.env };
-    delete env.ELECTRON_RUN_AS_NODE;
+    const env = hermeticElectronEnv(tmpHome);
 
     let stdout = '';
     let stderr = '';
@@ -108,5 +109,6 @@ await import(${JSON.stringify(mainScript)});
     );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(tmpHome, { recursive: true, force: true });
   }
 });

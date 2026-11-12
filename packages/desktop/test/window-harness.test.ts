@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { withElectronLock } from './electron-lock.js';
+import { hermeticElectronEnv, makeTempHome } from './hermetic-env.js';
 
 type Renderer = 'default' | 'preact';
 
@@ -39,6 +40,7 @@ async function runHarness(renderer: Renderer, opts: { forceOverflow?: boolean } 
 
   const electronBin = path.join(pkgRoot, 'node_modules', '.bin', 'electron');
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-window-harness-'));
+  const tmpHome = makeTempHome('opensand-window-home-');
   const runnerScript = path.join(tmpDir, 'runner.mjs');
   const mainScript = path.join(pkgRoot, 'dist', 'src', 'main.js');
 
@@ -132,8 +134,7 @@ await import(${JSON.stringify(mainScript)});
 
   try {
     // Unset ELECTRON_RUN_AS_NODE so Electron runs as a real Electron GUI process.
-    const env: NodeJS.ProcessEnv = { ...process.env };
-    delete env.ELECTRON_RUN_AS_NODE;
+    const env = hermeticElectronEnv(tmpHome);
     delete env.OPENSAND_RENDERER;
     if (renderer === 'preact') env.OPENSAND_RENDERER = 'preact';
     delete env.OPENSAND_HARNESS_FORCE_OVERFLOW;
@@ -172,6 +173,7 @@ await import(${JSON.stringify(mainScript)});
     return { res960: JSON.parse(match960[1]), res1920: JSON.parse(match1920[1]) };
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(tmpHome, { recursive: true, force: true });
   }
 }
 
