@@ -1,7 +1,14 @@
 // Shell frame for the Preact renderer: sidebar + main area only. Views are
 // ported in later slices. Class names and ids match renderer/index.html so the
 // shared styles.css (traffic-light clearance, drag regions) applies unchanged.
-export function Shell() {
+import type { ShellData } from "./data";
+import { ChatList } from "./views/ChatList";
+
+export interface ShellProps {
+  data: ShellData;
+}
+
+export function Shell({ data }: ShellProps) {
   return (
     <div class="app-layout">
       <aside class="sidebar">
@@ -17,7 +24,7 @@ export function Shell() {
           </div>
         </div>
         <div id="sessionList" class="session-list" role="list" aria-label="Sessions">
-          <p class="shell-empty">No sessions yet</p>
+          <ChatList data={data} />
         </div>
         <div class="sidebar-footer">
           <span class="shell-note">Preact shell (preview)</span>
