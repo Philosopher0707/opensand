@@ -1,9 +1,10 @@
-import fs from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, type StdioOptions } from "node:child_process";
 import { ExecCommandInput, ExecCommandOutput } from "./types.js";
 import { validateBashCommand } from "./bash-validator.js";
 import { generateMacosSandboxProfile } from "./sandbox/macos-profile.js";
-import { SandboxInitializationError } from "./sandbox/errors.js";
+import { SandboxInitializationError, type SandboxInitializationErrorOptions } from "./sandbox/errors.js";
+import { resolveSandboxLauncher } from "./sandbox/launcher.js";
+import { buildBwrapArgs } from "./sandbox/linux-bwrap.js";
 
 export async function runCommandOperation(input: ExecCommandInput): Promise<ExecCommandOutput> {
   // 1. Pre-flight bash validation
@@ -54,19 +55,30 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
 
     let spawnCommand = "/bin/bash";
     let spawnArgs = ["-c", input.command];
+    let stdio: StdioOptions = ["ignore", "pipe", "pipe"];
     let isSandboxed = false;
+    let isBwrap = false;
+    // Names the containment mechanism in errors; sandbox-exec is the default
+    let sandboxOpts: SandboxInitializationErrorOptions = {};
 
-    // Sandbox is opt-in via input.sandboxProfile, input.customProfileString, or OPENSAND_SANDBOX=1
+    // Sandbox is opt-in via input.sandboxProfile, input.customProfileString, or OPENSAND_SANDBOX=1.
+    // Once requested it is never dropped: when no containment is available the command is refused.
     const sandboxRequested = Boolean(
       input.sandboxProfile || input.customProfileString || process.env.OPENSAND_SANDBOX === "1"
     );
 
     if (sandboxRequested) {
-      if (process.platform === "darwin") {
-        if (!fs.existsSync("/usr/bin/sandbox-exec")) {
-          return reject(new SandboxInitializationError("/usr/bin/sandbox-exec binary not found"));
-        }
+      const launcher = resolveSandboxLauncher(process.platform, process.env);
 
+      if (launcher.kind === "unavailable") {
+        const mechanism =
+          process.platform === "linux" ? "Linux bubblewrap" : process.platform === "darwin" ? undefined : process.platform;
+        return reject(
+          new SandboxInitializationError(launcher.reason, { mechanism, code: "SANDBOX_UNAVAILABLE" })
+        );
+      }
+
+      if (launcher.kind === "sandbox-exec") {
         let profileString = input.customProfileString;
         if (!profileString) {
           const sandboxProfile = input.sandboxProfile ?? "workspace-write";
@@ -85,11 +97,37 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
           }
         }
 
-        spawnCommand = "/usr/bin/sandbox-exec";
+        spawnCommand = launcher.path;
         spawnArgs = ["-p", profileString, "/bin/bash", "-c", input.command];
         isSandboxed = true;
       } else {
-        // Non-darwin platforms fallback to standard spawn or recorded warning until bubblewrap in PR 2
+        if (input.customProfileString) {
+          return reject(
+            new SandboxInitializationError("customProfileString is macOS-only", { mechanism: "Linux bubblewrap" })
+          );
+        }
+
+        spawnCommand = launcher.path;
+        spawnArgs = [
+          ...buildBwrapArgs({
+            workspaceRoot: input.workspaceRoot ?? cwd,
+            homeDir: input.homeDir,
+            tempDir: input.tempDir,
+            profile: input.sandboxProfile ?? "workspace-write",
+            allowNetwork: input.allowNetwork,
+          }),
+          // bwrap writes its JSON info to fd 3 once the namespaces exist; an empty fd 3 means it never got that far
+          "--info-fd",
+          "3",
+          "--",
+          "/bin/bash",
+          "-c",
+          input.command,
+        ];
+        stdio = ["ignore", "pipe", "pipe", "pipe"];
+        isSandboxed = true;
+        isBwrap = true;
+        sandboxOpts = { mechanism: "Linux bubblewrap" };
       }
     }
 
@@ -98,13 +136,20 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
       child = spawn(spawnCommand, spawnArgs, {
         cwd,
         env: { ...sanitizedEnv, ...(input.env ?? {}) },
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio,
       });
     } catch (err: any) {
       if (isSandboxed) {
-        return reject(new SandboxInitializationError(`Spawn failed: ${err.message}`));
+        return reject(new SandboxInitializationError(`Spawn failed: ${err.message}`, sandboxOpts));
       }
       return reject(err);
+    }
+
+    let infoFdOutput = "";
+    if (isBwrap) {
+      child.stdio[3]?.on("data", (chunk: Buffer) => {
+        infoFdOutput += chunk.toString("utf-8");
+      });
     }
 
     const timer = setTimeout(() => {
@@ -129,7 +174,7 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
 
     const MAX_BUFFER_SIZE = 64 * 1024; // 64KB output buffer limit to prevent context flooding
 
-    child.stdout.on("data", (chunk: Buffer) => {
+    child.stdout?.on("data", (chunk: Buffer) => {
       if (stdoutBuffer.length < MAX_BUFFER_SIZE) {
         stdoutBuffer += chunk.toString("utf-8");
         if (stdoutBuffer.length >= MAX_BUFFER_SIZE) {
@@ -138,7 +183,7 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
       }
     });
 
-    child.stderr.on("data", (chunk: Buffer) => {
+    child.stderr?.on("data", (chunk: Buffer) => {
       if (stderrBuffer.length < MAX_BUFFER_SIZE) {
         stderrBuffer += chunk.toString("utf-8");
         if (stderrBuffer.length >= MAX_BUFFER_SIZE) {
@@ -152,7 +197,7 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
         isSettled = true;
         clearTimeout(timer);
         if (isSandboxed) {
-          reject(new SandboxInitializationError(err.message));
+          reject(new SandboxInitializationError(err.message, sandboxOpts));
         } else {
           reject(err);
         }
@@ -163,6 +208,12 @@ export async function runCommandOperation(input: ExecCommandInput): Promise<Exec
       if (!isSettled) {
         isSettled = true;
         clearTimeout(timer);
+
+        // bwrap exited before it set up the namespaces (bad option, no user namespaces, broken binary): the command never ran
+        if (isBwrap && infoFdOutput.length === 0) {
+          reject(new SandboxInitializationError(stderrBuffer.trim() || `bwrap exited with code ${code}`, sandboxOpts));
+          return;
+        }
 
         // Check if sandbox-exec itself failed during initialization (e.g. invalid profile syntax or container restriction)
         if (isSandboxed && code === 65 && stderrBuffer.includes("sandbox-exec:")) {
