@@ -75,6 +75,10 @@ test("session-list-model: toRow handles title, id, count, and avatar fallbacks",
   const rowThreeMsg = toRow({ id: "1", title: "Chat", messageCount: 3 }, now);
   assert.strictEqual(rowThreeMsg.snippet, "3 messages");
 
+  // messageCount 1 -> "1 message", not "1 messages"
+  const rowOneMsg = toRow({ id: "1", title: "Chat", messageCount: 1 }, now);
+  assert.strictEqual(rowOneMsg.snippet, "1 message");
+
   // active state
   const rowActive = toRow({ id: "session-active", title: "Chat" }, now, "session-active");
   assert.strictEqual(rowActive.active, true);

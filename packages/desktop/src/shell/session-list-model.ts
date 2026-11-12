@@ -50,7 +50,8 @@ export function filterSessions(sessions: SessionSummary[], query: string): Sessi
 export function toRow(summary: SessionSummary, now: number, activeId?: string | null): SessionRow {
   const title = summary.title || summary.id || "New conversation";
   const timeStr = relativeTime(summary.updatedAt || summary.createdAt, now);
-  const snippet = summary.messageCount ? `${summary.messageCount} messages` : "New conversation";
+  const count = summary.messageCount;
+  const snippet = count ? `${count} ${count === 1 ? "message" : "messages"}` : "New conversation";
   const trimmed = title.trim();
   const avatar = (trimmed[0] || "?").toUpperCase();
   const active = Boolean(activeId && summary.id === activeId);
