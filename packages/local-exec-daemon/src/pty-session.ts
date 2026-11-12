@@ -1,6 +1,8 @@
 import { spawn, ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
+import { buildSandboxedSpawn } from "./sandbox/spawn-builder.js";
+import { SandboxInitializationError } from "./sandbox/errors.js";
 import {
   PtySessionOptions,
   PtySessionSnapshot,
@@ -21,6 +23,11 @@ export class PtySession extends EventEmitter {
   private totalChars: number = 0;
   private chunks: PtySessionChunk[] = [];
   public readonly maxBufferSize: number = 128 * 1024; // 128KB rolling buffer limit
+  private isSandboxed = false;
+  private isBwrap = false;
+  private isSandboxExec = false;
+  private mechanism = "";
+  private initError: SandboxInitializationError | null = null;
 
   constructor(options: PtySessionOptions, id?: string) {
     super();
@@ -73,26 +80,32 @@ export class PtySession extends EventEmitter {
 
     const cwd = options.cwd ?? process.cwd();
 
-    if (options.args && options.args.length > 0) {
-      this.child = spawn(options.command, options.args, {
-        cwd,
-        env: spawnEnv as NodeJS.ProcessEnv,
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-    } else if (options.command.includes(" ")) {
-      this.child = spawn(options.command, {
-        cwd,
-        env: spawnEnv as NodeJS.ProcessEnv,
-        stdio: ["pipe", "pipe", "pipe"],
-        shell: true,
-      });
-    } else {
-      this.child = spawn(options.command, [], {
-        cwd,
-        env: spawnEnv as NodeJS.ProcessEnv,
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-    }
+    const spawnConfig = buildSandboxedSpawn({
+      command: options.command,
+      args: options.args,
+      cwd,
+      sandboxProfile: options.sandboxProfile,
+      workspaceRoot: options.workspaceRoot,
+      homeDir: options.homeDir,
+      tempDir: options.tempDir,
+      allowNetwork: options.allowNetwork,
+      customProfileString: options.customProfileString,
+      useInfoFd: false, // PTY sessions do not use info-fd
+    });
+
+    this.isSandboxed = spawnConfig.isSandboxed;
+    this.isBwrap = spawnConfig.isBwrap;
+    this.isSandboxExec = spawnConfig.isSandboxExec;
+    this.mechanism = spawnConfig.mechanism ?? "";
+
+    // If sandbox is requested and unavailable, buildSandboxedSpawn throws synchronously
+    // before any child process is created (strict fail-closed).
+
+    this.child = spawn(spawnConfig.command, spawnConfig.args, {
+      cwd,
+      env: spawnEnv as NodeJS.ProcessEnv,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
 
     this.child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf-8");
@@ -108,6 +121,21 @@ export class PtySession extends EventEmitter {
       if (this._running) {
         this._running = false;
         this.stoppedAt = Date.now();
+
+        if (this.isSandboxed) {
+          const sandboxErr = new SandboxInitializationError(err.message, {
+            mechanism: this.mechanism || "macOS sandbox-exec",
+          });
+          this.initError = sandboxErr;
+          this.appendOutput(
+            `\n[Sandbox initialization failed: ${sandboxErr.message}]\n`,
+            "stderr"
+          );
+          this.emit("error", sandboxErr);
+          this.emit("exit", 1, null, { type: "exit", exitCode: 1 });
+          return;
+        }
+
         this.appendOutput(`\n[Process error: ${err.message}]\n`, "stderr");
         const exitChunk: PtySessionChunk = {
           type: "exit",
@@ -125,6 +153,46 @@ export class PtySession extends EventEmitter {
         this._exitCode = code;
         this._signal = signal ? String(signal) : null;
         this.stoppedAt = Date.now();
+
+        let initFailure = false;
+        if (this.isSandboxed) {
+          // Detect PTY initialization failure from early exit + stderr signature
+          // (no --info-fd 3 available in PTY sessions).
+          if (
+            this.isBwrap &&
+            code !== 0 &&
+            this.buffer.includes("bwrap:")
+          ) {
+            const err = new SandboxInitializationError(
+              this.buffer.trim() || `bwrap exited with code ${code}`,
+              { mechanism: "Linux bubblewrap" }
+            );
+            this.initError = err;
+            this.appendOutput(
+              `\n[Sandbox initialization failed: ${err.message}]\n`,
+              "stderr"
+            );
+            this.emit("error", err);
+            initFailure = true;
+          }
+
+          if (
+            this.isSandboxExec &&
+            code === 65 &&
+            this.buffer.includes("sandbox-exec:")
+          ) {
+            const err = new SandboxInitializationError(this.buffer.trim(), {
+              mechanism: "macOS sandbox-exec",
+            });
+            this.initError = err;
+            this.appendOutput(
+              `\n[Sandbox initialization failed: ${err.message}]\n`,
+              "stderr"
+            );
+            this.emit("error", err);
+            initFailure = true;
+          }
+        }
 
         const exitChunk: PtySessionChunk = {
           type: "exit",
@@ -176,6 +244,10 @@ export class PtySession extends EventEmitter {
       : Date.now() - this.startedAt;
   }
 
+  get initializationError(): SandboxInitializationError | null {
+    return this.initError;
+  }
+
   getSnapshot(): PtySessionSnapshot {
     return {
       id: this.id,
@@ -184,6 +256,7 @@ export class PtySession extends EventEmitter {
       exitCode: this._exitCode,
       signal: this._signal,
       durationMs: this.durationMs,
+      initError: this.initError?.message,
     };
   }
 
