@@ -1,10 +1,8 @@
 import { spawn, type StdioOptions } from "node:child_process";
 import { ExecCommandInput, ExecCommandOutput } from "./types.js";
 import { validateBashCommand } from "./bash-validator.js";
-import { generateMacosSandboxProfile } from "./sandbox/macos-profile.js";
+import { buildSandboxedSpawn } from "./sandbox/spawn-builder.js";
 import { SandboxInitializationError, type SandboxInitializationErrorOptions } from "./sandbox/errors.js";
-import { resolveSandboxLauncher } from "./sandbox/launcher.js";
-import { buildBwrapArgs } from "./sandbox/linux-bwrap.js";
 import { parseSandboxDenials } from "./sandbox/denials.js";
 import { SafetyGateError } from "./denial-errors.js";
 
@@ -79,72 +77,36 @@ export async function runCommandOperation(
 
     // Sandbox is opt-in via input.sandboxProfile, input.customProfileString, or OPENSAND_SANDBOX=1.
     // Once requested it is never dropped: when no containment is available the command is refused.
-    const sandboxRequested = Boolean(
-      input.sandboxProfile || input.customProfileString || process.env.OPENSAND_SANDBOX === "1"
-    );
-
-    if (sandboxRequested) {
-      const launcher = resolveSandboxLauncher(process.platform, process.env);
-
-      if (launcher.kind === "unavailable") {
-        const mechanism =
-          process.platform === "linux" ? "Linux bubblewrap" : process.platform === "darwin" ? undefined : process.platform;
-        return reject(
-          new SandboxInitializationError(launcher.reason, { mechanism, code: "SANDBOX_UNAVAILABLE" })
-        );
+    let sandboxedSpawnConfig: Awaited<ReturnType<typeof buildSandboxedSpawn>> | null = null;
+    try {
+      // Batch execution always runs the command string through /bin/bash -c,
+      // whether or not a sandbox is active, matching the pre-refactor behavior.
+      sandboxedSpawnConfig = buildSandboxedSpawn({
+        command: "/bin/bash",
+        args: ["-c", input.command],
+        cwd,
+        sandboxProfile: input.sandboxProfile,
+        workspaceRoot: input.workspaceRoot,
+        homeDir: input.homeDir,
+        tempDir: input.tempDir,
+        allowNetwork: input.allowNetwork,
+        customProfileString: input.customProfileString,
+        useInfoFd: true,
+      });
+    } catch (err: any) {
+      if (err instanceof SandboxInitializationError) {
+        return reject(err);
       }
+      return reject(new SandboxInitializationError(err.message));
+    }
 
-      if (launcher.kind === "sandbox-exec") {
-        let profileString = input.customProfileString;
-        if (!profileString) {
-          const sandboxProfile = input.sandboxProfile ?? "workspace-write";
-          const workspaceRoot = input.workspaceRoot ?? cwd;
-
-          try {
-            profileString = generateMacosSandboxProfile({
-              workspaceRoot,
-              homeDir: input.homeDir,
-              tempDir: input.tempDir,
-              profile: sandboxProfile,
-              allowNetwork: input.allowNetwork,
-            });
-          } catch (err: any) {
-            return reject(new SandboxInitializationError(`Profile generation failed: ${err.message}`));
-          }
-        }
-
-        spawnCommand = launcher.path;
-        spawnArgs = ["-p", profileString, "/bin/bash", "-c", input.command];
-        isSandboxed = true;
-      } else {
-        if (input.customProfileString) {
-          return reject(
-            new SandboxInitializationError("customProfileString is macOS-only", { mechanism: "Linux bubblewrap" })
-          );
-        }
-
-        spawnCommand = launcher.path;
-        spawnArgs = [
-          ...buildBwrapArgs({
-            workspaceRoot: input.workspaceRoot ?? cwd,
-            homeDir: input.homeDir,
-            tempDir: input.tempDir,
-            profile: input.sandboxProfile ?? "workspace-write",
-            allowNetwork: input.allowNetwork,
-          }),
-          // bwrap writes its JSON info to fd 3 once the namespaces exist; an empty fd 3 means it never got that far
-          "--info-fd",
-          "3",
-          "--",
-          "/bin/bash",
-          "-c",
-          input.command,
-        ];
-        stdio = ["ignore", "pipe", "pipe", "pipe"];
-        isSandboxed = true;
-        isBwrap = true;
-        sandboxOpts = { mechanism: "Linux bubblewrap" };
-      }
+    if (sandboxedSpawnConfig) {
+      spawnCommand = sandboxedSpawnConfig.command;
+      spawnArgs = sandboxedSpawnConfig.args;
+      isSandboxed = sandboxedSpawnConfig.isSandboxed;
+      isBwrap = sandboxedSpawnConfig.isBwrap;
+      stdio = ["ignore", "pipe", "pipe", "pipe"];
+      sandboxOpts = { mechanism: sandboxedSpawnConfig.mechanism ?? "" };
     }
 
     let child;

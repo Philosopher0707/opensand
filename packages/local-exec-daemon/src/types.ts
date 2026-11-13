@@ -178,6 +178,12 @@ export interface PtySessionOptions {
   env?: Record<string, string>;
   cols?: number;
   rows?: number;
+  sandboxProfile?: "read-only" | "workspace-write" | "full";
+  workspaceRoot?: string;
+  homeDir?: string;
+  tempDir?: string;
+  allowNetwork?: boolean;
+  customProfileString?: string;
 }
 
 export interface PtySessionSnapshot {
@@ -187,6 +193,7 @@ export interface PtySessionSnapshot {
   exitCode: number | null;
   signal: string | null;
   durationMs: number;
+  initError?: string;
 }
 
 export interface PtySessionChunk {
@@ -202,6 +209,12 @@ export interface PtySpawnInput {
   env?: Record<string, string>;
   cols?: number;
   rows?: number;
+  sandboxProfile?: "read-only" | "workspace-write" | "full";
+  workspaceRoot?: string;
+  homeDir?: string;
+  tempDir?: string;
+  allowNetwork?: boolean;
+  customProfileString?: string;
 }
 
 export interface PtyWriteInput {
