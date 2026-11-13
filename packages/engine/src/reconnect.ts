@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { EventChainIntegrityError, EventLogReader, type SessionEvent } from "@opensand/shared";
+import { EventChainIntegrityError, EventLogReader, MISSION_EVENT, type SessionEvent } from "@opensand/shared";
 import {
   ErrorCodes,
   EVENTS,
@@ -30,8 +30,20 @@ export function logDirFor(stateDir: string, scope: LogScope, id: string): string
  * stable `session.Sessions.<camelCase>` name so a client sees one frame per log
  * record instead of none.
  */
+const MISSION_EVENT_MAP: Readonly<Record<string, EventName | string>> = {
+  [MISSION_EVENT.STARTED]: "mission.Missions.started",
+  [MISSION_EVENT.NODE_STARTED]: "mission.Missions.nodeStarted",
+  [MISSION_EVENT.NODE_COMPLETED]: "mission.Missions.nodeCompleted",
+  [MISSION_EVENT.CHECK_COMPLETED]: "mission.Missions.checkCompleted",
+  [MISSION_EVENT.REVIEW_COMPLETED]: "mission.Missions.nodeCompleted",
+  [MISSION_EVENT.VERIFIED]: "mission.Missions.completed",
+  [MISSION_EVENT.FAILED]: "mission.Missions.failed",
+  [MISSION_EVENT.STOPPED]: "mission.Missions.failed",
+};
+
 export function eventNameForKind(kind: string): EventName | string {
   if (KNOWN_EVENTS.has(kind)) return kind;
+  if (kind in MISSION_EVENT_MAP) return MISSION_EVENT_MAP[kind];
   const words = kind.split(/[^A-Za-z0-9]+/).filter(Boolean);
   const camel = words
     .map((word, index) => (index === 0 ? word : word[0].toUpperCase() + word.slice(1)))

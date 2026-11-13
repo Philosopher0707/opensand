@@ -10,6 +10,9 @@ import {
 } from "@opensand/protocol";
 import { createEngineHandlers } from "./handlers/engine.js";
 import { createSessionHandlers } from "./handlers/sessions.js";
+import { createMissionHandlers } from "./handlers/missions.js";
+import { MissionRunnerManager } from "./missions/manager.js";
+import type { MissionAgent } from "./missions/agent.js";
 import type { EngineConnection, Handler, HandlerContext } from "./types.js";
 
 const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
@@ -24,6 +27,7 @@ export interface EngineServerOptions {
   heartbeatIntervalMs?: number;
   onShutdown?: () => void;
   onExit?: (code: number) => void;
+  missionAgent?: MissionAgent;
 }
 
 export class EngineServer {
@@ -38,13 +42,16 @@ export class EngineServer {
   private heartbeatSeq = 0;
   private shutdown: { force: boolean } | null = null;
   private exitScheduled = false;
+  private readonly missionManager: MissionRunnerManager;
 
   constructor(options: EngineServerOptions) {
     this.options = options;
     this.startedAt = Date.now();
+    this.missionManager = new MissionRunnerManager(this.options.stateDir, this.options.missionAgent, (frame) => this.broadcast(frame));
     for (const [method, handler] of [
       ...Object.entries(createEngineHandlers()),
       ...Object.entries(createSessionHandlers()),
+      ...Object.entries(createMissionHandlers(this.missionManager)),
     ]) {
       this.handlers.set(method, handler);
     }
@@ -63,6 +70,7 @@ export class EngineServer {
 
   /** Stops timers and waits for in-flight handlers (bounded by the caller's own timer). */
   async close(): Promise<void> {
+    await this.missionManager.stopAll();
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = undefined;
     await Promise.allSettled([...this.pending]);
@@ -146,7 +154,8 @@ export class EngineServer {
         this.shutdown = { force };
         this.options.onShutdown?.();
       },
-      activeMissions: () => 0,
+      activeMissions: () => this.missionManager.activeCount(),
+      publish: (frame) => this.broadcast(frame),
     };
   }
 

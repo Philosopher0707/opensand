@@ -1,4 +1,4 @@
-import type { RequestFrame } from "@opensand/protocol";
+import type { RequestFrame, EventFrame } from "@opensand/protocol";
 
 export interface EngineConnection {
   write(line: string): void | Promise<void>;
@@ -17,6 +17,7 @@ export interface HandlerContext {
   subscribe: (connection: EngineConnection) => void;
   requestShutdown: (force: boolean) => void;
   activeMissions: () => number;
+  publish: (frame: EventFrame) => void;
 }
 
 export type Handler = (
