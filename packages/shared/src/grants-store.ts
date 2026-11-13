@@ -112,15 +112,20 @@ export class GrantsStore {
     }
   }
 
+  /** Build a grant stamped with the epoch of `content`; the caller adds it to content.grants. */
+  public static newGrant(input: NewGrant, content: GrantsFileContent): CapabilityGrant {
+    return {
+      ...input,
+      id: input.id ?? `grant_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`,
+      epoch: content.epoch,
+      createdAt: Date.now(),
+    };
+  }
+
   /** Adding authority never bumps the epoch. */
   public async addGrant(input: NewGrant): Promise<CapabilityGrant> {
     return this.writeGrants((content) => {
-      const grant: CapabilityGrant = {
-        ...input,
-        id: input.id ?? `grant_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`,
-        epoch: content.epoch,
-        createdAt: Date.now(),
-      };
+      const grant = GrantsStore.newGrant(input, content);
       content.grants.push(grant);
       return grant;
     });
@@ -135,6 +140,32 @@ export class GrantsStore {
       content.epoch += 1;
       return { revoked: true, epoch: content.epoch };
     });
+  }
+
+  /**
+   * Check the epoch and act on it under grants.lock, so a revoke cannot land between the two.
+   * Re-reads the file after taking the lock; a missing or non-matching epoch throws StaleEpochError
+   * (code 4001) before fn runs. Persists only if fn changed the content.
+   */
+  public async withEpoch<T>(requestEpoch: unknown, fn: (content: GrantsFileContent) => T | Promise<T>): Promise<T> {
+    await fsp.mkdir(this.baseDir, { recursive: true, mode: 0o700 });
+    const lock = await EventLogLock.acquire(this.baseDir, { timeoutMs: this.lockTimeoutMs, lockFileName: "grants.lock" });
+    try {
+      const content = await this.read();
+      if (typeof requestEpoch !== "number" || requestEpoch !== content.epoch) {
+        throw new StaleEpochError(typeof requestEpoch === "number" ? requestEpoch : undefined, content.epoch);
+      }
+      const before = JSON.stringify(content);
+      const result = await fn(content);
+      if (JSON.stringify(content) !== before) {
+        content.updatedAt = Date.now();
+        content.updatedBy = this.updatedBy;
+        await this.persist(content);
+      }
+      return result;
+    } finally {
+      await lock.release();
+    }
   }
 
   /**

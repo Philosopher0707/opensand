@@ -752,11 +752,37 @@ export class DesktopIpcBridge extends EventEmitter {
       return { success: false };
     }
 
-    // Fail closed: an answer without the current epoch grants nothing.
+    // Fail closed: an answer without the current epoch grants nothing. The check and the grant
+    // write share one grants.lock hold (withEpoch), so a revoke cannot land between them.
     // A missing epoch leaves the request pending (the client can retry); a stale one can
     // never become valid again (epochs only rise), so that request is denied.
+    let patternToAllow: string | undefined;
     try {
-      await this.grantsStore.assertEpoch(decision?.epoch);
+      await this.grantsStore.withEpoch(decision?.epoch, (content) => {
+        if (decision.action !== 'always_allow') return;
+        if (pending.request.toolName === 'exec_command' && typeof pending.request.args.command === 'string') {
+          const cmd = pending.request.args.command.trim();
+          // Disallow blanket allowlisting of dangerous shell interpreters or high-privilege binaries
+          const DANGEROUS_GENERIC_BINARIES = new Set([
+            'sh', 'bash', 'zsh', 'node', 'python', 'python3', 'perl', 'ruby',
+            'sudo', 'su', 'rm', 'mv', 'chmod', 'chown', 'curl', 'wget', 'cat', 'dd'
+          ]);
+
+          const parts = cmd.split(/\s+/);
+          const binary = parts[0];
+
+          // If it's a generic interpreter, require exact command match; otherwise allow prefix
+          patternToAllow = cmd;
+          if (!DANGEROUS_GENERIC_BINARIES.has(binary)) {
+            patternToAllow = binary;
+          }
+          content.grants.push(GrantsStore.newGrant({
+            tool: 'exec_command',
+            scope: patternToAllow === binary ? `${binary} *` : patternToAllow,
+            lifetime: 'always',
+          }, content));
+        }
+      });
     } catch (err) {
       if (err instanceof StaleEpochError && err.requestEpoch !== undefined) {
         this.activeApprovals.delete(approvalId);
@@ -768,34 +794,14 @@ export class DesktopIpcBridge extends EventEmitter {
     this.activeApprovals.delete(approvalId);
 
     if (decision.action === 'always_allow') {
-      if (pending.request.toolName === 'exec_command' && typeof pending.request.args.command === 'string') {
-        const cmd = pending.request.args.command.trim();
-        // Disallow blanket allowlisting of dangerous shell interpreters or high-privilege binaries
-        const DANGEROUS_GENERIC_BINARIES = new Set([
-          'sh', 'bash', 'zsh', 'node', 'python', 'python3', 'perl', 'ruby',
-          'sudo', 'su', 'rm', 'mv', 'chmod', 'chown', 'curl', 'wget', 'cat', 'dd'
-        ]);
-
-        const parts = cmd.split(/\s+/);
-        const binary = parts[0];
-
-        // If it's a generic interpreter, require exact command match; otherwise allow prefix
-        let patternToAllow = cmd;
-        if (!DANGEROUS_GENERIC_BINARIES.has(binary)) {
-          patternToAllow = binary;
-        }
-
+      // The standing allowlist is written only after the epoch check passed.
+      if (patternToAllow !== undefined) {
         const gates = await this.stateManager.readPermissionGates();
         const allowlist = gates.standingAllowlist || [];
         if (!allowlist.includes(patternToAllow)) {
           allowlist.push(patternToAllow);
           await this.stateManager.writePermissionGates({ standingAllowlist: allowlist });
         }
-        await this.grantsStore.addGrant({
-          tool: 'exec_command',
-          scope: patternToAllow === binary ? `${binary} *` : patternToAllow,
-          lifetime: 'always',
-        });
       }
       pending.resolve(true);
       return { success: true };
