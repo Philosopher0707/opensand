@@ -48,6 +48,12 @@ export interface CoordinatorOptions {
   sessionsBaseDir?: string;
   workspaceDir?: string;
   workspaceRoot?: string;
+  /**
+   * Sandbox containment profile for this coordinator's commands. Subagents
+   * default to "workspace-write" so their commands stay inside the
+   * workspace (or their isolated worktree).
+   */
+  sandboxProfile?: "read-only" | "workspace-write" | "full";
   /** Delegation depth: how many delegate_to_agent hops above this coordinator. */
   subagentDepth?: number;
   mcpManager?: McpManager;
@@ -65,6 +71,12 @@ export class AgentCoordinator {
   public readonly hookDispatcher: HookDispatcher;
   public readonly mcpManager?: McpManager;
   public readonly workspaceDir: string;
+  public readonly sandboxProfile?: "read-only" | "workspace-write" | "full";
+  /**
+   * Workspace scope handed to the daemon. Only sandboxed (subagent) turns are
+   * confined to it; the main agent keeps its unrestricted file access.
+   */
+  private readonly scopedWorkspaceRoot?: string;
 
   private turnCount: number = 0;
   private restorePoints: RestorePoint[] = [];
@@ -92,8 +104,11 @@ export class AgentCoordinator {
     }
     this.maxTurnIterations = options.maxTurnIterations ?? 150;
     this.subagentDepth = options.subagentDepth ?? 0;
+    this.sandboxProfile =
+      options.sandboxProfile ?? (this.subagentDepth > 0 ? "workspace-write" : undefined);
     this.mcpManager = options.mcpManager;
     this.workspaceDir = options.workspaceDir ?? options.workspaceRoot ?? process.cwd();
+    this.scopedWorkspaceRoot = this.sandboxProfile ? this.workspaceDir : undefined;
 
     // Initialize system message
     const systemPrompt = buildSystemPrompt(options.systemPromptContext);
@@ -412,6 +427,8 @@ export class AgentCoordinator {
           return this.daemon.executeTool(item.tc.function.name, item.args, {
             approvalGranted: item.execution.approvalGranted,
             permissionGates: item.execution.gates,
+            workspaceRoot: this.scopedWorkspaceRoot,
+            sandboxProfile: this.sandboxProfile,
             subagent: this.buildDelegationContext(item.tc.function.name),
             signal,
           });
@@ -456,6 +473,8 @@ export class AgentCoordinator {
             const execResult = await this.daemon.executeTool(item.tc.function.name, item.args, {
               approvalGranted: item.execution.approvalGranted,
               permissionGates: item.execution.gates,
+              workspaceRoot: this.scopedWorkspaceRoot,
+              sandboxProfile: this.sandboxProfile,
               subagent: this.buildDelegationContext(item.tc.function.name),
               signal,
             });

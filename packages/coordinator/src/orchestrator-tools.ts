@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as os from "node:os";
 import * as fs from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { LocalExecDaemon, ToolDefinition } from "@opensand/local-exec-daemon";
 import { AgentStore, AgentRecord } from "./agent-store.js";
 import { TaskStore, AgentTask, TaskStatus, TaskPriority } from "./agent-tasks.js";
@@ -10,7 +11,7 @@ import { VaultStore, VaultItemKind } from "./vault-store.js";
 import { SkillStore } from "./skill-store.js";
 import { RoutineEngine } from "./routine-engine.js";
 import { RoomManager } from "./room-manager.js";
-import { GitManager } from "./git-manager.js";
+import { GitManager, GitDiffSummary, sanitizeBranchName } from "./git-manager.js";
 import { WorkspaceSentinel, createAutonomousHealer } from "./workspace-sentinel.js";
 import { AttachmentManager } from "./attachment-manager.js";
 import { UniversalLLMClient } from "./llm-client.js";
@@ -33,6 +34,38 @@ import {
 import { GitHubClient, GitHubActions } from "./github-client.js";
 import { SlackClient, LinearClient } from "./provider-clients.js";
 import { McpManager } from "./mcp-manager.js";
+
+/**
+ * Isolation outcome of a delegated subagent. `worktree` means the subagent ran
+ * on its own branch in a temporary Git worktree that is removed on success and
+ * kept on disk for inspection on failure.
+ */
+export interface DelegationIsolationResult {
+  isolation: "none" | "worktree";
+  branch?: string;
+  worktreePath?: string;
+  diff?: GitDiffSummary;
+  cleanedUp?: boolean;
+  error?: string;
+}
+
+/**
+ * A subagent may only be trusted to run inside an isolated worktree when it
+ * can actually write. An empty tool list means "all tools", which includes
+ * the writing ones.
+ */
+function isWritingAgent(effectiveAllowedTools?: string[]): boolean {
+  if (!effectiveAllowedTools || effectiveAllowedTools.length === 0) return true;
+  const WRITE_TOOLS = new Set([
+    "write_file",
+    "edit_file",
+    "exec_command",
+    "git_auto_commit",
+    "patch_file",
+    "pty_spawn",
+  ]);
+  return effectiveAllowedTools.some((t) => WRITE_TOOLS.has(t));
+}
 
 export interface RegisterOrchestratorToolsOptions {
   daemon: LocalExecDaemon;
@@ -211,6 +244,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       status: "running" | "completed" | "failed";
       response?: string;
       error?: string;
+      isolationResult?: DelegationIsolationResult;
       promise: Promise<string>;
     }
   >();
@@ -264,6 +298,11 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
               type: "number",
               description: "Wait at most this long, then return status still_running while the subagent keeps working (default: wait until done).",
             },
+            isolation: {
+              type: "string",
+              enum: ["none", "worktree"],
+              description: "Workspace isolation mode. 'worktree' runs the subagent in an isolated Git worktree on a dedicated branch. Defaults to 'worktree' when workspace is a Git repository and the agent can write.",
+            },
           },
           required: ["agent_id_or_name", "task"],
         },
@@ -285,6 +324,35 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       });
 
       const effectiveAllowedTools = resolveRoleAllowedTools(agent.role, agent.allowedTools);
+
+      // Isolation strategy. A writing subagent gets its own Git worktree on a
+      // dedicated branch so parallel delegates cannot overwrite each other.
+      const baseRepoDir = options.repoRoot ?? process.cwd();
+      const isGit = await gitManager.isGitRepository(baseRepoDir);
+
+      let isolationMode: "none" | "worktree" = "none";
+      if (args.isolation === "worktree") {
+        if (!isGit) {
+          throw new Error(
+            `Worktree isolation was requested for agent [${agent.name}], but "${baseRepoDir}" is not a Git repository.`
+          );
+        }
+        isolationMode = "worktree";
+      } else if (!args.isolation) {
+        isolationMode = isGit && isWritingAgent(effectiveAllowedTools) ? "worktree" : "none";
+      }
+
+      let subagentWorkspaceDir = baseRepoDir;
+      let subagentBranch: string | undefined;
+      if (isolationMode === "worktree") {
+        const sanitized = sanitizeBranchName(agent.name || agent.id) || "agent";
+        // The random suffix keeps parallel delegations to the same agent from
+        // colliding on branch name and worktree path.
+        const branchName = `subagent/${sanitized}-${Date.now()}-${randomBytes(3).toString("hex")}`;
+        const worktree = await gitManager.createWorktree(branchName, undefined, baseRepoDir);
+        subagentWorkspaceDir = worktree.worktreePath;
+        subagentBranch = worktree.branch;
+      }
 
       const subsessionId = `sub_${agent.id}_${Date.now()}`;
       const subCoordinator = new AgentCoordinator({
@@ -325,7 +393,14 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
             // Event listener errors should not disrupt the agent turn loop
           }
         },
-        subagentDepth: (context?.subagent?.depth ?? 0),
+        // The subagent works inside its own directory and stays sandboxed
+        // there, whether that directory is an isolated worktree or not.
+        workspaceDir: subagentWorkspaceDir,
+        workspaceRoot: subagentWorkspaceDir,
+        sandboxProfile: "workspace-write",
+        // A delegated subagent always sits at least one hop below the main
+        // agent, so it inherits the subagent sandbox boundary.
+        subagentDepth: (context?.subagent?.depth ?? 0) + 1,
       });
 
       const entry: {
@@ -335,18 +410,59 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         status: "running" | "completed" | "failed";
         response?: string;
         error?: string;
+        isolationResult?: DelegationIsolationResult;
         promise: Promise<string>;
       } = {
         agentId: agent.id,
         agentName: agent.name,
         sessionId: subsessionId,
         status: "running",
+        isolationResult:
+          isolationMode === "worktree"
+            ? {
+                isolation: "worktree",
+                branch: subagentBranch,
+                worktreePath: subagentWorkspaceDir,
+                cleanedUp: false,
+              }
+            : { isolation: "none" },
         promise: Promise.resolve(""),
       };
       entry.promise = subCoordinator.runTurn(args.task)
-        .then((text) => {
+        .then(async (text) => {
           entry.status = "completed";
           entry.response = text;
+
+          if (isolationMode === "worktree" && subagentBranch) {
+            try {
+              const status = await gitManager.getStatus(subagentWorkspaceDir);
+              let diff: GitDiffSummary | undefined;
+              if (!status.isClean) {
+                await gitManager.autoCommit(
+                  `feat(subagent): work completed by ${agent.name}`,
+                  subagentWorkspaceDir
+                );
+                diff = await gitManager.getDiff(false, subagentWorkspaceDir, "HEAD~1");
+              }
+              await gitManager.removeWorktree(subagentWorkspaceDir, baseRepoDir);
+              entry.isolationResult = {
+                isolation: "worktree",
+                branch: subagentBranch,
+                worktreePath: subagentWorkspaceDir,
+                diff,
+                cleanedUp: true,
+              };
+            } catch (cleanupErr: any) {
+              // The worktree is kept on disk so the failure can be inspected.
+              entry.isolationResult = {
+                isolation: "worktree",
+                branch: subagentBranch,
+                worktreePath: subagentWorkspaceDir,
+                cleanedUp: false,
+                error: cleanupErr?.message,
+              };
+            }
+          }
           return text;
         })
         .catch((error: any) => {
@@ -366,6 +482,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         return JSON.stringify({
           status: "still_running",
           subagent: { id: agent.id, name: agent.name, role: agent.role, sessionId: subsessionId },
+          isolation: entry.isolationResult,
           hint: `Call await_agent with agent_id "${subsessionId}" to collect the result.`,
         }, null, 2);
       }
@@ -379,6 +496,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           sessionId: subsessionId,
         },
         response: entry.response,
+        isolation: entry.isolationResult,
       }, null, 2);
     },
   });
@@ -422,6 +540,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           status: "completed",
           subagent: { id: entry.agentId, name: entry.agentName, sessionId: entry.sessionId },
           response: entry.response,
+          isolation: entry.isolationResult,
         }, null, 2);
       }
       if (entry.status === "failed") {
@@ -429,6 +548,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           status: "failed",
           subagent: { id: entry.agentId, name: entry.agentName, sessionId: entry.sessionId },
           error: entry.error,
+          isolation: entry.isolationResult,
         }, null, 2);
       }
       return JSON.stringify({

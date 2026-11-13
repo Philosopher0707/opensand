@@ -70,6 +70,13 @@ export function isSensitiveGitFile(filePath: string): boolean {
   return SENSITIVE_FILE_PATTERNS.some((pat) => pat.test(basename) || pat.test(normalized));
 }
 
+/**
+ * Normalize an arbitrary agent name into a Git-safe branch segment.
+ */
+export function sanitizeBranchName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9/_-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 export class GitManager {
   private defaultCwd: string;
 
@@ -164,9 +171,9 @@ export class GitManager {
   /**
    * Get git diff and summary statistics
    */
-  async getDiff(staged = false, repoDir?: string): Promise<GitDiffSummary> {
+  async getDiff(staged = false, repoDir?: string, range?: string): Promise<GitDiffSummary> {
     const cwd = repoDir ?? this.defaultCwd;
-    const args = staged ? ["diff", "--cached"] : ["diff"];
+    const args = range ? ["diff", range] : staged ? ["diff", "--cached"] : ["diff"];
 
     const { stdout: diff } = await this.execGit(args, cwd);
 
@@ -176,7 +183,11 @@ export class GitManager {
     let deletions = 0;
 
     try {
-      const statArgs = staged ? ["diff", "--cached", "--shortstat"] : ["diff", "--shortstat"];
+      const statArgs = range
+        ? ["diff", range, "--shortstat"]
+        : staged
+          ? ["diff", "--cached", "--shortstat"]
+          : ["diff", "--shortstat"];
       const { stdout: statOut } = await this.execGit(statArgs, cwd);
       const statMatch = /(\d+)\s+file[s]?\s+changed(?:,\s+(\d+)\s+insertion[s]?\(\+\))?(?:,\s+(\d+)\s+deletion[s]?\(-\))?/i.exec(statOut);
 
@@ -195,6 +206,18 @@ export class GitManager {
       insertions,
       deletions,
     };
+  }
+
+  /**
+   * Check if the specified directory is inside a Git working tree.
+   */
+  async isGitRepository(repoDir?: string): Promise<boolean> {
+    try {
+      const { stdout } = await this.execGit(["rev-parse", "--is-inside-work-tree"], repoDir);
+      return stdout.trim() === "true";
+    } catch {
+      return false;
+    }
   }
 
   /**

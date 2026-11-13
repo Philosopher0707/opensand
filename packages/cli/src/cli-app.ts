@@ -229,7 +229,11 @@ Examples:
       ui.printSuccess(`🌿 Switched to isolated Git worktree: ${worktreePath} (branch: ${branch})`);
       process.chdir(worktreePath);
     } catch (err: any) {
-      ui.printWarning(`Could not create Git worktree: ${err.message}. Continuing in current workspace.`);
+      // Fail fast: silently continuing in the shared workspace would run the
+      // session outside the isolation the user asked for.
+      ui.printError(`Failed to create isolated Git worktree "${config.worktree}": ${err.message}`);
+      process.exitCode = 1;
+      return;
     }
   }
 
