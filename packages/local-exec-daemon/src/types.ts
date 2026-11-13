@@ -6,6 +6,8 @@
 export type { ToolDefinition, ToolExecutionResult } from "@opensand/shared";
 import type { SandboxDenial } from "./sandbox/denials.js";
 
+export type { SandboxProfileType } from "./sandbox/macos-profile.js";
+
 export interface DaemonLivenessResult {
   running: boolean;
   pid?: number;

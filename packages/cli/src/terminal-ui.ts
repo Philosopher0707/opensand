@@ -70,7 +70,7 @@ export class TerminalUI {
   }
 
   printError(text: string): void {
-    console.log(`${RED}✖ ${text}${RESET}`);
+    console.error(`${RED}✖ ${text}${RESET}`);
   }
 
   printUserTurn(query: string): void {

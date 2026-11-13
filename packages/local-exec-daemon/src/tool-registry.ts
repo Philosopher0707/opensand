@@ -15,6 +15,7 @@ import {
   PtyWriteInput,
   PtyReadInput,
   PtyKillInput,
+  SandboxProfileType,
 } from "./types.js";
 import { runCommandOperation } from "./command-runner.js";
 import {
@@ -32,6 +33,12 @@ export interface ToolExecutionContext {
   approvalGranted?: boolean;
   approvalId?: string;
   workspaceRoot?: string;
+  /**
+   * Sandbox containment profile requested for this turn. When set, commands
+   * run inside OS containment (sandbox-exec / bubblewrap) scoped to
+   * `workspaceRoot` and fail closed if containment is unavailable.
+   */
+  sandboxProfile?: SandboxProfileType;
   allowOutsideWorkspace?: boolean;
   /**
    * Turn cancellation. Mirrors Grok Bot's ExecServerAbort: a long command is
@@ -508,7 +515,9 @@ export class ToolRegistry {
         const output = await runCommandOperation(
           {
             ...input,
+            cwd: input.cwd ?? context?.workspaceRoot,
             workspaceRoot: input.workspaceRoot ?? context?.workspaceRoot,
+            sandboxProfile: input.sandboxProfile ?? context?.sandboxProfile,
           },
           { signal: context?.signal }
         );
@@ -690,6 +699,7 @@ export class ToolRegistry {
         const session = await this.ptyManager.createSession({
           ...input,
           workspaceRoot,
+          sandboxProfile: input.sandboxProfile ?? context?.sandboxProfile,
         });
         return {
           status: "ok",
