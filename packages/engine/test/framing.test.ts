@@ -62,7 +62,7 @@ describe("engine stdio framing", () => {
     }
   });
 
-  it("answers unimplemented session and mission methods with -32601 but allows subscribe", async () => {
+  it("answers unimplemented session methods with -32601 and mission methods without an agent", async () => {
     const dir = tempDir("stubs");
     const engine = new EngineProcess(dir);
     try {
@@ -72,14 +72,16 @@ describe("engine stdio framing", () => {
         workspaceRoot: dir,
         title: "t",
         initialQuery: "q",
+        checkCommand: "true",
       });
-      assert.equal(mission.error?.code, -32601);
+      assert.equal(mission.error?.code, -32600);
+      assert.equal(mission.error?.message, "no mission agent configured");
       const unknown = await engine.request("req-3", "bogus.Bogus.nope");
       assert.equal(unknown.error?.code, -32601);
       const subscribe = await engine.request("req-4", "mission.Missions.subscribe", {
         missionId: "m1",
       });
-      assert.deepEqual(subscribe.result, { subscribed: true });
+      assert.deepEqual(subscribe.result, { subscribed: true, currentSeq: 0 });
     } finally {
       await engine.kill();
       removeDir(dir);

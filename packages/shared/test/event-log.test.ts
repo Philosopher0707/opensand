@@ -253,30 +253,31 @@ test("canonicalJson sorts object keys recursively", () => {
   );
 });
 
-test("append benchmark: 5k appends proves O(1) tail read with last 100 mean < 3x first 100 mean", { timeout: 60_000 }, async () => {
+// Each append takes the lock and fsyncs file and directory, so a few ms per append is
+// by design. Grow the log in batches (one fsync per batch) instead of 5k single appends,
+// which took ~50 s against a 60 s timeout and failed under load.
+test("append cost does not grow with log size: 100 appends on a 60k-event log < 3x 100 on an empty one", { timeout: 60_000 }, async () => {
   const dir = tempDir();
   try {
     const logPath = path.join(dir, "event-log.jsonl");
     const writer = new EventLogWriter(logPath, { sessionId: "sess-bench" });
 
-    const firstDurations: number[] = [];
-    const lastDurations: number[] = [];
-
-    const total = 5000;
-    for (let i = 1; i <= total; i++) {
-      const start = performance.now();
-      await writer.append({ kind: "bench.event", data: { i } });
-      const duration = performance.now() - start;
-
-      if (i <= 100) {
-        firstDurations.push(duration);
-      } else if (i > total - 100) {
-        lastDurations.push(duration);
+    const timeAppends = async (count: number): Promise<number> => {
+      const durations: number[] = [];
+      for (let i = 0; i < count; i++) {
+        const start = performance.now();
+        await writer.append({ kind: "bench.event", data: { i } });
+        durations.push(performance.now() - start);
       }
-    }
+      return durations.reduce((a, b) => a + b, 0) / durations.length;
+    };
 
-    const meanFirst = firstDurations.reduce((a, b) => a + b, 0) / firstDurations.length;
-    const meanLast = lastDurations.reduce((a, b) => a + b, 0) / lastDurations.length;
+    const meanFirst = await timeAppends(100);
+    const batch = Array.from({ length: 5_000 }, (_, i) => ({ kind: "bench.seed", data: { i } }));
+    for (let b = 0; b < 12; b++) {
+      await writer.appendBatch(batch);
+    }
+    const meanLast = await timeAppends(100);
 
     assert.ok(
       meanLast < 3 * meanFirst,
@@ -286,7 +287,7 @@ test("append benchmark: 5k appends proves O(1) tail read with last 100 mean < 3x
     const reader = new EventLogReader(logPath);
     const verification = await reader.verifyChain();
     assert.equal(verification.valid, true);
-    assert.equal(verification.totalEvents, total);
+    assert.equal(verification.totalEvents, 60_200);
   } finally {
     fsSync.rmSync(dir, { recursive: true, force: true });
   }
