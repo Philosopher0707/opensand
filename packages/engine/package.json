@@ -20,7 +20,8 @@
   },
   "dependencies": {
     "@opensand/protocol": "workspace:*",
-    "@opensand/shared": "workspace:*"
+    "@opensand/shared": "workspace:*",
+    "@opensand/local-exec-daemon": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

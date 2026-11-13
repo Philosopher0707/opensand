@@ -6,7 +6,7 @@ import {
   END,
   createSelfReflectiveCodingGraph,
   GraphEvent,
-} from '../src/agent-graph.js';
+} from '../src/state-graph.js';
 
 describe('AgentGraphEngine', () => {
   it('executes a linear multi-node state graph', async () => {

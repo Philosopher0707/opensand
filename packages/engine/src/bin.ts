@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { readFileSync } from "node:fs";
 import { EngineServer } from "./server.js";
+import { loadScriptedAgent } from "./missions/agent.js";
 import type { EngineConnection } from "./types.js";
 
 const SHUTDOWN_GRACE_MS = 1_900;
@@ -10,20 +11,30 @@ const SHUTDOWN_GRACE_MS = 1_900;
 export interface CliOptions {
   stdio: boolean;
   stateDir: string;
+  scriptedAgentPath?: string;
 }
 
 export function parseArgs(argv: string[]): CliOptions {
   let stdio = false;
   let stateDir: string | undefined;
+  let scriptedAgentPath: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--stdio") {
+    if (arg === "--help" || arg === "-h") {
+      printHelp();
+      process.exit(0);
+    } else if (arg === "--stdio") {
       stdio = true;
     } else if (arg === "--state-dir") {
       const value = argv[index + 1];
       if (!value || value.startsWith("--")) fail("--state-dir needs a path");
       stateDir = value;
+      index += 1;
+    } else if (arg === "--scripted-agent") {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) fail("--scripted-agent needs a JSON file path");
+      scriptedAgentPath = value;
       index += 1;
     } else {
       fail(`unknown argument: ${arg}`);
@@ -31,7 +42,20 @@ export function parseArgs(argv: string[]): CliOptions {
   }
 
   if (!stdio) fail("--stdio is required");
-  return { stdio, stateDir: stateDir ?? path.join(os.homedir(), ".opensand") };
+  return { stdio, stateDir: stateDir ?? path.join(os.homedir(), ".opensand"), scriptedAgentPath };
+}
+
+function printHelp(): void {
+  process.stdout.write(
+    `Usage: opensand-engine --stdio [--state-dir <path>] [--scripted-agent <file.json>]
+
+Options:
+  --stdio                  Run in stdio RPC mode (required)
+  --state-dir <path>       Path to state directory (default: ~/.opensand)
+  --scripted-agent <path>  Path to canned scripted agent JSON (test-only)
+  --help, -h               Show this help message
+`
+  );
 }
 
 function fail(message: string): never {
@@ -68,6 +92,7 @@ function main(): void {
   const server = new EngineServer({
     stateDir: options.stateDir,
     version: readVersion(),
+    missionAgent: options.scriptedAgentPath ? loadScriptedAgent(options.scriptedAgentPath) : undefined,
     connection,
     stderr: (message) => process.stderr.write(`${message}\n`),
     onShutdown: () => {

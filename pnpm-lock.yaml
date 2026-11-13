@@ -92,6 +92,9 @@ importers:
 
   packages/engine:
     dependencies:
+      '@opensand/local-exec-daemon':
+        specifier: workspace:*
+        version: link:../local-exec-daemon
       '@opensand/protocol':
         specifier: workspace:*
         version: link:../protocol

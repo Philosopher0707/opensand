@@ -48,11 +48,6 @@ export function createEngineHandlers(): Record<string, Handler> {
       return { replayedEvents: frames.length, currentSeq };
     },
 
-    "mission.Missions.subscribe": (_params, context) => {
-      context.subscribe(context.connection);
-      return { subscribed: true };
-    },
-
     "inbox.Approvals.subscribe": (_params, context) => {
       context.subscribe(context.connection);
       return { subscribed: true };
