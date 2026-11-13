@@ -24,10 +24,17 @@ if (skip) {
   console.log(`bubblewrap tests skipped: ${skip}`);
 }
 
-// Fixtures live under the home directory, not os.tmpdir(): the sandbox mounts a private tmpfs
-// over /tmp, so a fixture there would make an "outside the workspace" write succeed in the tmpfs.
+// Fixtures live outside /tmp: the sandbox mounts a private tmpfs over /tmp, so an "outside the
+// workspace" folder there does not exist inside the sandbox and the write fails for the wrong
+// reason. A hermetic test run often points HOME at a folder under /tmp, so fall back to /var/tmp.
+function fixtureRoot(home: string = os.homedir()): string {
+  const tmp = fs.realpathSync("/tmp");
+  const real = fs.realpathSync(home);
+  return real === tmp || real.startsWith(`${tmp}/`) ? "/var/tmp" : home;
+}
+
 function makeFixture(): { base: string; workspace: string; outside: string; home: string; tempDir: string } {
-  const base = fs.mkdtempSync(path.join(os.homedir(), "sandbox_linux_test_"));
+  const base = fs.mkdtempSync(path.join(fixtureRoot(), "sandbox_linux_test_"));
   const workspace = path.join(base, "workspace");
   const outside = path.join(base, "outside");
   const home = path.join(base, "fake-home");
@@ -37,6 +44,22 @@ function makeFixture(): { base: string; workspace: string; outside: string; home
   }
   return { base, workspace, outside, home, tempDir };
 }
+
+describe("bubblewrap fixture root", () => {
+  it("keeps fixtures out of /tmp when HOME is under /tmp", () => {
+    const home = fs.mkdtempSync("/tmp/sandbox_home_");
+    try {
+      assert.equal(fixtureRoot(home), "/var/tmp");
+      assert.equal(fixtureRoot("/tmp"), "/var/tmp");
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("uses HOME when it is outside /tmp", () => {
+    assert.equal(fixtureRoot("/var"), "/var");
+  });
+});
 
 const SECRET_MARKER = "SANDBOX_TEST_SECRET_MARKER_7f3a";
 

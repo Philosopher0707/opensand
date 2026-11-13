@@ -79,6 +79,9 @@ export class DesktopIpcBridge extends EventEmitter {
   private configFile: string;
   private settings: DesktopSettings;
   private sentinelListener: ((event: SentinelDiagnosticEvent) => void) | null = null;
+  // A daemon start begun without awaiting (requestUserApproval); close() waits for it,
+  // otherwise it sees running === false, skips stop(), and the start finishes afterwards.
+  private backgroundDaemonStart: Promise<void> | null = null;
   public daemon: LocalExecDaemon;
   public stateManager: StateManager;
   public mcpManager: McpManager;
@@ -237,6 +240,9 @@ export class DesktopIpcBridge extends EventEmitter {
       } catch {
         // ignore
       }
+    }
+    if (this.backgroundDaemonStart) {
+      await this.backgroundDaemonStart;
     }
     if (this.daemon && this.daemon.running) {
       try {
@@ -670,8 +676,14 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async requestUserApproval(toolName: string, args: Record<string, unknown>, reason?: string): Promise<boolean> {
-    if (this.daemon && !this.daemon.running) {
-      this.ensureDaemon().catch(() => {});
+    if (this.daemon && !this.daemon.running && !this.backgroundDaemonStart) {
+      const start: Promise<void> = this.ensureDaemon().then(
+        () => {},
+        () => {},
+      ).finally(() => {
+        if (this.backgroundDaemonStart === start) this.backgroundDaemonStart = null;
+      });
+      this.backgroundDaemonStart = start;
     }
     let mustPrompt = false;
 

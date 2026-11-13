@@ -14,17 +14,23 @@ class DesktopIpcBridge extends BaseDesktopIpcBridge {
   }
 }
 
+const pendingTmpDirs: string[] = [];
+
+// Bridges close before their directories are removed, so no daemon or heartbeat is
+// still writing into state/ while it is deleted (the Linux-only ENOTEMPTY flake).
 test.afterEach(async () => {
   while (createdBridges.length) {
     await createdBridges.pop()?.close();
   }
+  while (pendingTmpDirs.length) {
+    fs.rmSync(pendingTmpDirs.pop()!, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
+  }
 });
 import { StateManager } from '@opensand/local-exec-daemon';
 
-// The bridge may still be flushing state/ when a test's finally block runs; ENOTEMPTY
-// retries absorb that race (seen as a Linux-only CI flake).
+// Deferred to afterEach, after the test's bridges have closed.
 function rmTmp(dir: string) {
-  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
+  pendingTmpDirs.push(dir);
 }
 
 test('DesktopIpcBridge - manages settings and persistent config', () => {
@@ -88,6 +94,26 @@ test('DesktopIpcBridge - handles approval resolutions and standing allowlist', a
     const gates = await stateManager.readPermissionGates();
     assert.ok(gates.standingAllowlist.includes('git'));
   } finally {
+    rmTmp(tmpDir);
+  }
+});
+
+test('DesktopIpcBridge - close() waits for a daemon start that an approval request began', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-close-'));
+  const bridge = new BaseDesktopIpcBridge({ baseDir: tmpDir });
+  try {
+    // requestUserApproval starts the daemon in the background without awaiting it.
+    void bridge.requestUserApproval('exec_command', { command: 'git status' });
+    await bridge.close();
+    // Give a start that close() missed time to finish and arm its heartbeat.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.strictEqual(bridge.daemon.running, false, 'daemon left running after close()');
+    // Nothing may still be writing: a plain rm (no retries) must succeed.
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.strictEqual(fs.existsSync(tmpDir), false, 'state written after close()');
+  } finally {
+    await bridge.daemon.stop().catch(() => {});
     rmTmp(tmpDir);
   }
 });
