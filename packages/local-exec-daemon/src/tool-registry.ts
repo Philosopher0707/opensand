@@ -1,4 +1,5 @@
 import { ToolDenialError } from "./denial-errors.js";
+import { SandboxInitializationError } from "./sandbox/errors.js";
 import {
   ToolDefinition,
   ToolExecutionResult,
@@ -282,6 +283,31 @@ export const PTY_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
           rows: {
             type: "number",
             description: "Terminal row height (default: 24).",
+          },
+          sandboxProfile: {
+            type: "string",
+            enum: ["read-only", "workspace-write", "full"],
+            description: "Optional sandbox containment profile for the PTY session.",
+          },
+          workspaceRoot: {
+            type: "string",
+            description: "Optional workspace root used for sandbox containment.",
+          },
+          homeDir: {
+            type: "string",
+            description: "Optional home directory used for sandbox containment.",
+          },
+          tempDir: {
+            type: "string",
+            description: "Optional temp directory used for sandbox containment.",
+          },
+          allowNetwork: {
+            type: "boolean",
+            description: "Optional network access for the sandboxed PTY session.",
+          },
+          customProfileString: {
+            type: "string",
+            description: "Optional macOS-only custom sandbox profile string.",
           },
         },
         required: ["command"],
@@ -660,7 +686,11 @@ export class ToolRegistry {
           };
         }
 
-        const session = await this.ptyManager.createSession(input);
+        const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
+        const session = await this.ptyManager.createSession({
+          ...input,
+          workspaceRoot,
+        });
         return {
           status: "ok",
           output: {
@@ -782,6 +812,15 @@ export class ToolRegistry {
         return {
           status: "error",
           error: { code: err.code, message: err.message, reason: err.reason },
+        };
+      }
+      if (err instanceof SandboxInitializationError) {
+        return {
+          status: "error",
+          error: {
+            code: err.code ?? "SANDBOX_INIT_FAILED",
+            message: err.message,
+          },
         };
       }
       return {
