@@ -12,6 +12,8 @@ export interface ToolApprovalRequest {
   args: Record<string, unknown>;
   reason?: string;
   timestamp: number;
+  /** Grants epoch the request was created at; the answer must echo it. */
+  epoch: number;
 }
 
 export interface ToolDiscoverySummary {
@@ -27,13 +29,14 @@ export interface ToolDiscoverySummary {
 
 export interface ApprovalDecision {
   action: 'approve_once' | 'always_allow' | 'reject';
+  epoch?: number;
   reason?: string;
 }
 
 export interface OpenSandBridgeApi {
   sendQuery: (query: string, sessionId?: string, agentId?: string) => Promise<{ success: boolean; sessionId: string }>;
   cancelTurn?: () => Promise<{ success: boolean; cancelled: boolean }>;
-  approveTool: (approvalId: string, decision: ApprovalDecision) => Promise<{ success: boolean }>;
+  approveTool: (approvalId: string, decision: ApprovalDecision) => Promise<{ success: boolean; newEpoch?: number }>;
   listPendingApprovals?: () => Promise<ToolApprovalRequest[]>;
   getToolDiscovery?: () => Promise<ToolDiscoverySummary>;
   executeTool?: (name: string, args: Record<string, any>, context?: any) => Promise<any>;

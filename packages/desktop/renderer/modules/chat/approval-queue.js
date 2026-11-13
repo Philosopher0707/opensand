@@ -35,7 +35,7 @@ export function createApprovalQueue({ pendingApprovals, client, render }) {
           b.onclick = async () => {
             pendingApprovals.delete(id);
             render();
-            await client.approveTool(id, { action });
+            await client.approveTool(id, { action, epoch: req.epoch });
           };
           actions.appendChild(b);
         }

@@ -12,6 +12,8 @@ export interface EventLogLockOptions {
   timeoutMs?: number;
   pollIntervalMs?: number;
   staleTimeoutMs?: number;
+  /** Lock file name inside dir; defaults to event-log.lock. */
+  lockFileName?: string;
 }
 
 export class EventLogLockTimeoutError extends Error {
@@ -67,7 +69,7 @@ export class EventLogLock {
     const timeoutMs = options.timeoutMs ?? 10_000;
     const pollIntervalMs = options.pollIntervalMs ?? 25;
     const staleTimeoutMs = options.staleTimeoutMs ?? 5_000;
-    const lockPath = path.join(dir, LOCK_FILE_NAME);
+    const lockPath = path.join(dir, options.lockFileName ?? LOCK_FILE_NAME);
     const waitStarted = Date.now();
 
     await fs.mkdir(dir, { recursive: true, mode: 0o700 });

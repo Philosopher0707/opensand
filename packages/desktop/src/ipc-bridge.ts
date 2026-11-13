@@ -66,7 +66,7 @@ import {
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
-import { EVENT, EventLogWriter, migrateSessionFolder } from '@opensand/shared';
+import { EVENT, EventLogWriter, migrateSessionFolder, GrantsStore, StaleEpochError } from '@opensand/shared';
 import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSummary, DesktopEvent, ToolDiscoverySummary } from './types.js';
 
 export interface IpcBridgeOptions {
@@ -84,6 +84,8 @@ export class DesktopIpcBridge extends EventEmitter {
   private backgroundDaemonStart: Promise<void> | null = null;
   public daemon: LocalExecDaemon;
   public stateManager: StateManager;
+  // The bridge is the only writer of grants.json; daemon and coordinator only read.
+  public grantsStore: GrantsStore;
   public mcpManager: McpManager;
   public agentStore: AgentStore;
   public taskStore: TaskStore;
@@ -139,6 +141,7 @@ export class DesktopIpcBridge extends EventEmitter {
     const stateDir = path.join(this.baseDir, 'state');
     this.daemon = new LocalExecDaemon({ stateDir });
     this.stateManager = new StateManager(stateDir);
+    this.grantsStore = new GrantsStore({ baseDir: this.baseDir, updatedBy: 'desktop:ipc-bridge' });
     registerNativeTools(this.daemon);
 
     // Initialize Agent Store, Task Store, Habit Extractor & Memory Store
@@ -718,6 +721,7 @@ export class DesktopIpcBridge extends EventEmitter {
       args,
       ...(reason ? { reason } : {}),
       timestamp: Date.now(),
+      epoch: this.grantsStore.getEpochSync(),
     };
 
     return new Promise<boolean>((resolve) => {
@@ -737,10 +741,28 @@ export class DesktopIpcBridge extends EventEmitter {
     return buildToolDiscoverySummary(this.daemon.getToolDefinitions());
   }
 
-  public async approveTool(approvalId: string, decision: ApprovalDecision): Promise<{ success: boolean }> {
+  /** Revoking narrows authority: the epoch goes up, so every answer still in flight is stale. */
+  public async revokeGrant(grantId: string): Promise<{ revoked: boolean; epoch: number }> {
+    return this.grantsStore.revokeGrant(grantId);
+  }
+
+  public async approveTool(approvalId: string, decision: ApprovalDecision): Promise<{ success: boolean; newEpoch?: number }> {
     const pending = this.activeApprovals.get(approvalId);
     if (!pending) {
       return { success: false };
+    }
+
+    // Fail closed: an answer without the current epoch grants nothing.
+    // A missing epoch leaves the request pending (the client can retry); a stale one can
+    // never become valid again (epochs only rise), so that request is denied.
+    try {
+      await this.grantsStore.assertEpoch(decision?.epoch);
+    } catch (err) {
+      if (err instanceof StaleEpochError && err.requestEpoch !== undefined) {
+        this.activeApprovals.delete(approvalId);
+        pending.resolve(false);
+      }
+      throw err;
     }
 
     this.activeApprovals.delete(approvalId);
@@ -769,6 +791,11 @@ export class DesktopIpcBridge extends EventEmitter {
           allowlist.push(patternToAllow);
           await this.stateManager.writePermissionGates({ standingAllowlist: allowlist });
         }
+        await this.grantsStore.addGrant({
+          tool: 'exec_command',
+          scope: patternToAllow === binary ? `${binary} *` : patternToAllow,
+          lifetime: 'always',
+        });
       }
       pending.resolve(true);
       return { success: true };
