@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { atomicWriteJson } from "./atomic-json.js";
 import { EventLogLock } from "./event-log-lock.js";
 import type { CapabilityGrant, GrantsFileContent } from "./grants-types.js";
 
@@ -85,31 +86,30 @@ export class GrantsStore {
   }
 
   private async persist(content: GrantsFileContent): Promise<void> {
+    await atomicWriteJson(this.baseDir, FILE_NAME, content);
+  }
+
+  /** Run fn while holding grants.lock (not re-entrant: fn must not call another locking method). */
+  public async underLock<T>(fn: () => Promise<T>): Promise<T> {
     await fsp.mkdir(this.baseDir, { recursive: true, mode: 0o700 });
-    const tmp = path.join(this.baseDir, `.${FILE_NAME}.${Date.now()}.${crypto.randomBytes(6).toString("hex")}.tmp`);
+    const lock = await EventLogLock.acquire(this.baseDir, { timeoutMs: this.lockTimeoutMs, lockFileName: "grants.lock" });
     try {
-      await fsp.writeFile(tmp, JSON.stringify(content, null, 2), { encoding: "utf8", mode: 0o600 });
-      await fsp.rename(tmp, this.filePath);
-    } catch (err) {
-      await fsp.unlink(tmp).catch(() => {});
-      throw err;
+      return await fn();
+    } finally {
+      await lock.release();
     }
   }
 
   /** Read-modify-write under the cross-process lock. */
   private async writeGrants<T>(fn: (content: GrantsFileContent) => T): Promise<T> {
-    await fsp.mkdir(this.baseDir, { recursive: true, mode: 0o700 });
-    const lock = await EventLogLock.acquire(this.baseDir, { timeoutMs: this.lockTimeoutMs, lockFileName: "grants.lock" });
-    try {
+    return this.underLock(async () => {
       const content = await this.read();
       const result = fn(content);
       content.updatedAt = Date.now();
       content.updatedBy = this.updatedBy;
       await this.persist(content);
       return result;
-    } finally {
-      await lock.release();
-    }
+    });
   }
 
   /** Build a grant stamped with the epoch of `content`; the caller adds it to content.grants. */
@@ -139,6 +139,23 @@ export class GrantsStore {
       if (content.grants.length === before) return { revoked: false, epoch: content.epoch };
       content.epoch += 1;
       return { revoked: true, epoch: content.epoch };
+    });
+  }
+
+  /**
+   * Run `sideEffect` and bump the epoch by exactly one, both under the grants lock.
+   * The bumped epoch is persisted first, so a crash in between leaves a spurious bump (safe),
+   * never a narrowed side effect with an old epoch. Returns the new epoch.
+   */
+  public async narrowAuthority(sideEffect: () => Promise<void>): Promise<number> {
+    return this.underLock(async () => {
+      const content = await this.read();
+      content.epoch += 1;
+      content.updatedAt = Date.now();
+      content.updatedBy = this.updatedBy;
+      await this.persist(content);
+      await sideEffect();
+      return content.epoch;
     });
   }
 

@@ -5,7 +5,7 @@ import { EVENTS, METHODS, isKnownMethod, isWellFormedName } from "../src/names.j
 describe("protocol names", () => {
   it("registers the methods and events listed in the OSP spec", () => {
     assert.equal(METHODS.length, 22);
-    assert.equal(EVENTS.length, 14);
+    assert.equal(EVENTS.length, 15);
   });
 
   it("uses unique, well-formed names throughout", () => {

@@ -99,6 +99,15 @@ export function createMissionHandlers(manager: MissionRunnerManager): Record<str
       return { subscribed: true, currentSeq };
     },
 
+    "inbox.Approvals.answer": async (params) => {
+      const missionId = typeof params.missionId === "string" ? params.missionId : undefined;
+      if (!missionId) {
+        throw new OspError(ErrorCodes.InvalidParams, "missionId is required");
+      }
+      await manager.gate.answer(missionId, { level: params.level, epoch: params.epoch });
+      return { success: true };
+    },
+
     "mission.Missions.pause": () => {
       throw new OspError(
         ErrorCodes.MethodNotFound,

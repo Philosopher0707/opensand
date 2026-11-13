@@ -6,7 +6,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { LocalExecDaemon } from "@opensand/local-exec-daemon";
 import { registerNativeTools } from "@opensand/native-bridge";
-import { runStateMigrations } from "@opensand/shared";
+import { runStateMigrations, FolderTrustStore, profileForTrust, type TrustLevel } from "@opensand/shared";
 import {
   UniversalLLMClient,
   AgentCoordinator,
@@ -378,6 +378,43 @@ Examples:
     return toolName;
   };
 
+  // Folder trust: resolved once, before any coordinator exists. -y (autoApprove) never answers it:
+  // an unanswered folder without a terminal is treated as untrusted (read-only) and not persisted.
+  const trustStore = new FolderTrustStore();
+  const trustedFolder = FolderTrustStore.canonicalFolder(process.cwd());
+  let trustLevel: TrustLevel = await trustStore.getLevel(trustedFolder);
+  if (trustLevel === "prompt") {
+    if (config.autoApprove || !input.isTTY || !output.isTTY) {
+      ui.printWarning(
+        `Folder ${trustedFolder} is not trusted: running read-only. Run interactively once to trust it.`
+      );
+      trustLevel = "untrusted";
+    } else {
+      const rl = readline.createInterface({ input, output });
+      try {
+        const answer = (
+          await rl.question(
+            `Do you trust the files in ${trustedFolder}? [y] trust  [n] don't trust  [s] this session only: `
+          )
+        )
+          .trim()
+          .toLowerCase();
+        if (answer === "y" || answer === "yes") {
+          await trustStore.setLevel(trustedFolder, "trusted");
+          trustLevel = "trusted";
+        } else if (answer === "s" || answer === "session") {
+          trustLevel = "trusted";
+        } else {
+          await trustStore.setLevel(trustedFolder, "untrusted");
+          trustLevel = "untrusted";
+        }
+      } finally {
+        rl.close();
+      }
+    }
+  }
+  const sandboxProfile = profileForTrust(trustLevel);
+
   // Helper to build coordinator
   function createCoordinator(
     instructions?: string,
@@ -398,6 +435,8 @@ Examples:
       sessionId: sessionIdOverride,
       llmClient,
       daemon,
+      workspaceDir: trustedFolder,
+      sandboxProfile,
       allowedTools: activeAgent?.allowedTools,
       systemPromptContext: {
         userInstructions: instructions,

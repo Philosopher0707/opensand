@@ -1,12 +1,13 @@
 import { START, END, StateGraph } from "@opensand/shared";
 import { EventLogWriter, EventLogReader } from "@opensand/shared";
-import { MISSION_EVENT } from "@opensand/shared";
+import { MISSION_EVENT, FolderTrustStore, GrantsStore, resolveSandboxProfile } from "@opensand/shared";
 import type { EventFrame } from "@opensand/protocol";
 import { logDirFor, eventNameForKind } from "../reconnect.js";
 import { runCheck, type CheckResult } from "./check.js";
 import { treeOf, changedLinesBetweenTrees, type ChangesResult } from "./workspace-diff.js";
 import { projectReceipt } from "./receipt.js";
 import type { MissionAgent } from "./agent.js";
+import type { FolderTrustGate } from "./trust-gate.js";
 
 export interface MissionBudget {
   maxRepairs: number;
@@ -51,6 +52,8 @@ export class MissionRunner {
   readonly budget: MissionBudget;
   private readonly stateDir: string;
   private readonly agent: MissionAgent;
+  private readonly gate: FolderTrustGate;
+  private readonly grants: GrantsStore;
   private readonly publishFrame: (frame: EventFrame) => void;
   private readonly writer: EventLogWriter;
   private readonly abortController = new AbortController();
@@ -58,12 +61,15 @@ export class MissionRunner {
   private currentNode = "plan";
   private executionPromise?: Promise<void>;
   private isFinished = false;
+  private trustedFolder = "";
 
   constructor(
     options: MissionOptions,
     context: {
       stateDir: string;
       agent: MissionAgent;
+      gate: FolderTrustGate;
+      grants: GrantsStore;
       publish: (frame: EventFrame) => void;
     }
   ) {
@@ -79,6 +85,8 @@ export class MissionRunner {
     };
     this.stateDir = context.stateDir;
     this.agent = context.agent;
+    this.gate = context.gate;
+    this.grants = context.grants;
     this.publishFrame = context.publish;
 
     const logDir = logDirFor(this.stateDir, "mission", this.missionId);
@@ -154,6 +162,37 @@ export class MissionRunner {
   }
 
   private async run(): Promise<void> {
+    // Log-only; no command runs before the folder-trust gate below.
+    await this.appendAndPublish(MISSION_EVENT.STARTED, {
+      missionId: this.missionId,
+      title: this.title,
+      workspaceRoot: this.workspaceRoot,
+      budgetUsd: this.budget.budgetUsd ?? 0,
+    });
+
+    let trust;
+    try {
+      trust = await this.gate.resolve(
+        this.missionId,
+        this.workspaceRoot,
+        this.abortController.signal,
+        (q) => this.appendAndPublish(MISSION_EVENT.NEEDS_YOU, { missionId: this.missionId, ...q }),
+        (a) => this.appendAndPublish(MISSION_EVENT.ANSWERED, { missionId: this.missionId, ...a }),
+      );
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        await this.appendAndPublish(MISSION_EVENT.STOPPED, { missionId: this.missionId, reason: "cancelled" });
+        return;
+      }
+      throw err;
+    }
+    if (trust.level === "untrusted") {
+      // The agent writes with fs, not a command, so a sandbox profile would not confine it: stop.
+      await this.appendAndPublish(MISSION_EVENT.STOPPED, { missionId: this.missionId, reason: "folder-untrusted" });
+      return;
+    }
+    this.trustedFolder = trust.folder;
+
     let baseTree: string | undefined;
     try {
       const baseRes = await treeOf(this.workspaceRoot);
@@ -163,13 +202,6 @@ export class MissionRunner {
     } catch {
       // workspace might not be git
     }
-
-    await this.appendAndPublish(MISSION_EVENT.STARTED, {
-      missionId: this.missionId,
-      title: this.title,
-      workspaceRoot: this.workspaceRoot,
-      budgetUsd: this.budget.budgetUsd ?? 0,
-    });
 
     const graph = new StateGraph<MissionState>();
 
@@ -248,8 +280,14 @@ export class MissionRunner {
         "check"
       );
 
+      const sandbox = resolveSandboxProfile({
+        level: "trusted",
+        requested: undefined,
+        grants: (await this.grants.read()).grants,
+        folder: this.trustedFolder,
+      });
       const checkResult = await runCheck(
-        { command: state.checkCommand },
+        { command: state.checkCommand, sandbox },
         state.workspaceRoot,
         { signal: this.abortController.signal }
       );

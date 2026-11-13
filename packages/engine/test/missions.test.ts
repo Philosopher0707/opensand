@@ -5,7 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { EventLogReader, type SessionEvent } from "@opensand/shared";
-import { EngineProcess, removeDir, tempDir } from "./helpers.js";
+import { EngineProcess, removeDir, tempDir, trustFolder } from "./helpers.js";
 import { renderReceipt } from "../src/missions/receipt.js";
 
 function git(args: string[], cwd: string): string {
@@ -97,6 +97,7 @@ describe("mission runner", () => {
     const agent = writeAgent(dir, [
       { claim: "all tests pass", review: { accept: true, note: "looks good" } },
     ]);
+    trustFolder(dir, workspace);
     const engine = new EngineProcess(dir, ["--scripted-agent", agent]);
     try {
       const start = await engine.request("req-1", "mission.Missions.start", {
@@ -157,6 +158,7 @@ describe("mission runner", () => {
         review: { accept: true, note: "the diff matches the goal" },
       },
     ]);
+    trustFolder(dir, workspace);
     const engine = new EngineProcess(dir, ["--scripted-agent", agent]);
     try {
       const subscribe = await engine.request("req-1", "mission.Missions.subscribe", {});
@@ -242,6 +244,7 @@ describe("mission runner", () => {
       { review: { accept: false, note: "not good enough" } },
       { review: { accept: true, note: "now it is right" } },
     ]);
+    trustFolder(dir, workspace);
     const engine = new EngineProcess(dir, ["--scripted-agent", agent]);
     try {
       const start = await engine.request("req-1", "mission.Missions.start", {
@@ -281,6 +284,7 @@ describe("mission runner", () => {
     const workspaceDir = tempWorkspaceDir();
     const workspace = makeWorkspace(workspaceDir, { "README.md": "# demo\n" });
     const agent = writeAgent(dir, [{ claim: "all tests pass", review: { accept: true, note: "ok" } }]);
+    trustFolder(dir, workspace);
     const engine = new EngineProcess(dir, ["--scripted-agent", agent]);
     let missionId = "";
     try {

@@ -34,6 +34,7 @@ export const EVENTS = [
   "mission.Missions.resumed",
   "mission.Missions.completed",
   "mission.Missions.failed",
+  "mission.Missions.needsYou",
   "inbox.Approvals.requested",
   "inbox.Approvals.resolved",
   "session.Sessions.messageAppended",

@@ -66,11 +66,22 @@ import {
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
-import { EVENT, EventLogWriter, migrateSessionFolder, GrantsStore, StaleEpochError } from '@opensand/shared';
+import {
+  EVENT,
+  EventLogWriter,
+  migrateSessionFolder,
+  GrantsStore,
+  StaleEpochError,
+  FolderTrustStore,
+  resolveSandboxProfile,
+  type TrustLevel,
+} from '@opensand/shared';
 import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSummary, DesktopEvent, ToolDiscoverySummary } from './types.js';
 
 export interface IpcBridgeOptions {
   baseDir?: string;
+  /** Folder the session coordinators work in and the trust gate applies to. Default: process.cwd(). */
+  workspaceDir?: string;
   defaultSettings?: Partial<DesktopSettings>;
 }
 
@@ -105,7 +116,14 @@ export class DesktopIpcBridge extends EventEmitter {
   private activeApprovals: Map<string, {
     request: ToolApprovalRequest;
     resolve: (approved: boolean) => void;
+    /** Set only for folder.trust requests: the answer is a trust level, not a yes/no. */
+    resolveTrust?: (level: TrustLevel) => void;
   }> = new Map();
+  public readonly workspaceDir: string;
+  public readonly folderTrustStore: FolderTrustStore;
+  /** approve_once answers: trusted for this bridge's lifetime only, never persisted. */
+  private sessionTrusted = new Set<string>();
+  private pendingFolderTrust = new Map<string, Promise<TrustLevel>>();
   private currentSessionId: string | null = null;
   private activeAbortController: AbortController | null = null;
 
@@ -113,6 +131,7 @@ export class DesktopIpcBridge extends EventEmitter {
     super();
     this.baseDir = options.baseDir || path.join(os.homedir(), '.opensand');
     this.configFile = path.join(this.baseDir, 'config.json');
+    this.workspaceDir = options.workspaceDir ?? process.cwd();
 
     // Default settings (apiKey is resolved lazily in loadSettings() from
     // OPENSAND_API_KEY env -> VaultStore -> "none", never persisted)
@@ -142,6 +161,7 @@ export class DesktopIpcBridge extends EventEmitter {
     this.daemon = new LocalExecDaemon({ stateDir });
     this.stateManager = new StateManager(stateDir);
     this.grantsStore = new GrantsStore({ baseDir: this.baseDir, updatedBy: 'desktop:ipc-bridge' });
+    this.folderTrustStore = new FolderTrustStore({ baseDir: this.baseDir, updatedBy: 'desktop:ipc-bridge', grants: this.grantsStore });
     registerNativeTools(this.daemon);
 
     // Initialize Agent Store, Task Store, Habit Extractor & Memory Store
@@ -539,6 +559,19 @@ export class DesktopIpcBridge extends EventEmitter {
       return this.coordinator;
     }
 
+    // Folder trust: hold here, before any coordinator exists, so no tool is registered and no
+    // command can run against a folder the user has not answered for.
+    const folder = FolderTrustStore.canonicalFolder(this.workspaceDir);
+    let trustLevel: TrustLevel = await this.folderTrustStore.getLevel(folder);
+    if (trustLevel === 'prompt' && this.sessionTrusted.has(folder)) trustLevel = 'trusted';
+    if (trustLevel === 'prompt') trustLevel = await this.requestFolderTrust(folder);
+    const sandboxProfile = resolveSandboxProfile({
+      level: trustLevel,
+      requested: undefined,
+      grants: (await this.grantsStore.read()).grants,
+      folder,
+    });
+
     let targetModel = this.settings.model;
     let targetEndpoint = this.settings.endpoint;
     let customInstructions: string | undefined;
@@ -573,6 +606,8 @@ export class DesktopIpcBridge extends EventEmitter {
       sessionId: activeSessionId,
       vaultStore: this.vaultStore,
       sessionsBaseDir: path.join(this.baseDir, 'sessions'),
+      workspaceDir: folder,
+      sandboxProfile,
       maxContextTokens: maxTokens,
       systemPromptContext: {
         userInstructions: customInstructions,
@@ -730,6 +765,76 @@ export class DesktopIpcBridge extends EventEmitter {
     });
   }
 
+  /**
+   * Ask whether to trust `folder`. Never consults settings.autoApprove: raising trust always asks.
+   * Pending until answered through approveTool; resolves with the level the user chose.
+   */
+  public async requestFolderTrust(folder: string): Promise<TrustLevel> {
+    const key = FolderTrustStore.canonicalFolder(folder);
+    const existing = this.pendingFolderTrust.get(key);
+    if (existing) return existing;
+    const approvalId = `appr-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+    const request: ToolApprovalRequest = {
+      approvalId,
+      toolName: 'folder.trust',
+      args: { folder: key },
+      timestamp: Date.now(),
+      epoch: this.grantsStore.getEpochSync(),
+    };
+    const answered = new Promise<TrustLevel>((resolveTrust) => {
+      this.activeApprovals.set(approvalId, { request, resolve: () => {}, resolveTrust });
+      this.emitEvent('approval_required', request);
+    }).finally(() => this.pendingFolderTrust.delete(key));
+    this.pendingFolderTrust.set(key, answered);
+    return answered;
+  }
+
+  public async getFolderTrust(folder: string): Promise<TrustLevel> {
+    return this.folderTrustStore.getLevel(folder);
+  }
+
+  /** Lowering trust bumps the epoch; cached coordinators are dropped so the next turn re-derives its profile. */
+  public async setFolderTrust(folder: string, level: TrustLevel): Promise<{ changed: boolean; narrowed: boolean; epoch: number }> {
+    const result = await this.folderTrustStore.setLevel(folder, level);
+    this.sessionTrusted.delete(FolderTrustStore.canonicalFolder(folder));
+    this.coordinatorMap.clear();
+    this.coordinator = null;
+    return result;
+  }
+
+  private async answerFolderTrust(
+    approvalId: string,
+    pending: { request: ToolApprovalRequest; resolveTrust?: (level: TrustLevel) => void },
+    decision: ApprovalDecision,
+  ): Promise<{ success: boolean }> {
+    try {
+      await this.grantsStore.assertEpoch(decision?.epoch);
+    } catch (err) {
+      if (err instanceof StaleEpochError && err.requestEpoch !== undefined) {
+        // A stale answer can never become valid: the question is dropped, nothing is persisted,
+        // and the session is built read-only (unanswered).
+        this.activeApprovals.delete(approvalId);
+        pending.resolveTrust?.('prompt');
+      }
+      throw err;
+    }
+    const folder = String(pending.request.args.folder);
+    this.activeApprovals.delete(approvalId);
+    let level: TrustLevel;
+    if (decision.action === 'always_allow') {
+      await this.folderTrustStore.setLevel(folder, 'trusted');
+      level = 'trusted';
+    } else if (decision.action === 'approve_once') {
+      this.sessionTrusted.add(folder);
+      level = 'trusted';
+    } else {
+      await this.folderTrustStore.setLevel(folder, 'untrusted');
+      level = 'untrusted';
+    }
+    pending.resolveTrust?.(level);
+    return { success: true };
+  }
+
   public async listPendingApprovals(): Promise<ToolApprovalRequest[]> {
     return [...this.activeApprovals.values()]
       .map(({ request }) => JSON.parse(JSON.stringify(request)) as ToolApprovalRequest)
@@ -750,6 +855,10 @@ export class DesktopIpcBridge extends EventEmitter {
     const pending = this.activeApprovals.get(approvalId);
     if (!pending) {
       return { success: false };
+    }
+
+    if (pending.request.toolName === 'folder.trust') {
+      return this.answerFolderTrust(approvalId, pending, decision);
     }
 
     // Fail closed: an answer without the current epoch grants nothing. The check and the grant

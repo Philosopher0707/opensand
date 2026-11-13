@@ -28,6 +28,8 @@ export interface EngineServerOptions {
   onShutdown?: () => void;
   onExit?: (code: number) => void;
   missionAgent?: MissionAgent;
+  /** Where folder-trust.json and grants.json live. Default: stateDir. */
+  baseDir?: string;
 }
 
 export class EngineServer {
@@ -47,7 +49,7 @@ export class EngineServer {
   constructor(options: EngineServerOptions) {
     this.options = options;
     this.startedAt = Date.now();
-    this.missionManager = new MissionRunnerManager(this.options.stateDir, this.options.missionAgent, (frame) => this.broadcast(frame));
+    this.missionManager = new MissionRunnerManager(this.options.stateDir, this.options.missionAgent, (frame) => this.broadcast(frame), { baseDir: this.options.baseDir });
     for (const [method, handler] of [
       ...Object.entries(createEngineHandlers()),
       ...Object.entries(createSessionHandlers()),

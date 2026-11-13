@@ -11,6 +11,8 @@ export const MISSION_EVENT = {
   VERIFIED: "mission.verified",
   FAILED: "mission.failed",
   STOPPED: "mission.stopped",
+  NEEDS_YOU: "mission.needs-you",
+  ANSWERED: "mission.answered",
 } as const;
 
 export type MissionEventKind = (typeof MISSION_EVENT)[keyof typeof MISSION_EVENT];
