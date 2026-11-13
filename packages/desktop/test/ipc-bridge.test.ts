@@ -83,7 +83,7 @@ test('DesktopIpcBridge - handles approval resolutions and standing allowlist', a
     assert.ok(approvalId);
 
     // Test always_allow adds to standing allowlist
-    const approveRes = await bridge.approveTool(approvalId, { action: 'always_allow' });
+    const approveRes = await bridge.approveTool(approvalId, { action: 'always_allow', epoch: (bridge as any).activeApprovals.get(approvalId)?.request.epoch });
     assert.strictEqual(approveRes.success, true);
 
     const resolvedVal = await resPromise;
@@ -128,7 +128,7 @@ test('DesktopIpcBridge - handles rejection', async () => {
     const activeMap = (bridge as any).activeApprovals as Map<string, any>;
     const [approvalId] = Array.from(activeMap.keys());
 
-    const approveRes = await bridge.approveTool(approvalId, { action: 'reject' });
+    const approveRes = await bridge.approveTool(approvalId, { action: 'reject', epoch: (bridge as any).activeApprovals.get(approvalId)?.request.epoch });
     assert.strictEqual(approveRes.success, true);
 
     const resolvedVal = await resPromise;
@@ -443,7 +443,7 @@ test('DesktopIpcBridge - approveTool accepts {action} decisions (string form nor
     assert.strictEqual(entry.request.reason, 'Policy: destructive command requires approval');
 
     // {action} form — the contract the renderer now sends
-    const result = await bridge.approveTool(approvalId, { action: 'approve_once' });
+    const result = await bridge.approveTool(approvalId, { action: 'approve_once', epoch: (bridge as any).activeApprovals.get(approvalId)?.request.epoch });
     assert.strictEqual(result.success, true);
     assert.strictEqual(await pending, true);
     assert.strictEqual(activeApprovals.size, 0);
@@ -462,7 +462,7 @@ test('DesktopIpcBridge - approval reason is optional and tolerated when absent',
     const activeApprovals: Map<string, { request: any; resolve: (v: boolean) => void }> = (bridge as any).activeApprovals;
     const [approvalId] = [...activeApprovals.entries()][0];
     assert.strictEqual(([...activeApprovals.values()][0].request as any).reason, undefined);
-    const result = await bridge.approveTool(approvalId, { action: 'reject' });
+    const result = await bridge.approveTool(approvalId, { action: 'reject', epoch: (bridge as any).activeApprovals.get(approvalId)?.request.epoch });
     assert.strictEqual(result.success, true);
     assert.strictEqual(await pending, false);
   } finally {
@@ -561,7 +561,7 @@ test('DesktopIpcBridge - autoApprove safety ceiling enforces prompt on dangerous
     assert.ok(approvalId);
 
     // Reject it
-    await bridge.approveTool(approvalId, { action: 'reject' });
+    await bridge.approveTool(approvalId, { action: 'reject', epoch: (bridge as any).activeApprovals.get(approvalId)?.request.epoch });
     const dangerousRes = await dangerousPromise;
     assert.strictEqual(dangerousRes, false);
 
@@ -589,7 +589,7 @@ test('DesktopIpcBridge - autoApprove safety ceiling enforces prompt on dangerous
     assert.strictEqual(promptedPolicy, true, 'Policy REQUIRE_APPROVAL must prompt user despite autoApprove');
 
     const [policyApprovalId] = Array.from(activeApprovals.keys());
-    await bridge.approveTool(policyApprovalId, { action: 'approve_once' });
+    await bridge.approveTool(policyApprovalId, { action: 'approve_once', epoch: (bridge as any).activeApprovals.get(policyApprovalId)?.request.epoch });
     const policyRes = await policyPromise;
     assert.strictEqual(policyRes, true);
   } finally {
@@ -622,14 +622,14 @@ test('DesktopIpcBridge - lists pending approvals as isolated copies and removes 
     const activeMap = (bridge as any).activeApprovals as Map<string, any>;
     const firstId = pending[0].approvalId;
     assert.strictEqual(activeMap.has(firstId), true);
-    assert.deepStrictEqual(await bridge.approveTool(firstId, { action: 'approve_once' }), { success: true });
+    assert.deepStrictEqual(await bridge.approveTool(firstId, { action: 'approve_once', epoch: pending[0].epoch }), { success: true });
     assert.strictEqual(await first, true);
 
     const remaining = await bridge.listPendingApprovals();
     assert.strictEqual(remaining.length, 1);
     assert.strictEqual(remaining[0].reason, 'second');
 
-    await bridge.approveTool(remaining[0].approvalId, { action: 'reject' });
+    await bridge.approveTool(remaining[0].approvalId, { action: 'reject', epoch: remaining[0].epoch });
     assert.strictEqual(await second, false);
     assert.deepStrictEqual(await bridge.listPendingApprovals(), []);
   } finally {

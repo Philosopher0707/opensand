@@ -420,9 +420,18 @@ export class DesktopServer {
     // API: POST /api/approve
     if (pathname === '/api/approve' && req.method === 'POST') {
       const body = await this.readJsonBody(req);
-      const result = await this.bridge.approveTool(body.approvalId, body.decision);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(result));
+      // Accept the epoch either inside the decision or beside it; the decision's own wins.
+      const rawDecision = typeof body.decision === 'string' ? { action: body.decision } : (body.decision ?? {});
+      const decision = { ...rawDecision, epoch: rawDecision.epoch ?? body.epoch };
+      try {
+        const result = await this.bridge.approveTool(body.approvalId, decision);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err: any) {
+        if (err?.code !== 4001) throw err;
+        res.writeHead(409, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message, code: 4001, name: 'StaleEpochError' }));
+      }
       return;
     }
 

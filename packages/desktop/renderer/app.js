@@ -187,6 +187,7 @@ class OpenSandClient {
   async approveTool(approvalId, decision) {
     // Normalize string decisions from legacy callers to the {action} contract
     const payload = typeof decision === 'string' ? { action: decision } : decision;
+    // The epoch the request was created at must travel with the answer (missing => 4001).
     if (this.isElectron) {
       return window.opensand.approveTool(approvalId, payload);
     }
@@ -1143,7 +1144,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let turnBusy = false;
   let queuedQueries = [];
   let activeApprovalId = null;
-  const pendingApprovals = new Map(); // approvalId -> { toolName, args, reason }
+  const pendingApprovals = new Map(); // approvalId -> { toolName, args, reason, epoch }
   let currentAssistantMessage = null;
   let currentAssistantText = '';
   let currentAssistantThought = '';
@@ -5280,7 +5281,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const args = req.args || req.arguments || req.params || {};
       const reason = req.reason || d.reason || '';
 
-      pendingApprovals.set(approvalId, { toolName, args, reason });
+      pendingApprovals.set(approvalId, { toolName, args, reason, epoch: req.epoch ?? d.epoch });
       renderApprovalQueue();
 
       // Keep modal in sync for any test/legacy consumers
@@ -5366,7 +5367,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         b.onclick = async () => {
           pendingApprovals.delete(id);
           renderApprovalQueue();
-          await client.approveTool(id, { action });
+          await client.approveTool(id, { action, epoch: req.epoch });
         };
         actions.appendChild(b);
       };
@@ -5382,28 +5383,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Approvals (legacy modal buttons delegate to the queue entry)
   btnApproveOnce.onclick = async () => {
     if (!activeApprovalId) return;
+    const modalEpoch = pendingApprovals.get(activeApprovalId)?.epoch;
     pendingApprovals.delete(activeApprovalId);
     approvalModal.classList.add('hidden');
     renderApprovalQueue();
-    await client.approveTool(activeApprovalId, { action: 'approve_once' });
+    await client.approveTool(activeApprovalId, { action: 'approve_once', epoch: modalEpoch });
     activeApprovalId = null;
   };
 
   btnAlwaysAllow.onclick = async () => {
     if (!activeApprovalId) return;
+    const modalEpoch = pendingApprovals.get(activeApprovalId)?.epoch;
     pendingApprovals.delete(activeApprovalId);
     approvalModal.classList.add('hidden');
     renderApprovalQueue();
-    await client.approveTool(activeApprovalId, { action: 'always_allow' });
+    await client.approveTool(activeApprovalId, { action: 'always_allow', epoch: modalEpoch });
     activeApprovalId = null;
   };
 
   btnRejectTool.onclick = async () => {
     if (!activeApprovalId) return;
+    const modalEpoch = pendingApprovals.get(activeApprovalId)?.epoch;
     pendingApprovals.delete(activeApprovalId);
     approvalModal.classList.add('hidden');
     renderApprovalQueue();
-    await client.approveTool(activeApprovalId, { action: 'reject' });
+    await client.approveTool(activeApprovalId, { action: 'reject', epoch: modalEpoch });
     activeApprovalId = null;
   };
 
