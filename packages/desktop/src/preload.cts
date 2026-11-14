@@ -40,6 +40,8 @@ try {
         ipcRenderer.invoke('opensand:getMissionTimeline', { missionId }),
       getMissionReceipt: (missionId: string) =>
         ipcRenderer.invoke('opensand:getMissionReceipt', { missionId }),
+      getMissionFileDiff: (missionId: string, fileIndex: number) =>
+        ipcRenderer.invoke('opensand:getMissionFileDiff', { missionId, fileIndex }),
       loadSession: (sessionId: string) =>
         ipcRenderer.invoke('opensand:loadSession', { sessionId }),
       deleteSession: (sessionId: string) =>

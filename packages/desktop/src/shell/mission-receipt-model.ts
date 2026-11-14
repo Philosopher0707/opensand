@@ -69,6 +69,13 @@ function rangesText(ranges: unknown): string {
     .join(", ");
 }
 
+/** The receipt's changed-file list as the engine wrote it; the view and the diff lookup share one order. */
+export function changedEntries(receipt: any): Array<{ file: string; ranges?: unknown; deletedAt?: unknown }> {
+  return Array.isArray(receipt?.changed)
+    ? receipt.changed.filter((c: any) => c && typeof c.file === "string").slice(0, MAX_FILES)
+    : [];
+}
+
 /**
  * Event log → receipt for the display, or null while the mission has no receipt (still
  * running, or ended without one). The harness wrote the receipt; this only reshapes it.
@@ -90,12 +97,10 @@ export function buildReceiptView(events: RawReceiptEvent[]): ReceiptView | null 
   const ran = r.ran ?? {};
   const lastExit = ran.lastExitCode;
   const status = terminal.kind === "mission.stopped" ? "STOPPED" : r.status === "VERIFIED" ? "VERIFIED" : "FAILED";
-  const changed: ReceiptFile[] = Array.isArray(r.changed)
-    ? r.changed
-        .filter((c: any) => c && typeof c.file === "string")
-        .slice(0, MAX_FILES)
-        .map((c: any) => ({ file: displayPath(c.file), lines: rangesText(c.ranges) || (Array.isArray(c.deletedAt) && c.deletedAt.length ? "(deleted)" : "(renamed)") }))
-    : [];
+  const changed: ReceiptFile[] = changedEntries(r).map((c) => ({
+    file: displayPath(c.file),
+    lines: rangesText(c.ranges) || (Array.isArray(c.deletedAt) && c.deletedAt.length ? "(deleted)" : "(renamed)"),
+  }));
 
   return {
     status,
