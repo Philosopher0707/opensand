@@ -41,7 +41,7 @@ function contentChunk(text: string): unknown {
   return { choices: [{ delta: { content: text }, finish_reason: "stop" }] };
 }
 
-function toolCallChunk(command: string): unknown {
+function toolCallChunk(name: string, args: Record<string, unknown>): unknown {
   return {
     choices: [
       {
@@ -50,7 +50,7 @@ function toolCallChunk(command: string): unknown {
             {
               index: 0,
               id: "call_1",
-              function: { name: "exec_command", arguments: JSON.stringify({ command }) },
+              function: { name, arguments: JSON.stringify(args) },
             },
           ],
         },
@@ -61,8 +61,11 @@ function toolCallChunk(command: string): unknown {
 }
 
 /**
- * Mock LLM. The first request of a writing agent gets an exec_command that
- * appends its own line; every follow-up request answers with plain content.
+ * Mock LLM. The first request of a writing agent gets a write_file call that
+ * rewrites tracked.txt with its own line; every follow-up request answers with
+ * plain content. write_file is workspace-scoped and needs no OS sandbox, so the
+ * test does not depend on bubblewrap being installed (a bare Linux image has
+ * none, and exec_command then fails closed with SANDBOX_UNAVAILABLE).
  */
 function startMockLlm(): Promise<{ port: number; close: () => Promise<void> }> {
   const server = http.createServer((req, res) => {
@@ -81,18 +84,18 @@ function startMockLlm(): Promise<{ port: number; close: () => Promise<void> }> {
         .map((m) => String(m.content ?? ""))
         .join("\n");
 
-      let command: string | null = null;
+      let call: Record<string, unknown> | null = null;
       if (taskText.includes("agent A")) {
-        command = "printf 'change from agent A\\n' >> tracked.txt";
+        call = { path: "tracked.txt", content: "base content\nchange from agent A\n" };
       } else if (taskText.includes("agent B")) {
-        command = "printf 'change from agent B\\n' >> tracked.txt";
+        call = { path: "tracked.txt", content: "base content\nchange from agent B\n" };
       }
 
       res.writeHead(200, { "Content-Type": "text/event-stream" });
-      if (!command || hasToolResult) {
+      if (!call || hasToolResult) {
         res.end(sse(contentChunk("Subagent done.")) + "data: [DONE]\n\n");
       } else {
-        res.end(sse(toolCallChunk(command)) + "data: [DONE]\n\n");
+        res.end(sse(toolCallChunk("write_file", call)) + "data: [DONE]\n\n");
       }
     });
   });
@@ -136,14 +139,14 @@ test("delegate_to_agent isolates writing subagents in separate Git worktrees", a
     const agentA = await store.createAgent({
       name: "Agent A",
       role: "Software Engineer",
-      systemPrompt: "Append your line to tracked.txt.",
-      allowedTools: ["exec_command"],
+      systemPrompt: "Write your line to tracked.txt.",
+      allowedTools: ["write_file"],
     });
     const agentB = await store.createAgent({
       name: "Agent B",
       role: "Software Engineer",
-      systemPrompt: "Append your line to tracked.txt.",
-      allowedTools: ["exec_command"],
+      systemPrompt: "Write your line to tracked.txt.",
+      allowedTools: ["write_file"],
     });
     const reader = await store.createAgent({
       name: "Reader",
@@ -156,11 +159,11 @@ test("delegate_to_agent isolates writing subagents in separate Git worktrees", a
     const [resA, resB] = await Promise.all([
       daemon.executeTool("delegate_to_agent", {
         agent_id_or_name: agentA.id,
-        task: "Append the agent A line to tracked.txt",
+        task: "Write the agent A line to tracked.txt",
       }),
       daemon.executeTool("delegate_to_agent", {
         agent_id_or_name: agentB.id,
-        task: "Append the agent B line to tracked.txt",
+        task: "Write the agent B line to tracked.txt",
       }),
     ]);
 
@@ -241,7 +244,7 @@ test("delegate_to_agent isolates writing subagents in separate Git worktrees", a
       });
       const refused = await nonGitDaemon.executeTool("delegate_to_agent", {
         agent_id_or_name: agentA.id,
-        task: "Append the agent A line to tracked.txt",
+        task: "Write the agent A line to tracked.txt",
         isolation: "worktree",
       });
       assert.strictEqual(refused.status, "error");
