@@ -6,6 +6,7 @@ import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { withElectronLock } from "./electron-lock.js";
+import { EventLogWriter } from "@opensand/shared";
 import { hermeticElectronEnv, makeTempHome } from "./hermetic-env.js";
 
 type Renderer = "default" | "preact";
@@ -454,6 +455,53 @@ test("Real-Window Harness: Preact session delete removes row and disk directory"
     assert.strictEqual(fs.existsSync(deletedPath), false, "Deleted session directory must be removed from disk");
     const keepPath = path.join(tmpHome, ".opensand", "sessions", "del-keep");
     assert.strictEqual(fs.existsSync(keepPath), true, "Non-deleted session directory must remain on disk");
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test("Real-Window Harness: Preact mission list reads missions from the hermetic HOME via opensand:listMissions", async (t) => {
+  const built = fs.existsSync(path.join(pkgRoot, "dist", "renderer-next", "index.html"));
+  if (!built) {
+    t.skip("dist/renderer-next is not built (run pnpm build)");
+    return;
+  }
+
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-p5d-missions-"));
+  try {
+    const missionsDir = path.join(tmpHome, ".opensand", "missions");
+    const write = async (id: string, events: Array<[string, any, string]>) => {
+      const w = new EventLogWriter(path.join(missionsDir, id), { sessionId: id });
+      for (const [kind, data, ts] of events) await w.append({ kind: kind as any, data, ts });
+    };
+    await write("m-wait", [
+      ["mission.started", { title: "Ask the owner" }, "2026-11-14T09:00:00.000Z"],
+      ["mission.needs-you", {}, "2026-11-14T09:05:00.000Z"],
+    ]);
+    await write("m-done", [
+      ["mission.started", { title: "Fix the build" }, "2026-11-14T08:00:00.000Z"],
+      ["mission.verified", {}, "2026-11-14T08:30:00.000Z"],
+    ]);
+
+    const listScript = [
+      "(async () => {",
+      "  const read = () => Array.from(document.querySelectorAll('.mission-item')).map((e) => ({",
+      "    id: e.getAttribute('data-mission-id'),",
+      "    title: e.querySelector('.mission-title')?.textContent?.trim() || '',",
+      "    status: e.querySelector('.mission-status')?.textContent?.trim() || '',",
+      "  }));",
+      "  for (let i = 0; i < 40 && read().length < 2; i++) await new Promise((r) => setTimeout(r, 100));",
+      "  return { rows: read() };",
+      "})()",
+    ].join("\n");
+
+    const r = await runHarness("preact", { home: tmpHome, shotTag: "missions", interactScript: listScript, forceOverflow });
+    if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
+
+    assert.deepStrictEqual(r.interactResult.rows, [
+      { id: "m-wait", title: "Ask the owner", status: "Waiting for you" },
+      { id: "m-done", title: "Fix the build", status: "Done" },
+    ]);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
