@@ -7,6 +7,13 @@ import { classifyError } from '@opensand/coordinator';
 import { createWorkspaceSnapshot, revertWorkspaceSnapshot } from '@opensand/shared';
 import { runStateMigrations } from '@opensand/shared';
 import { DesktopIpcBridge } from '../src/ipc-bridge.js';
+import { closeThenRemove, type Closable } from './teardown.js';
+
+const live: Closable[] = [];
+const track = <T extends Closable>(c: T): T => {
+  live.push(c);
+  return c;
+};
 
 test('Chaos Suite: 20 automated resilience scenarios', async (t) => {
   // 1. Dead Ollama endpoint
@@ -88,12 +95,12 @@ test('Chaos Suite: 20 automated resilience scenarios', async (t) => {
   await t.test('13. Invalid sessionId format rejected with error', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-chaos-'));
     try {
-      const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+      const bridge = track(new DesktopIpcBridge({ baseDir: tmpDir }));
       await assert.rejects(async () => {
         await bridge.loadSession('../malicious');
       }, /Invalid sessionId/);
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      await closeThenRemove(live.splice(0), tmpDir);
     }
   });
 
@@ -101,11 +108,11 @@ test('Chaos Suite: 20 automated resilience scenarios', async (t) => {
   await t.test('14. Rename non-existent session returns false safely', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-chaos-'));
     try {
-      const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+      const bridge = track(new DesktopIpcBridge({ baseDir: tmpDir }));
       const ok = await bridge.renameSession('non-existent-session', 'Title');
       assert.strictEqual(ok, false);
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      await closeThenRemove(live.splice(0), tmpDir);
     }
   });
 
@@ -113,12 +120,12 @@ test('Chaos Suite: 20 automated resilience scenarios', async (t) => {
   await t.test('15. Export non-existent session throws expected error', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-chaos-'));
     try {
-      const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+      const bridge = track(new DesktopIpcBridge({ baseDir: tmpDir }));
       await assert.rejects(async () => {
         await bridge.exportSession('non-existent-session', 'json');
       });
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      await closeThenRemove(live.splice(0), tmpDir);
     }
   });
 
@@ -126,14 +133,14 @@ test('Chaos Suite: 20 automated resilience scenarios', async (t) => {
   await t.test('16. Corrupt session transcript JSONL handled gracefully', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-chaos-'));
     try {
-      const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+      const bridge = track(new DesktopIpcBridge({ baseDir: tmpDir }));
       const sessDir = path.join(tmpDir, 'sessions', 'corrupt-sess');
       fs.mkdirSync(sessDir, { recursive: true });
       fs.writeFileSync(path.join(sessDir, 'transcript.jsonl'), 'NOT_VALID_JSON\n{"role":"user","content":"ok"}\n');
       const loaded = await bridge.loadSession('corrupt-sess');
       assert.strictEqual(loaded.events.length, 1);
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      await closeThenRemove(live.splice(0), tmpDir);
     }
   });
 
@@ -141,12 +148,12 @@ test('Chaos Suite: 20 automated resilience scenarios', async (t) => {
   await t.test('17. Path traversal attempt in session delete rejected', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-chaos-'));
     try {
-      const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+      const bridge = track(new DesktopIpcBridge({ baseDir: tmpDir }));
       await assert.rejects(async () => {
         await bridge.deleteSession('../../etc');
       });
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      await closeThenRemove(live.splice(0), tmpDir);
     }
   });
 

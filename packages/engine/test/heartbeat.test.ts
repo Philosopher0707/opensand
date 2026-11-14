@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { EngineServer } from "../src/server.js";
 import type { EngineConnection } from "../src/types.js";
@@ -8,8 +8,18 @@ class FakeConnection implements EngineConnection {
   buffered = 0;
   dropped = false;
 
+  private readonly waiters: Array<() => void> = [];
+
   write(line: string): void {
     this.lines.push(line);
+    for (const wake of this.waiters.splice(0)) wake();
+  }
+
+  /** Resolves once a written frame satisfies `predicate`; no clock involved. */
+  async waitForFrame(predicate: (frame: Record<string, any>) => boolean): Promise<void> {
+    while (!this.frames().some(predicate)) {
+      await new Promise<void>((resolve) => this.waiters.push(resolve));
+    }
   }
 
   bufferedBytes(): number {
@@ -25,10 +35,14 @@ class FakeConnection implements EngineConnection {
   }
 }
 
-const settle = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+const beatsOf = (connection: FakeConnection) =>
+  connection.frames().filter((frame) => frame.event === "engine.Engine.heartbeat");
 
 describe("heartbeat and subscriptions", () => {
-  it("sends heartbeats to subscribers only and drops a consumer past 4 MiB", async () => {
+  it("sends heartbeats to subscribers only and drops a consumer past 4 MiB", async (t) => {
+    // The heartbeat interval is driven by hand: each tick() is exactly one beat, so nothing
+    // depends on how fast the machine runs.
+    t.mock.timers.enable({ apis: ["setInterval"] });
     const stderr: string[] = [];
     const subscriber = new FakeConnection();
     const bystander = new FakeConnection();
@@ -44,10 +58,13 @@ describe("heartbeat and subscriptions", () => {
       server.handleChunk(
         `${JSON.stringify({ id: "s", method: "inbox.Approvals.subscribe", params: {} })}\n`
       );
-      await settle(80);
+      await subscriber.waitForFrame((frame) => frame.id === "s");
 
-      const beats = subscriber.frames().filter((frame) => frame.event === "engine.Engine.heartbeat");
-      assert.ok(beats.length >= 2, `expected heartbeats, got ${JSON.stringify(subscriber.frames())}`);
+      t.mock.timers.tick(20);
+      t.mock.timers.tick(20);
+
+      const beats = beatsOf(subscriber);
+      assert.equal(beats.length, 2, `expected exactly two heartbeats, got ${JSON.stringify(subscriber.frames())}`);
       beats.forEach((beat, index) => {
         assert.equal(beat.seq, index + 1);
         assert.equal(typeof beat.data.timestamp, "string");
@@ -56,17 +73,14 @@ describe("heartbeat and subscriptions", () => {
       assert.equal(bystander.frames().length, 0, "non-subscribers receive no events");
 
       subscriber.buffered = 4 * 1024 * 1024 + 1;
-      const countBeforeDrop = beats.length;
-      await settle(80);
+      t.mock.timers.tick(20);
       assert.equal(subscriber.dropped, true);
       assert.match(stderr.join("\n"), /dropped slow consumer/);
 
       subscriber.buffered = 0;
-      await settle(60);
-      const afterDrop = subscriber
-        .frames()
-        .filter((frame) => frame.event === "engine.Engine.heartbeat").length;
-      assert.equal(afterDrop, countBeforeDrop, "a dropped connection receives no further events");
+      t.mock.timers.tick(20);
+      t.mock.timers.tick(20);
+      assert.equal(beatsOf(subscriber).length, 2, "a dropped connection receives no further events");
     } finally {
       await server.close();
     }
@@ -82,7 +96,7 @@ describe("heartbeat and subscriptions", () => {
     });
     server.start();
     server.handleChunk(`${JSON.stringify({ id: "s", method: "inbox.Approvals.subscribe", params: {} })}\n`);
-    await settle(40);
+    await connection.waitForFrame((frame) => frame.id === "s");
     assert.equal(connection.frames().filter((frame) => frame.event).length, 0);
     await server.close();
   });

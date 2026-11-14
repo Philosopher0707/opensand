@@ -1,3 +1,4 @@
+import { closeThenRemove, type Closable } from './teardown.js';
 import test from 'node:test';
 import * as assert from 'node:assert';
 import * as fs from 'node:fs';
@@ -194,7 +195,6 @@ test('DesktopServer - Routines and Rooms REST API Endpoints', async () => {
     assert.strictEqual(resDelRoom.statusCode, 200);
     assert.strictEqual(JSON.parse(resDelRoom.body).success, true);
   } finally {
-    server.getBridge().routineEngine.stop();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    await closeThenRemove([server.getBridge()], tmpDir);
   }
 });

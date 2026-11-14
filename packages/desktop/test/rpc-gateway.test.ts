@@ -1,3 +1,4 @@
+import { closeThenRemove, type Closable } from './teardown.js';
 import test from 'node:test';
 import * as assert from 'node:assert';
 import * as fs from 'node:fs';
@@ -58,8 +59,9 @@ class MockServerResponse extends EventEmitter {
 
 test('RpcGateway - registers custom RPC handlers and dispatches calls', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-rpc-test-'));
+  let bridge: DesktopIpcBridge | undefined;
   try {
-    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    bridge = new DesktopIpcBridge({ baseDir: tmpDir });
     const gateway = new RpcGateway(bridge);
 
     gateway.register('aiserver.v1.CustomService', 'Ping', async (req) => {
@@ -74,14 +76,15 @@ test('RpcGateway - registers custom RPC handlers and dispatches calls', async ()
     const result = await gateway.dispatch('aiserver.v1.CustomService', 'Ping', { text: 'hello' }, req as any, res as any);
     assert.deepStrictEqual(result, { pong: true, echo: 'hello' });
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    await closeThenRemove([bridge], tmpDir);
   }
 });
 
 test('createDefaultRpcGateway - handles GrokBotService and SandBoxService wire calls', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-rpc-test-'));
+  let bridge: DesktopIpcBridge | undefined;
   try {
-    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    bridge = new DesktopIpcBridge({ baseDir: tmpDir });
     const gateway = createDefaultRpcGateway(bridge);
 
     // 1. SandBoxService: WriteFile & ReadFile are disabled over HTTP RPC (403 permission_denied)
@@ -165,6 +168,6 @@ test('createDefaultRpcGateway - handles GrokBotService and SandBoxService wire c
     assert.strictEqual(resBadExec.statusCode, 403);
     assert.strictEqual(JSON.parse(resBadExec.body).code, 'permission_denied');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    await closeThenRemove([bridge], tmpDir);
   }
 });

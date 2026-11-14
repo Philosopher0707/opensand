@@ -1,3 +1,4 @@
+import { closeThenRemove, type Closable } from "./teardown.js";
 import test from "node:test";
 import assert from "node:assert";
 import fs from "node:fs";
@@ -8,9 +9,10 @@ import { EventLogReader, EVENT } from "@opensand/shared";
 
 test("DesktopIpcBridge - session rename, export, and search", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-session-test-"));
+  let bridge: DesktopIpcBridge | undefined;
 
   try {
-    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    bridge = new DesktopIpcBridge({ baseDir: tmpDir });
     const sessionsDir = path.join(tmpDir, "sessions");
     const sess1Dir = path.join(sessionsDir, "sess-1");
     const sess2Dir = path.join(sessionsDir, "sess-2");
@@ -109,6 +111,6 @@ test("DesktopIpcBridge - session rename, export, and search", async () => {
     assert.ok(exportedMd.includes("Hello world query"));
     assert.ok(exportedMd.includes("### Assistant"));
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    await closeThenRemove([bridge], tmpDir);
   }
 });
