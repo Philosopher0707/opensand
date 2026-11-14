@@ -2,7 +2,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as fs from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import { LocalExecDaemon, ToolDefinition } from "@opensand/local-exec-daemon";
+import { LocalExecDaemon, ToolDefinition, memoryWriteNeedsGate } from "@opensand/local-exec-daemon";
 import { AgentStore, AgentRecord } from "./agent-store.js";
 import { TaskStore, AgentTask, TaskStatus, TaskPriority } from "./agent-tasks.js";
 import { HabitExtractor } from "./habit-extractor.js";
@@ -799,6 +799,8 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         },
       },
     },
+    requiresGate: "memoryWrite",
+    gateWhen: (args) => memoryWriteNeedsGate("update_memory", args),
     handler: async (args) => {
       const action = args.action as "write" | "forget";
       const scope = (args.scope as MemoryScope) ?? "user";
@@ -817,6 +819,20 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         return JSON.stringify({
           status: "review_queued",
           message: `Team memory change queued for human-in-the-loop consensus review (ID: ${reviewItem.itemId}).`,
+          reviewItem,
+        }, null, 2);
+      }
+
+      if (action === "write" && tier === "profile") {
+        // Profile memory is instructions/identity that every later session trusts: a person approves it in
+        // the review queue, even when this call itself was approved.
+        const reviewItem = await memoryStore.addReviewItem({
+          proposedBy: args.agent_id ?? "agent",
+          change: { action, memoryType: tier, text: args.text, scope, agentId: args.agent_id },
+        });
+        return JSON.stringify({
+          status: "review_queued",
+          message: `Profile memory queued for human review (ID: ${reviewItem.itemId}); it is not stored until approved.`,
           reviewItem,
         }, null, 2);
       }
@@ -927,6 +943,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         },
       },
     },
+    requiresGate: "memoryWrite",
     handler: async (args) => {
       const result = await memoryStore.importMemoryText(
         args.text,

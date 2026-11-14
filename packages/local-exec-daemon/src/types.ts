@@ -41,6 +41,8 @@ export interface DaemonSupervisorHeartbeat {
 export interface PermissionGates {
   computerUseAllowed: boolean;
   deviceToolsAllowed: boolean;
+  /** Standing permission for model-driven writes to user/agent memory. Missing means denied: a write needs a human yes each time. */
+  memoryWriteAllowed?: boolean;
   /** Derived, read-only legacy view of `standingGrants` (`git *` -> `git`). Nothing decides from it; writes are ignored. Removed in P4f PR4. */
   standingAllowlist: string[];
   /** The `always` exec_command grants of one grants.json snapshot. Missing means none, never "allow". */

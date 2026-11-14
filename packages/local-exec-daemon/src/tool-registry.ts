@@ -31,6 +31,8 @@ import { PtySessionManager } from "./pty-manager.js";
 
 export interface ToolExecutionContext {
   permissionGates?: PermissionGates;
+  /** A person said yes to this very call (not a policy ALLOW). Only this opens the memoryWrite gate for a one-off write. */
+  humanApproved?: boolean;
   approvalGranted?: boolean;
   approvalId?: string;
   workspaceRoot?: string;
@@ -65,7 +67,19 @@ export type CustomToolHandler = (args: Record<string, any>, context?: ToolExecut
 export interface CustomToolRegistration {
   definition: ToolDefinition;
   handler: CustomToolHandler;
-  requiresGate?: "computerUse" | "deviceTools";
+  requiresGate?: "computerUse" | "deviceTools" | "memoryWrite";
+  /** memoryWrite only: the gate applies to a call when this returns true (default: every call). */
+  gateWhen?: (args: Record<string, any>) => boolean;
+}
+
+/**
+ * True when a call to this tool persists model-written memory that would come back in later sessions
+ * (user/agent scope write or forget, or an import). Team scope is already a review-queue proposal.
+ */
+export function memoryWriteNeedsGate(toolName: string, args: Record<string, any>): boolean {
+  if (toolName === "import_memory") return true;
+  if (toolName !== "update_memory") return false;
+  return (args.scope ?? "user") !== "team";
 }
 
 export const CORE_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
@@ -788,6 +802,24 @@ export class ToolRegistry {
               code: "PERMISSION_REQUIRED",
               reason: "approval_required",
               message: `Tool '${name}' requires deviceTools gate approval.`,
+            },
+          };
+        }
+
+        if (
+          custom.requiresGate === "memoryWrite" &&
+          (!custom.gateWhen || custom.gateWhen(args)) &&
+          !context?.permissionGates?.memoryWriteAllowed &&
+          !context?.humanApproved
+        ) {
+          // Fails closed: also when no gate snapshot was passed.
+          return {
+            status: "permission_pending",
+            approvalId: context?.approvalId ?? `req-${Date.now()}`,
+            error: {
+              code: "PERMISSION_REQUIRED",
+              reason: "approval_required",
+              message: `Tool '${name}' writes memory that persists into later sessions and requires human approval.`,
             },
           };
         }

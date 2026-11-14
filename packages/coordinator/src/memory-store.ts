@@ -23,6 +23,9 @@ export interface TeamReviewChange {
   text: string;
   metaJson?: string;
   path?: string;
+  /** Target scope of an approved write/forget. Missing means "team" (the original queue meaning). */
+  scope?: MemoryScope;
+  agentId?: string;
 }
 
 export interface TeamReviewItem {
@@ -366,14 +369,16 @@ export class MemoryStore {
       if (item.change.action === "write") {
         await this.addMemory({
           text: item.change.text,
-          scope: "team",
+          scope: item.change.scope ?? "team",
           tier: item.change.memoryType,
+          agentId: item.change.agentId,
         });
       } else if (item.change.action === "forget") {
-        const teamMemories = await this.listMemories({ scope: "team" });
-        const match = teamMemories.find((m) => m.text.toLowerCase() === item.change.text.toLowerCase());
+        const targetScope = item.change.scope ?? "team";
+        const scoped = await this.listMemories({ scope: targetScope, agentId: item.change.agentId });
+        const match = scoped.find((m) => m.text.toLowerCase() === item.change.text.toLowerCase());
         if (match) {
-          await this.forgetMemory(match.factId, "team");
+          await this.forgetMemory(match.factId, targetScope, item.change.agentId);
         }
       }
     }
