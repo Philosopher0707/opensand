@@ -1,4 +1,5 @@
 import * as os from "node:os";
+import { UNTRUSTED_SYSTEM_LINE } from "@opensand/shared";
 
 export interface SystemPromptContext {
   workspaceDir?: string;
@@ -45,6 +46,9 @@ watching the work happen in real time.
 - When a tool returns something surprising, say so in one line before deciding the
   next step.
 - Your final message is the answer; intermediate narration is the progress log.
+
+## Untrusted Content
+${UNTRUSTED_SYSTEM_LINE}
 
 ## Tools Available
 You have access to tools for terminal execution, file inspection, file editing, and subagent orchestration.

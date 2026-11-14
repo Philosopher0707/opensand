@@ -7,6 +7,7 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { wrapUntrusted } from '@opensand/shared';
 import { RoutineEngine } from './routine-engine.js';
 import { CompiledGraph } from './agent-graph.js';
 import { AgentCoordinator } from './coordinator.js';
@@ -175,8 +176,8 @@ export class WebhookGateway {
           throw new Error('AgentCoordinator is not wired to WebhookGateway');
         }
         const queryText = typeof payload === 'string'
-          ? payload
-          : `[Webhook Trigger: ${name}] Event: ${githubEvent || 'generic'}\nPayload:\n${JSON.stringify(payload, null, 2)}`;
+          ? `[Webhook Trigger: ${name}]\n${wrapUntrusted(payload, { source: 'webhook', origin: name })}`
+          : `[Webhook Trigger: ${name}] Event: ${githubEvent || 'generic'}\nPayload:\n${wrapUntrusted(JSON.stringify(payload, null, 2), { source: 'webhook', origin: name })}`;
         const agentResponse = await this.coordinator.runTurn(queryText);
         output = { response: agentResponse };
       }

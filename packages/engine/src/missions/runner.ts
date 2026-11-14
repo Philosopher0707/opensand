@@ -1,5 +1,6 @@
 import { START, END, StateGraph } from "@opensand/shared";
 import { EventLogWriter, EventLogReader } from "@opensand/shared";
+import { wrapUntrusted } from "@opensand/shared";
 import { MISSION_EVENT, FolderTrustStore, GrantsStore, resolveSandboxProfile } from "@opensand/shared";
 import type { EventFrame } from "@opensand/protocol";
 import { logDirFor, eventNameForKind } from "../reconnect.js";
@@ -246,7 +247,12 @@ export class MissionRunner {
         {
           goal: state.initialQuery,
           plan: state.plan,
-          failure: state.lastFailure,
+          failure: state.lastFailure
+            ? {
+                ...state.lastFailure,
+                outputTail: wrapUntrusted(state.lastFailure.outputTail, { source: "command", origin: "check" }),
+              }
+            : undefined,
         },
         {
           workspaceRoot: state.workspaceRoot,
@@ -374,7 +380,7 @@ export class MissionRunner {
           diff: diffStr,
           check: {
             exitCode: state.lastCheck?.exitCode ?? null,
-            outputTail: state.lastCheck?.outputTail ?? "",
+            outputTail: wrapUntrusted(state.lastCheck?.outputTail ?? "", { source: "command", origin: "check" }),
             passed: state.lastCheck?.passed ?? false,
           },
         },

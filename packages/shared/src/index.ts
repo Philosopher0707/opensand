@@ -11,3 +11,4 @@ export * from "./atomic-json.js";
 export * from "./folder-trust-types.js";
 export * from "./folder-trust-store.js";
 export * from "./folder-trust.js";
+export * from "./untrusted-text.js";

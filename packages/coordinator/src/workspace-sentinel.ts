@@ -4,6 +4,7 @@ import * as os from "node:os";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { EventEmitter } from "node:events";
+import { wrapUntrusted } from "@opensand/shared";
 
 const execAsync = promisify(exec);
 
@@ -51,7 +52,7 @@ A diagnostic check failed following changes to ${event.triggerFile}.
 Working directory: ${event.targetDir || process.cwd()}
 Failed Command: ${event.checkCommand || 'N/A'}
 Error details:
-${errorDetails}
+${wrapUntrusted(String(errorDetails ?? ""), { source: "command", origin: "sentinel" })}
 
 Please diagnose the issue, explain the cause, and use the available file editing tools (such as edit_file or write_file) or exec_command to fix the error. Once fixed, ensure the code builds or passes tests.`;
 
