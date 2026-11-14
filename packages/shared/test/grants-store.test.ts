@@ -31,16 +31,10 @@ test("GrantsStore - fresh store is epoch 1; addGrant keeps it, revokeGrant bumps
   }
 });
 
-test("GrantsStore - assertEpoch fails closed with StaleEpochError 4001", async () => {
-  const dir = tmp();
-  try {
-    const store = new GrantsStore({ baseDir: dir });
-    assert.strictEqual(await store.assertEpoch(1), 1);
-    for (const bad of [undefined, 0, 2, "1"]) {
-      await assert.rejects(store.assertEpoch(bad), (err: any) => err instanceof StaleEpochError && err.code === 4001);
-    }
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+test("GrantsStore - checkEpoch fails closed with StaleEpochError 4001", () => {
+  GrantsStore.checkEpoch(1, 1);
+  for (const bad of [undefined, 0, 2, "1"]) {
+    assert.throws(() => GrantsStore.checkEpoch(bad, 1), (err: any) => err instanceof StaleEpochError && err.code === 4001);
   }
 });
 

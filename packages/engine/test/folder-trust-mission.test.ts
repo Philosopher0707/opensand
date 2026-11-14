@@ -4,6 +4,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { EventLogReader, FolderTrustStore, GrantsStore, type SessionEvent } from "@opensand/shared";
+import { OspError } from "@opensand/protocol";
+import { FolderTrustGate } from "../src/missions/trust-gate.js";
 import { EngineServer } from "../src/server.js";
 import { ScriptedMissionAgent } from "../src/missions/agent.js";
 
@@ -280,6 +282,69 @@ describe("folder trust gate in the mission runner", () => {
       assert.equal((await h.events(viaLink)).filter((e) => e.kind === "mission.needs-you").length, 0);
     } finally {
       await h.close();
+    }
+  });
+});
+
+/**
+ * Deterministic interleaving, no sleeps: `land` runs exactly once, at the moment the store is about to
+ * take grants.lock (or, for the old lock-free assertEpoch, right after it returned). So a revoke lands
+ * after the caller has read the epoch and before its write.
+ */
+function landBeforeLock(grants: GrantsStore, land: () => Promise<unknown>): void {
+  let done = false;
+  const once = async () => {
+    if (done) return;
+    done = true;
+    await land();
+  };
+  const g = grants as any;
+  for (const name of ["underLock", "narrowAuthority", "withEpoch"]) {
+    const orig = g[name].bind(grants);
+    g[name] = async (...args: unknown[]) => {
+      await once();
+      return orig(...args);
+    };
+  }
+  if (typeof g.assertEpoch === "function") {
+    const orig = g.assertEpoch.bind(grants);
+    g.assertEpoch = async (...args: unknown[]) => {
+      const r = await orig(...args);
+      await once();
+      return r;
+    };
+  }
+}
+
+describe("folder trust gate: answer is atomic with the epoch check", () => {
+  it("a revoke landing mid-answer throws 4001, the mission stays parked, and the folder is not trusted", async () => {
+    const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "opensand-trust-gate-")));
+    try {
+      const ws = path.join(base, "ws");
+      fs.mkdirSync(ws);
+      const grants = new GrantsStore({ baseDir: base });
+      const other = new GrantsStore({ baseDir: base });
+      const store = new FolderTrustStore({ baseDir: base, grants });
+      const gate = new FolderTrustGate(store, grants);
+      const ac = new AbortController();
+      let epoch = -1;
+      const resolved = gate.resolve("m1", ws, ac.signal, async (q) => void (epoch = q.epoch), async () => undefined);
+      resolved.catch(() => undefined);
+      const deadline = Date.now() + 10_000;
+      while (epoch < 0 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+      assert.ok(epoch > 0, "question was asked");
+      const g = await other.addGrant({ tool: "exec_command", scope: "git *", lifetime: "always" });
+      landBeforeLock(grants, () => other.revokeGrant(g.id));
+      await assert.rejects(
+        gate.answer("m1", { level: "trusted", epoch }),
+        (err: any) => err instanceof OspError && err.code === 4001 && (err.data as { currentEpoch?: number })?.currentEpoch === epoch + 1,
+      );
+      assert.equal(await store.getLevel(ws), "prompt");
+      // still parked: a fresh-epoch answer is accepted and resolves the mission
+      await gate.answer("m1", { level: "trusted", epoch: epoch + 1 });
+      assert.deepEqual(await resolved, { level: "trusted", folder: ws });
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
     }
   });
 });

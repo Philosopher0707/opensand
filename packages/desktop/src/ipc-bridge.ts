@@ -807,8 +807,22 @@ export class DesktopIpcBridge extends EventEmitter {
     pending: { request: ToolApprovalRequest; resolveTrust?: (level: TrustLevel) => void },
     decision: ApprovalDecision,
   ): Promise<{ success: boolean }> {
+    const folder = String(pending.request.args.folder);
+    let level: TrustLevel;
     try {
-      await this.grantsStore.assertEpoch(decision?.epoch);
+      // The epoch check and the write share one grants.lock hold: a revoke cannot land between them.
+      if (decision.action === 'always_allow') {
+        await this.folderTrustStore.setLevel(folder, 'trusted', { requireEpoch: decision?.epoch });
+        level = 'trusted';
+      } else if (decision.action === 'approve_once') {
+        // Persists nothing; withEpoch still checks under the lock, and sessionTrusted.add follows with no await gap.
+        await this.grantsStore.withEpoch(decision?.epoch, () => undefined);
+        this.sessionTrusted.add(folder);
+        level = 'trusted';
+      } else {
+        await this.folderTrustStore.setLevel(folder, 'untrusted', { requireEpoch: decision?.epoch });
+        level = 'untrusted';
+      }
     } catch (err) {
       if (err instanceof StaleEpochError && err.requestEpoch !== undefined) {
         // A stale answer can never become valid: the question is dropped, nothing is persisted,
@@ -818,19 +832,7 @@ export class DesktopIpcBridge extends EventEmitter {
       }
       throw err;
     }
-    const folder = String(pending.request.args.folder);
     this.activeApprovals.delete(approvalId);
-    let level: TrustLevel;
-    if (decision.action === 'always_allow') {
-      await this.folderTrustStore.setLevel(folder, 'trusted');
-      level = 'trusted';
-    } else if (decision.action === 'approve_once') {
-      this.sessionTrusted.add(folder);
-      level = 'trusted';
-    } else {
-      await this.folderTrustStore.setLevel(folder, 'untrusted');
-      level = 'untrusted';
-    }
     pending.resolveTrust?.(level);
     return { success: true };
   }

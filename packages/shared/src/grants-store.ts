@@ -146,10 +146,13 @@ export class GrantsStore {
    * Run `sideEffect` and bump the epoch by exactly one, both under the grants lock.
    * The bumped epoch is persisted first, so a crash in between leaves a spurious bump (safe),
    * never a narrowed side effect with an old epoch. Returns the new epoch.
+   * With `requireEpoch` the epoch is checked (fail closed, StaleEpochError) after the lock is taken and
+   * before the bump, so a stale caller changes nothing.
    */
-  public async narrowAuthority(sideEffect: () => Promise<void>): Promise<number> {
+  public async narrowAuthority(sideEffect: () => Promise<void>, opts: { requireEpoch?: unknown } = {}): Promise<number> {
     return this.underLock(async () => {
       const content = await this.read();
+      if ("requireEpoch" in opts) GrantsStore.checkEpoch(opts.requireEpoch, content.epoch);
       content.epoch += 1;
       content.updatedAt = Date.now();
       content.updatedBy = this.updatedBy;
@@ -169,9 +172,7 @@ export class GrantsStore {
     const lock = await EventLogLock.acquire(this.baseDir, { timeoutMs: this.lockTimeoutMs, lockFileName: "grants.lock" });
     try {
       const content = await this.read();
-      if (typeof requestEpoch !== "number" || requestEpoch !== content.epoch) {
-        throw new StaleEpochError(typeof requestEpoch === "number" ? requestEpoch : undefined, content.epoch);
-      }
+      GrantsStore.checkEpoch(requestEpoch, content.epoch);
       const before = JSON.stringify(content);
       const result = await fn(content);
       if (JSON.stringify(content) !== before) {
@@ -185,15 +186,11 @@ export class GrantsStore {
     }
   }
 
-  /**
-   * Fail closed: a missing or non-matching epoch is refused with StaleEpochError (code 4001).
-   */
-  public async assertEpoch(requestEpoch: unknown): Promise<number> {
-    const current = (await this.read()).epoch;
-    if (typeof requestEpoch !== "number" || requestEpoch !== current) {
-      throw new StaleEpochError(typeof requestEpoch === "number" ? requestEpoch : undefined, current);
+  /** Fail closed: a missing or non-matching epoch throws StaleEpochError (code 4001). Call it only while holding grants.lock. */
+  public static checkEpoch(requestEpoch: unknown, currentEpoch: number): void {
+    if (typeof requestEpoch !== "number" || requestEpoch !== currentEpoch) {
+      throw new StaleEpochError(typeof requestEpoch === "number" ? requestEpoch : undefined, currentEpoch);
     }
-    return current;
   }
 }
 

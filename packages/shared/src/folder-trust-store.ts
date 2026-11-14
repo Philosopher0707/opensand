@@ -82,7 +82,7 @@ export class FolderTrustStore {
   public async setLevel(
     folder: string,
     level: TrustLevel,
-    opts: { updatedBy?: string } = {},
+    opts: { updatedBy?: string; requireEpoch?: unknown } = {},
   ): Promise<{ changed: boolean; narrowed: boolean; epoch: number }> {
     const key = FolderTrustStore.canonicalFolder(folder);
     const previous = await this.getLevel(key);
@@ -92,13 +92,16 @@ export class FolderTrustStore {
       content.folders[key] = { level, updatedAt: Date.now(), updatedBy: opts.updatedBy ?? this.updatedBy };
       await atomicWriteJson(this.baseDir, FILE_NAME, content);
     };
+    // `requireEpoch` present (even undefined) means: check it inside the same grants.lock hold as the write.
+    const gated = "requireEpoch" in opts;
     if (narrowed) {
-      const epoch = await this.grants.narrowAuthority(write);
+      const epoch = await this.grants.narrowAuthority(write, gated ? { requireEpoch: opts.requireEpoch } : {});
       return { changed: true, narrowed: true, epoch };
     }
     return this.grants.underLock(async () => {
       // Re-check under the lock; a concurrent writer may have changed it. Same level: no write.
       const epoch = (await this.grants.read()).epoch;
+      if (gated) GrantsStore.checkEpoch(opts.requireEpoch, epoch);
       if ((await this.getLevel(key)) === level) return { changed: false, narrowed: false, epoch };
       await write();
       return { changed: true, narrowed: false, epoch };

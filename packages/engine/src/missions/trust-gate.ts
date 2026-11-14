@@ -71,8 +71,10 @@ export class FolderTrustGate {
       throw new OspError(ErrorCodes.InvalidParams, "level must be trusted or untrusted");
     }
     try {
-      await this.grants.assertEpoch(input.epoch);
-      await this.store.setLevel(parked.folder, input.level, { updatedBy: "engine:inbox.Approvals.answer" });
+      await this.store.setLevel(parked.folder, input.level, {
+        updatedBy: "engine:inbox.Approvals.answer",
+        requireEpoch: input.epoch,
+      });
     } catch (err) {
       if (err instanceof StaleEpochError) {
         throw new OspError(err.code, err.message, { currentEpoch: err.currentEpoch });
