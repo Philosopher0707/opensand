@@ -165,3 +165,35 @@ export async function changedLinesBetweenTrees(
 
   return changedLines(res.stdout);
 }
+
+const SAFE_REF_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * Pins the mission's base and final trees under refs the engine owns, so `git gc` cannot prune
+ * them while the mission's diff is still viewable. Returns only the ids that exist and were pinned.
+ */
+export async function pinTrees(
+  workspaceRoot: string,
+  missionId: string,
+  baseTree?: string,
+  finalTree?: string
+): Promise<{ baseTree?: string; finalTree?: string }> {
+  const out: { baseTree?: string; finalTree?: string } = {};
+  if (!SAFE_REF_ID.test(missionId) || missionId.endsWith(".lock") || missionId.includes("..")) return out;
+  for (const [key, id, name] of [["baseTree", baseTree, "base"], ["finalTree", finalTree, "final"]] as const) {
+    if (!id || !/^[0-9a-f]{40,64}$/.test(id)) continue;
+    try {
+      const res = await runCommandOperation({
+        command: `git update-ref refs/opensand/missions/${missionId}/${name} ${id}`,
+        cwd: workspaceRoot,
+        workspaceRoot,
+        // A git hook exports these; the ref belongs in the workspace's own repository.
+        env: { GIT_DIR: undefined, GIT_INDEX_FILE: undefined, GIT_WORK_TREE: undefined } as any,
+      });
+      if (res.exitCode === 0) out[key] = id;
+    } catch {
+      // not a git repository or ref refused: the id is not recorded, the viewer shows "not available"
+    }
+  }
+  return out;
+}
