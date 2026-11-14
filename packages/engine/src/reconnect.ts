@@ -39,6 +39,8 @@ const MISSION_EVENT_MAP: Readonly<Record<string, EventName | string>> = {
   [MISSION_EVENT.VERIFIED]: "mission.Missions.completed",
   [MISSION_EVENT.FAILED]: "mission.Missions.failed",
   [MISSION_EVENT.STOPPED]: "mission.Missions.failed",
+  [MISSION_EVENT.NEEDS_YOU]: "mission.Missions.needsYou",
+  [MISSION_EVENT.ANSWERED]: "inbox.Approvals.resolved",
 };
 
 export function eventNameForKind(kind: string): EventName | string {

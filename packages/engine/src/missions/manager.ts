@@ -1,20 +1,32 @@
 import * as fsSync from "node:fs";
 import * as path from "node:path";
-import { EventLogReader } from "@opensand/shared";
+import { EventLogReader, FolderTrustStore, GrantsStore } from "@opensand/shared";
 import type { EventFrame } from "@opensand/protocol";
 import { logDirFor } from "../reconnect.js";
 import { MissionRunner, type MissionOptions } from "./runner.js";
 import { projectMission, type MissionProjection } from "./receipt.js";
 import type { MissionAgent } from "./agent.js";
+import { FolderTrustGate } from "./trust-gate.js";
 
 export class MissionRunnerManager {
   private activeRunners = new Map<string, MissionRunner>();
+  /** Each runner's full run (including its final event writes), so shutdown can wait for it. */
+  private settled = new Map<string, Promise<void>>();
 
   constructor(
     private readonly stateDir: string,
     private readonly agent: MissionAgent | undefined,
-    private readonly publishFrame: (frame: EventFrame) => void
-  ) {}
+    private readonly publishFrame: (frame: EventFrame) => void,
+    options: { baseDir?: string; gate?: FolderTrustGate; grants?: GrantsStore } = {}
+  ) {
+    this.grants = options.grants ?? new GrantsStore({ baseDir: options.baseDir ?? stateDir, updatedBy: "engine:missions" });
+    this.gate =
+      options.gate ??
+      new FolderTrustGate(new FolderTrustStore({ baseDir: this.grants.baseDir, grants: this.grants }), this.grants);
+  }
+
+  readonly gate: FolderTrustGate;
+  private readonly grants: GrantsStore;
 
   hasAgent(): boolean {
     return this.agent !== undefined;
@@ -32,18 +44,22 @@ export class MissionRunnerManager {
     const runner = new MissionRunner(options, {
       stateDir: this.stateDir,
       agent: this.agent,
+      gate: this.gate,
+      grants: this.grants,
       publish: this.publishFrame,
     });
 
     this.activeRunners.set(options.missionId, runner);
 
     // Run in background and clean up when finished
-    void runner
+    const run = runner
       .start()
       .catch(() => undefined)
       .finally(() => {
         this.activeRunners.delete(options.missionId);
+        this.settled.delete(options.missionId);
       });
+    this.settled.set(options.missionId, run);
   }
 
   async cancelMission(missionId: string): Promise<void> {
@@ -134,6 +150,8 @@ export class MissionRunnerManager {
     for (const runner of this.activeRunners.values()) {
       runner.cancel();
     }
+    // A cancelled runner still appends its STOPPED event; wait for that write before returning.
+    await Promise.allSettled([...this.settled.values()]);
     this.activeRunners.clear();
   }
 }

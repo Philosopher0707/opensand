@@ -14,6 +14,15 @@ export interface BuildBwrapArgsOptions {
   isDir?: (targetPath: string) => boolean;
 }
 
+/** The realpath of a path, or the path itself when it cannot be resolved. */
+function canonicalPath(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
 export function buildBwrapArgs(options: BuildBwrapArgsOptions): string[] {
   const {
     workspaceRoot,
@@ -55,6 +64,14 @@ export function buildBwrapArgs(options: BuildBwrapArgsOptions): string[] {
       args.push("--bind", tempDir, tempDir);
     }
     args.push("--bind", workspaceRoot, workspaceRoot);
+
+    // The workspace must also be reachable by its canonical path: a mission on a symlinked
+    // folder addresses the workspace by its realpath, and the macOS profile allows writes at
+    // both paths. Same directory, so this grants nothing new.
+    const canonical = canonicalPath(workspaceRoot);
+    if (canonical !== workspaceRoot) {
+      args.push("--bind", canonical, canonical);
+    }
 
     const cachePaths = [
       path.join(homeDir, ".npm"),

@@ -1,5 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { buildBwrapArgs } from "../src/sandbox/linux-bwrap.js";
 import { resolveSandboxLauncher } from "../src/sandbox/launcher.js";
@@ -53,6 +55,25 @@ describe("buildBwrapArgs", () => {
     assert.ok(indexOfTriple(args, "--ro-bind", "/", "/") >= 0, "root must be read-only");
     assert.ok(indexOfTriple(args, "--bind", WS, WS) >= 0, "workspace must be bound writable");
     assert.ok(indexOfTriple(args, "--ro-bind", "/", "/") < indexOfTriple(args, "--bind", WS, WS));
+  });
+
+  it("workspace-write also binds the canonical path of a symlinked workspace root", () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), "bwrap-canonical-"));
+    try {
+      const target = path.join(base, "target");
+      const link = path.join(base, "link");
+      fs.mkdirSync(target);
+      fs.symlinkSync(target, link);
+      const canonical = fs.realpathSync(target);
+      const args = buildBwrapArgs({ workspaceRoot: link, homeDir: HOME, exists: () => false, isDir: () => false });
+      assert.ok(indexOfTriple(args, "--bind", link, link) >= 0, "the given path must be bound");
+      assert.ok(
+        indexOfTriple(args, "--bind", canonical, canonical) >= 0,
+        "the canonical path must be bound too: a command may address the workspace by its realpath",
+      );
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
   });
 
   it("read-only has no writable workspace bind", () => {

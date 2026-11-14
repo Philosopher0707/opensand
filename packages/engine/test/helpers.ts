@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import * as fsSync from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { FolderTrustStore } from "@opensand/shared";
 
 export const binPath = new URL("../src/bin.js", import.meta.url).pathname;
 
@@ -103,4 +104,13 @@ export class EngineProcess {
     this.child.kill(signal);
     return this.exited;
   }
+}
+
+/** Mark `folder` trusted in the engine's state dir, so a mission there is not held on the trust question. */
+export function trustFolder(stateDir: string, folder: string): void {
+  const key = FolderTrustStore.canonicalFolder(folder);
+  fsSync.writeFileSync(
+    path.join(stateDir, "folder-trust.json"),
+    JSON.stringify({ version: 1, folders: { [key]: { level: "trusted", updatedAt: Date.now(), updatedBy: "test" } } }),
+  );
 }

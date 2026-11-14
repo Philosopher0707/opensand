@@ -215,6 +215,10 @@ export function projectMission(events: SessionEvent[]): MissionProjection {
     if (ev.kind === "mission.started") {
       title = ev.data?.title ?? title;
       status = "running";
+    } else if (ev.kind === "mission.needs-you") {
+      status = "needs-you";
+    } else if (ev.kind === "mission.answered") {
+      status = "running";
     } else if (ev.kind === "node.started") {
       currentNode = ev.data?.node ?? currentNode;
       if (ev.data?.node === "repair") {

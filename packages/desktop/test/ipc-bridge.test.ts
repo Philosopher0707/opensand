@@ -195,6 +195,8 @@ test('DesktopIpcBridge - preserves active coordinator and emits session_started 
 
   try {
     const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    // This test builds coordinators in process.cwd(); trust it in the temp store so the gate does not park.
+    await bridge.folderTrustStore.setLevel(process.cwd(), 'trusted');
 
     let startedSessionId: string | null = null;
     bridge.on('event', (evt) => {
@@ -475,6 +477,8 @@ test('DesktopIpcBridge - coordinator map is keyed by (sessionId, agentId)', asyn
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-coordmap-'));
   try {
     const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    // This test builds coordinators in process.cwd(); trust it in the temp store so the gate does not park.
+    await bridge.folderTrustStore.setLevel(process.cwd(), 'trusted');
     bridge.updateSettings({ autoApprove: true, model: 'test-coordmap-model' });
     await new Promise((r) => setTimeout(r, 10));
 
@@ -518,6 +522,8 @@ test('DesktopIpcBridge - settings change drops cached per-session coordinators',
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-invalidate-'));
   try {
     const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    // This test builds coordinators in process.cwd(); trust it in the temp store so the gate does not park.
+    await bridge.folderTrustStore.setLevel(process.cwd(), 'trusted');
     await new Promise((r) => setTimeout(r, 10));
 
     const before = await bridge.createSessionCoordinator('sess-A', undefined);

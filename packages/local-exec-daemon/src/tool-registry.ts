@@ -386,6 +386,21 @@ export const PTY_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
   },
 };
 
+const PROFILE_RANK: Record<SandboxProfileType, number> = { "read-only": 0, "workspace-write": 1, full: 2 };
+
+/**
+ * A tool call may narrow the turn's sandbox profile, never widen it: when the turn has one,
+ * the result is the lower of the two. With no turn profile the call's own value applies.
+ */
+export function clampSandboxProfile(
+  requested: SandboxProfileType | undefined,
+  contextProfile: SandboxProfileType | undefined,
+): SandboxProfileType | undefined {
+  if (contextProfile === undefined) return requested;
+  if (requested === undefined) return contextProfile;
+  return PROFILE_RANK[requested] < PROFILE_RANK[contextProfile] ? requested : contextProfile;
+}
+
 export interface ToolRegistryOptions {
   ptyManager?: PtySessionManager;
   enablePty?: boolean;
@@ -517,7 +532,7 @@ export class ToolRegistry {
             ...input,
             cwd: input.cwd ?? context?.workspaceRoot,
             workspaceRoot: input.workspaceRoot ?? context?.workspaceRoot,
-            sandboxProfile: input.sandboxProfile ?? context?.sandboxProfile,
+            sandboxProfile: clampSandboxProfile(input.sandboxProfile, context?.sandboxProfile),
           },
           { signal: context?.signal }
         );
@@ -699,7 +714,7 @@ export class ToolRegistry {
         const session = await this.ptyManager.createSession({
           ...input,
           workspaceRoot,
-          sandboxProfile: input.sandboxProfile ?? context?.sandboxProfile,
+          sandboxProfile: clampSandboxProfile(input.sandboxProfile, context?.sandboxProfile),
         });
         return {
           status: "ok",
