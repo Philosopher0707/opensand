@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import { unwrapUntrusted } from "@opensand/shared";
 import { LocalExecDaemon } from "@opensand/local-exec-daemon";
 import { UniversalLLMClient } from "../src/llm-client.js";
 import { AgentCoordinator } from "../src/coordinator.js";
@@ -856,7 +857,7 @@ describe("AgentCoordinator Policy Boundary", () => {
     assert.equal(final, "Done.");
     const toolMsg = coordinator.history.find((m) => m.role === "tool");
     assert.ok(toolMsg);
-    const result = JSON.parse(String(toolMsg.content));
+    const result = JSON.parse(unwrapUntrusted(String(toolMsg.content)));
     assert.equal(result.status, "error");
     assert.equal(result.error.code, "POLICY_DENIED");
     assert.ok(result.error.message.includes("Policy Boundary Violation"));
@@ -887,7 +888,7 @@ describe("AgentCoordinator Policy Boundary", () => {
     await coordinator.runTurn("write the file");
     assert.equal(prompted, true, "approval was requested");
     const toolMsg = coordinator.history.find((m) => m.role === "tool");
-    const result = JSON.parse(String(toolMsg?.content));
+    const result = JSON.parse(unwrapUntrusted(String(toolMsg?.content)));
     assert.equal(result.error.code, "PERMISSION_DENIED");
     assert.equal(result.error.reason, "user_rejected");
 
@@ -913,7 +914,7 @@ describe("AgentCoordinator Policy Boundary", () => {
     await coordinator.runTurn("list the dir");
     assert.equal(prompted, false);
     const toolMsg = coordinator.history.find((m) => m.role === "tool");
-    const result = JSON.parse(String(toolMsg?.content));
+    const result = JSON.parse(unwrapUntrusted(String(toolMsg?.content)));
     assert.ok(Array.isArray(result.entries));
   });
 });

@@ -6,6 +6,7 @@ import {
   RevertResult,
 } from "@opensand/shared";
 import { LocalExecDaemon, ToolExecutionResult, PolicyDecision, ToolDefinition } from "@opensand/local-exec-daemon";
+import { wrapUntrusted, untrustedSourceFor } from "@opensand/shared";
 import { isParallelSafeTool } from "./tool-parallelism.js";
 import { UniversalLLMClient, ConsolidatedAssistantResponse } from "./llm-client.js";
 import {
@@ -566,11 +567,18 @@ export class AgentCoordinator {
       ? JSON.stringify(execResult)
       : JSON.stringify(execResult.output ?? execResult.error);
     const safeContent = this.vaultStore ? this.vaultStore.redactText(rawContent) : rawContent;
-    const boundedContent = truncateToolOutput(safeContent, {
-      maxCharacters: 16000,
-      headCharacters: 10000,
-      tailCharacters: 5000,
-    });
+    // Harness-authored blocked results stay raw; everything a tool produced is
+    // escaped, capped and wrapped as data (design §4.6).
+    const boundedContent = isBlocked
+      ? truncateToolOutput(safeContent, {
+          maxCharacters: 16000,
+          headCharacters: 10000,
+          tailCharacters: 5000,
+        })
+      : wrapUntrusted(safeContent, {
+          source: untrustedSourceFor(tc.function.name),
+          origin: tc.function.name,
+        });
     this.emit({ type: "tool_call_completed", toolCall: tc as any, result: execResult });
     const toolMessage: ChatMessage = { role: "tool", tool_call_id: tc.id, content: boundedContent };
     this.messages.push(toolMessage);
