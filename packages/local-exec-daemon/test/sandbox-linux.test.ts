@@ -123,6 +123,29 @@ describe("bubblewrap containment", { skip: skip || false }, () => {
     }
   });
 
+  it("a workspace reached through a symlink is writable by its canonical path", async () => {
+    // Under /tmp on purpose: the sandbox mounts a private tmpfs over /tmp, so the canonical
+    // path of the workspace is not there unless the profile binds it. A mission on a symlinked
+    // folder addresses the workspace by its realpath.
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), "sandbox_linux_link_"));
+    const target = path.join(base, "target");
+    const link = path.join(base, "link");
+    try {
+      fs.mkdirSync(target, { recursive: true });
+      fs.symlinkSync(target, link);
+      const res = await runCommandOperation({
+        command: `echo ok > "${path.join(target, "by-canonical-path.txt")}"`,
+        cwd: link,
+        workspaceRoot: link,
+        sandboxProfile: "workspace-write",
+      });
+      assert.equal(res.exitCode, 0, res.stderr);
+      assert.ok(fs.existsSync(path.join(target, "by-canonical-path.txt")));
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
   it("read-only profile refuses a write inside the workspace", async () => {
     const fx = makeFixture();
     try {
