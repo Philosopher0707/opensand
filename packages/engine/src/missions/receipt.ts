@@ -1,4 +1,5 @@
 import type { SessionEvent } from "@opensand/shared";
+import { nextMissionStatus } from "@opensand/shared";
 import type { MissionStatus } from "@opensand/shared";
 import type { ChangesResult, FileChanges } from "./workspace-diff.js";
 
@@ -212,13 +213,9 @@ export function projectMission(events: SessionEvent[]): MissionProjection {
     updatedAt = ev.ts;
     if (ev.sessionId) missionId = ev.sessionId;
 
+    status = nextMissionStatus(status, ev.kind);
     if (ev.kind === "mission.started") {
       title = ev.data?.title ?? title;
-      status = "running";
-    } else if (ev.kind === "mission.needs-you") {
-      status = "needs-you";
-    } else if (ev.kind === "mission.answered") {
-      status = "running";
     } else if (ev.kind === "node.started") {
       currentNode = ev.data?.node ?? currentNode;
       if (ev.data?.node === "repair") {
@@ -230,12 +227,6 @@ export function projectMission(events: SessionEvent[]): MissionProjection {
       }
     } else if (ev.kind === "check.completed") {
       checks.push(ev.data);
-    } else if (ev.kind === "mission.verified") {
-      status = "verified";
-    } else if (ev.kind === "mission.failed") {
-      status = "failed";
-    } else if (ev.kind === "mission.stopped") {
-      status = "stopped";
     }
   }
 

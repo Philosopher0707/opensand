@@ -1,4 +1,6 @@
-export type MissionStatus = "planned" | "running" | "needs-you" | "verified" | "failed" | "stopped";
+import type { MissionStatus } from "@opensand/shared";
+
+export type { MissionStatus };
 
 export interface MissionSummary {
   missionId: string;
