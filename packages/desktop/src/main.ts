@@ -8,6 +8,7 @@ import { DesktopServer } from './desktop-server.js';
 import { DesktopTrayManager } from './tray.js';
 import { listMissionSummaries } from './shell/mission-list-source.js';
 import { readMissionTimeline } from './shell/mission-timeline-source.js';
+import { readMissionReceipt } from './shell/mission-receipt-source.js';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 
 export class DesktopApp {
@@ -211,6 +212,11 @@ export class DesktopApp {
     // Read-only: one mission's event log, trimmed to the fields the timeline shows.
     ipcMain.handle('opensand:getMissionTimeline', async (_: any, { missionId }: { missionId: string }) => {
       return readMissionTimeline(path.join(os.homedir(), '.opensand'), missionId);
+    });
+
+    // Read-only: the ended mission's receipt as display fields, or null while it has none.
+    ipcMain.handle('opensand:getMissionReceipt', async (_: any, { missionId }: { missionId: string }) => {
+      return readMissionReceipt(path.join(os.homedir(), '.opensand'), missionId);
     });
 
     ipcMain.handle('opensand:loadSession', async (_: any, { sessionId }: { sessionId: string }) => {

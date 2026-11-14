@@ -6,6 +6,7 @@ import type { ShellData } from "./data";
 import { ChatList } from "./views/ChatList";
 import { MissionList } from "./views/MissionList";
 import { MissionTimeline } from "./views/MissionTimeline";
+import { MissionReceipt } from "./views/MissionReceipt";
 
 export interface ShellProps {
   data: ShellData;
@@ -46,7 +47,10 @@ export function Shell({ data }: ShellProps) {
         </header>
         <section class="shell-body" aria-live="polite">
           {missionId ? (
-            <MissionTimeline data={data} missionId={missionId} />
+            <div class="mission-main">
+              <MissionTimeline data={data} missionId={missionId} />
+              <MissionReceipt data={data} missionId={missionId} />
+            </div>
           ) : (
             <p class="shell-empty">Views are not ported yet. Unset OPENSAND_RENDERER to use the default renderer.</p>
           )}

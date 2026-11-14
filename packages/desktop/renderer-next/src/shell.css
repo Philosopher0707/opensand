@@ -32,3 +32,16 @@
 .timeline-bad { border-left-color: #dc2626; }
 .timeline-attention { border-left-color: #d97706; }
 @media (max-width: 600px) { .timeline-step { grid-template-columns: 1fr auto; } .timeline-kind { grid-column: 1 / -1; } }
+.mission-receipt { margin: 4px 16px 16px; padding: 12px 16px; max-width: 728px; align-self: flex-start; border: 1px solid var(--border, rgba(128,128,128,.35)); border-left-width: 3px; border-radius: 6px; font-size: 13px; }
+.mission-receipt.receipt-ok { border-left-color: #16a34a; }
+.mission-receipt.receipt-bad { border-left-color: #dc2626; }
+.mission-receipt.receipt-attention { border-left-color: #d97706; }
+.mission-receipt-error { margin: 4px 16px 16px; }
+.receipt-rows { display: grid; grid-template-columns: 80px 1fr; gap: 6px 12px; margin: 0; }
+.receipt-rows dt { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); padding-top: 2px; }
+.receipt-rows dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.receipt-files { list-style: none; margin: 4px 0 0; padding: 0; }
+.receipt-files li { display: flex; gap: 10px; justify-content: space-between; font-size: 12px; }
+.receipt-lines, .receipt-muted { color: var(--text-muted); font-size: 12px; }
+@media (max-width: 600px) { .receipt-rows { grid-template-columns: 1fr; gap: 0; } .receipt-rows dd { margin-bottom: 8px; } }
+.mission-main { align-self: flex-start; display: flex; flex-direction: column; width: 100%; min-width: 0; }

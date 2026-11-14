@@ -562,6 +562,69 @@ test("Real-Window Harness: Preact selecting a mission shows its timeline from op
   }
 });
 
+test("Real-Window Harness: Preact finished mission shows its receipt; a running mission shows none", async (t) => {
+  const built = fs.existsSync(path.join(pkgRoot, "dist", "renderer-next", "index.html"));
+  if (!built) {
+    t.skip("dist/renderer-next is not built (run pnpm build)");
+    return;
+  }
+
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-p5-receipt-"));
+  try {
+    const receipt = {
+      status: "VERIFIED",
+      summary: "check exited 0 (2 runs: 1 failed, passed at 2026-11-14T09:01:20.000Z)",
+      changed: [{ file: "packages/engine/src/missions/receipt.ts", ranges: [[46, 171]] }, { file: "/Users/someone/private/leak.ts", ranges: [[1, 1]] }],
+      changedAvailable: true,
+      ran: { total: 2, failed: 1, lastExitCode: 0, runs: [] },
+      notDone: "Windows path handling",
+    };
+    const done = new EventLogWriter(path.join(tmpHome, ".opensand", "missions", "m-done"), { sessionId: "m-done" });
+    await done.append({ kind: "mission.started" as any, data: { title: "Finished mission" }, ts: "2026-11-14T09:00:00.000Z" });
+    await done.append({ kind: "mission.verified" as any, data: { receipt }, ts: "2026-11-14T09:07:12.000Z" });
+    const running = new EventLogWriter(path.join(tmpHome, ".opensand", "missions", "m-run"), { sessionId: "m-run" });
+    await running.append({ kind: "mission.started" as any, data: { title: "Running mission" }, ts: "2026-11-14T09:00:00.000Z" });
+
+    const script = [
+      "(async () => {",
+      "  const wait = async (fn) => { for (let i = 0; i < 50 && !fn(); i++) await new Promise((r) => setTimeout(r, 100)); };",
+      "  const items = () => Array.from(document.querySelectorAll('.mission-item'));",
+      "  await wait(() => items().length >= 2);",
+      "  const pick = (label) => items().find((e) => e.textContent.includes(label));",
+      "  pick('Running mission').click();",
+      "  await wait(() => document.querySelector('.timeline-step'));",
+      "  await new Promise((r) => setTimeout(r, 500));",
+      "  const runningReceipt = !!document.querySelector('.mission-receipt');",
+      "  const runningAlert = !!document.querySelector('[role=alert]');",
+      "  pick('Finished mission').click();",
+      "  await wait(() => document.querySelector('.mission-receipt'));",
+      "  const q = (s) => document.querySelector(s)?.textContent || '';",
+      "  return { runningReceipt, runningAlert, status: document.querySelector('.mission-receipt')?.getAttribute('data-receipt-status'),",
+      "    outcome: q('.receipt-outcome'), checks: q('.receipt-checks'), changed: q('.receipt-changed'), time: q('.receipt-time'), open: q('.receipt-open'),",
+      "    files: Array.from(document.querySelectorAll('.receipt-files code')).map((e) => e.textContent),",
+      "    noOverflow: document.documentElement.scrollWidth <= window.innerWidth };",
+      "})()",
+    ].join("\n");
+
+    const r = await runHarness("preact", { home: tmpHome, shotTag: "receipt", interactScript: script, forceOverflow });
+    if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
+
+    const x = r.interactResult;
+    assert.strictEqual(x.runningReceipt, false, "a mission with no receipt shows none");
+    assert.strictEqual(x.runningAlert, false, "and no error");
+    assert.strictEqual(x.status, "VERIFIED");
+    assert.match(x.outcome, /VERIFIED/);
+    assert.match(x.checks, /2 commands, 1 non-zero/);
+    assert.match(x.changed, /2 files/);
+    assert.deepStrictEqual(x.files, ["packages/engine/src/missions/receipt.ts", "…/private/leak.ts"]);
+    assert.strictEqual(x.time, "7m 12s");
+    assert.match(x.open, /Windows path handling/);
+    assert.strictEqual(x.noOverflow, true);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test("Real-Window Harness detects forced horizontal overflow", async (t) => {
   const r = await runHarness("default", { forceOverflow: true });
   if (r.skipped) { t.skip(r.skipped); return; }
