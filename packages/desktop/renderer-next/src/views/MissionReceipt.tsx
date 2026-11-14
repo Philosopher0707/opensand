@@ -2,6 +2,8 @@ import { useState, useEffect } from "preact/hooks";
 import type { ShellData } from "../data";
 import { formatChanged, formatChecks, formatDuration, type ReceiptView } from "../../../src/shell/mission-receipt-model";
 
+import { MissionDiff } from "./MissionDiff";
+
 export interface MissionReceiptProps {
   data: ShellData;
   missionId: string;
@@ -17,10 +19,12 @@ const TONE = { VERIFIED: "ok", FAILED: "bad", STOPPED: "attention" } as const;
 export function MissionReceipt({ data, missionId }: MissionReceiptProps) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const [openFile, setOpenFile] = useState<number | null>(null);
 
   useEffect(() => {
     let mounted = true;
     setLoad({ state: "loading" });
+    setOpenFile(null);
     data
       .getMissionReceipt(missionId)
       .then((receipt) => {
@@ -58,8 +62,18 @@ export function MissionReceipt({ data, missionId }: MissionReceiptProps) {
           {formatChanged(r)}
           {r.changed.length > 0 && (
             <ul class="receipt-files">
-              {r.changed.map((f) => (
-                <li key={f.file}><code>{f.file}</code>{f.lines ? <span class="receipt-lines">{f.lines}</span> : null}</li>
+              {r.changed.map((f, i) => (
+                <li key={f.file} class="receipt-file">
+                  <button
+                    type="button"
+                    class="receipt-file-btn"
+                    aria-expanded={openFile === i}
+                    onClick={() => setOpenFile(openFile === i ? null : i)}
+                  >
+                    <code>{f.file}</code>{f.lines ? <span class="receipt-lines">{f.lines}</span> : null}
+                  </button>
+                  {openFile === i && <MissionDiff data={data} missionId={missionId} fileIndex={i} />}
+                </li>
               ))}
             </ul>
           )}

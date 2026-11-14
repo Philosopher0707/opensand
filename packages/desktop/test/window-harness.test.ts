@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { withElectronLock } from "./electron-lock.js";
 import { EventLogWriter } from "@opensand/shared";
 import { hermeticElectronEnv, makeTempHome } from "./hermetic-env.js";
+import { makeRepoWithChange } from "./git-fixture.js";
 
 type Renderer = "default" | "preact";
 
@@ -620,6 +621,65 @@ test("Real-Window Harness: Preact finished mission shows its receipt; a running 
     assert.strictEqual(x.time, "7m 12s");
     assert.match(x.open, /Windows path handling/);
     assert.strictEqual(x.noOverflow, true);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test("Real-Window Harness: clicking a changed file shows its hunks; a log without tree ids says not available", async (t) => {
+  const built = fs.existsSync(path.join(pkgRoot, "dist", "renderer-next", "index.html"));
+  if (!built) {
+    t.skip("dist/renderer-next is not built (run pnpm build)");
+    return;
+  }
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-p5-diff-"));
+  try {
+    const repo = path.join(tmpHome, "repo");
+    const { baseTree, finalTree, file } = makeRepoWithChange(repo);
+    const receipt = { status: "VERIFIED", summary: "ok", changed: [{ file, ranges: [[2, 4]] }], changedAvailable: true, ran: { total: 1, failed: 0, lastExitCode: 0, runs: [] } };
+    const mk = async (id: string, title: string, terminal: any) => {
+      const w = new EventLogWriter(path.join(tmpHome, ".opensand", "missions", id), { sessionId: id });
+      await w.append({ kind: "mission.started" as any, data: { title, workspaceRoot: repo }, ts: "2026-11-14T09:00:00.000Z" });
+      await w.append({ kind: "mission.verified" as any, data: terminal, ts: "2026-11-14T09:01:00.000Z" });
+    };
+    await mk("m-new", "With trees", { receipt, baseTree, finalTree });
+    await mk("m-old", "Old log", { receipt });
+
+    const script = [
+      "(async () => {",
+      "  const wait = async (fn) => { for (let i = 0; i < 50 && !fn(); i++) await new Promise((r) => setTimeout(r, 100)); };",
+      "  const items = () => Array.from(document.querySelectorAll('.mission-item'));",
+      "  await wait(() => items().length >= 2);",
+      "  const pick = (label) => items().find((e) => e.textContent.includes(label));",
+      "  pick('Old log').click();",
+      "  await new Promise((r) => setTimeout(r, 600));",
+      "  await wait(() => document.querySelector('.receipt-file-btn'));",
+      "  document.querySelector('.receipt-file-btn').click();",
+      "  await wait(() => document.querySelector('.diff-note[data-diff-state]'));",
+      "  const oldNote = document.querySelector('.diff-note')?.textContent || '';",
+      "  const oldHunks = !!document.querySelector('.mission-diff');",
+      "  pick('With trees').click();",
+      "  await new Promise((r) => setTimeout(r, 600));",
+      "  await wait(() => document.querySelector('.receipt-file-btn'));",
+      "  document.querySelector('.receipt-file-btn').click();",
+      "  await wait(() => document.querySelector('.mission-diff'));",
+      "  const hunks = document.querySelector('.mission-diff')?.textContent || '';",
+      "  const added = Array.from(document.querySelectorAll('.diff-add .diff-text')).map((e) => e.textContent);",
+      "  const expanded = document.querySelector('.receipt-file-btn').getAttribute('aria-expanded');",
+      "  const noOverflow = document.documentElement.scrollWidth <= window.innerWidth;",
+      "  return { hunks, added, expanded, noOverflow, oldNote, oldHunks };",
+      "})()",
+    ].join("\n");
+
+    const r = await runHarness("preact", { home: tmpHome, shotTag: "diff", interactScript: script, forceOverflow });
+    if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
+    const x = r.interactResult;
+    assert.match(x.hunks, /@@ -1,3 \+1,4 @@/);
+    assert.deepStrictEqual(x.added, ["TWO changed", "four"]);
+    assert.strictEqual(x.expanded, "true");
+    assert.strictEqual(x.noOverflow, true);
+    assert.match(x.oldNote, /no longer available/);
+    assert.strictEqual(x.oldHunks, false);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
