@@ -3,7 +3,7 @@ import * as assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { StaleEpochError } from '@opensand/shared';
+import { StaleEpochError, type GrantsStore } from '@opensand/shared';
 import { DesktopIpcBridge } from '../src/ipc-bridge.js';
 
 const bridges: DesktopIpcBridge[] = [];
@@ -140,3 +140,52 @@ test('folder trust - a symlinked workspace is held under its real path', async (
   await bridge.approveTool(req.approvalId, { action: 'reject', epoch: req.epoch });
   await built;
 });
+
+/**
+ * Deterministic interleaving, no sleeps: `land` runs exactly once, at the moment the store is about to
+ * take grants.lock (or, for the old lock-free assertEpoch, right after it returned). So a revoke lands
+ * after the caller has read the epoch and before its write.
+ */
+function landBeforeLock(grants: GrantsStore, land: () => Promise<unknown>): void {
+  let done = false;
+  const once = async () => {
+    if (done) return;
+    done = true;
+    await land();
+  };
+  const g = grants as any;
+  for (const name of ['underLock', 'narrowAuthority', 'withEpoch']) {
+    const orig = g[name].bind(grants);
+    g[name] = async (...args: unknown[]) => {
+      await once();
+      return orig(...args);
+    };
+  }
+  if (typeof g.assertEpoch === 'function') {
+    const orig = g.assertEpoch.bind(grants);
+    g.assertEpoch = async (...args: unknown[]) => {
+      const r = await orig(...args);
+      await once();
+      return r;
+    };
+  }
+}
+
+for (const action of ['always_allow', 'approve_once', 'reject'] as const) {
+  test(`folder trust - a revoke landing mid-answer (${action}) gives 4001 and the folder is not trusted`, async () => {
+    const { bridge, real } = makeBridge();
+    const built = bridge.createSessionCoordinator('s1');
+    const [req] = await pending(bridge);
+    const g = await bridge.grantsStore.addGrant({ tool: 'exec_command', scope: 'git *', lifetime: 'always' });
+    const epoch = bridge.grantsStore.getEpochSync();
+    landBeforeLock(bridge.grantsStore, () => bridge.grantsStore.revokeGrant(g.id));
+    await assert.rejects(
+      bridge.approveTool(req.approvalId, { action, epoch }),
+      (err: unknown) => err instanceof StaleEpochError,
+    );
+    assert.strictEqual(bridge.grantsStore.getEpochSync(), epoch + 1, 'the revoke did land');
+    assert.strictEqual(await bridge.getFolderTrust(real), 'prompt', 'nothing persisted');
+    assert.strictEqual((bridge as any).sessionTrusted.has(real), false, 'not trusted for the session either');
+    assert.strictEqual((await built).sandboxProfile, 'read-only', 'the stale question resolves unanswered');
+  });
+}

@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { FolderTrustStore } from "../src/folder-trust-store.js";
-import { GrantsStore } from "../src/grants-store.js";
+import { GrantsStore, StaleEpochError } from "../src/grants-store.js";
 
 function tmp(prefix = "opensand-trust-"): string {
   return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
@@ -145,5 +145,79 @@ test("GrantsStore.narrowAuthority - epoch is persisted before the side effect (c
     assert.strictEqual(grants.readSync().epoch, 2);
     assert.strictEqual(await store.getLevel(f), "trusted");
     assert.ok(!fs.existsSync(path.join(base, "grants.lock")));
+  });
+});
+
+/**
+ * Deterministic interleaving, no sleeps: `land` runs exactly once, at the moment the store is about to
+ * take grants.lock (or, for the old lock-free assertEpoch, right after it returned). So a revoke lands
+ * after the caller has read the epoch and before its write.
+ */
+function landBeforeLock(grants: GrantsStore, land: () => Promise<unknown>): void {
+  let done = false;
+  const once = async () => {
+    if (done) return;
+    done = true;
+    await land();
+  };
+  const g = grants as any;
+  for (const name of ["underLock", "narrowAuthority", "withEpoch"]) {
+    const orig = g[name].bind(grants);
+    g[name] = async (...args: unknown[]) => {
+      await once();
+      return orig(...args);
+    };
+  }
+  if (typeof g.assertEpoch === "function") {
+    const orig = g.assertEpoch.bind(grants);
+    g.assertEpoch = async (...args: unknown[]) => {
+      const r = await orig(...args);
+      await once();
+      return r;
+    };
+  }
+}
+
+for (const [name, seed, level] of [
+  ["non-narrowing (prompt -> trusted)", undefined, "trusted"],
+  ["narrowing (trusted -> untrusted)", "trusted", "untrusted"],
+] as const) {
+  test(`FolderTrustStore - setLevel requireEpoch, ${name}: a revoke landing before the write throws 4001 and writes nothing`, async () => {
+    const base = tmp();
+    const root = tmp("opensand-trust-folders-");
+    try {
+      const grants = new GrantsStore({ baseDir: base });
+      const store = new FolderTrustStore({ baseDir: base, grants });
+      const other = new GrantsStore({ baseDir: base });
+      const f = mkdir(root, "f");
+      if (seed) await store.setLevel(f, seed);
+      const g = await other.addGrant({ tool: "exec_command", scope: "git *", lifetime: "always" });
+      const epoch = (await grants.read()).epoch;
+      const before = fs.existsSync(store.filePath) ? fs.readFileSync(store.filePath, "utf8") : null;
+      landBeforeLock(grants, () => other.revokeGrant(g.id));
+      await assert.rejects(
+        store.setLevel(f, level, { requireEpoch: epoch }),
+        (err: any) => err instanceof StaleEpochError && err.code === 4001 && err.currentEpoch === epoch + 1,
+      );
+      const after = fs.existsSync(store.filePath) ? fs.readFileSync(store.filePath, "utf8") : null;
+      assert.strictEqual(after, before, "folder-trust.json unchanged");
+      assert.strictEqual(await store.getLevel(f), seed ?? "prompt");
+      assert.strictEqual((await grants.read()).epoch, epoch + 1, "a stale narrowing must not bump the epoch");
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test("FolderTrustStore - setLevel requireEpoch: matching epoch writes; missing epoch fails closed", async () => {
+  await withDirs(async (base, root) => {
+    const grants = new GrantsStore({ baseDir: base });
+    const store = new FolderTrustStore({ baseDir: base, grants });
+    const f = mkdir(root, "f");
+    await assert.rejects(store.setLevel(f, "trusted", { requireEpoch: undefined }), (e: any) => e instanceof StaleEpochError);
+    assert.strictEqual(await store.getLevel(f), "prompt");
+    await store.setLevel(f, "trusted", { requireEpoch: (await grants.read()).epoch });
+    assert.strictEqual(await store.getLevel(f), "trusted");
   });
 });
