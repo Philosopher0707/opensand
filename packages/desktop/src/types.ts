@@ -43,6 +43,7 @@ export interface OpenSandBridgeApi {
   ensureDaemon?: () => Promise<any>;
   getSessions: () => Promise<SessionSummary[]>;
   listMissions?: () => Promise<Array<{ missionId: string; title: string; status: string; updatedAt: string }>>;
+  getMissionTimeline?: (missionId: string) => Promise<Array<{ seq: number; ts: string; kind: string; data: Record<string, unknown> }>>;
   loadSession: (sessionId: string) => Promise<{ events: unknown[]; transcript: string; agentId?: string; roomId?: string }>;
   deleteSession?: (sessionId: string) => Promise<{ success: boolean }>;
   clearAllSessions?: () => Promise<{ success: boolean; count: number }>;

@@ -7,6 +7,7 @@ import { getOnboardingState } from './onboarding.js';
 import { DesktopServer } from './desktop-server.js';
 import { DesktopTrayManager } from './tray.js';
 import { listMissionSummaries } from './shell/mission-list-source.js';
+import { readMissionTimeline } from './shell/mission-timeline-source.js';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 
 export class DesktopApp {
@@ -205,6 +206,11 @@ export class DesktopApp {
     // Read-only: summarises <~/.opensand>/missions logs for the Preact mission list.
     ipcMain.handle('opensand:listMissions', async () => {
       return listMissionSummaries(path.join(os.homedir(), '.opensand'));
+    });
+
+    // Read-only: one mission's event log, trimmed to the fields the timeline shows.
+    ipcMain.handle('opensand:getMissionTimeline', async (_: any, { missionId }: { missionId: string }) => {
+      return readMissionTimeline(path.join(os.homedir(), '.opensand'), missionId);
     });
 
     ipcMain.handle('opensand:loadSession', async (_: any, { sessionId }: { sessionId: string }) => {
