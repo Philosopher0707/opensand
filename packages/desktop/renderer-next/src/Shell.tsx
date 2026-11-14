@@ -1,15 +1,18 @@
 // Shell frame for the Preact renderer: sidebar + main area only. Views are
 // ported in later slices. Class names and ids match renderer/index.html so the
 // shared styles.css (traffic-light clearance, drag regions) applies unchanged.
+import { useState } from "preact/hooks";
 import type { ShellData } from "./data";
 import { ChatList } from "./views/ChatList";
 import { MissionList } from "./views/MissionList";
+import { MissionTimeline } from "./views/MissionTimeline";
 
 export interface ShellProps {
   data: ShellData;
 }
 
 export function Shell({ data }: ShellProps) {
+  const [missionId, setMissionId] = useState<string | null>(null);
   return (
     <div class="app-layout">
       <aside class="sidebar">
@@ -25,7 +28,7 @@ export function Shell({ data }: ShellProps) {
           </div>
         </div>
         <div id="missionList" class="mission-list-section">
-          <MissionList data={data} />
+          <MissionList data={data} onSelect={setMissionId} />
         </div>
         <div id="sessionList" class="session-list" role="list" aria-label="Sessions">
           <ChatList data={data} />
@@ -42,7 +45,11 @@ export function Shell({ data }: ShellProps) {
           </div>
         </header>
         <section class="shell-body" aria-live="polite">
-          <p class="shell-empty">Views are not ported yet. Unset OPENSAND_RENDERER to use the default renderer.</p>
+          {missionId ? (
+            <MissionTimeline data={data} missionId={missionId} />
+          ) : (
+            <p class="shell-empty">Views are not ported yet. Unset OPENSAND_RENDERER to use the default renderer.</p>
+          )}
         </section>
       </main>
     </div>

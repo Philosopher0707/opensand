@@ -182,6 +182,7 @@ async function runHarness(renderer: Renderer, opts: HarnessOptions = {}): Promis
     "      const extraScript = " + JSON.stringify(opts.interactScript || "") + ";",
     "      if (extraScript) {",
     "        interactResult = await win.webContents.executeJavaScript(extraScript);",
+    "        await shot(win, 'interact');",
     "      }",
     "",
     "      console.log('__EVAL_960__:' + JSON.stringify(eval960));",
@@ -502,6 +503,60 @@ test("Real-Window Harness: Preact mission list reads missions from the hermetic 
       { id: "m-wait", title: "Ask the owner", status: "Waiting for you" },
       { id: "m-done", title: "Fix the build", status: "Done" },
     ]);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test("Real-Window Harness: Preact selecting a mission shows its timeline from opensand:getMissionTimeline", async (t) => {
+  const built = fs.existsSync(path.join(pkgRoot, "dist", "renderer-next", "index.html"));
+  if (!built) {
+    t.skip("dist/renderer-next is not built (run pnpm build)");
+    return;
+  }
+
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-p5e-timeline-"));
+  try {
+    const w = new EventLogWriter(path.join(tmpHome, ".opensand", "missions", "m-demo"), { sessionId: "m-demo" });
+    const rows: Array<[string, any, string]> = [
+      ["mission.started", { title: "Fix the failing build" }, "2026-11-14T09:00:00.000Z"],
+      ["node.completed", { node: "plan", durationMs: 1800 }, "2026-11-14T09:00:02.000Z"],
+      ["node.completed", { node: "act", claim: "Edited packages/engine/src/missions/receipt.ts", durationMs: 41200 }, "2026-11-14T09:00:44.000Z"],
+      ["check.completed", { passed: false, exitCode: 1 }, "2026-11-14T09:00:50.000Z"],
+      ["node.completed", { node: "repair", durationMs: 9000 }, "2026-11-14T09:01:00.000Z"],
+      ["check.completed", { passed: true, exitCode: 0 }, "2026-11-14T09:01:20.000Z"],
+      ["review.completed", { accept: true, note: "Matches the goal" }, "2026-11-14T09:01:30.000Z"],
+      ["node.completed", { node: "receipt", durationMs: 40 }, "2026-11-14T09:01:31.000Z"],
+      ["mission.verified", { receipt: "ignored" }, "2026-11-14T09:01:32.000Z"],
+    ];
+    for (const [kind, data, ts] of rows) await w.append({ kind: kind as any, data, ts });
+
+    const script = [
+      "(async () => {",
+      "  const wait = async (fn) => { for (let i = 0; i < 50 && !fn(); i++) await new Promise((r) => setTimeout(r, 100)); };",
+      "  await wait(() => document.querySelector('.mission-item'));",
+      "  document.querySelector('.mission-item').click();",
+      "  await wait(() => document.querySelector('.timeline-step'));",
+      "  const steps = Array.from(document.querySelectorAll('.timeline-step')).map((e) => ({",
+      "    kind: e.getAttribute('data-step-kind'),",
+      "    summary: e.querySelector('.timeline-summary')?.textContent || '',",
+      "    hasTime: /^\\d\\d:\\d\\d:\\d\\d$/.test(e.querySelector('.timeline-time')?.textContent || ''),",
+      "  }));",
+      "  const list = document.querySelector('.timeline-steps');",
+      "  list.focus();",
+      "  return { steps, listFocusable: document.activeElement === list, noOverflow: document.documentElement.scrollWidth <= window.innerWidth };",
+      "})()",
+    ].join("\n");
+
+    const r = await runHarness("preact", { home: tmpHome, shotTag: "timeline", interactScript: script, forceOverflow });
+    if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
+
+    assert.deepStrictEqual(r.interactResult.steps.map((s: any) => s.kind), ["start", "plan", "act", "check", "repair", "check", "review", "receipt", "end"]);
+    assert.strictEqual(r.interactResult.steps[0].summary, "Fix the failing build");
+    assert.strictEqual(r.interactResult.steps[8].summary, "Verified");
+    assert.ok(r.interactResult.steps.every((s: any) => s.hasTime), "every step shows a time");
+    assert.strictEqual(r.interactResult.listFocusable, true, "timeline list is keyboard focusable");
+    assert.strictEqual(r.interactResult.noOverflow, true);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
