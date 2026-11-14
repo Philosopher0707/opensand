@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import { GrantsStore } from "@opensand/shared";
 import { StateManager, isPidAlive } from "../src/state-manager.js";
 
 describe("StateManager", () => {
@@ -54,16 +55,27 @@ describe("StateManager", () => {
     assert.deepEqual(read, hb);
   });
 
-  it("updates and reads permission gates", async () => {
-    await manager.writePermissionGates({
-      computerUseAllowed: true,
-      standingAllowlist: ["ls *", "pwd"],
-    });
+  it("updates and reads permission gates; standingAllowlist is a read-only view of grants.json", async () => {
+    const grantsDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-state-grants-"));
+    try {
+      const grants = new GrantsStore({ baseDir: grantsDir });
+      await grants.addGrant({ tool: "exec_command", scope: "ls *", lifetime: "always" });
+      await grants.addGrant({ tool: "exec_command", scope: "pwd", lifetime: "always" });
+      const m = new StateManager(tempStateDir, grants);
+      await m.writePermissionGates({
+        computerUseAllowed: true,
+        standingAllowlist: ["ignored"],
+      });
 
-    const gates = await manager.readPermissionGates();
-    assert.equal(gates.computerUseAllowed, true);
-    assert.equal(gates.deviceToolsAllowed, false);
-    assert.deepEqual(gates.standingAllowlist, ["ls *", "pwd"]);
+      const gates = await m.readPermissionGates();
+      assert.equal(gates.computerUseAllowed, true);
+      assert.equal(gates.deviceToolsAllowed, false);
+      assert.deepEqual(gates.standingAllowlist, ["ls", "pwd"]);
+      assert.equal(gates.standingGrants?.length, 2);
+      assert.equal(gates.grantsEpoch, 1);
+    } finally {
+      await fs.rm(grantsDir, { recursive: true, force: true });
+    }
   });
 
   describe("isPidAlive helper", () => {

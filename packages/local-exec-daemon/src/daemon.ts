@@ -1,3 +1,4 @@
+import type { GrantsStore } from "@opensand/shared";
 import { PtySessionManager } from "./pty-manager.js";
 import { StateManager } from "./state-manager.js";
 import { ToolRegistry, ToolExecutionContext, CustomToolRegistration } from "./tool-registry.js";
@@ -16,6 +17,8 @@ export interface DaemonOptions {
   stateDir?: string;
   heartbeatIntervalMs?: number;
   initialGates?: Partial<PermissionGates>;
+  /** Source of standing exec permission. Default: grants.json beside the state dir (see StateManager). */
+  grants?: GrantsStore;
 }
 
 export class LocalExecDaemon {
@@ -31,7 +34,7 @@ export class LocalExecDaemon {
   private heartbeatIntervalMs: number;
 
   constructor(options: DaemonOptions = {}) {
-    this.state = new StateManager(options.stateDir);
+    this.state = new StateManager(options.stateDir, options.grants);
     this.pty = new PtySessionManager();
     this.tools = new ToolRegistry({ ptyManager: this.pty, enablePty: true });
     this.policy = new PolicyEngine({ storageDir: options.stateDir });
@@ -212,10 +215,36 @@ export class LocalExecDaemon {
         };
       }
 
+      effectiveContext = await this.recheckStandingGrants(name, effectiveContext);
+
       return await this.tools.dispatch(name, args, effectiveContext);
     } finally {
       this.inflightCount = Math.max(0, this.inflightCount - 1);
     }
+  }
+
+  /**
+   * A caller may pass a gate snapshot taken before it waited on a human. Right before spawning, if the
+   * decision could rest on a standing grant, compare the snapshot's epoch with the current one (lock-free)
+   * and re-read the gates when they differ, so a revoke that landed in between is not ignored.
+   * A grants.json that cannot be read now counts as a difference, and the fresh read then denies.
+   */
+  private async recheckStandingGrants(name: string, context?: ToolExecutionContext): Promise<ToolExecutionContext | undefined> {
+    const gates = context?.permissionGates;
+    // Only snapshots this daemon took carry an epoch; a hand-built gate object is the caller's own.
+    if (!gates || gates.grantsEpoch === undefined || context?.approvalGranted || (name !== "exec_command" && name !== "pty_spawn")) return context;
+    let current: number | undefined;
+    try {
+      current = this.state.grantsStore.getEpochSync();
+    } catch {
+      current = undefined;
+    }
+    if (current !== undefined && current === gates.grantsEpoch) return context;
+    const fresh = await this.state.readPermissionGates();
+    const { standingGrants, standingAllowlist, grantsEpoch, grantsError } = fresh;
+    const refreshed: PermissionGates = { ...gates, standingGrants, standingAllowlist, grantsEpoch };
+    if (grantsError) refreshed.grantsError = true; else delete refreshed.grantsError;
+    return { ...context, permissionGates: refreshed };
   }
 
   /**

