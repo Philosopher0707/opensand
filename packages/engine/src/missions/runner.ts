@@ -5,7 +5,7 @@ import { MISSION_EVENT, FolderTrustStore, GrantsStore, resolveSandboxProfile } f
 import type { EventFrame } from "@opensand/protocol";
 import { logDirFor, eventNameForKind } from "../reconnect.js";
 import { runCheck, type CheckResult } from "./check.js";
-import { treeOf, changedLinesBetweenTrees, type ChangesResult } from "./workspace-diff.js";
+import { treeOf, changedLinesBetweenTrees, pinTrees, type ChangesResult } from "./workspace-diff.js";
 import { projectReceipt } from "./receipt.js";
 import type { MissionAgent } from "./agent.js";
 import type { FolderTrustGate } from "./trust-gate.js";
@@ -522,8 +522,16 @@ export class MissionRunner {
     }
 
     const events = await new EventLogReader(this.writer.path).readAll();
-    const changes = finalState.changes ?? (await this.snapshot(baseTree)).changes;
+    let changes = finalState.changes;
+    let finalTree = finalState.finalTree;
+    if (!changes) {
+      const snap = await this.snapshot(baseTree);
+      changes = snap.changes;
+      finalTree = snap.finalTree ?? finalTree;
+    }
     const receipt = projectReceipt(events, changes);
+    // Recorded so a viewer can re-run `git diff <base> <final>`; pinned under a ref so gc keeps them.
+    const trees = await pinTrees(this.workspaceRoot, this.missionId, baseTree, finalTree);
 
     if (this.abortController.signal.aborted) {
       await this.appendAndPublish(MISSION_EVENT.STOPPED, {
@@ -531,6 +539,7 @@ export class MissionRunner {
         reason: "cancelled",
         receipt,
         changes,
+        ...trees,
       });
       return;
     }
@@ -541,6 +550,7 @@ export class MissionRunner {
         missionId: this.missionId,
         receipt,
         changes,
+        ...trees,
         totalCostUsd: 0,
       });
       return;
@@ -558,6 +568,7 @@ export class MissionRunner {
       node: reason.node,
       receipt,
       changes,
+      ...trees,
     });
   }
 }
