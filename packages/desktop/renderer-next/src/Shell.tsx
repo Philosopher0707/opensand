@@ -3,6 +3,7 @@
 // shared styles.css (traffic-light clearance, drag regions) applies unchanged.
 import type { ShellData } from "./data";
 import { ChatList } from "./views/ChatList";
+import { MissionList } from "./views/MissionList";
 
 export interface ShellProps {
   data: ShellData;
@@ -22,6 +23,9 @@ export function Shell({ data }: ShellProps) {
               <span class="status-indicator">Ready</span>
             </div>
           </div>
+        </div>
+        <div id="missionList" class="mission-list-section">
+          <MissionList data={data} />
         </div>
         <div id="sessionList" class="session-list" role="list" aria-label="Sessions">
           <ChatList data={data} />

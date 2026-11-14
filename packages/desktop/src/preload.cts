@@ -34,6 +34,8 @@ try {
         ipcRenderer.invoke('opensand:cancelTurn'),
       getSessions: () =>
         ipcRenderer.invoke('opensand:getSessions'),
+      listMissions: () =>
+        ipcRenderer.invoke('opensand:listMissions'),
       loadSession: (sessionId: string) =>
         ipcRenderer.invoke('opensand:loadSession', { sessionId }),
       deleteSession: (sessionId: string) =>

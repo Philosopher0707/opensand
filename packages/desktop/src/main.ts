@@ -1,10 +1,12 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
 import { getOnboardingState } from './onboarding.js';
 import { DesktopServer } from './desktop-server.js';
 import { DesktopTrayManager } from './tray.js';
+import { listMissionSummaries } from './shell/mission-list-source.js';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 
 export class DesktopApp {
@@ -198,6 +200,11 @@ export class DesktopApp {
 
     ipcMain.handle('opensand:getSessions', async () => {
       return this.bridge.getSessions();
+    });
+
+    // Read-only: summarises <~/.opensand>/missions logs for the Preact mission list.
+    ipcMain.handle('opensand:listMissions', async () => {
+      return listMissionSummaries(path.join(os.homedir(), '.opensand'));
     });
 
     ipcMain.handle('opensand:loadSession', async (_: any, { sessionId }: { sessionId: string }) => {
