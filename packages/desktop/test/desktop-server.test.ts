@@ -1,3 +1,4 @@
+import { closeThenRemove, type Closable } from './teardown.js';
 import test from 'node:test';
 import * as assert from 'node:assert';
 import * as fs from 'node:fs';
@@ -69,6 +70,9 @@ class MockServerResponse extends EventEmitter {
 
 test('DesktopServer - handles REST API endpoints hermetically', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-server-test-'));
+  let server: DesktopServer | undefined;
+  let server2: DesktopServer | undefined;
+  let whServer: DesktopServer | undefined;
 
   try {
     const cacheDir = path.join(tmpDir, 'cache');
@@ -84,7 +88,7 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
       'utf8'
     );
 
-    const server = new DesktopServer({ baseDir: tmpDir });
+    server = new DesktopServer({ baseDir: tmpDir });
     MockIncomingMessage.defaultToken = server.getAuthToken();
 
     // Test Authentication Middleware: missing token returns 401
@@ -147,13 +151,13 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     const tokenFile = path.join(tmpDir, 'server.token');
     const originalToken = fs.readFileSync(tokenFile, 'utf8').trim();
     const mtimeBefore = fs.statSync(tokenFile).mtimeMs;
-    const server2 = new DesktopServer({ baseDir: tmpDir });
+    server2 = new DesktopServer({ baseDir: tmpDir });
     assert.strictEqual(server2.getAuthToken(), originalToken);
     const mtimeAfter = fs.statSync(tokenFile).mtimeMs;
     assert.strictEqual(mtimeAfter, mtimeBefore, 'server.token must not be rewritten if already valid');
 
     // Test webhook ingress per-IP rate limiting
-    const whServer = new DesktopServer({ baseDir: tmpDir, webhookMaxRequestsPerMinute: 2 });
+    whServer = new DesktopServer({ baseDir: tmpDir, webhookMaxRequestsPerMinute: 2 });
     const whReq1 = new MockIncomingMessage('POST', '/api/webhooks/test-hook', { authorization: '' });
     const whRes1 = new MockServerResponse();
     const p1 = (whServer as any).handleRequest(whReq1, whRes1);
@@ -795,14 +799,15 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
       execSync(`node --input-type=module -e 'import "${canvasJsPath}"'`);
     }, 'canvas.js module must be valid ES module syntax');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    await closeThenRemove([whServer?.getBridge(), server2?.getBridge(), server?.getBridge()], tmpDir);
   }
 });
 
 test('DesktopServer - exposes read-only pending approvals and live tool discovery', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-server-parity-'));
+  let server: DesktopServer | undefined;
   try {
-    const server = new DesktopServer({ baseDir: tmpDir });
+    server = new DesktopServer({ baseDir: tmpDir });
     MockIncomingMessage.defaultToken = server.getAuthToken();
 
     const approvalsReq = new MockIncomingMessage('GET', '/api/approvals');
@@ -829,6 +834,6 @@ test('DesktopServer - exposes read-only pending approvals and live tool discover
     await (server as any).handleRequest(unauthToolsReq, unauthToolsRes);
     assert.strictEqual(unauthToolsRes.statusCode, 401);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    await closeThenRemove([server?.getBridge()], tmpDir);
   }
 });

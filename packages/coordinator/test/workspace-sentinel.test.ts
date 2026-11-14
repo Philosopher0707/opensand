@@ -5,6 +5,12 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { WorkspaceSentinel, SentinelDiagnosticEvent, createAutonomousHealer } from "../src/workspace-sentinel.js";
 
+// Each test drives runDiagnostic itself. The watcher's own debounced path must not run a
+// second diagnostic on the same folder: when a healer writes into the watched folder, that
+// path can heal first and the awaited call then reports "clean" instead of "healed" (seen
+// once in 20 parallel CI runs). A debounce longer than any test keeps it out of the way.
+const NO_AUTO_DIAGNOSTIC_MS = 60_000;
+
 describe("WorkspaceSentinel", () => {
   let tempDir: string;
   let sentinel: WorkspaceSentinel;
@@ -22,7 +28,7 @@ describe("WorkspaceSentinel", () => {
   it("registers, lists, and stops workspace watchers", async () => {
     const watcher = await sentinel.startWatcher({
       targetDir: tempDir,
-      debounceMs: 100,
+      debounceMs: NO_AUTO_DIAGNOSTIC_MS,
     });
 
     assert.ok(watcher.id.startsWith("watcher_"));
@@ -43,7 +49,7 @@ describe("WorkspaceSentinel", () => {
     const watcher = await sentinel.startWatcher({
       targetDir: tempDir,
       checkCommand: "echo ok",
-      debounceMs: 50,
+      debounceMs: NO_AUTO_DIAGNOSTIC_MS,
     });
 
     const event = await sentinel.runDiagnostic(watcher, "sample.ts");
@@ -71,13 +77,14 @@ describe("WorkspaceSentinel", () => {
       targetDir: tempDir,
       checkCommand: "node -e 'process.exit(1)'", // Fails on purpose
       autoHeal: true,
-      debounceMs: 50,
+      debounceMs: NO_AUTO_DIAGNOSTIC_MS,
     });
 
     const event = await sentinel.runDiagnostic(watcher, "broken.ts");
     assert.strictEqual(healingInvoked, true);
     assert.strictEqual(event.status, "healed");
     assert.ok(event.healingProposal?.includes("Applied syntax correction"));
+    assert.equal(sentinel.getLogs(watcher.id).length, 1, "only the explicit diagnostic ran");
   });
 
   it("createAutonomousHealer escapes and wraps the error details as data", async () => {
@@ -123,11 +130,12 @@ describe("WorkspaceSentinel", () => {
       targetDir: tempDir,
       checkCommand: checkScript,
       autoHeal: true,
-      debounceMs: 50,
+      debounceMs: NO_AUTO_DIAGNOSTIC_MS,
     });
 
     const event = await sentinel.runDiagnostic(watcher, "index.ts");
     assert.strictEqual(event.status, "healed");
     assert.ok(event.healingProposal?.includes("Created missing flag file"));
+    assert.equal(sentinel.getLogs(watcher.id).length, 1, "only the explicit diagnostic ran");
   });
 });

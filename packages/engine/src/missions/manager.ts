@@ -12,6 +12,8 @@ export class MissionRunnerManager {
   private activeRunners = new Map<string, MissionRunner>();
   /** Each runner's full run (including its final event writes), so shutdown can wait for it. */
   private settled = new Map<string, Promise<void>>();
+  /** Set once shutdown begins: a start that lands after stopAll() took its snapshot would write into a removed state dir. */
+  private stopping = false;
 
   constructor(
     private readonly stateDir: string,
@@ -39,6 +41,9 @@ export class MissionRunnerManager {
   async startMission(options: MissionOptions): Promise<void> {
     if (!this.agent) {
       throw new Error("no mission agent configured");
+    }
+    if (this.stopping) {
+      throw new Error("engine is shutting down");
     }
 
     const runner = new MissionRunner(options, {
@@ -147,6 +152,7 @@ export class MissionRunnerManager {
   }
 
   async stopAll(): Promise<void> {
+    this.stopping = true;
     for (const runner of this.activeRunners.values()) {
       runner.cancel();
     }

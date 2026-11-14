@@ -23,7 +23,7 @@ test.afterEach(async () => {
     await createdBridges.pop()?.close();
   }
   while (pendingTmpDirs.length) {
-    fs.rmSync(pendingTmpDirs.pop()!, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
+    fs.rmSync(pendingTmpDirs.pop()!, { recursive: true, force: true });
   }
 });
 import { StateManager } from '@opensand/local-exec-daemon';

@@ -23,7 +23,7 @@ export function tempDir(prefix: string): string {
 }
 
 export function removeDir(dir: string): void {
-  fsSync.rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+  fsSync.rmSync(dir, { recursive: true, force: true });
 }
 
 export class EngineProcess {
