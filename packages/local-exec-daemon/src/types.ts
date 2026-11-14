@@ -1,3 +1,4 @@
+import type { CapabilityGrant } from "@opensand/shared";
 /**
  * OpenSand Local Execution Daemon Type Definitions
  * Derived from reverse-engineered Sand local-exec protocol contracts.
@@ -40,7 +41,14 @@ export interface DaemonSupervisorHeartbeat {
 export interface PermissionGates {
   computerUseAllowed: boolean;
   deviceToolsAllowed: boolean;
+  /** Derived, read-only legacy view of `standingGrants` (`git *` -> `git`). Nothing decides from it; writes are ignored. Removed in P4f PR4. */
   standingAllowlist: string[];
+  /** The `always` exec_command grants of one grants.json snapshot. Missing means none, never "allow". */
+  standingGrants?: CapabilityGrant[];
+  /** Epoch of that snapshot; -1 when grants.json could not be read (it can never equal a real epoch). */
+  grantsEpoch?: number;
+  /** grants.json exists but could not be read or parsed: standing permission is denied. */
+  grantsError?: true;
 }
 
 export interface ExecCommandInput {
