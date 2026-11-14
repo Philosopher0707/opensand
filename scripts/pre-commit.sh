@@ -40,8 +40,50 @@ if [[ "${OPENSAND_ALLOW_BLANKET:-0}" != "1" ]]; then
   fi
 fi
 
-echo "==> pre-commit: pnpm run build"
-pnpm run build
-echo "==> pre-commit: pnpm run test"
-pnpm run test
+# --- Hook environment scrub -------------------------------------------
+# git exports GIT_DIR, GIT_INDEX_FILE, ... to hooks. Any test that runs git
+# would inherit them and write into THIS repo's config, refs and index
+# (core.bare=true, stray refs). Run build and tests with none of them set.
+for v in GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX GIT_OBJECT_DIRECTORY \
+         GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CEILING_DIRECTORIES; do
+  unset "$v"
+done
+
+# --- Tripwire ------------------------------------------------------------
+# Snapshot repo-local state the suite must never touch; compare afterwards.
+snapshot_config="$(git config --local --list)"
+snapshot_refs="$(git for-each-ref refs/opensand)"
+
+# Overridable only so the hook's own test can substitute the commands.
+BUILD_CMD="${OPENSAND_PRECOMMIT_BUILD_CMD:-pnpm run build}"
+TEST_CMD="${OPENSAND_PRECOMMIT_TEST_CMD:-pnpm run test}"
+
+status=0
+echo "==> pre-commit: $BUILD_CMD"
+bash -c "$BUILD_CMD" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  echo "==> pre-commit: $TEST_CMD"
+  bash -c "$TEST_CMD" || status=$?
+fi
+
+tripped=0
+after_config="$(git config --local --list)"
+after_refs="$(git for-each-ref refs/opensand)"
+if [[ "$after_config" != "$snapshot_config" ]]; then
+  echo "x pre-commit: TRIPWIRE: the build/tests changed this repo's local git config:" >&2
+  diff <(printf '%s\n' "$snapshot_config") <(printf '%s\n' "$after_config") >&2 || true
+  tripped=1
+fi
+if [[ "$after_refs" != "$snapshot_refs" ]]; then
+  echo "x pre-commit: TRIPWIRE: the build/tests changed refs/opensand:" >&2
+  diff <(printf '%s\n' "$snapshot_refs") <(printf '%s\n' "$after_refs") >&2 || true
+  tripped=1
+fi
+if [[ "$tripped" -ne 0 ]]; then
+  echo "  A test is writing into the real repo. Fix that test; the commit is refused." >&2
+  exit 1
+fi
+if [[ "$status" -ne 0 ]]; then
+  exit "$status"
+fi
 echo "pre-commit passed"
