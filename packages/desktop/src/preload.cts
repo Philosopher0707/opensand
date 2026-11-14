@@ -38,6 +38,8 @@ try {
         ipcRenderer.invoke('opensand:listMissions'),
       getMissionTimeline: (missionId: string) =>
         ipcRenderer.invoke('opensand:getMissionTimeline', { missionId }),
+      getMissionReceipt: (missionId: string) =>
+        ipcRenderer.invoke('opensand:getMissionReceipt', { missionId }),
       loadSession: (sessionId: string) =>
         ipcRenderer.invoke('opensand:loadSession', { sessionId }),
       deleteSession: (sessionId: string) =>
