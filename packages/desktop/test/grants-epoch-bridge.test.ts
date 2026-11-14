@@ -22,7 +22,7 @@ function makeBridge() {
 
 test.afterEach(async () => {
   while (createdBridges.length) await createdBridges.pop()?.close();
-  while (tmpDirs.length) fs.rmSync(tmpDirs.pop()!, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
+  while (tmpDirs.length) fs.rmSync(tmpDirs.pop()!, { recursive: true, force: true });
 });
 
 async function pendingIds(bridge: BaseDesktopIpcBridge): Promise<Array<{ approvalId: string; epoch: number }>> {

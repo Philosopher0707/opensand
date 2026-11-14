@@ -254,41 +254,63 @@ test("canonicalJson sorts object keys recursively", () => {
 });
 
 // Each append takes the lock and fsyncs file and directory, so a few ms per append is
-// by design. Grow the log in batches (one fsync per batch) instead of 5k single appends,
-// which took ~50 s against a 60 s timeout and failed under load.
-test("append cost does not grow with log size: 100 appends on a 60k-event log < 3x 100 on an empty one", { timeout: 60_000 }, async () => {
+// by design. Grow the log in batches (one fsync per batch) instead of 5k single appends.
+//
+// "Append cost does not grow with log size" is checked on the work an append does, not on
+// wall-clock time: an append may read only a bounded tail window of the log (the head
+// lookup in readHeadFromTail), however many events the log holds. Counting bytes read via
+// FileHandle#read gives the same answer on every machine and under any load.
+const APPEND_READ_BUDGET_BYTES = 64 * 1024;
+
+test("append cost does not grow with log size: an append on a 60k-event log reads the same bounded tail as on an empty one", { timeout: 60_000 }, async () => {
   const dir = tempDir();
+  const probe = await fs.open(path.join(dir, "probe"), "w");
+  const fileHandlePrototype = Object.getPrototypeOf(probe);
+  await probe.close();
+  const originalRead = fileHandlePrototype.read;
+  let bytesRead = 0;
+  let readCalls = 0;
+  fileHandlePrototype.read = async function (this: unknown, ...args: unknown[]) {
+    const result = await originalRead.apply(this, args);
+    bytesRead += result.bytesRead;
+    readCalls += 1;
+    return result;
+  };
   try {
     const logPath = path.join(dir, "event-log.jsonl");
     const writer = new EventLogWriter(logPath, { sessionId: "sess-bench" });
 
-    const timeAppends = async (count: number): Promise<number> => {
-      const durations: number[] = [];
-      for (let i = 0; i < count; i++) {
-        const start = performance.now();
-        await writer.append({ kind: "bench.event", data: { i } });
-        durations.push(performance.now() - start);
-      }
-      return durations.reduce((a, b) => a + b, 0) / durations.length;
+    const measureAppend = async (): Promise<{ bytes: number; calls: number }> => {
+      bytesRead = 0;
+      readCalls = 0;
+      await writer.append({ kind: "bench.event", data: { i: 0 } });
+      return { bytes: bytesRead, calls: readCalls };
     };
 
-    const meanFirst = await timeAppends(100);
+    const onEmpty = await measureAppend();
+    for (let i = 0; i < 99; i++) await writer.append({ kind: "bench.event", data: { i } });
+
     const batch = Array.from({ length: 5_000 }, (_, i) => ({ kind: "bench.seed", data: { i } }));
     for (let b = 0; b < 12; b++) {
       await writer.appendBatch(batch);
     }
-    const meanLast = await timeAppends(100);
+    const logBytes = (await fs.stat(logPath)).size;
+    const onLarge = await measureAppend();
 
+    assert.ok(logBytes > 100 * APPEND_READ_BUDGET_BYTES, `log should dwarf the read window, got ${logBytes} bytes`);
+    assert.ok(onEmpty.bytes <= APPEND_READ_BUDGET_BYTES, `append on an empty log read ${onEmpty.bytes} bytes`);
     assert.ok(
-      meanLast < 3 * meanFirst,
-      `expected last 100 mean (${meanLast.toFixed(3)}ms) to be < 3x first 100 mean (${meanFirst.toFixed(3)}ms)`
+      onLarge.bytes <= APPEND_READ_BUDGET_BYTES,
+      `append on a ${logBytes}-byte log read ${onLarge.bytes} bytes (budget ${APPEND_READ_BUDGET_BYTES}); cost grows with log size`
     );
+    assert.equal(onLarge.calls, 1, "one tail read per append, regardless of log size");
 
     const reader = new EventLogReader(logPath);
     const verification = await reader.verifyChain();
     assert.equal(verification.valid, true);
-    assert.equal(verification.totalEvents, 60_200);
+    assert.equal(verification.totalEvents, 60_101);
   } finally {
+    fileHandlePrototype.read = originalRead;
     fsSync.rmSync(dir, { recursive: true, force: true });
   }
 });
