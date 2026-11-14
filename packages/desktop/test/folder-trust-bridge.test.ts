@@ -189,3 +189,26 @@ for (const action of ['always_allow', 'approve_once', 'reject'] as const) {
     assert.strictEqual((await built).sandboxProfile, 'read-only', 'the stale question resolves unanswered');
   });
 }
+
+test('folder trust - approve_once adds the session trust under the lock: a revoke right after the release cannot be undone', async () => {
+  const { bridge, real } = makeBridge();
+  const built = bridge.createSessionCoordinator('s1');
+  const [req] = await pending(bridge);
+  const epoch = req.epoch;
+  // The revoke runs after withEpoch has released grants.lock and before the caller's continuation resumes.
+  const g = bridge.grantsStore as any;
+  const orig = g.withEpoch.bind(bridge.grantsStore);
+  let revoked = false;
+  g.withEpoch = async (...args: unknown[]) => {
+    const r = await orig(...args);
+    if (!revoked) {
+      revoked = true;
+      await bridge.setFolderTrust(real, 'untrusted');
+    }
+    return r;
+  };
+  await bridge.approveTool(req.approvalId, { action: 'approve_once', epoch });
+  await built;
+  assert.strictEqual(revoked, true, 'the revoke did land in the window');
+  assert.strictEqual((bridge as any).sessionTrusted.has(real), false, 'a revoked folder is not session-trusted');
+});
