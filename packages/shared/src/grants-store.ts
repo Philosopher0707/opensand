@@ -131,6 +131,38 @@ export class GrantsStore {
     });
   }
 
+  /**
+   * Add grants in bulk under one lock hold, skipping any whose tool+scope+lifetime already exists
+   * (or repeats inside the batch), so re-running an import is a no-op. Adding authority never
+   * bumps the epoch; nothing is persisted when nothing was added.
+   */
+  public async importGrants(inputs: readonly NewGrant[]): Promise<{ added: CapabilityGrant[]; skippedExisting: number }> {
+    if (inputs.length === 0) return { added: [], skippedExisting: 0 };
+    return this.underLock(async () => {
+      const content = await this.read();
+      const key = (g: Pick<CapabilityGrant, "tool" | "scope" | "lifetime">) => JSON.stringify([g.tool, g.scope, g.lifetime]);
+      const seen = new Set(content.grants.map(key));
+      const added: CapabilityGrant[] = [];
+      let skippedExisting = 0;
+      for (const input of inputs) {
+        if (seen.has(key(input))) {
+          skippedExisting += 1;
+          continue;
+        }
+        seen.add(key(input));
+        const grant = GrantsStore.newGrant(input, content);
+        content.grants.push(grant);
+        added.push(grant);
+      }
+      if (added.length > 0) {
+        content.updatedAt = Date.now();
+        content.updatedBy = this.updatedBy;
+        await this.persist(content);
+      }
+      return { added, skippedExisting };
+    });
+  }
+
   /** Narrowing authority bumps the epoch by exactly one. Returns the new epoch, or the unchanged one if the grant was unknown. */
   public async revokeGrant(id: string): Promise<{ revoked: boolean; epoch: number }> {
     return this.writeGrants((content) => {
