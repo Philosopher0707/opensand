@@ -217,6 +217,25 @@ describe("folder trust gate in the mission runner", () => {
     }
   });
 
+  it("server.close() waits for a cancelled, parked mission to finish writing its STOPPED event", async () => {
+    const h = new Harness();
+    try {
+      const ws = h.folder("ws");
+      const missionId = await h.start(ws, touch(path.join(ws, "marker")));
+      await h.needsYou(missionId);
+      await h.server.close();
+      // Nothing may still be appending to missions/ once close() has resolved.
+      const events = await h.events(missionId);
+      assert.equal(events[events.length - 1].kind, "mission.stopped");
+      assert.equal(events[events.length - 1].data.reason, "cancelled");
+      const size = fs.readdirSync(path.join(h.base, "missions", missionId)).length;
+      await new Promise((r) => setTimeout(r, 100));
+      assert.equal(fs.readdirSync(path.join(h.base, "missions", missionId)).length, size);
+    } finally {
+      await h.close();
+    }
+  });
+
   it("a stale answer is rejected with 4001 and the mission stays parked; the fresh epoch is accepted", async () => {
     const h = new Harness();
     try {

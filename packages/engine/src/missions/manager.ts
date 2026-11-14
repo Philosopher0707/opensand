@@ -10,6 +10,8 @@ import { FolderTrustGate } from "./trust-gate.js";
 
 export class MissionRunnerManager {
   private activeRunners = new Map<string, MissionRunner>();
+  /** Each runner's full run (including its final event writes), so shutdown can wait for it. */
+  private settled = new Map<string, Promise<void>>();
 
   constructor(
     private readonly stateDir: string,
@@ -50,12 +52,14 @@ export class MissionRunnerManager {
     this.activeRunners.set(options.missionId, runner);
 
     // Run in background and clean up when finished
-    void runner
+    const run = runner
       .start()
       .catch(() => undefined)
       .finally(() => {
         this.activeRunners.delete(options.missionId);
+        this.settled.delete(options.missionId);
       });
+    this.settled.set(options.missionId, run);
   }
 
   async cancelMission(missionId: string): Promise<void> {
@@ -146,6 +150,8 @@ export class MissionRunnerManager {
     for (const runner of this.activeRunners.values()) {
       runner.cancel();
     }
+    // A cancelled runner still appends its STOPPED event; wait for that write before returning.
+    await Promise.allSettled([...this.settled.values()]);
     this.activeRunners.clear();
   }
 }
