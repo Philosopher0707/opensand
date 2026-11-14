@@ -197,7 +197,7 @@ describe("MemoryStore - Grok Bot Memory Layers Parity", () => {
       text: "Daemon dispatched memory fact test",
       scope: "user",
       tier: "log",
-    });
+    }, { humanApproved: true });
     assert.equal(writeRes.status, "ok");
     const parsedWrite = JSON.parse(writeRes.output);
     assert.equal(parsedWrite.status, "success");
@@ -214,7 +214,7 @@ describe("MemoryStore - Grok Bot Memory Layers Parity", () => {
     // Test import_memory tool
     const importRes = await daemon.executeTool("import_memory", {
       text: `## 1. Instructions\n- Tool dispatched import instruction`,
-    });
+    }, { humanApproved: true });
     assert.equal(importRes.status, "ok");
     const parsedImport = JSON.parse(importRes.output);
     assert.equal(parsedImport.status, "success");

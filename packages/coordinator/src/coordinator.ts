@@ -5,7 +5,7 @@ import {
   RestorePoint,
   RevertResult,
 } from "@opensand/shared";
-import { LocalExecDaemon, ToolExecutionResult, PolicyDecision, ToolDefinition } from "@opensand/local-exec-daemon";
+import { LocalExecDaemon, ToolExecutionResult, PolicyDecision, ToolDefinition, memoryWriteNeedsGate } from "@opensand/local-exec-daemon";
 import { wrapUntrusted, untrustedSourceFor, isStandingExecAllowed } from "@opensand/shared";
 import { isParallelSafeTool } from "./tool-parallelism.js";
 import { UniversalLLMClient, ConsolidatedAssistantResponse } from "./llm-client.js";
@@ -391,6 +391,11 @@ export class AgentCoordinator {
           }
         }
 
+        // Model-written memory outlives this session: ask a person unless a standing memory-write gate is open.
+        if (memoryWriteNeedsGate(tc.function.name, args) && !gates.memoryWriteAllowed) {
+          needsApproval = true;
+        }
+
         if (needsApproval && this.onApprovalRequired) {
           const approvalId = `appr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
           const req: ApprovalRequest = {
@@ -453,6 +458,7 @@ export class AgentCoordinator {
           if (stale) return stale;
           return this.daemon.executeTool(item.tc.function.name, item.args, {
             approvalGranted: item.execution.approvalGranted,
+            humanApproved: item.approvalGranted === true,
             permissionGates: item.execution.gates,
             workspaceRoot: this.scopedWorkspaceRoot,
             sandboxProfile: this.sandboxProfile,
@@ -504,6 +510,7 @@ export class AgentCoordinator {
             }
             const execResult = await this.daemon.executeTool(item.tc.function.name, item.args, {
               approvalGranted: item.execution.approvalGranted,
+              humanApproved: item.approvalGranted === true,
               permissionGates: item.execution.gates,
               workspaceRoot: this.scopedWorkspaceRoot,
               sandboxProfile: this.sandboxProfile,

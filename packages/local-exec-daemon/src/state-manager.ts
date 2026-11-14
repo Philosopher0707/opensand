@@ -152,11 +152,13 @@ export class StateManager {
   async readPermissionGates(): Promise<PermissionGates> {
     const computerUse = await this.readJsonSafe<{ allowed: boolean }>("local-computer-use-gate.json");
     const deviceTools = await this.readJsonSafe<{ allowed: boolean }>("local-device-tools-gate.json");
+    const memoryWrite = await this.readJsonSafe<{ allowed: boolean }>("local-memory-write-gate.json");
     const standing = await this.readStandingGrants();
 
     return {
       computerUseAllowed: computerUse?.allowed ?? false,
       deviceToolsAllowed: deviceTools?.allowed ?? false,
+      memoryWriteAllowed: memoryWrite?.allowed ?? false,
       standingAllowlist: standingExecPatterns(standing.standingGrants),
       ...standing,
     };
@@ -200,6 +202,9 @@ export class StateManager {
     }
     if (gates.deviceToolsAllowed !== undefined) {
       await this.writeJsonAtomic("local-device-tools-gate.json", { allowed: gates.deviceToolsAllowed });
+    }
+    if (gates.memoryWriteAllowed !== undefined) {
+      await this.writeJsonAtomic("local-memory-write-gate.json", { allowed: gates.memoryWriteAllowed });
     }
     if (gates.standingAllowlist !== undefined && !this.warnedLegacyWrite) {
       // standingAllowlist is a derived view of grants.json. Narrow or widen it with GrantsStore
