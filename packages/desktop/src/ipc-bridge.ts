@@ -815,9 +815,12 @@ export class DesktopIpcBridge extends EventEmitter {
         await this.folderTrustStore.setLevel(folder, 'trusted', { requireEpoch: decision?.epoch });
         level = 'trusted';
       } else if (decision.action === 'approve_once') {
-        // Persists nothing; withEpoch still checks under the lock, and sessionTrusted.add follows with no await gap.
-        await this.grantsStore.withEpoch(decision?.epoch, () => undefined);
-        this.sessionTrusted.add(folder);
+        // Persists nothing. The epoch check and the sessionTrusted.add share one grants.lock hold: a code after
+        // the await would run after the lock is released, so a revoke could delete first and this add would
+        // re-trust the revoked folder. A revoke that takes the lock later deletes after this add.
+        await this.grantsStore.withEpoch(decision?.epoch, () => {
+          this.sessionTrusted.add(folder);
+        });
         level = 'trusted';
       } else {
         await this.folderTrustStore.setLevel(folder, 'untrusted', { requireEpoch: decision?.epoch });
