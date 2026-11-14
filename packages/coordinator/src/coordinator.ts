@@ -6,7 +6,7 @@ import {
   RevertResult,
 } from "@opensand/shared";
 import { LocalExecDaemon, ToolExecutionResult, PolicyDecision, ToolDefinition } from "@opensand/local-exec-daemon";
-import { wrapUntrusted, untrustedSourceFor } from "@opensand/shared";
+import { wrapUntrusted, untrustedSourceFor, isStandingExecAllowed } from "@opensand/shared";
 import { isParallelSafeTool } from "./tool-parallelism.js";
 import { UniversalLLMClient, ConsolidatedAssistantResponse } from "./llm-client.js";
 import {
@@ -157,6 +157,32 @@ export class AgentCoordinator {
     return toolDefs;
   }
 
+  /**
+   * The gate snapshot was taken before this call waited (hooks, a human, earlier calls in the batch). When the
+   * allow rests on a standing grant alone, compare the snapshot's grants epoch with the current one right before
+   * the spawn (lock-free, like the daemon's own recheck) and, on a difference or an unreadable grants.json,
+   * re-evaluate on a fresh read. Returns a denial, or undefined when the call may go ahead.
+   */
+  private async denyIfStandingGrantChanged(item: {
+    args?: Record<string, any>;
+    reliesOnStandingGrant?: boolean;
+    execution?: { gates: Awaited<ReturnType<LocalExecDaemon["getGates"]>> };
+  }): Promise<ToolExecutionResult | undefined> {
+    if (!item.reliesOnStandingGrant || !item.execution) return undefined;
+    const fresh = await this.daemon.getGates();
+    if (!fresh.grantsError && fresh.grantsEpoch !== undefined && fresh.grantsEpoch === item.execution.gates.grantsEpoch) return undefined;
+    const cmd = typeof item.args?.command === "string" ? item.args.command.trim() : "";
+    if (!fresh.grantsError && isStandingExecAllowed(fresh.standingGrants, cmd)) return undefined;
+    return {
+      status: "error",
+      error: {
+        code: "PERMISSION_DENIED",
+        reason: "approval_required",
+        message: "The standing permission for this command was revoked or can no longer be verified before it ran.",
+      },
+    };
+  }
+
   async runTurn(userQuery: string, signal?: AbortSignal): Promise<string> {
     if (!this.initialized) {
       this.initialized = true;
@@ -262,6 +288,7 @@ export class AgentCoordinator {
         args?: Record<string, any>;
         blockedResult?: ToolExecutionResult;
         approvalGranted?: boolean;
+        reliesOnStandingGrant?: boolean;
         execution?: {
           gates: Awaited<ReturnType<LocalExecDaemon["getGates"]>>;
           policy: PolicyDecision;
@@ -350,21 +377,15 @@ export class AgentCoordinator {
 
         let approvalGranted = false;
         let needsApproval = policy.action === "REQUIRE_APPROVAL";
+        let isAllowlisted = false;
 
         // exec_command additionally honors the computer-use gate + standing
         // allowlist unless policy already said it needs approval.
         if (tc.function.name === "exec_command") {
           const cmd = typeof args.command === "string" ? args.command.trim() : "";
-          const hasChaining = /[;&|`]|\$\(|\n/.test(cmd);
-          const isAllowlisted =
-            !hasChaining &&
-            gates.standingAllowlist.some((pat) => {
-              if (pat.endsWith("*")) {
-                const prefix = pat.slice(0, -1).trim();
-                return cmd === prefix || cmd.startsWith(`${prefix} `);
-              }
-              return cmd === pat || cmd.startsWith(`${pat} `);
-            });
+          // Standing grants come from grants.json via the shared matcher (chaining guard first); a gate
+          // snapshot that carries grantsError never allows. The epoch is re-checked right before the spawn.
+          isAllowlisted = !gates.grantsError && isStandingExecAllowed(gates.standingGrants, cmd);
           if (!gates.computerUseAllowed && !isAllowlisted) {
             needsApproval = true;
           }
@@ -400,6 +421,9 @@ export class AgentCoordinator {
           tc,
           args,
           approvalGranted,
+          // Only an allow that rests on a standing grant alone (no human yes, no computer-use bypass) can go stale.
+          reliesOnStandingGrant:
+            tc.function.name === "exec_command" && isAllowlisted && !approvalGranted && !needsApproval && !gates.computerUseAllowed,
           execution: { gates, policy, approvalGranted: approvalGranted || policy.action === 'ALLOW' },
         });
         continue;
@@ -425,6 +449,8 @@ export class AgentCoordinator {
           if (!item.execution || !item.args) {
             return { status: "error" as const, error: { code: "TOOL_EXECUTION_NOT_PREPARED", message: "Tool execution was not prepared." } } satisfies ToolExecutionResult;
           }
+          const stale = await this.denyIfStandingGrantChanged(item);
+          if (stale) return stale;
           return this.daemon.executeTool(item.tc.function.name, item.args, {
             approvalGranted: item.execution.approvalGranted,
             permissionGates: item.execution.gates,
@@ -471,6 +497,11 @@ export class AgentCoordinator {
             }
           }
           if (item.execution && item.args) {
+            const denied = await this.denyIfStandingGrantChanged(item);
+            if (denied) {
+              await commitPrepared(item, denied, true);
+              continue;
+            }
             const execResult = await this.daemon.executeTool(item.tc.function.name, item.args, {
               approvalGranted: item.execution.approvalGranted,
               permissionGates: item.execution.gates,
