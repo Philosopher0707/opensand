@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { EventLogWriter } from "@opensand/shared";
-import { buildReceiptView, displayPath, formatDuration, formatChecks, formatChanged } from "../src/shell/mission-receipt-model.js";
+import { localizeTimestamps, buildReceiptView, displayPath, formatDuration, formatChecks, formatChanged } from "../src/shell/mission-receipt-model.js";
 import { readMissionReceipt } from "../src/shell/mission-receipt-source.js";
 
 const receipt = {
@@ -77,4 +77,11 @@ test("readMissionReceipt validates the id and returns null for unknown or receip
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }
+});
+
+test("receipt summary shows local 24h time, not ISO", () => {
+  assert.strictEqual(localizeTimestamps("check exited 0 (2 runs: 1 failed, passed at 2026-11-14T09:01:20.000Z)", "Asia/Kolkata"), "check exited 0 (2 runs: 1 failed, passed at 14:31:20)");
+  assert.strictEqual(localizeTimestamps("no stamp here", "UTC"), "no stamp here");
+  const v = buildReceiptView([ev(1, "mission.verified", "2026-11-14T09:00:00.000Z", { receipt: { ...receipt, summary: "passed at 2026-11-14T09:01:20.000Z" } })])!;
+  assert.ok(!/\d{4}-\d{2}-\d{2}T/.test(v.summary), "buildReceiptView localizes the summary");
 });

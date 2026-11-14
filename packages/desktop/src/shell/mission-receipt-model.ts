@@ -1,3 +1,5 @@
+import { formatStepTime } from "./mission-timeline-model.js";
+
 export interface RawReceiptEvent {
   seq: number;
   ts: string;
@@ -33,6 +35,16 @@ function text(v: unknown, max = TEXT_MAX): string | undefined {
   const s = v.replace(/\s+/g, " ").trim();
   if (!s) return undefined;
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
+
+const ISO_TS = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})\b/g;
+
+/** The engine writes ISO timestamps into the summary; show them as local 24h time like the timeline. */
+export function localizeTimestamps(s: string, timeZone?: string): string {
+  return s.replace(ISO_TS, (m) => {
+    const t = formatStepTime(m, timeZone);
+    return t === "—" ? m : t;
+  });
 }
 
 function count(v: unknown): number {
@@ -87,7 +99,7 @@ export function buildReceiptView(events: RawReceiptEvent[]): ReceiptView | null 
 
   return {
     status,
-    summary: text(r.summary) ?? "",
+    summary: localizeTimestamps(text(r.summary) ?? ""),
     checks: { total: count(ran.total), failed: count(ran.failed), lastExitCode: typeof lastExit === "number" ? lastExit : null },
     changedAvailable: r.changedAvailable !== false,
     changedReason: text(r.changedReason, 120),
