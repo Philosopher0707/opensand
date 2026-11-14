@@ -17,6 +17,8 @@ interface HarnessOptions {
   home?: string;
   shotTag?: string;
   interactScript?: string;
+  /** How many session rows this run seeded; the harness waits for exactly this many before reading. */
+  expectRows?: number;
 }
 
 interface HarnessResult {
@@ -155,8 +157,16 @@ async function runHarness(renderer: Renderer, opts: HarnessOptions = {}): Promis
     "      await win.webContents.executeJavaScript(`",
     "        new Promise((resolve) => {",
     "          const start = Date.now();",
+    "          const wantRows = " + JSON.stringify(opts.expectRows ?? 0) + ";",
     "          const check = () => {",
-    "            if (document.querySelector('#sessionList .session-channel-item, #sessionList .roster-empty, #sessionList .shell-empty') || Date.now() - start > 3000) {",
+    "            // The list renders its empty state before the async listSessions() resolves, so",
+    "            // \"empty marker present\" does not mean the list loaded. When this run seeded",
+    "            // sessions, wait for their rows; otherwise the empty state is the signal.",
+    "            const rows = document.querySelectorAll('#sessionList .session-channel-item').length;",
+    "            const ready = wantRows > 0",
+    "              ? rows >= wantRows",
+    "              : !!document.querySelector('#sessionList .roster-empty, #sessionList .shell-empty');",
+    "            if (ready || Date.now() - start > 3000) {",
     "              resolve();",
     "            } else {",
     "              setTimeout(check, 50);",
@@ -349,6 +359,7 @@ test("Real-Window Harness: Preact shell frame seeded sessions & search (960x740 
       shotTag: "seeded",
       interactScript: searchScript,
       forceOverflow,
+      expectRows: 3,
     });
     if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
 
@@ -446,6 +457,7 @@ test("Real-Window Harness: Preact session delete removes row and disk directory"
       home: tmpHome,
       interactScript: deleteScript,
       forceOverflow,
+      expectRows: 2,
     });
     if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
 
