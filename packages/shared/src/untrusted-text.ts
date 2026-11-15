@@ -49,6 +49,17 @@ const SEP = `(?:[_\\-]|${INV})*`;
 const TAG_START_SRC = `${BRACKET}(?=${INV}*(?:\\/${INV}*)?data${SEP}source)`;
 
 /** Only a bracket that begins a data_source open or close form is rewritten, to ASCII `&lt;`. */
+/**
+ * Outside text that reaches the model through context compaction summaries or
+ * MCP tool results must never arrive as a plain-text "SYSTEM:" line the model
+ * could read as a system instruction. Leading "SYSTEM:" lines (raw or JSON-escaped)
+ * are neutralised to "[SYSTEM]:".
+ */
+export function neutraliseSystemLines(text: string): string {
+  return String(text ?? "")
+    .replace(/(^|[\r\n]|\s|\\n|:\s*")(\s*)SYSTEM:/g, "$1$2[SYSTEM]:");
+}
+
 export function escapeUntrustedText(text: string): string {
   return String(text).replace(new RegExp(TAG_START_SRC, "gi"), "&lt;");
 }
@@ -93,7 +104,8 @@ function capText(escaped: string, opts: WrapUntrustedOptions): string {
 
 /** Escape, cap, then wrap. Pure; never throws. */
 export function wrapUntrusted(text: string, opts: WrapUntrustedOptions): string {
-  const escaped = escapeUntrustedText(String(text ?? ""));
+  const neutralised = neutraliseSystemLines(String(text ?? ""));
+  const escaped = escapeUntrustedText(neutralised);
   const inner = capText(escaped, opts);
   const origin = sanitiseOrigin(opts.origin);
   const originAttr = origin ? ` origin="${origin}"` : "";

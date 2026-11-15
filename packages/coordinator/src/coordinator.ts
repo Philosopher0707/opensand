@@ -6,7 +6,7 @@ import {
   RevertResult,
 } from "@opensand/shared";
 import { LocalExecDaemon, ToolExecutionResult, PolicyDecision, ToolDefinition, memoryWriteNeedsGate, skillWriteNeedsGate } from "@opensand/local-exec-daemon";
-import { wrapUntrusted, untrustedSourceFor, isStandingExecAllowed, escapeUntrustedText } from "@opensand/shared";
+import { wrapUntrusted, untrustedSourceFor, isStandingExecAllowed, escapeUntrustedText, neutraliseSystemLines } from "@opensand/shared";
 import { isParallelSafeTool } from "./tool-parallelism.js";
 import { UniversalLLMClient, ConsolidatedAssistantResponse } from "./llm-client.js";
 import {
@@ -62,13 +62,15 @@ export interface CoordinatorOptions {
 
 /**
  * Quoted chat text inside a compaction summary must not be able to close the
- * summary block or forge a tag: the summary is sent as a system message.
- * escapeUntrustedText covers the data_source shapes (lookalike brackets and
- * invisibles included); the second rule drops every other tag start. Escape
- * after slicing, so a cut can never split an escape sequence.
+ * summary block or forge a tag: the summary is sent as clearly-labelled data
+ * with role user, not system. escapeUntrustedText covers the data_source shapes
+ * (lookalike brackets and invisibles included); the second rule drops every other
+ * tag start, and leading SYSTEM: lines are neutralised so the model never reads
+ * quoted text as a system directive. Escape after slicing, so a cut can never
+ * split an escape sequence.
  */
 function escapeQuotedText(text: string): string {
-  return escapeUntrustedText(text).replace(/<(?=[/A-Za-z])/g, "&lt;");
+  return escapeUntrustedText(neutraliseSystemLines(text)).replace(/<(?=[/A-Za-z])/g, "&lt;");
 }
 
 export class AgentCoordinator {
@@ -204,7 +206,7 @@ export class AgentCoordinator {
         if (history.length > 0) {
           const nonSystem = history.filter((m) => m.role !== "system");
           const historicalSummary = history.find(
-            (m) => m.role === "system" && m.content?.includes("<historical_context_summary>")
+            (m) => (m.role === "user" || m.role === "system") && m.content?.includes("<historical_context_summary>")
           );
           if (historicalSummary) {
             this.messages.splice(1, 0, historicalSummary);
@@ -800,14 +802,19 @@ ${question}`;
     const recentMessages = this.messages.slice(cutMessageIndex);
 
     let summaryText = options?.customSummary;
-    if (!summaryText) {
+    if (summaryText) {
+      const neutralised = neutraliseSystemLines(escapeQuotedText(summaryText));
+      summaryText = neutralised.includes("<historical_context_summary>")
+        ? neutralised
+        : `<historical_context_summary>\n${neutralised}\n</historical_context_summary>`;
+    } else {
       const bulletPoints: string[] = [];
       let currentQuery = "";
       for (const msg of olderMessages) {
         if (msg.role === "user") {
-          currentQuery = escapeQuotedText((msg.content || "").replace(/\n+/g, " ").slice(0, 120));
+          currentQuery = escapeQuotedText(neutraliseSystemLines(msg.content || "")).replace(/\n+/g, " ").slice(0, 120);
         } else if (msg.role === "assistant" && currentQuery) {
-          const respSnippet = escapeQuotedText((msg.content || "").replace(/\n+/g, " ").slice(0, 150));
+          const respSnippet = escapeQuotedText(neutraliseSystemLines(msg.content || "")).replace(/\n+/g, " ").slice(0, 150);
           bulletPoints.push(`- User: "${currentQuery}" -> Assistant: "${respSnippet}"`);
           currentQuery = "";
         }
@@ -817,7 +824,7 @@ ${question}`;
     }
 
     const summaryMessage: ChatMessage = {
-      role: "system",
+      role: "user",
       content: summaryText,
     };
 

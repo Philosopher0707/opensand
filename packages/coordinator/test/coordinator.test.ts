@@ -608,7 +608,7 @@ describe("AgentCoordinator Integration", () => {
     // History now has: system (original), system (summary), Turn 3 (user, asst), Turn 4 (user, asst) = 6
     assert.equal(coordinator.history.length, 6);
     assert.equal(coordinator.history[0].role, "system");
-    assert.equal(coordinator.history[1].role, "system");
+    assert.equal(coordinator.history[1].role, "user");
     assert.ok(coordinator.history[1].content?.includes("<historical_context_summary>"));
     assert.ok(coordinator.history[1].content?.includes("Turn 1"));
 
@@ -782,7 +782,7 @@ describe("AgentCoordinator Integration", () => {
 
     // Since maxContextTokens was set to 100, auto-compaction must have triggered
     const summaryMsg = coordinator.history.find(
-      (m) => m.role === "system" && m.content?.includes("<historical_context_summary>")
+      (m) => m.role === "user" && m.content?.includes("<historical_context_summary>")
     );
     assert.ok(summaryMsg !== undefined, "Expected historical context summary from auto-compaction");
   });

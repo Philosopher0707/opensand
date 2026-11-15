@@ -150,7 +150,7 @@ describe("projectMessages", () => {
     ]);
     assert.deepEqual(messages, [
       { role: "system", content: "sys" },
-      { role: "system", content: "S" },
+      { role: "user", content: "S" },
       { role: "user", content: "u3" },
       { role: "assistant", content: "a3" },
     ]);
@@ -464,7 +464,7 @@ describe("AgentCoordinator event log parity", () => {
     await coordinator.compactHistory({ keepRecentTurns: 1, customSummary: "Earlier turns summarized." });
     await assertProjectionsMatch(coordinator);
     assert.ok(
-      coordinator.history.some((m) => m.role === "system" && m.content === "Earlier turns summarized.")
+      coordinator.history.some((m) => m.role === "user" && m.content?.includes("Earlier turns summarized."))
     );
   });
 });
