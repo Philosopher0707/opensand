@@ -162,4 +162,18 @@ describe("GitManager", () => {
     assert.ok(warnings.some((w) => w.comment.includes("console.log")));
     assert.ok(warnings.some((w) => w.comment.includes("Type assertion bypass")));
   });
+
+  it("removing a worktree leaves a peer's half-created registration alone", async () => {
+    const removable = await gitManager.createWorktree("wt-remove-me");
+    // A concurrent `git worktree add` shows up as a registration whose working
+    // tree does not exist yet: git writes .git/worktrees/<name> first.
+    const peerDir = path.join(tempRepoDir, ".git", "worktrees", "peer-mid-add");
+    await fs.mkdir(peerDir, { recursive: true });
+    await fs.writeFile(path.join(peerDir, "gitdir"), `gitdir: ${path.join(tempRepoDir, "peer-path", ".git")}\n`);
+
+    assert.equal(await gitManager.removeWorktree(removable.worktreePath), true);
+
+    const peerSurvived = await fs.stat(peerDir).then(() => true).catch(() => false);
+    assert.ok(peerSurvived, "a peer's in-progress worktree registration must survive another worktree's removal");
+  });
 });

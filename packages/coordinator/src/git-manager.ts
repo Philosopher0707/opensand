@@ -453,13 +453,18 @@ export class GitManager {
   }
 
   /**
-   * Remove an isolated Git worktree and prune worktree metadata.
+   * Remove an isolated Git worktree.
+   *
+   * Deliberately no `git worktree prune`: a concurrent `git worktree add`
+   * registers .git/worktrees/<name> before it creates the directory, and prune
+   * deletes any registration whose path is missing — including that peer's,
+   * which then dies with "failed to read .../commondir". `worktree remove`
+   * already deregisters the worktree being removed.
    */
   async removeWorktree(targetPath: string, cwd?: string): Promise<boolean> {
     const resolvedPath = path.resolve(targetPath);
     try {
       await this.execGit(["worktree", "remove", "--force", resolvedPath], cwd);
-      await this.execGit(["worktree", "prune"], cwd);
       return true;
     } catch {
       return false;
