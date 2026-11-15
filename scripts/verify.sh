@@ -43,6 +43,18 @@ if [[ -n "$RELEASE_TAG" ]]; then
   echo "verify: release tag '$RELEASE_TAG' matches package version '$ROOT_VERSION'"
 fi
 
+
+echo "verify: checking test tmpdir guard..."
+# Guard against test fixtures creating temp dirs/files outside approved helper patterns (AGENTS_LEARNING.md rule 12.3).
+# Tests must use isolated unique directories via fs.mkdtemp/fs.mkdtempSync or package helpers (e.g. tempDir()),
+# never bare timestamps (Date.now()) or static /tmp paths that collide under concurrency.
+BAD_TMPDIRS=$(grep -rnE --include="*.ts" --include="*.js" "(/tmp/opensand-|(/tmp|tmpdir).*Date\\.now|Date\\.now.*(/tmp|tmpdir)|mkdir.*(os\\.tmpdir|/tmp))" packages/*/test 2>/dev/null || true)
+if [[ -n "$BAD_TMPDIRS" ]]; then
+  echo "verify error: Test fixtures must use approved tempDir() or mkdtemp helpers, never un-isolated temp paths or timestamps (rule 12.3):" >&2
+  echo "$BAD_TMPDIRS" >&2
+  exit 1
+fi
+
 if [[ "${SKIP_INSTALL:-}" != "1" ]]; then
   pnpm install --frozen-lockfile
 fi

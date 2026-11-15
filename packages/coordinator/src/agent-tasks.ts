@@ -36,7 +36,26 @@ function stamp(value: number | undefined): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+
+let taskSeq = 0;
+let lastTimestamp = 0;
+
+function nextTaskId(now: number): string {
+  if (now === lastTimestamp) {
+    taskSeq++;
+  } else {
+    lastTimestamp = now;
+    taskSeq = 0;
+  }
+  return `task_${now}_${String(taskSeq).padStart(4, "0")}`;
+}
+
 export class TaskStore {
+  static resetSequenceForTesting(): void {
+    lastTimestamp = 0;
+    taskSeq = 0;
+  }
+
   private baseDir: string;
 
   constructor(customDir?: string) {
@@ -54,9 +73,8 @@ export class TaskStore {
   async createTask(input: CreateTaskInput): Promise<AgentTask> {
     await this.ensureDirectory();
 
-    const rand = crypto.randomBytes(4).toString("hex");
-    const id = `task_${Date.now()}_${rand}`;
     const now = Date.now();
+    const id = nextTaskId(now);
 
     const task: AgentTask = {
       id,

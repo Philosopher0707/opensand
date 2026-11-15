@@ -1,3 +1,6 @@
+import * as fsSync from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -23,28 +26,33 @@ describe("ToolRegistry", () => {
 
   it("dispatches read_file and write_file operations", async () => {
     const registry = new ToolRegistry();
-    const tempFile = `/tmp/opensand-tool-test-${Date.now()}.txt`;
+    const tmpDir = fsSync.mkdtempSync(path.join(os.tmpdir(), "opensand-tool-test-"));
+    const tempFile = path.join(tmpDir, "test.txt");
 
-    const writeRes = await registry.dispatch("write_file", {
-      path: tempFile,
-      content: "registry test content",
-    });
+    try {
+      const writeRes = await registry.dispatch("write_file", {
+        path: tempFile,
+        content: "registry test content",
+      });
 
-    assert.equal(writeRes.status, "ok");
-    assert.ok(writeRes.output.bytesWritten > 0);
+      assert.equal(writeRes.status, "ok");
+      assert.ok(writeRes.output.bytesWritten > 0);
 
-    const readRes = await registry.dispatch("read_file", {
-      path: tempFile,
-    });
+      const readRes = await registry.dispatch("read_file", {
+        path: tempFile,
+      });
 
-    assert.equal(readRes.status, "ok");
-    assert.equal(readRes.output.content, "registry test content");
+      assert.equal(readRes.status, "ok");
+      assert.equal(readRes.output.content, "registry test content");
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
   });
 
   it("dispatches edit_file, grep, and glob operations", async () => {
     const registry = new ToolRegistry();
-    const tempDir = `/tmp/opensand-reg-${Date.now()}`;
-    const tempFile = `${tempDir}/sub/code.txt`;
+    const tempDir = fsSync.mkdtempSync(path.join(os.tmpdir(), "opensand-reg-"));
+    const tempFile = path.join(tempDir, "sub", "code.txt");
 
     await registry.dispatch("write_file", {
       path: tempFile,
