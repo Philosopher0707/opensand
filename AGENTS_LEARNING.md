@@ -205,3 +205,21 @@
 * **Trap:** OpenSand 0.1.5 launched from Finder/Dock hung forever on the first message with the thinking spinner. The bridge defaulted `workspaceDir` to `process.cwd()`, which is `/` for a GUI launch, so the session coordinator asked `requestFolderTrust("/")` and the turn waited on an approval nobody could see was about it.
 * **Root Cause:** GUI launches have no meaningful working directory; `/` is a filesystem root, never a user workspace. The approval card that should have answered it also threw `ReferenceError: render is not defined` (its factory was called without the `render` option it expected), so the card's buttons never reached the app.
 * **Rule:** Never derive a session workspace from `process.cwd()` without guarding the filesystem root (`path.dirname(dir) === dir`) and falling back to `os.homedir()`; an explicit `workspaceDir` still wins. Renderer widgets must render through their own exported function, call the side effect before mutating UI state, and keep the card when that call fails. Both fixes carry a test proven to fail when reverted.
+
+---
+
+## 12. Concurrency & Shared Temp State
+
+### 12.1 A tool that mutates state with no lock breaks under its own concurrency
+* **Trap:** `delegate_to_agent` returned `status: "error"` in ~4 of every 160 coordinator suite runs (10 parallel streams). Logs showed `fatal: failed to read .git/worktrees/<peer>/commondir: Undefined error: 0`. Two writers into the same seam, both in `packages/coordinator/src/git-manager.ts`: `removeWorktree` ran `git worktree prune` (old line 462), and `prune` deletes any registration whose worktree path is missing — which is exactly what a peer `git worktree add` looks like before it creates the directory; and `worktree add` in `createWorktree` (line 242) enumerates every registration in the repo, so two concurrent adds can read a peer's still-empty `commondir` and die. `errno 0` (not ENOENT) is the tell: the file exists but has nothing in it yet.
+* **Root Cause:** git holds no lock across separate `worktree add` / `worktree remove` invocations, and delegations run in **separate OS processes**, so an in-process mutex or "remove the prune call" only shrinks the window (4/80 → 1/80) instead of closing it.
+* **Rule:** serialise every git worktree mutation across processes — `withWorktreeLock` now holds `EventLogLock` on `git rev-parse --git-common-dir` around add and remove. Never fix such a race with a retry or a raised timeout, and never leave `git worktree prune` in a teardown path: it deletes other processes' in-flight work. Prove it with a seeded half-created registration (survives a removal) and with an injected git runner that holds one `worktree add` open while asserting a second never starts — a 2.5% flake is not evidence either way, only the deterministic test is.
+
+### 12.2 Two copies of `scripts/verify.sh` cannot share `${TMPDIR}/opensand-verify`
+* **Trap:** a `SKIP_INSTALL=1 bash scripts/verify.sh` failed with "Package @opensand/desktop has TypeScript sources in src/ but reported 0 tests" right after desktop had passed 161 tests, and `grep` reported the per-package log as missing.
+* **Root Cause:** every run does `rm -rf "$LOG_DIR"; mkdir -p "$LOG_DIR"` on a folder derived from `TMPDIR` alone. A leftover verify.sh from an earlier call wiped the log mid-run; the guard then read a file that no longer existed. The script and the tests were fine.
+* **Rule:** one verify.sh per machine at a time. A missing log means another run owns the folder — wait or kill it and re-run, never "fix" the guard.
+
+### 12.3 A timestamp-only fixture path collides in parallel suites
+* **Trap:** `packages/coordinator/test/connectors.test.ts` keys its fixture on `opensand-connectors-test-${Date.now()}`. Two suite processes starting in the same millisecond share it, and one test then compares against the other's OAuth state (`oauth_linear_<hash>`) — 2/80 runs, invisible when the file runs alone.
+* **Rule:** fixtures that must be isolated use `fs.mkdtemp` (unique suffix), never a bare timestamp; CI and the load loop run many suites at once.
