@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as crypto from "node:crypto";
 import { McpClient, McpServerConfig, McpToolDefinition, McpTransport } from "./mcp-client.js";
 import { LocalExecDaemon, ToolDefinition } from "@opensand/local-exec-daemon";
-import { escapeUntrustedText, neutraliseSystemLines } from "@opensand/shared";
+import { escapeUntrustedText, wrapUntrusted } from "@opensand/shared";
 
 /**
  * Copy a tool schema and escape every description in it. A description is text
@@ -308,13 +308,13 @@ export class McpManager {
           // Format output text
           const texts = result.content
             .filter((c) => c.type === "text" && c.text)
-            .map((c) => neutraliseSystemLines(c.text!));
+            .map((c) => c.text!);
 
-          if (texts.length > 0) {
-            return texts.join("\n");
-          }
-
-          return neutraliseSystemLines(JSON.stringify(result.content));
+          const payload = texts.length > 0 ? texts.join("\n") : JSON.stringify(result.content);
+          return wrapUntrusted(payload, {
+            source: "mcp",
+            origin: qualifiedName,
+          });
         },
       });
     }
