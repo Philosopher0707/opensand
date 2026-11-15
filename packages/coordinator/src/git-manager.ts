@@ -4,6 +4,8 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 
+import { EventLogLock } from "@opensand/shared";
+
 const execFileAsync = promisify(execFile);
 
 export interface GitRepoStatus {
@@ -77,11 +79,18 @@ export function sanitizeBranchName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9/_-]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+export interface GitManagerOptions {
+  /** Override the git runner; tests use it to observe and gate individual commands. */
+  execGit?: (args: string[], cwd: string) => Promise<{ stdout: string; stderr: string }>;
+}
+
 export class GitManager {
   private defaultCwd: string;
+  private readonly options: GitManagerOptions;
 
-  constructor(defaultCwd?: string) {
+  constructor(defaultCwd?: string, options: GitManagerOptions = {}) {
     this.defaultCwd = defaultCwd ?? process.cwd();
+    this.options = options;
   }
 
   private gitSafeEnv(): NodeJS.ProcessEnv {
@@ -107,10 +116,33 @@ export class GitManager {
   }
 
   private async execGit(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> {
+    const dir = cwd ?? this.defaultCwd;
+    if (this.options.execGit) return this.options.execGit(args, dir);
     return execFileAsync("git", ["--no-pager", ...args], {
-      cwd: cwd ?? this.defaultCwd,
+      cwd: dir,
       env: { ...this.gitSafeEnv(), CI: "true" },
     });
+  }
+
+  /**
+   * Serialize worktree mutations across processes.
+   *
+   * `git worktree add` writes .git/worktrees/<name>/{gitdir,commondir} and then
+   * reads every registration it finds, so a peer add can read a commondir that
+   * is still empty and die with "failed to read .../commondir: Undefined error:
+   * 0". git takes no lock for this, so hold one on the shared git dir.
+   */
+  private async withWorktreeLock<T>(cwd: string, fn: () => Promise<T>): Promise<T> {
+    const { stdout } = await this.execGit(["rev-parse", "--git-common-dir"], cwd);
+    const lock = await EventLogLock.acquire(path.resolve(cwd, stdout.trim()), {
+      lockFileName: "opensand-worktrees.lock",
+      timeoutMs: 120_000,
+    });
+    try {
+      return await fn();
+    } finally {
+      await lock.release();
+    }
   }
 
   private async execGh(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> {
@@ -228,19 +260,21 @@ export class GitManager {
     const sanitizedBranch = branchName.replace(/[^a-zA-Z0-9/_-]+/g, "-");
     const worktreeDir = customPath ?? path.join(os.tmpdir(), `opensand-worktree-${sanitizedBranch.replace(/\//g, "-")}-${Date.now()}`);
 
-    let branchExists = false;
-    try {
-      await this.execGit(["rev-parse", "--verify", sanitizedBranch], cwd);
-      branchExists = true;
-    } catch {
-      branchExists = false;
-    }
+    await this.withWorktreeLock(cwd, async () => {
+      let branchExists = false;
+      try {
+        await this.execGit(["rev-parse", "--verify", sanitizedBranch], cwd);
+        branchExists = true;
+      } catch {
+        branchExists = false;
+      }
 
-    if (branchExists) {
-      await this.execGit(["worktree", "add", worktreeDir, sanitizedBranch], cwd);
-    } else {
-      await this.execGit(["worktree", "add", "-b", sanitizedBranch, worktreeDir, "HEAD"], cwd);
-    }
+      if (branchExists) {
+        await this.execGit(["worktree", "add", worktreeDir, sanitizedBranch], cwd);
+      } else {
+        await this.execGit(["worktree", "add", "-b", sanitizedBranch, worktreeDir, "HEAD"], cwd);
+      }
+    });
 
     return {
       worktreePath: worktreeDir,
@@ -464,7 +498,10 @@ export class GitManager {
   async removeWorktree(targetPath: string, cwd?: string): Promise<boolean> {
     const resolvedPath = path.resolve(targetPath);
     try {
-      await this.execGit(["worktree", "remove", "--force", resolvedPath], cwd);
+      await this.withWorktreeLock(cwd ?? this.defaultCwd, async () => {
+        await this.execGit(["worktree", "remove", "--force", resolvedPath], cwd);
+        return true;
+      });
       return true;
     } catch {
       return false;
