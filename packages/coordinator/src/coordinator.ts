@@ -58,6 +58,8 @@ export interface CoordinatorOptions {
   /** Delegation depth: how many delegate_to_agent hops above this coordinator. */
   subagentDepth?: number;
   mcpManager?: McpManager;
+  /** Agent persona name if this coordinator is executing a subagent. */
+  agentName?: string;
 }
 
 /**
@@ -86,6 +88,7 @@ export class AgentCoordinator {
   public readonly mcpManager?: McpManager;
   public readonly workspaceDir: string;
   public readonly sandboxProfile?: "read-only" | "workspace-write" | "full";
+  public readonly agentName?: string;
   /**
    * Workspace scope handed to the daemon. Only sandboxed (subagent) turns are
    * confined to it; the main agent keeps its unrestricted file access.
@@ -118,6 +121,7 @@ export class AgentCoordinator {
     }
     this.maxTurnIterations = options.maxTurnIterations ?? 150;
     this.subagentDepth = options.subagentDepth ?? 0;
+    this.agentName = options.agentName;
     this.sandboxProfile =
       options.sandboxProfile ?? (this.subagentDepth > 0 ? "workspace-write" : undefined);
     this.mcpManager = options.mcpManager;
@@ -569,7 +573,7 @@ export class AgentCoordinator {
    * tree stays bounded — delegation beyond the cap still runs, just without
    * live streaming.
    */
-  private buildDelegationContext(toolName: string): { onEvent: (event: TurnEvent, info: SubagentInfo) => void; depth: number; sessionId: string } | undefined {
+  private buildDelegationContext(toolName: string): { onEvent: (event: TurnEvent, info: SubagentInfo) => void; depth: number; sessionId: string; agentName?: string } | undefined {
     if (toolName !== "delegate_to_agent") return undefined;
     const MAX_DELEGATION_DEPTH = 3;
     const depth = this.subagentDepth + 1;
@@ -577,6 +581,7 @@ export class AgentCoordinator {
     return {
       depth,
       sessionId: this.sessionId,
+      agentName: this.agentName,
       onEvent: (event: TurnEvent, info: SubagentInfo) => {
         // Forward to this coordinator's listeners, wrapped so the UI can
         // attribute the event to the child. The child turn's own sessionId

@@ -59,7 +59,11 @@ export interface ToolExecutionContext {
     depth?: number;
     /** Parent coordinator session id, for nested delegation linkage. */
     sessionId?: string;
+    /** Parent agent name when delegating from within a subagent, or undefined for orchestrator. */
+    agentName?: string;
   };
+  /** Calling agent name (if running inside a subagent) or undefined for top-level orchestrator. */
+  agentName?: string;
 }
 
 export type CustomToolHandler = (args: Record<string, any>, context?: ToolExecutionContext) => Promise<any>;
