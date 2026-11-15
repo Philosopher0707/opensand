@@ -24,3 +24,11 @@ export type MissionStatus =
   | "verified"
   | "failed"
   | "stopped";
+
+export interface NodeStartedPayload {
+  missionId: string;
+  node: string;
+  attempt?: number;
+  snapshot?: string;
+  [key: string]: unknown;
+}
