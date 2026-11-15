@@ -31,6 +31,11 @@ export interface CreateTaskInput {
   metadata?: Record<string, unknown>;
 }
 
+/** A missing or broken timestamp must not make a comparison NaN: the order has to be total. */
+function stamp(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 export class TaskStore {
   private baseDir: string;
 
@@ -114,7 +119,13 @@ export class TaskStore {
 
       return tasks.sort((a, b) => {
         if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-        return b.updatedAt - a.updatedAt;
+        // Same updatedAt: fall back to creation, then to the id. Without this the
+        // order of a tie was the filesystem's, so it changed between runs.
+        const byUpdated = stamp(b.updatedAt) - stamp(a.updatedAt);
+        if (byUpdated !== 0) return byUpdated;
+        const byCreated = stamp(b.createdAt) - stamp(a.createdAt);
+        if (byCreated !== 0) return byCreated;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
       });
     } catch {
       return [];
