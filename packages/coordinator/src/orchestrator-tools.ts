@@ -1250,13 +1250,14 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         },
       },
     },
-    requiresGate: "computerUse",
+    requiresGate: "skillWrite",
     handler: async (args) => {
       const skill = await skillStore.createSkill({
         name: args.name,
         description: args.description,
         content: args.content,
         category: args.category,
+        origin: "agent",
       });
       return JSON.stringify({
         status: "success",
@@ -1313,7 +1314,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         },
       },
     },
-    requiresGate: "computerUse",
+    requiresGate: "skillWrite",
     handler: async (args) => {
       const res = await skillStore.mountSkillToAgent(args.agent_id_or_name, args.skill_id_or_name);
       return JSON.stringify({

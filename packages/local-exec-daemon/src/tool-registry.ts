@@ -67,9 +67,17 @@ export type CustomToolHandler = (args: Record<string, any>, context?: ToolExecut
 export interface CustomToolRegistration {
   definition: ToolDefinition;
   handler: CustomToolHandler;
-  requiresGate?: "computerUse" | "deviceTools" | "memoryWrite";
+  requiresGate?: "computerUse" | "deviceTools" | "memoryWrite" | "skillWrite";
   /** memoryWrite only: the gate applies to a call when this returns true (default: every call). */
   gateWhen?: (args: Record<string, any>) => boolean;
+}
+
+/**
+ * True when a call would make a skill a standing instruction in later prompts: writing one, or
+ * mounting one (which activates its text in the agent's prompt). Both need a human yes.
+ */
+export function skillWriteNeedsGate(toolName: string): boolean {
+  return toolName === "add_skill" || toolName === "mount_skill";
 }
 
 /**
@@ -820,6 +828,19 @@ export class ToolRegistry {
               code: "PERMISSION_REQUIRED",
               reason: "approval_required",
               message: `Tool '${name}' writes memory that persists into later sessions and requires human approval.`,
+            },
+          };
+        }
+
+        if (custom.requiresGate === "skillWrite" && !context?.humanApproved) {
+          // A skill body is obeyed in every later prompt, so only a person's yes for this call opens it.
+          return {
+            status: "permission_pending",
+            approvalId: context?.approvalId ?? `req-${Date.now()}`,
+            error: {
+              code: "PERMISSION_REQUIRED",
+              reason: "approval_required",
+              message: `Tool '${name}' writes a skill that becomes a standing instruction and requires human approval.`,
             },
           };
         }
