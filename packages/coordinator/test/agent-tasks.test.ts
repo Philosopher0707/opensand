@@ -66,3 +66,64 @@ test("TaskStore - CRUD Lifecycle", async (t) => {
   // Cleanup
   await fs.rm(tmpDir, { recursive: true, force: true });
 });
+
+test("TaskStore - listTasks breaks an updatedAt tie deterministically", async () => {
+  const UPDATED_AT = 1_700_000_000_000;
+
+  // Eight pinned tasks share one updatedAt. The createdAt order and the id order
+  // disagree on purpose, and one pair shares createdAt too, so the rule under test
+  // is "newest first, id breaks the last tie" and not "alphabetical".
+  const RECORDS = [
+    { id: "task_a", createdAt: UPDATED_AT - 1 },
+    { id: "task_b", createdAt: UPDATED_AT - 5 },
+    { id: "task_c", createdAt: UPDATED_AT - 3 },
+    { id: "task_d", createdAt: UPDATED_AT - 7 },
+    { id: "task_e", createdAt: UPDATED_AT - 6 },
+    { id: "task_f", createdAt: UPDATED_AT - 2 },
+    { id: "task_g", createdAt: UPDATED_AT - 7 },
+    { id: "task_h", createdAt: UPDATED_AT - 4 },
+  ];
+  const EXPECTED = ["task_a", "task_f", "task_c", "task_h", "task_b", "task_e", "task_d", "task_g"];
+
+  async function writeRecords(dir: string, order: number[]): Promise<void> {
+    await fs.mkdir(dir, { recursive: true });
+    for (const index of order) {
+      const record = RECORDS[index];
+      const task = {
+        id: record.id,
+        title: record.id,
+        description: "",
+        status: "todo",
+        priority: "medium",
+        pinned: true,
+        read: false,
+        createdAt: record.createdAt,
+        updatedAt: UPDATED_AT,
+      };
+      await fs.writeFile(path.join(dir, `${record.id}.json`), JSON.stringify(task, null, 2));
+    }
+  }
+
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-task-tiebreak-"));
+  try {
+    const dirA = path.join(tmpDir, "a");
+    const dirB = path.join(tmpDir, "b");
+    await writeRecords(dirA, [0, 1, 2, 3, 4, 5, 6, 7]);
+    await writeRecords(dirB, [7, 6, 5, 4, 3, 2, 1, 0]);
+
+    const storeA = new TaskStore(dirA);
+    const storeB = new TaskStore(dirB);
+
+    assert.deepEqual((await storeA.listTasks()).map((t) => t.id), EXPECTED);
+
+    // Repeated calls keep the same order.
+    for (let i = 0; i < 3; i++) {
+      assert.deepEqual((await storeA.listTasks()).map((t) => t.id), EXPECTED);
+    }
+
+    // The order does not depend on the order the files were created in.
+    assert.deepEqual((await storeB.listTasks()).map((t) => t.id), EXPECTED);
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
