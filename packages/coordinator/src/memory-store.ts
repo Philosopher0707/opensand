@@ -2,6 +2,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as fs from "node:fs/promises";
 import * as crypto from "node:crypto";
+import { wrapUntrusted } from "@opensand/shared";
 
 export type MemoryScope = "user" | "agent" | "team";
 export type MemoryTier = "profile" | "log";
@@ -483,16 +484,21 @@ export class MemoryStore {
 
     const sections: string[] = [];
 
+    // Recalled facts are data, not instructions: fence each one on its own so a
+    // forged tag cannot escape and one long fact cannot swallow the rest.
+    const fence = (text: string, origin: "stored-fact" | "team") =>
+      wrapUntrusted(text, { source: "memory", origin, maxChars: 2000 });
+
     if (userProfileFacts.length > 0) {
-      sections.push("### User Profile & Preferences\n" + userProfileFacts.map((f) => `- ${f.text}`).join("\n"));
+      sections.push("### User Profile & Preferences\n" + userProfileFacts.map((f) => `- ${fence(f.text, "stored-fact")}`).join("\n"));
     }
 
     if (agentProfileFacts.length > 0) {
-      sections.push("### Agent Persona Guidelines\n" + agentProfileFacts.map((f) => `- ${f.text}`).join("\n"));
+      sections.push("### Agent Persona Guidelines\n" + agentProfileFacts.map((f) => `- ${fence(f.text, "stored-fact")}`).join("\n"));
     }
 
     if (teamSummary.memoryCount > 0) {
-      sections.push(`### Shared Team Context (v${teamSummary.memoryVersion})\n${teamSummary.prose}`);
+      sections.push(`### Shared Team Context (v${teamSummary.memoryVersion})\n${fence(teamSummary.prose, "team")}`);
     }
 
     return sections.join("\n\n");
