@@ -5,7 +5,7 @@ import { MISSION_EVENT, FolderTrustStore, GrantsStore, resolveSandboxProfile } f
 import type { EventFrame } from "@opensand/protocol";
 import { logDirFor, eventNameForKind } from "../reconnect.js";
 import { runCheck, type CheckResult } from "./check.js";
-import { treeOf, changedLinesBetweenTrees, pinTrees, type ChangesResult } from "./workspace-diff.js";
+import { treeOf, changedLinesBetweenTrees, pinTrees, createStepSnapshot, type ChangesResult } from "./workspace-diff.js";
 import { projectReceipt } from "./receipt.js";
 import type { MissionAgent } from "./agent.js";
 import type { FolderTrustGate } from "./trust-gate.js";
@@ -63,6 +63,7 @@ export class MissionRunner {
   private executionPromise?: Promise<void>;
   private isFinished = false;
   private trustedFolder = "";
+  private snapshotSeq = 0;
 
   constructor(
     options: MissionOptions,
@@ -237,9 +238,28 @@ export class MissionRunner {
       this.currentNode = "act";
       const start = Date.now();
       const attempt = state.repairRounds + 1;
+      let snapshotRef: string | undefined;
+      try {
+        const snap = await createStepSnapshot(
+          this.workspaceRoot,
+          this.missionId,
+          ++this.snapshotSeq
+        );
+        if (snap?.ref) {
+          snapshotRef = snap.ref;
+        }
+      } catch (err) {
+        console.error(`Snapshot failed before act node in mission ${this.missionId}:`, err);
+      }
+
       await this.appendAndPublish(
         MISSION_EVENT.NODE_STARTED,
-        { missionId: this.missionId, node: "act", attempt },
+        {
+          missionId: this.missionId,
+          node: "act",
+          attempt,
+          ...(snapshotRef ? { snapshot: snapshotRef } : {}),
+        },
         "act"
       );
 
@@ -335,10 +355,28 @@ export class MissionRunner {
       this.currentNode = "repair";
       const start = Date.now();
       const nextRound = state.repairRounds + 1;
+      let snapshotRef: string | undefined;
+      try {
+        const snap = await createStepSnapshot(
+          this.workspaceRoot,
+          this.missionId,
+          ++this.snapshotSeq
+        );
+        if (snap?.ref) {
+          snapshotRef = snap.ref;
+        }
+      } catch (err) {
+        console.error(`Snapshot failed before repair node in mission ${this.missionId}:`, err);
+      }
 
       await this.appendAndPublish(
         MISSION_EVENT.NODE_STARTED,
-        { missionId: this.missionId, node: "repair", attempt: nextRound },
+        {
+          missionId: this.missionId,
+          node: "repair",
+          attempt: nextRound,
+          ...(snapshotRef ? { snapshot: snapshotRef } : {}),
+        },
         "repair"
       );
 
