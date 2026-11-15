@@ -206,6 +206,12 @@
 * **Root Cause:** GUI launches have no meaningful working directory; `/` is a filesystem root, never a user workspace. The approval card that should have answered it also threw `ReferenceError: render is not defined` (its factory was called without the `render` option it expected), so the card's buttons never reached the app.
 * **Rule:** Never derive a session workspace from `process.cwd()` without guarding the filesystem root (`path.dirname(dir) === dir`) and falling back to `os.homedir()`; an explicit `workspaceDir` still wins. Renderer widgets must render through their own exported function, call the side effect before mutating UI state, and keep the card when that call fails. Both fixes carry a test proven to fail when reverted.
 
+### 11.10 A second engine in the window's IPC path makes a working HTTP fix invisible
+* **Trap:** Installed 0.1.6, the owner's message sat on "Thinking…" with no trust card. `main.ts` built `new DesktopIpcBridge()` in the constructor and every `opensand:*` IPC handler (plus the `event` forwarder) used it, while `DesktopServer` held its own bridge. `GET /api/approvals` was `[]`, `GET /api/sessions` showed 0 messages, and the same message over `POST /api/query` asked `folder.trust` and answered correctly — so the engine was fine and only the window was talking to a second copy. Reopening the window also added another `bridge.on('event')` listener, and the inline approval queue rendered below the 740px window ("y=740"), so even a delivered card could not be seen or answered.
+* **Root Cause:** Two `DesktopIpcBridge` instances per app, created independently at `main.ts` and `desktop-server.ts`. Nothing in the suite asserted that the window's handlers use `server.getBridge()`, so every HTTP test passed while the window path was dead.
+* **Rule:** One engine per app; a fix verified only through HTTP must also be driven through the window's IPC path. `DesktopApp` takes its bridge from `server.getBridge()` after `server.start()`, the event forwarder is registered once, and both properties are asserted by a test that builds the real `DesktopApp` with a fake electron module and a temp `baseDir`, proven red when the second bridge or the per-window listener returns. Anything the turn waits on must also be visible where the user is looking: assert the card's on-screen bounds in a real window, not just its presence in the DOM.
+
+
 ---
 
 ## 12. Concurrency & Shared Temp State
