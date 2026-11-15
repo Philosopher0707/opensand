@@ -33,6 +33,7 @@ import {
 } from "./template-gallery.js";
 import { GitHubClient, GitHubActions } from "./github-client.js";
 import { SlackClient, LinearClient } from "./provider-clients.js";
+import { escapeUntrustedText, sanitizeAttributionId } from "@opensand/shared";
 import { McpManager } from "./mcp-manager.js";
 
 /**
@@ -356,6 +357,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
 
       const subsessionId = `sub_${agent.id}_${Date.now()}`;
       const subCoordinator = new AgentCoordinator({
+        agentName: agent.name,
         llmClient: subagentLlm,
         daemon,
         sessionId: subsessionId,
@@ -428,7 +430,10 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
             : { isolation: "none" },
         promise: Promise.resolve(""),
       };
-      entry.promise = subCoordinator.runTurn(args.task)
+      const rawParentName = context?.subagent?.agentName || (context as any)?.agentName;
+      const parentName = sanitizeAttributionId(rawParentName, "orchestrator");
+      const delegatedTask = `[Delegated task · from ${parentName}]\n${escapeUntrustedText(args.task)}`;
+      entry.promise = subCoordinator.runTurn(delegatedTask)
         .then(async (text) => {
           entry.status = "completed";
           entry.response = text;

@@ -64,6 +64,19 @@ export function escapeUntrustedText(text: string): string {
   return String(text).replace(new RegExp(TAG_START_SRC, "gi"), "&lt;");
 }
 
+/**
+ * Sanitises an identifier, caller-supplied agent name or app ID used in attribution headers.
+ * Strips carriage returns, newlines, control characters, and Unicode line/paragraph separators (U+2028/U+2029)
+ * so they cannot split attribution headers or forge new prompt lines, then escapes delimiter tags.
+ */
+export function sanitizeAttributionId(name?: string, fallback: string = ""): string {
+  if (!name) return fallback;
+  const stripped = String(name).replace(/[\r\n\x00-\x1f\x7f-\x9f\u2028\u2029]/g, "").trim();
+  return stripped ? escapeUntrustedText(stripped) : fallback;
+}
+
+export const sanitizeAttributionName = sanitizeAttributionId;
+
 function sanitiseOrigin(origin: string | undefined): string {
   return String(origin ?? "").replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 64);
 }

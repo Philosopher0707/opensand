@@ -8,7 +8,7 @@
 import { EventEmitter } from 'node:events';
 import { AgentCoordinator } from './coordinator.js';
 import { TurnEvent } from './types.js';
-import { escapeUntrustedText } from '@opensand/shared';
+import { escapeUntrustedText, sanitizeAttributionId } from '@opensand/shared';
 
 export type AgUiEventType =
   | 'RUN_STARTED'
@@ -57,9 +57,7 @@ export interface AgUiServerSink {
  * Handles incoming AG-UI protocol requests and forwards them to the AgentCoordinator
  */
 function sanitizeAppId(agentId?: string): string {
-  if (!agentId) return 'app';
-  const stripped = agentId.replace(/[\r\n\x00-\x1f\x7f-\x9f\u2028\u2029]/g, '').trim();
-  return stripped ? escapeUntrustedText(stripped) : 'app';
+  return sanitizeAttributionId(agentId, 'app');
 }
 
 export async function handleAgUiRunRequest(
