@@ -44,3 +44,23 @@ export interface SessionSummary {
   updatedAt: string;
   messageCount: number;
 }
+
+export interface RestoreSnapshotParams {
+  missionId: string;
+  snapshot: string | number;
+  workspaceRoot?: string;
+}
+
+export interface RestoreSnapshotResult {
+  success: boolean;
+  missionId: string;
+  restoredSnapshot: string;
+  preRestoreSnapshot: string;
+  targetTree: string;
+  restoredFilesCount: number;
+  deletedFilesCount: number;
+  restoredFiles: string[];
+  overwrittenFiles: string[];
+  deletedFiles: string[];
+  skippedSubmodules: string[];
+}

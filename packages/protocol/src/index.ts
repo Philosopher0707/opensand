@@ -19,4 +19,6 @@ export type {
   ChatMessage,
   SessionSummary,
   TimelineNode,
+  RestoreSnapshotParams,
+  RestoreSnapshotResult,
 } from "./types.js";
