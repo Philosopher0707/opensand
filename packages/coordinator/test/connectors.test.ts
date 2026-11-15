@@ -20,7 +20,7 @@ import { LocalExecDaemon } from "@opensand/local-exec-daemon";
  * `vaultStore` to prevent cross-test vault state leakage.
  */
 describe("3rd-Party OAuth Connectors & Connect Cards", () => {
-  const tmpDir = path.join(os.tmpdir(), `opensand-connectors-test-${Date.now()}`);
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-connectors-test-"));
   const storagePath = path.join(tmpDir, "connectors.json");
 
   it("initializes with default providers (Slack, Linear, GitHub App)", () => {
