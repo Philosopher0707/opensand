@@ -83,10 +83,10 @@
 ### 5.1 Dual-Authorization Model
 * All execution must pass through the permission gate:
   1. If `computerUseAllowed` is true $\rightarrow$ Auto-approve.
-  2. If the command prefix is present in `standingAllowlist` $\rightarrow$ Auto-approve.
+  2. If the command has an `always` `exec_command` grant in `grants.json` $\rightarrow$ Auto-approve.
   3. If explicit one-time `approvalGranted` is passed $\rightarrow$ Execute.
   4. Otherwise $\rightarrow$ Return `status: "permission_pending"` with an `approvalId` and notify the UI/user.
-* **Golden Rule:** Never silently execute non-allowlisted shell commands without user confirmation.
+* **Golden Rule:** Never silently execute shell commands without a standing grant or user confirmation.
 
 ---
 

@@ -34,7 +34,7 @@ It replaces proprietary cloud ConnectRPC backends with universal OpenAI-compatib
               Core Tools:                    Native Bridge:     Gate Policies:
             - exec_command                 - sand-vision      - computer-use-gate
             - read_file                    - sand-window-cap  - device-tools-gate
-            - write_file (atomic)          - op-launcher      - standing-allowlist
+            - write_file (atomic)          - op-launcher      - grants.json
             - list_directory               - messages-reader
             - create_agent                 - speech-bridge
             - list_agents
