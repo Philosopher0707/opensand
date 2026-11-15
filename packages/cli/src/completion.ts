@@ -21,6 +21,7 @@ export const CLI_FLAGS = [
   { flag: "--list-bots", description: "List all registered bot personas in Agent Store" },
   { flag: "--list-tasks", description: "List all agent tasks and milestones" },
   { flag: "--auto-approve", description: "Auto-approve tool execution (non-interactive mode)" },
+  { flag: "--auto-approve-persistent", description: "Auto-approve persistent changes (skills and memories)" },
   { flag: "-y", description: "Auto-approve tool execution shorthand" },
   { flag: "--help", description: "Show command line help message" },
   { flag: "-h", description: "Show command line help shorthand" },

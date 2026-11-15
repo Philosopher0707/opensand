@@ -223,6 +223,7 @@ export interface DesktopSettings {
   model: string;
   apiKey?: string;
   autoApprove: boolean;
+  autoApprovePersistent?: boolean;
   provider: 'openai' | 'anthropic' | 'openrouter';
   theme: 'dark' | 'light' | 'system';
   maxContextTokens?: number;

@@ -634,6 +634,50 @@ test('DesktopIpcBridge - autoApprove safety ceiling enforces prompt on dangerous
   }
 });
 
+test("DesktopIpcBridge - autoApprove does not auto-approve persistent skill or memory writes without explicit opt-in", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-bridge-persistent-gate-"));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    bridge.updateSettings({ autoApprove: true, model: "test-model" });
+
+    // (c) Normal tool is auto-approved under autoApprove
+    const safeRes = await bridge.requestUserApproval("exec_command", { command: "git status" });
+    assert.strictEqual(safeRes, true);
+
+    // (a) Skill write is NOT auto-approved under autoApprove alone
+    let promptedSkill = false;
+    bridge.on("event", (evt) => {
+      if (evt.type === "approval_required" && evt.data?.toolName === "add_skill") {
+        promptedSkill = true;
+      }
+    });
+    void bridge.requestUserApproval("add_skill", { name: "planted", content: "body" });
+    await new Promise((r) => setTimeout(r, 10));
+    assert.strictEqual(promptedSkill, true, "add_skill must prompt user despite autoApprove");
+
+    // (b) Memory write is NOT auto-approved under autoApprove alone
+    let promptedMemory = false;
+    bridge.on("event", (evt) => {
+      if (evt.type === "approval_required" && evt.data?.toolName === "update_memory") {
+        promptedMemory = true;
+      }
+    });
+    void bridge.requestUserApproval("update_memory", { action: "write", text: "fact", scope: "user" });
+    await new Promise((r) => setTimeout(r, 10));
+    assert.strictEqual(promptedMemory, true, "update_memory must prompt user despite autoApprove");
+
+    // (d) With explicit opt-in, persistent writes ARE auto-approved
+    bridge.updateSettings({ autoApprove: true, autoApprovePersistent: true });
+    const skillOptIn = await bridge.requestUserApproval("add_skill", { name: "optin", content: "body" });
+    assert.strictEqual(skillOptIn, true);
+
+    const memOptIn = await bridge.requestUserApproval("update_memory", { action: "write", text: "fact", scope: "user" });
+    assert.strictEqual(memOptIn, true);
+  } finally {
+    rmTmp(tmpDir);
+  }
+});
+
 test('DesktopIpcBridge - lists pending approvals as isolated copies and removes them after approval', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-pending-'));
   try {
