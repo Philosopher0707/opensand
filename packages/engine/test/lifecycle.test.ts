@@ -54,10 +54,11 @@ describe("engine lifecycle over stdio", () => {
     const dir = tempDir("force");
     const engine = new EngineProcess(dir);
     try {
+      await engine.request("req-0", "engine.Engine.ping");
       const started = Date.now();
       await engine.request("req-1", "engine.Engine.shutdown", { force: true });
       assert.equal(await engine.exited, 0);
-      assert.ok(Date.now() - started < 2_000);
+      assert.ok(Date.now() - started < 2_000, "force shutdown took longer than 2 s");
     } finally {
       await engine.kill();
       removeDir(dir);

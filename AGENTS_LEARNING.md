@@ -245,3 +245,8 @@
 * **Trap:** `packages/coordinator/test/connectors.test.ts` keys its fixture on `opensand-connectors-test-${Date.now()}`. Two suite processes starting in the same millisecond share it, and one test then compares against the other's OAuth state (`oauth_linear_<hash>`) — 2/80 runs, invisible when the file runs alone.
 * **Rule:** fixtures that must be isolated use `fs.mkdtemp` (unique suffix), never a bare timestamp; CI and the load loop run many suites at once.
 * **Fixed (#64):** `connectors.test.ts`, `skill-store.test.ts` and `vault-store.test.ts` now use `fs.mkdtempSync`. Forcing the clock (`Date.now = () => fixed`) reproduced the collision 23/24 before the fix and 0/24 after, which is how a sub-3% flake gets proven.
+
+### 12.4 Measuring process operation budgets before warmup races cold start
+* **Trap:** In `packages/engine`, the test "force shutdown exits immediately" in `lifecycle.test.ts` failed under concurrency/load (11/80 failures under 80-runner load, 73/80 in mutation probe), exceeding its 2 s wall-clock budget (measuring 2.2–3.3 s).
+* **Root Cause:** `started = Date.now()` was captured immediately after calling `new EngineProcess(dir)`. Because `spawn()` returns asynchronously before the Node child process has launched, the 2-second wall-clock budget measured cold Node process boot, ESM module graph loading/parsing, and V8 initialization under load, rather than shutdown duration. The shutdown itself takes < 50 ms.
+* **Rule:** Never assert a latency budget on a child process operation before proving the child process is alive and responsive (e.g. by pinging it first over RPC, as the graceful shutdown and SIGTERM tests do). Warm up the child before starting the clock.
