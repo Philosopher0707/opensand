@@ -80,9 +80,18 @@ import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSum
 
 export interface IpcBridgeOptions {
   baseDir?: string;
-  /** Folder the session coordinators work in and the trust gate applies to. Default: process.cwd(). */
+  /** Folder the session coordinators work in and the trust gate applies to. Default: process.cwd(), or the home folder when cwd is a filesystem root. */
   workspaceDir?: string;
   defaultSettings?: Partial<DesktopSettings>;
+}
+
+/**
+ * Launched from Finder/Dock, Electron's cwd is "/", which must never become the workspace:
+ * the trust gate would ask the user to trust the whole filesystem and the first turn waits on it.
+ */
+function defaultWorkspaceDir(): string {
+  const cwd = path.resolve(process.cwd());
+  return path.dirname(cwd) === cwd ? os.homedir() : cwd;
 }
 
 export class DesktopIpcBridge extends EventEmitter {
@@ -131,7 +140,7 @@ export class DesktopIpcBridge extends EventEmitter {
     super();
     this.baseDir = options.baseDir || path.join(os.homedir(), '.opensand');
     this.configFile = path.join(this.baseDir, 'config.json');
-    this.workspaceDir = options.workspaceDir ?? process.cwd();
+    this.workspaceDir = options.workspaceDir ?? defaultWorkspaceDir();
 
     // Default settings (apiKey is resolved lazily in loadSettings() from
     // OPENSAND_API_KEY env -> VaultStore -> "none", never persisted)
