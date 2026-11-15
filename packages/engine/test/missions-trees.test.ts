@@ -5,12 +5,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { EventLogReader, type SessionEvent } from "@opensand/shared";
-import { EngineProcess, removeDir, tempDir, trustFolder } from "./helpers.js";
+import { EngineProcess, removeDir, tempDir, trustFolder, cleanGitEnv } from "./helpers.js";
 import { projectMission } from "../src/missions/receipt.js";
 
 function git(args: string[], cwd: string): string {
   // A git hook exports GIT_DIR and GIT_INDEX_FILE; without this the test would write into the hooked repo.
-  const r = spawnSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, GIT_DIR: undefined, GIT_INDEX_FILE: undefined, GIT_WORK_TREE: undefined } });
+  const r = spawnSync("git", args, { cwd, encoding: "utf8", env: cleanGitEnv() });
   if (r.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${r.stderr}`);
   return r.stdout;
 }
@@ -38,10 +38,20 @@ async function waitEnd(engine: EngineProcess, missionId: string): Promise<any> {
 }
 
 /** Hooks export GIT_*; drop them for the engine child and the test's own git calls, restore after. */
-const HOOK_VARS = ["GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_PREFIX"] as const;
 const saved: Record<string, string | undefined> = {};
-before(() => { for (const k of HOOK_VARS) { saved[k] = process.env[k]; delete process.env[k]; } });
-after(() => { for (const k of HOOK_VARS) { if (saved[k] !== undefined) process.env[k] = saved[k]; } });
+before(() => {
+  for (const k of Object.keys(process.env)) {
+    if (k.startsWith("GIT_")) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+  }
+});
+after(() => {
+  for (const [k, v] of Object.entries(saved)) {
+    if (v !== undefined) process.env[k] = v;
+  }
+});
 
 describe("mission terminal events record the git trees", () => {
   it("records baseTree and finalTree, pins them under refs/opensand, and they survive gc", async () => {

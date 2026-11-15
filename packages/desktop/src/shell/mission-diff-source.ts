@@ -13,7 +13,9 @@ const GIT_TIMEOUT_MS = 10_000;
 function runGit(cwd: string, args: string[]): Promise<{ code: number; stdout: string; overflow: boolean }> {
   // Hooks and the user's shell may export these; the diff must come from the workspace's own repository.
   const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const k of ['GIT_DIR', 'GIT_INDEX_FILE', 'GIT_WORK_TREE', 'GIT_EXTERNAL_DIFF', 'GIT_PAGER']) delete env[k];
+  for (const k of Object.keys(env)) {
+    if (k.startsWith('GIT_')) delete env[k];
+  }
   return new Promise((resolve) => {
     execFile('git', args, { cwd, env, encoding: 'utf8', maxBuffer: DIFF_MAX_BYTES, timeout: GIT_TIMEOUT_MS }, (err, stdout) => {
       if (!err) return resolve({ code: 0, stdout, overflow: false });

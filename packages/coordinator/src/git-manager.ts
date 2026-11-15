@@ -101,16 +101,8 @@ export class GitManager {
     const env: Record<string, string | undefined> = {
       ...(process.env as Record<string, string | undefined>),
     };
-    for (const k of [
-      "GIT_DIR",
-      "GIT_WORK_TREE",
-      "GIT_INDEX_FILE",
-      "GIT_OBJECT_DIRECTORY",
-      "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-      "GIT_PREFIX",
-      "GIT_CEILING_DIRECTORIES",
-    ]) {
-      delete env[k];
+    for (const k of Object.keys(env)) {
+      if (k.startsWith("GIT_")) delete env[k];
     }
     return env as NodeJS.ProcessEnv;
   }
