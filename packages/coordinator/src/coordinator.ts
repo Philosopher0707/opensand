@@ -6,7 +6,7 @@ import {
   RevertResult,
 } from "@opensand/shared";
 import { LocalExecDaemon, ToolExecutionResult, PolicyDecision, ToolDefinition, memoryWriteNeedsGate, skillWriteNeedsGate } from "@opensand/local-exec-daemon";
-import { wrapUntrusted, untrustedSourceFor, isStandingExecAllowed } from "@opensand/shared";
+import { wrapUntrusted, untrustedSourceFor, isStandingExecAllowed, escapeUntrustedText } from "@opensand/shared";
 import { isParallelSafeTool } from "./tool-parallelism.js";
 import { UniversalLLMClient, ConsolidatedAssistantResponse } from "./llm-client.js";
 import {
@@ -58,6 +58,17 @@ export interface CoordinatorOptions {
   /** Delegation depth: how many delegate_to_agent hops above this coordinator. */
   subagentDepth?: number;
   mcpManager?: McpManager;
+}
+
+/**
+ * Quoted chat text inside a compaction summary must not be able to close the
+ * summary block or forge a tag: the summary is sent as a system message.
+ * escapeUntrustedText covers the data_source shapes (lookalike brackets and
+ * invisibles included); the second rule drops every other tag start. Escape
+ * after slicing, so a cut can never split an escape sequence.
+ */
+function escapeQuotedText(text: string): string {
+  return escapeUntrustedText(text).replace(/<(?=[/A-Za-z])/g, "&lt;");
 }
 
 export class AgentCoordinator {
@@ -794,9 +805,9 @@ ${question}`;
       let currentQuery = "";
       for (const msg of olderMessages) {
         if (msg.role === "user") {
-          currentQuery = (msg.content || "").replace(/\n+/g, " ").slice(0, 120);
+          currentQuery = escapeQuotedText((msg.content || "").replace(/\n+/g, " ").slice(0, 120));
         } else if (msg.role === "assistant" && currentQuery) {
-          const respSnippet = (msg.content || "").replace(/\n+/g, " ").slice(0, 150);
+          const respSnippet = escapeQuotedText((msg.content || "").replace(/\n+/g, " ").slice(0, 150));
           bulletPoints.push(`- User: "${currentQuery}" -> Assistant: "${respSnippet}"`);
           currentQuery = "";
         }
