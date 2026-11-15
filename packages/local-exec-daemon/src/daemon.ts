@@ -27,6 +27,7 @@ export class LocalExecDaemon {
   public readonly policy: PolicyEngine;
   public readonly pty: PtySessionManager;
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private heartbeatInFlight: Promise<void> | null = null;
   private inflightCount = 0;
   private generation = 1;
   private startedAt = 0;
@@ -87,27 +88,40 @@ export class LocalExecDaemon {
     // Pulse supervisor heartbeat
     await this.pulseSupervisor();
 
-    // Start background heartbeat
-    this.heartbeatTimer = setInterval(async () => {
-      try {
-        await this.pulseSupervisor();
-        await this.pulseDaemonState();
-      } catch (err) {
-        // Silently preserve daemon loop if state write transiently fails
-      }
+    // Start background heartbeat. Ticks are chained rather than overlapped, and
+    // the chain is awaited by stop(): clearInterval cannot cancel a tick that is
+    // already writing, and that write would otherwise outlive shutdown.
+    this.heartbeatTimer = setInterval(() => {
+      this.heartbeatInFlight = (this.heartbeatInFlight ?? Promise.resolve()).then(() =>
+        this.pulseHeartbeat()
+      );
     }, this.heartbeatIntervalMs);
 
     // Unref heartbeat timer so it doesn't prevent graceful Node process exit if needed
     this.heartbeatTimer.unref();
   }
 
-  async stop(): Promise<void> {
-    if (!this.isRunning) return;
+  private async pulseHeartbeat(): Promise<void> {
+    try {
+      await this.pulseSupervisor();
+      await this.pulseDaemonState();
+    } catch (err) {
+      // Silently preserve daemon loop if state write transiently fails
+    }
+  }
 
+  async stop(): Promise<void> {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+
+    // Wait for a tick already in flight, so stop() never resolves while a state
+    // write is still pending (its temp file keeps the state dir non-empty).
+    await this.heartbeatInFlight;
+    this.heartbeatInFlight = null;
+
+    if (!this.isRunning) return;
 
     this.isRunning = false;
     await this.pulseDaemonState();
