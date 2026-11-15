@@ -4,6 +4,25 @@ import * as os from "node:os";
 import * as crypto from "node:crypto";
 import { McpClient, McpServerConfig, McpToolDefinition, McpTransport } from "./mcp-client.js";
 import { LocalExecDaemon, ToolDefinition } from "@opensand/local-exec-daemon";
+import { escapeUntrustedText } from "@opensand/shared";
+
+/**
+ * Copy a tool schema and escape every description in it. A description is text
+ * the MCP server chose, and it reaches the model next to the tool name, so it
+ * must not be able to forge a tag. The server's own object is never mutated.
+ */
+function escapeSchemaDescriptions(schema: unknown): unknown {
+  if (schema === null || typeof schema !== "object") return schema;
+  if (Array.isArray(schema)) return schema.map((entry) => escapeSchemaDescriptions(entry));
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema as Record<string, unknown>)) {
+    out[key] =
+      key === "description" && typeof value === "string"
+        ? escapeUntrustedText(value)
+        : escapeSchemaDescriptions(value);
+  }
+  return out;
+}
 
 export interface McpConfigFile {
   mcpServers?: Record<string, McpServerConfig>;
@@ -266,8 +285,10 @@ export class McpManager {
         type: "function",
         function: {
           name: qualifiedName,
-          description: `[MCP: ${serverName}] ${tool.description ?? ""}`.trim(),
-          parameters: (tool.inputSchema as any) || { type: "object", properties: {} },
+          // The description is server text: escape it so it cannot forge a tag,
+          // and name the server so the model knows where it came from.
+          description: `[MCP: ${serverName}] ${escapeUntrustedText(tool.description ?? "")}`.trim(),
+          parameters: (escapeSchemaDescriptions(tool.inputSchema) as any) || { type: "object", properties: {} },
         },
       };
 
