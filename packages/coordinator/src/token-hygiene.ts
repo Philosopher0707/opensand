@@ -1,4 +1,4 @@
-import { unwrapUntrusted } from "@opensand/shared";
+import { escapeUntrustedText, unwrapUntrusted } from "@opensand/shared";
 import { ChatMessage } from "./types.js";
 import { ToolDefinition } from "@opensand/local-exec-daemon";
 
@@ -89,7 +89,7 @@ export function foldHistoricalToolResults(
       try {
         const parsed = JSON.parse(unwrapUntrusted(msg.content));
         if (parsed.status === "ok" && parsed.output?.path) {
-          shortSummary = `[Past tool output folded: read_file "${parsed.output.path}" (${charCount.toLocaleString()} chars)]`;
+          shortSummary = `[Past tool output folded: read_file "${escapeUntrustedText(parsed.output.path)}" (${charCount.toLocaleString()} chars)]`;
         } else if (parsed.status === "ok" && typeof parsed.output?.exitCode === "number") {
           shortSummary = `[Past tool output folded: exec_command exited with code ${parsed.output.exitCode} (${charCount.toLocaleString()} chars)]`;
         } else if (parsed.status === "ok") {
