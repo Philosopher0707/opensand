@@ -697,6 +697,67 @@ test("Real-Window Harness: clicking a changed file shows its hunks; a log withou
   }
 });
 
+test("Real-Window Harness: Preact inbox approvals list (960x740)", async (t) => {
+  const built = fs.existsSync(path.join(pkgRoot, "dist", "renderer-next", "index.html"));
+  if (!built) {
+    t.skip("dist/renderer-next is not built (run pnpm build)");
+    return;
+  }
+
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-p5-inbox-"));
+  try {
+    const shotDir = path.join(pkgRoot, "artifacts");
+    fs.mkdirSync(shotDir, { recursive: true });
+    process.env.OPENSAND_HARNESS_SHOT_DIR = shotDir;
+
+    const script = [
+      "(async () => {",
+      "  const wait = async (fn) => { for (let i = 0; i < 50 && !fn(); i++) await new Promise((r) => setTimeout(r, 100)); };",
+      "  window.__testPendingApprovals = [",
+      "    {",
+      "      approvalId: \"appr-fake-1\",",
+      "      toolName: \"exec_command\",",
+      "      args: { cmd: \"pnpm test --coverage\" },",
+      "      reason: \"Run test suite with coverage report\",",
+      "      timestamp: Date.now() - 120000,",
+      "      epoch: 1,",
+      "    },",
+      "    {",
+      "      approvalId: \"appr-fake-2\",",
+      "      toolName: \"write_file\",",
+      "      args: { path: \"src/config.json\", content: \"{}\" },",
+      "      reason: \"Update application settings\",",
+      "      timestamp: Date.now() - 600000,",
+      "      epoch: 1,",
+      "    }",
+      "  ];",
+      "  window.dispatchEvent(new CustomEvent(\"opensand:approvals_changed\"));",
+      "  await wait(() => document.querySelectorAll(\".inbox-item\").length >= 2);",
+      "  const badge = document.querySelector(\".inbox-badge-count\")?.textContent || \"\";",
+      "  const items = Array.from(document.querySelectorAll(\".inbox-item\"));",
+      "  const titles = items.map((el) => el.querySelector(\".inbox-item-asking\")?.textContent || \"\");",
+      "  items[0]?.click();",
+      "  await wait(() => document.querySelector(\".inbox-item-details\"));",
+      "  const hasDetails = !!document.querySelector(\".inbox-item-details\");",
+      "  const noOverflow = document.documentElement.scrollWidth <= window.innerWidth;",
+      "  return { badge, count: items.length, titles, hasDetails, noOverflow };",
+      "})()",
+    ].join("\n");
+
+    const r = await runHarness("preact", { home: tmpHome, shotTag: "inbox", interactScript: script, forceOverflow });
+    if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
+
+    assert.ok(r.interactResult);
+    assert.strictEqual(r.interactResult.badge, "2");
+    assert.strictEqual(r.interactResult.count, 2);
+    assert.deepStrictEqual(r.interactResult.titles, ["exec_command", "write_file"]);
+    assert.strictEqual(r.interactResult.hasDetails, true);
+    assert.strictEqual(r.interactResult.noOverflow, true);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test("Real-Window Harness detects forced horizontal overflow", async (t) => {
   const r = await runHarness("default", { forceOverflow: true });
   if (r.skipped) { t.skip(r.skipped); return; }
