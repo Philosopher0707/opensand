@@ -59,6 +59,9 @@ export async function runCommandOperation(
     ]);
 
     for (const key of Object.keys(sanitizedEnv)) {
+      if (key.startsWith("GIT_") && (!input.env || !(key in input.env))) {
+        delete sanitizedEnv[key];
+      }
       const isSensitive =
         SENSITIVE_VARS.has(key) ||
         (/(_API_KEY|_TOKEN|_SECRET|_PASSWORD|_PASSPHRASE)$/i.test(key) && !key.startsWith("npm_"));

@@ -209,3 +209,96 @@ export async function pinTrees(
   }
   return out;
 }
+
+/**
+ * Sanitizes a string for use as a ref path component, adhering to git check-ref-format rules:
+ * - Cannot begin with '.' or end with '.' or '.lock'
+ * - Cannot contain '..'
+ * - Cannot contain control characters, space, '~', '^', ':', '?', '*', '[', '@{', '\', '/'
+ */
+export function sanitizeRefName(name: string): string {
+  let s = name.trim();
+  s = s.replace(/[^A-Za-z0-9._-]/g, "-");
+  s = s.replace(/\.{2,}/g, ".");
+  s = s.replace(/^\.+/, "").replace(/\.+$/, "");
+  while (s.endsWith(".lock")) {
+    s = s.slice(0, -5).replace(/\.+$/, "");
+  }
+  s = s.replace(/^-+/, "");
+  if (!s) {
+    s = "mission";
+  }
+  return s;
+}
+
+export interface StepSnapshotResult {
+  ref: string;
+  tree: string;
+}
+
+/**
+ * Captures a hidden git ref snapshot of the workspace before a mutating mission step.
+ * Uses a temporary index file so the user's index, branch, and stash are completely untouched.
+ */
+export async function createStepSnapshot(
+  workspaceRoot: string,
+  missionId: string,
+  seq: number | string
+): Promise<StepSnapshotResult | null> {
+  try {
+    const isGit = await isGitRepository(workspaceRoot);
+    if (!isGit) {
+      return null;
+    }
+
+    const cleanMission = sanitizeRefName(missionId);
+    const cleanSeq = String(seq).trim().replace(/[^A-Za-z0-9_-]/g, "");
+    if (!cleanSeq) {
+      console.error(`[createStepSnapshot] invalid seq for mission ${missionId}: ${seq}`);
+      return null;
+    }
+
+    const ref = `refs/opensand/missions/${cleanMission}/s-${cleanSeq}`;
+
+    const treeRes = await treeOf(workspaceRoot);
+    if (!treeRes.available || !treeRes.tree) {
+      console.error(`[createStepSnapshot] treeOf failed for ${ref}: ${treeRes.reason}`);
+      return null;
+    }
+
+    const commitRes = await runCommandOperation({
+      command: `git -c user.name=OpenSand -c user.email=opensand@local -c commit.gpgsign=false commit-tree ${treeRes.tree} -m "snapshot s-${cleanSeq}"`,
+      cwd: workspaceRoot,
+      workspaceRoot,
+      env: cleanGitEnv(),
+    });
+
+    if (commitRes.exitCode !== 0) {
+      console.error(`[createStepSnapshot] git commit-tree failed for ${ref}: ${commitRes.stderr}`);
+      return null;
+    }
+
+    const commitHash = commitRes.stdout.trim().split("\n").pop()?.trim();
+    if (!commitHash || !/^[0-9a-f]{40,64}$/.test(commitHash)) {
+      console.error(`[createStepSnapshot] invalid commit hash for ${ref}: ${commitRes.stdout}`);
+      return null;
+    }
+
+    const updateRes = await runCommandOperation({
+      command: `git update-ref ${ref} ${commitHash}`,
+      cwd: workspaceRoot,
+      workspaceRoot,
+      env: cleanGitEnv(),
+    });
+
+    if (updateRes.exitCode !== 0) {
+      console.error(`[createStepSnapshot] git update-ref failed for ${ref}: ${updateRes.stderr}`);
+      return null;
+    }
+
+    return { ref, tree: treeRes.tree };
+  } catch (err) {
+    console.error(`[createStepSnapshot] exception for mission ${missionId} step ${seq}:`, err);
+    return null;
+  }
+}
