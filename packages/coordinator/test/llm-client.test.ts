@@ -521,49 +521,51 @@ describe("UniversalLLMClient", () => {
   });
 
   it("abort during backoff => immediate rejection", async () => {
+    // The 429 comes from an injected fetch, so the request is provably issued before the abort
+    // and the client is parked in the 20s Retry-After sleep when it lands. With a real local
+    // server the fixed 50ms abort timer could win the race against dispatch under load: the
+    // request then never left and requestCount stayed 0 (18/80 in the 10-way load loop).
     let requestCount = 0;
-    const server = http.createServer((_req, res) => {
+    let markRequested!: () => void;
+    const requested = new Promise<void>((resolve) => (markRequested = resolve));
+    const mockFetch = async (): Promise<Response> => {
       requestCount++;
-      res.writeHead(429, {
-        "Content-Type": "application/json",
-        "Retry-After": "20", // 20s backoff
+      markRequested();
+      return new Response(JSON.stringify({ error: { message: "Rate limit" } }), {
+        status: 429,
+        headers: { "Content-Type": "application/json", "Retry-After": "20" },
       });
-      res.end(JSON.stringify({ error: { message: "Rate limit" } }));
+    };
+
+    const abortController = new AbortController();
+    const client = new UniversalLLMClient({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      apiKey: "sk-test",
+      fetch: mockFetch as any,
     });
 
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
-    const port = (server.address() as any).port;
-    const abortController = new AbortController();
+    const pending = client.streamCompletion(
+      [{ role: "user", content: "test" }],
+      undefined,
+      abortController.signal
+    );
 
-    try {
-      const client = new UniversalLLMClient({
-        baseUrl: `http://127.0.0.1:${port}/v1`,
-        model: "gpt-4o",
-      });
+    await requested;
+    // The 429 is handled synchronously once fetch resolves, so one macrotask later the client
+    // is inside sleepWithAbort and only the abort can end it.
+    await new Promise<void>((resolve) => setImmediate(resolve));
 
-      const start = Date.now();
-      setTimeout(() => abortController.abort(), 50);
+    const abortStart = Date.now();
+    abortController.abort();
 
-      await assert.rejects(
-        async () => {
-          await client.streamCompletion(
-            [{ role: "user", content: "test" }],
-            undefined,
-            abortController.signal
-          );
-        },
-        (err: any) => {
-          assert.equal(err.name, "AbortError");
-          return true;
-        }
-      );
+    await assert.rejects(pending, (err: any) => {
+      assert.equal(err.name, "AbortError");
+      return true;
+    });
 
-      assert.ok(Date.now() - start < 1000, "Should abort immediately without waiting 20s");
-      assert.equal(requestCount, 1);
-    } finally {
-      (server as any).closeAllConnections?.();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    }
+    assert.ok(Date.now() - abortStart < 1000, "Should abort immediately without waiting 20s");
+    assert.equal(requestCount, 1);
   });
 
   it("stream stall watchdog aborts with classified timeout", async () => {
