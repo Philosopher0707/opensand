@@ -216,6 +216,11 @@
 * **Root Cause:** The field is filled from a command's stdout (`git write-tree`). The current git prints hex, but the field is workspace-derived text by contract, and it will hold real diff text the moment the feature grows.
 * **Rule:** Escape workspace-derived text at the point it enters a prompt, whatever it currently contains, and when a red test for such a field seems impossible, inject at the only seam that fills it (here: a `git` shim that prints a hostile tree id) instead of skipping the test or weakening the assertion.
 
+### 11.12 A second engine in the window's IPC path makes a working HTTP fix invisible
+* **Trap:** Installed 0.1.6, the owner's message sat on "Thinking…" with no trust card. `main.ts` built `new DesktopIpcBridge()` in the constructor and every `opensand:*` IPC handler (plus the `event` forwarder) used it, while `DesktopServer` held its own bridge. `GET /api/approvals` was `[]`, `GET /api/sessions` showed 0 messages, and the same message over `POST /api/query` asked `folder.trust` and answered correctly — so the engine was fine and only the window was talking to a second copy. Reopening the window also added another `bridge.on('event')` listener, and the inline approval queue rendered below the 740px window ("y=740"), so even a delivered card could not be seen or answered.
+* **Root Cause:** Two `DesktopIpcBridge` instances per app, created independently at `main.ts` and `desktop-server.ts`. Nothing in the suite asserted that the window's handlers use `server.getBridge()`, so every HTTP test passed while the window path was dead.
+* **Rule:** One engine per app; a fix verified only through HTTP must also be driven through the window's IPC path. `DesktopApp` takes its bridge from `server.getBridge()` after `server.start()`, the event forwarder is registered once, and both properties are asserted by a test that builds the real `DesktopApp` with a fake electron module and a temp `baseDir`, proven red when the second bridge or the per-window listener returns. Anything the turn waits on must also be visible where the user is looking: assert the card's on-screen bounds in a real window, not just its presence in the DOM.
+
 
 ---
 

@@ -184,6 +184,15 @@ class OpenSandClient {
     return data;
   }
 
+  async listPendingApprovals() {
+    if (this.isElectron && window.opensand?.listPendingApprovals) {
+      return window.opensand.listPendingApprovals();
+    }
+    const res = await fetch('/api/approvals');
+    if (!res.ok) return [];
+    return res.json().catch(() => []);
+  }
+
   async approveTool(approvalId, decision) {
     // Normalize string decisions from legacy callers to the {action} contract
     const payload = typeof decision === 'string' ? { action: decision } : decision;
@@ -6024,6 +6033,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       currentSessionId = null;
       localStorage.removeItem(SESSION_KEY);
     }
+  }
+  // A reloaded or reopened window must show approvals still open in the engine,
+  // otherwise the trust question is invisible while the turn waits on it.
+  try {
+    const openApprovals = await client.listPendingApprovals();
+    for (const req of Array.isArray(openApprovals) ? openApprovals : []) {
+      if (!req || !req.approvalId) continue;
+      pendingApprovals.set(req.approvalId, {
+        toolName: req.toolName || 'Tool',
+        args: req.args || {},
+        reason: req.reason || '',
+        // A decision without the request's epoch is refused as stale (4001).
+        epoch: req.epoch,
+      });
+    }
+    if (pendingApprovals.size > 0) renderApprovalQueue();
+  } catch {
+    // No pending approvals, or no IPC/HTTP approval route available.
   }
   setTurnBusy(false);
   await refreshTokenBadge();
