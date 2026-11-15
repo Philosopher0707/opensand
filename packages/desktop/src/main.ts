@@ -12,23 +12,33 @@ import { readMissionReceipt } from './shell/mission-receipt-source.js';
 import { readMissionFileDiff } from './shell/mission-diff-source.js';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 
+export interface DesktopAppDeps {
+  /** Test seam: supply a fake electron module instead of importing the real one. */
+  loadElectron?: () => Promise<any>;
+  /** Test seam: state dir; DesktopServer already defaults to ~/.opensand. */
+  baseDir?: string;
+}
+
 export class DesktopApp {
-  private bridge: DesktopIpcBridge;
+  private bridge!: DesktopIpcBridge;
   private trayManager: DesktopTrayManager | null = null;
   private mainWindow: any = null;
   private server: DesktopServer | null = null;
   private electron: any = null;
+  private loadElectron: () => Promise<any>;
+  private baseDir?: string;
 
-  constructor() {
-    this.bridge = new DesktopIpcBridge();
+  constructor(deps: DesktopAppDeps = {}) {
+    // Dynamic import keeps this module loadable in plain Node (tests, web mode);
+    // in plain Node 'electron' resolves to a path string, so app/BrowserWindow are absent.
+    this.loadElectron = deps.loadElectron ?? (() => import('electron'));
+    this.baseDir = deps.baseDir;
   }
 
   public async start(): Promise<void> {
-    // Dynamic import keeps this module loadable in plain Node (tests, web mode);
-    // in plain Node 'electron' resolves to a path string, so app/BrowserWindow are absent.
     let electron: any;
     try {
-      electron = await import('electron');
+      electron = await this.loadElectron();
     } catch {
       console.log('[OpenSand Desktop] Electron not available. Run desktop-server for web mode.');
       return;
@@ -68,9 +78,14 @@ export class DesktopApp {
     try {
       // Ephemeral port: the window loads whatever URL the server returns, so a
       // dev server already on 3456 cannot block the app from starting.
-      this.server = new DesktopServer({ port: 0, appVersion: app.getVersion() });
+      this.server = new DesktopServer({ port: 0, baseDir: this.baseDir, appVersion: app.getVersion() });
       const { url } = await this.server.start();
       console.log('[OpenSand Desktop] server listening:', url.split('?')[0]);
+
+      // One engine per app: the window's IPC handlers must drive the same bridge
+      // the HTTP API uses, or a query's trust question lands nowhere the UI can see.
+      this.bridge = this.server.getBridge();
+      this.forwardBridgeEvents();
 
       const onboarding = await getOnboardingState(this.server.getBridge());
       if (onboarding.needsOnboarding) console.log('[OpenSand Desktop] first run: no model and no key, showing onboarding');
@@ -148,8 +163,10 @@ export class DesktopApp {
         if (shell) void shell.openExternal(target);
       }
     });
+  }
 
-    // Forward IPC events to renderer
+  // Registered once in start(): a per-window listener leaked on every reopen.
+  private forwardBridgeEvents(): void {
     this.bridge.on('event', (event: DesktopEvent) => {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         this.mainWindow.webContents.send('opensand:event', event);

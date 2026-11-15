@@ -224,6 +224,9 @@
               </button>
             </div>
 
+            <!-- Pending Approval Queue (inline cards above the composer, one per approval) -->
+            <div id="approvalQueue" class="approval-queue hidden" aria-live="polite"></div>
+
             <footer class="input-panel">
               <div class="input-wrapper" id="inputWrapper">
                 <!-- Autocomplete Trigger Popover (OpenBot Parity: / commands, @ bots, # files) -->
@@ -765,9 +768,6 @@
 
   <!-- Tool Approval Modal Overlay -->
   
-    <!-- Pending Approval Queue (inline cards, one per approval) -->
-    <div id="approvalQueue" class="approval-queue hidden" aria-live="polite"></div>
-
     <div class="modal-overlay hidden" id="approvalModal">
     <div class="modal-card">
       <div class="modal-header">
