@@ -312,9 +312,9 @@ export class TranscriptManager {
             if (entry.role === "system") {
               if (entry.event === "rollback" && typeof entry.remainingMessages === "number") {
                 messages = messages.slice(0, entry.remainingMessages);
-              } else if (entry.event === "compacted" && entry.content) {
+              } else if (entry.event === "compacted" && (entry.content || entry.summary)) {
                 messages = [
-                  { role: "system", content: entry.content },
+                  { role: "user", content: entry.summary ?? entry.content },
                   ...messages.filter((m) => m.role !== "system"),
                 ];
               } else if (entry.content) {

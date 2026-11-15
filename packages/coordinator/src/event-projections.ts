@@ -47,7 +47,7 @@ export function projectMessages(events: SessionEvent[]): ChatMessage[] {
       case EVENT.turnCompacted:
         messages = [
           messages[0],
-          { role: "system", content: data.summary },
+          { role: "user", content: data.summary },
           ...messages.slice(data.keepFrom),
         ];
         break;
@@ -65,7 +65,11 @@ export function formatHumanReadable(messages: ChatMessage[]): string {
     }
 
     if (msg.role === "user") {
-      sections.push(`<user_query>\n${msg.content ?? ""}\n</user_query>`);
+      if (msg.content?.includes("<historical_context_summary>")) {
+        sections.push(msg.content);
+      } else {
+        sections.push(`<user_query>\n${msg.content ?? ""}\n</user_query>`);
+      }
       continue;
     }
 

@@ -227,6 +227,11 @@
 * **Root Cause:** Auto-approve mode treated all tool calls uniformly, returning `true` on the approval hook without distinguishing transient operations (`exec_command`, local edits) from persistent state modifications that survive across sessions.
 * **Rule:** Auto-approve (`-y` / `--auto-approve`) only covers transient operations. Persistent changes (skill write/mount, memory write/import) always require human confirmation. In interactive mode, prompt the user; when no human approver is present, fail closed with a clear refusal message. Auto-approving persistent changes requires an explicit, intentional opt-in flag (`--auto-approve-persistent`) that defaults to off and is never enabled implicitly.
 
+### 11.14 Compaction summaries and MCP tool results must never inject plain-text SYSTEM: directives
+* **Trap:** Outside text arriving via context compaction summaries or external MCP tool results could contain leading `SYSTEM:` lines or arrive with role `system`, leading LLMs to interpret untrusted data as privileged system instructions.
+* **Root Cause:** Historical context summaries were injected into the message history with `role: "system"` instead of clearly-labelled untrusted user data (`role: "user"`), and MCP tool outputs lacked normalization for leading `SYSTEM:` prefixes across line breaks before being delivered to the model.
+* **Rule:** Outside text must never reach the model with role `system` or containing un-neutralized `SYSTEM:` directive prefixes. All context compaction summaries must use `role: "user"` and be fenced as delimited data. Any leading `SYSTEM:` / `system:` line prefixes in untrusted text or MCP tool results must be neutralized to `[SYSTEM]:` / `[system]:` so that prompt-fencing and role-based instruction semantics are strictly preserved.
+
 ---
 
 ## 12. Concurrency & Shared Temp State
