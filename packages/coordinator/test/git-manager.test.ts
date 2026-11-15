@@ -176,4 +176,48 @@ describe("GitManager", () => {
     const peerSurvived = await fs.stat(peerDir).then(() => true).catch(() => false);
     assert.ok(peerSurvived, "a peer's in-progress worktree registration must survive another worktree's removal");
   });
+
+  it("keeps a second worktree add from starting until the first one finishes", async () => {
+    const adds: string[][] = [];
+    let openFirstAdd!: () => void;
+    const firstAddGate = new Promise<void>((resolve) => (openFirstAdd = resolve));
+    let firstAddEntered!: () => void;
+    const firstAddStarted = new Promise<void>((resolve) => (firstAddEntered = resolve));
+    let commonDirReads = 0;
+    let secondCommonDirRead!: () => void;
+    const secondCommonDirDone = new Promise<void>((resolve) => (secondCommonDirRead = resolve));
+
+    const serialized = new GitManager(tempRepoDir, {
+      execGit: async (args, cwd) => {
+        if (args[0] === "rev-parse" && args[1] === "--git-common-dir") {
+          commonDirReads += 1;
+          if (commonDirReads === 2) secondCommonDirRead();
+        }
+        if (args[0] === "worktree" && args[1] === "add") {
+          adds.push(args);
+          if (adds.length === 1) {
+            firstAddEntered();
+            await firstAddGate;
+          }
+        }
+        return execFileAsync("git", ["--no-pager", ...args], { cwd, env: gitEnv() });
+      },
+    });
+
+    const first = serialized.createWorktree("wt-serialized-a");
+    await firstAddStarted;
+    const second = serialized.createWorktree("wt-serialized-b");
+    await secondCommonDirDone;
+    // The second call has its lock dir and would issue `worktree add` next; a
+    // tree that does not serialize does so within milliseconds.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.strictEqual(adds.length, 1, "a second `worktree add` must not start while the first is running");
+
+    openFirstAdd();
+    const [a, b] = await Promise.all([first, second]);
+    assert.ok((await fs.stat(a.worktreePath)).isDirectory());
+    assert.ok((await fs.stat(b.worktreePath)).isDirectory());
+    await serialized.removeWorktree(a.worktreePath);
+    await serialized.removeWorktree(b.worktreePath);
+  });
 });
