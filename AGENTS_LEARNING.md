@@ -206,6 +206,17 @@
 * **Root Cause:** GUI launches have no meaningful working directory; `/` is a filesystem root, never a user workspace. The approval card that should have answered it also threw `ReferenceError: render is not defined` (its factory was called without the `render` option it expected), so the card's buttons never reached the app.
 * **Rule:** Never derive a session workspace from `process.cwd()` without guarding the filesystem root (`path.dirname(dir) === dir`) and falling back to `os.homedir()`; an explicit `workspaceDir` still wins. Renderer widgets must render through their own exported function, call the side effect before mutating UI state, and keep the card when that call fails. Both fixes carry a test proven to fail when reverted.
 
+### 11.10 The engine package's own tests flake under local load
+* **Trap:** While landing an unrelated change, `packages/engine` failed on "force shutdown exits immediately" (2253 ms against a hard 2000 ms budget) and, in another run, on "keeps the log after SIGKILL and replays it from a fresh process". Both also failed on the untouched base commit: three runs of the pristine base produced one failure, three runs of the branch produced one failure each in a different test.
+* **Root Cause:** `node --test` runs the package's test files in parallel and several of them spawn processes and drive git; on a loaded machine the spawn-and-exit tests miss their wall-clock budgets. The flake is load, not the change under test.
+* **Rule:** When a test fails in a package you did not touch, reproduce it on the base commit before blaming your change, and report it as pre-existing rather than re-running until it passes. A test with a hard wall-clock budget around a process spawn must measure a generous multiple of the observed cold duration, or wait on an event instead of a timer.
+
+### 11.11 A field named "diff" that holds only hashes is still untrusted input
+* **Trap:** The mission review input's `diff` was `diff <baseTree> -> <finalTree>`, both git tree ids, so no hostile text could reach it and no honest red test could be written for it.
+* **Root Cause:** The field is filled from a command's stdout (`git write-tree`). The current git prints hex, but the field is workspace-derived text by contract, and it will hold real diff text the moment the feature grows.
+* **Rule:** Escape workspace-derived text at the point it enters a prompt, whatever it currently contains, and when a red test for such a field seems impossible, inject at the only seam that fills it (here: a `git` shim that prints a hostile tree id) instead of skipping the test or weakening the assertion.
+
+
 ---
 
 ## 12. Concurrency & Shared Temp State
