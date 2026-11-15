@@ -5,7 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { GrantsStore } from "../src/grants-store.js";
 import type { CapabilityGrant } from "../src/grants-types.js";
-import { hasShellChaining, isStandingExecAllowed, legacyPatternsToGrants, standingExecPatterns } from "../src/standing-exec.js";
+import { hasShellChaining, isStandingExecAllowed, legacyPatternsToGrants } from "../src/standing-exec.js";
 
 function tmp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "opensand-standing-"));
@@ -78,18 +78,6 @@ test("isStandingExecAllowed - corrupt or missing input denies", () => {
   assert.strictEqual(isStandingExecAllowed([grant()], 42 as any), false);
   assert.strictEqual(isStandingExecAllowed([null, 7, "x", { tool: "exec_command" }] as any, "git status"), false);
   assert.strictEqual(isStandingExecAllowed([{ ...grant(), scope: undefined }] as any, "git status"), false);
-});
-
-test("standingExecPatterns - legacy view strips the trailing ' *', keeps exact scopes, ignores non-standing grants", () => {
-  const view = standingExecPatterns([
-    grant({ id: "a", scope: "git *" }),
-    grant({ id: "b", scope: "bash -c x" }),
-    grant({ id: "c", scope: "ls *", lifetime: "once" }),
-    grant({ id: "d", scope: "npm *", expiresAt: 1 }),
-    grant({ id: "e", scope: "/tmp" , tool: "read_file" }),
-  ], 10);
-  assert.deepStrictEqual(view, ["git", "bash -c x"]);
-  assert.deepStrictEqual(standingExecPatterns(undefined), []);
 });
 
 test("legacyPatternsToGrants - converts single tokens to '<bin> *', keeps trailing-star and multi-token patterns", () => {

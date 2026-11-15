@@ -52,7 +52,7 @@ Atomic JSON files managed the execution daemon lifecycle:
 * `local-exec-supervisor.json`: Watchdog heartbeat timestamps.
 * `local-computer-use-gate.json`: Autonomous execution gate toggle (`allowed: boolean`).
 * `local-device-tools-gate.json`: Screen capture and OCR gate toggle (`allowed: boolean`).
-* `standing-allowlist.json`: Pre-approved command prefix allowlist.
+* `grants.json`: Every standing capability grant (tool, scope, lifetime, epoch). The only source of standing permission; an old `standing-allowlist.json` is migrated once and renamed aside.
 
 ### 2.4 Transcript Format
 Located at `{{agentTranscriptsPath}}/*.txt`:
@@ -91,7 +91,7 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 ### 3.1 [`packages/local-exec-daemon`](file:///Users/philosopher/dev/opensand/packages/local-exec-daemon) (Phase 1)
 * **`bash-validator.ts`**: Preflight bash syntax parser. Detects unclosed single quotes, double quotes, backticks, parentheses, braces, brackets, and trailing escape characters. Blocks destructive patterns (`rm -rf /`, raw device rewrites, fork bombs).
 * **`file-ops.ts`**: Atomic file operations. `writeFileOperation` writes to a temporary file with `0600` permissions and atomically renames to destination; computes SHA-256 digest. `readFileOperation` supports line range slicing (`start_line`, `end_line`). `listDirectoryOperation` scans files recursively with type and mtime metadata.
-* **`state-manager.ts`**: Manages `~/.opensand/state/` JSON files (`local-exec-daemon.json`, `local-exec-supervisor.json`, `local-computer-use-gate.json`, `local-device-tools-gate.json`, `standing-allowlist.json`) using atomic temporary-file renames.
+* **`state-manager.ts`**: Manages `~/.opensand/state/` JSON files (`local-exec-daemon.json`, `local-exec-supervisor.json`, `local-computer-use-gate.json`, `local-device-tools-gate.json`) using atomic temporary-file renames, and reads standing permission from `grants.json` only.
 * **`command-runner.ts`**: Spawns bash processes with execution timeouts, SIGTERM $\rightarrow$ SIGKILL termination ladders, and output buffering.
 * **`tool-registry.ts`**: Maps tools to OpenAI function schemas (`exec_command`, `read_file`, `write_file`, `list_directory`). Enforces dual-authorization gates (standing allowlist match vs. explicit approval ID).
 * **`daemon.ts`**: Coordinates lifecycle, pulses background supervisor heartbeats, and dispatches tool execution.

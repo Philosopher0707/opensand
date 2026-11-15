@@ -55,26 +55,47 @@ describe("StateManager", () => {
     assert.deepEqual(read, hb);
   });
 
-  it("updates and reads permission gates; standingAllowlist is a read-only view of grants.json", async () => {
+  it("updates and reads permission gates; standing permission is the grants.json view", async () => {
     const grantsDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-state-grants-"));
     try {
       const grants = new GrantsStore({ baseDir: grantsDir });
       await grants.addGrant({ tool: "exec_command", scope: "ls *", lifetime: "always" });
       await grants.addGrant({ tool: "exec_command", scope: "pwd", lifetime: "always" });
       const m = new StateManager(tempStateDir, grants);
-      await m.writePermissionGates({
-        computerUseAllowed: true,
-        standingAllowlist: ["ignored"],
-      });
+      await m.writePermissionGates({ computerUseAllowed: true });
 
       const gates = await m.readPermissionGates();
       assert.equal(gates.computerUseAllowed, true);
       assert.equal(gates.deviceToolsAllowed, false);
-      assert.deepEqual(gates.standingAllowlist, ["ls", "pwd"]);
-      assert.equal(gates.standingGrants?.length, 2);
+      assert.deepEqual(Object.keys(gates).sort(), [
+        "computerUseAllowed",
+        "deviceToolsAllowed",
+        "grantsEpoch",
+        "memoryWriteAllowed",
+        "standingGrants",
+      ]);
+      assert.deepEqual(gates.standingGrants?.map((g) => g.scope), ["ls *", "pwd"]);
       assert.equal(gates.grantsEpoch, 1);
     } finally {
       await fs.rm(grantsDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reads an old on-disk standing-allowlist.json without crashing and ignores its extra keys", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-state-legacy-"));
+    const stateDir = path.join(dir, "state");
+    try {
+      await fs.mkdir(stateDir, { recursive: true });
+      await fs.writeFile(
+        path.join(stateDir, "standing-allowlist.json"),
+        JSON.stringify({ version: 1, allowlist: ["echo *"], unknownKey: { keep: true } }),
+      );
+      const m = new StateManager(stateDir, new GrantsStore({ baseDir: dir }));
+      const gates = await m.readPermissionGates();
+      assert.deepEqual(gates.standingGrants?.map((g) => g.scope), ["echo *"]);
+      assert.ok(!(await fs.readdir(stateDir)).includes("standing-allowlist.json"));
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
     }
   });
 

@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { DesktopIpcBridge as BaseDesktopIpcBridge } from '../src/ipc-bridge.js';
 import { workspaceSentinel } from '@opensand/coordinator';
+import { isStandingExecAllowed } from '@opensand/shared';
 
 const createdBridges: BaseDesktopIpcBridge[] = [];
 class DesktopIpcBridge extends BaseDesktopIpcBridge {
@@ -61,7 +62,7 @@ test('DesktopIpcBridge - manages settings and persistent config', () => {
   }
 });
 
-test('DesktopIpcBridge - handles approval resolutions and standing allowlist', async () => {
+test('DesktopIpcBridge - always_allow persists a grants.json grant the daemon honors', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-appr-'));
 
   try {
@@ -82,17 +83,47 @@ test('DesktopIpcBridge - handles approval resolutions and standing allowlist', a
     const [approvalId] = Array.from(activeMap.keys());
     assert.ok(approvalId);
 
-    // Test always_allow adds to standing allowlist
-    const approveRes = await bridge.approveTool(approvalId, { action: 'always_allow', epoch: (bridge as any).activeApprovals.get(approvalId)?.request.epoch });
+    // "Always allow" persists one exec_command standing grant under the epoch check.
+    const epoch = activeMap.get(approvalId).request.epoch;
+    const approveRes = await bridge.approveTool(approvalId, { action: 'always_allow', epoch });
     assert.strictEqual(approveRes.success, true);
+    assert.strictEqual(await resPromise, true);
 
-    const resolvedVal = await resPromise;
-    assert.strictEqual(resolvedVal, true);
+    const stored = JSON.parse(fs.readFileSync(path.join(tmpDir, 'grants.json'), 'utf8'));
+    assert.deepStrictEqual(
+      stored.grants.map((g: any) => [g.tool, g.scope, g.lifetime]),
+      [['exec_command', 'git *', 'always']],
+    );
+    assert.strictEqual(isStandingExecAllowed(stored.grants, 'git status'), true);
 
-    // Check allowlist file
+    // The daemon reads that same grant back as standing permission: no second prompt.
     const stateManager = new StateManager(path.join(tmpDir, 'state'));
     const gates = await stateManager.readPermissionGates();
-    assert.ok(gates.standingAllowlist.includes('git'));
+    assert.deepStrictEqual(gates.standingGrants?.map((g) => g.scope), ['git *']);
+    assert.strictEqual(isStandingExecAllowed(gates.standingGrants, 'git status'), true);
+
+    // The legacy standing-allowlist.json is neither read nor written by this path.
+    assert.strictEqual(fs.existsSync(path.join(tmpDir, 'state', 'standing-allowlist.json')), false);
+  } finally {
+    rmTmp(tmpDir);
+  }
+});
+
+test('DesktopIpcBridge - always_allow leaves the legacy standing-allowlist path untouched', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-legacy-'));
+  const write = t.mock.method(process.stderr, 'write', () => true);
+
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    const resPromise = bridge.requestUserApproval('exec_command', { command: 'git status' });
+    const activeMap = (bridge as any).activeApprovals as Map<string, any>;
+    const [approvalId] = Array.from(activeMap.keys());
+    await bridge.approveTool(approvalId, { action: 'always_allow', epoch: activeMap.get(approvalId).request.epoch });
+    await resPromise;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const written = write.mock.calls.map((c: any) => String(c.arguments[0])).join('');
+    assert.ok(!/ignoring write to/.test(written), `legacy write attempted: ${written}`);
   } finally {
     rmTmp(tmpDir);
   }
