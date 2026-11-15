@@ -7,6 +7,7 @@ export interface CliConfig {
   model: string;
   apiKey?: string;
   autoApprove: boolean;
+  autoApprovePersistent: boolean;
   query?: string;
   systemPromptFile?: string;
   bot?: string;
@@ -30,6 +31,7 @@ export function loadUserConfig(customPath?: string): Partial<CliConfig> {
         model: parsed.model,
         apiKey: parsed.apiKey,
         autoApprove: parsed.autoApprove,
+        autoApprovePersistent: parsed.autoApprovePersistent,
         provider: parsed.provider,
       };
     }
@@ -105,6 +107,7 @@ export function parseCliArgs(args: string[], customConfigFile?: string): CliConf
       process.env.OPENAI_API_KEY ||
       userConfig.apiKey,
     autoApprove: userConfig.autoApprove ?? false,
+    autoApprovePersistent: userConfig.autoApprovePersistent ?? false,
     provider: userConfig.provider,
   };
 
@@ -134,6 +137,9 @@ export function parseCliArgs(args: string[], customConfigFile?: string): CliConf
     } else if (arg === "--auto-approve" || arg === "-y") {
       config.autoApprove = true;
       explicitFlags.add("autoApprove");
+    } else if (arg === "--auto-approve-persistent") {
+      config.autoApprovePersistent = true;
+      explicitFlags.add("autoApprovePersistent");
     } else if (arg === "--list-tools") {
       config.listTools = true;
       explicitFlags.add("listTools");

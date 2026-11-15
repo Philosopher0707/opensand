@@ -28,6 +28,7 @@ import { sigIntAction, formatResumeHint } from "./interrupt.js";
 import { matchSession, validateResumeEnvironment } from "./sessions.js";
 import { parseCliArgs, CliConfig, probeLocalOllama, validateConfig } from "./config.js";
 import { TerminalUI } from "./terminal-ui.js";
+import { decideCliApproval } from "./approval-policy.js";
 import { runDoctorProbes } from "./doctor.js";
 import { getFleetStatus } from "./status.js";
 import {
@@ -56,7 +57,8 @@ Options:
   --list-tools             List all active OS, orchestrator, and MCP tools
   --list-bots              List all registered bot personas in the Agent Store
   --list-tasks             List all agent tasks and milestones
-  --auto-approve, -y       Auto-approve tool execution (non-interactive mode)
+  --auto-approve, -y              Auto-approve tool execution (non-interactive mode)
+  --auto-approve-persistent       Auto-approve persistent changes (skills and memories)
   --help, -h               Show this help message
   --version, -v            Show version
   completion <bash|zsh>    Generate shell completion script
@@ -333,6 +335,7 @@ Examples:
     await daemon.updateGates({
       computerUseAllowed: true,
       deviceToolsAllowed: true,
+      ...(config.autoApprovePersistent ? { memoryWriteAllowed: true } : {}),
     });
   }
 
@@ -371,12 +374,6 @@ Examples:
   // Session allowlist: tools+command-prefix pairs approved via
   // "allow for this session" auto-approve for the rest of the run.
   const sessionAllowlist = new Set<string>();
-  const allowlistKey = (toolName: string, args: Record<string, any>): string => {
-    if (toolName === "exec_command" && typeof args.command === "string") {
-      return `exec_command:${args.command.trim().split(/\s+/)[0] ?? ""}`;
-    }
-    return toolName;
-  };
 
   // Folder trust: resolved once, before any coordinator exists. -y (autoApprove) never answers it:
   // an unanswered folder without a terminal is treated as untrusted (read-only) and not persisted.
@@ -444,23 +441,26 @@ Examples:
         memoryContext,
       },
       onApprovalRequired: async (req) => {
-        if (config.autoApprove) return true;
-        // Session allowlist: tools+command-prefix pairs approved with
-        // "allow for this session" auto-approve for the rest of the run.
-        if (sessionAllowlist.has(allowlistKey(req.toolName, req.arguments))) {
-          ui.printInfo(`Auto-approved (session allowlist): ${req.toolName}`);
-          return true;
-        }
-        const decision: ApprovalDecision = await ui.promptApproval(
-          req.toolName,
-          req.arguments
-        );
-        if (decision === "allow_session") {
-          sessionAllowlist.add(allowlistKey(req.toolName, req.arguments));
-          ui.printSuccess("Added to session allowlist — future matching calls will auto-approve.");
-          return true;
-        }
-        return decision === "allow_once";
+        const isInteractive = Boolean(input.isTTY && output.isTTY);
+        return decideCliApproval(req, {
+          autoApprove: config.autoApprove,
+          autoApprovePersistent: config.autoApprovePersistent,
+          isInteractive,
+          sessionAllowlist,
+          onAutoApprovedSession: (toolName) => {
+            ui.printInfo(`Auto-approved (session allowlist): ${toolName}`);
+          },
+          promptApproval: async (toolName, args) => {
+            const decision: ApprovalDecision = await ui.promptApproval(toolName, args);
+            if (decision === "allow_session") {
+              ui.printSuccess("Added to session allowlist — future matching calls will auto-approve.");
+            }
+            return decision;
+          },
+          onRefusalMessage: (msg) => {
+            ui.printWarning(msg);
+          },
+        });
       },
       onEvent: (event) => {
         switch (event.type) {

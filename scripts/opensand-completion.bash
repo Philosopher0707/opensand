@@ -6,7 +6,7 @@ _opensand_completions() {
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
   subcommands="doctor status completion"
-  opts="--endpoint --model --api-key --bot --system-prompt --worktree --list-tools --list-bots --list-tasks --auto-approve -y --help -h --version -v --completion ${subcommands}"
+  opts="--endpoint --model --api-key --bot --system-prompt --worktree --list-tools --list-bots --list-tasks --auto-approve --auto-approve-persistent -y --help -h --version -v --completion ${subcommands}"
 
   # Subcommand specific completions
   if [[ "${prev}" == "completion" ]]; then

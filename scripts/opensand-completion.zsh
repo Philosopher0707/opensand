@@ -23,6 +23,7 @@ _opensand() {
     '--list-bots[List all registered bot personas in Agent Store]'
     '--list-tasks[List all agent tasks and milestones]'
     '--auto-approve[Auto-approve tool execution (non-interactive mode)]'
+    '--auto-approve-persistent[Auto-approve persistent changes (skills and memories)]'
     '-y[Auto-approve tool execution shorthand]'
     '--help[Show command line help message]'
     '-h[Show command line help shorthand]'
@@ -50,6 +51,7 @@ _opensand() {
         '--list-bots' \
         '--list-tasks' \
         '--auto-approve' \
+        '--auto-approve-persistent' \
         '-y' \
         '--help' \
         '-h' \
@@ -77,6 +79,7 @@ _opensand() {
     '--list-bots[List all registered bot personas in Agent Store]'
     '--list-tasks[List all agent tasks and milestones]'
     '--auto-approve[Auto-approve tool execution (non-interactive mode)]'
+    '--auto-approve-persistent[Auto-approve persistent changes (skills and memories)]'
     '-y[Auto-approve tool execution shorthand]'
     '--help[Show command line help message]'
     '-h[Show command line help shorthand]'

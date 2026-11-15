@@ -64,7 +64,7 @@ import {
   GalleryQueryOptions,
   buildToolDiscoverySummary,
 } from '@opensand/coordinator';
-import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand } from '@opensand/local-exec-daemon';
+import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand, skillWriteNeedsGate, memoryWriteNeedsGate } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
 import {
   EVENT,
@@ -149,6 +149,7 @@ export class DesktopIpcBridge extends EventEmitter {
       model: process.env.OPENSAND_MODEL || 'llama3.1',
       apiKey: 'none',
       autoApprove: false,
+      autoApprovePersistent: false,
       provider: 'openai',
       theme: 'dark',
       ...options.defaultSettings,
@@ -752,6 +753,16 @@ export class DesktopIpcBridge extends EventEmitter {
         mustPrompt = true;
         reason = reason ? `${reason} (${policy.reason})` : policy.reason;
       }
+    }
+
+    // Safety Ceiling: Skill write/mount and memory write require human confirmation unless autoApprovePersistent is on
+    const isPersistent = skillWriteNeedsGate(toolName) || memoryWriteNeedsGate(toolName, args);
+    if (!mustPrompt && isPersistent && !this.settings.autoApprovePersistent) {
+      mustPrompt = true;
+      const isMem = memoryWriteNeedsGate(toolName, args);
+      reason = reason
+        ? `${reason} (Persistent change requires explicit approval; auto-approve does not cover skills or memories)`
+        : `${isMem ? 'memory writes' : 'skill changes'} need your yes; auto-approve does not cover them`;
     }
 
     if (this.settings.autoApprove && !mustPrompt) {

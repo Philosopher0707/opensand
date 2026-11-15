@@ -25,6 +25,7 @@ describe("CliConfig", () => {
     assert.equal(config.endpoint, "http://localhost:11434/v1");
     assert.equal(config.apiKey, "sk-test-123");
     assert.equal(config.autoApprove, true);
+    assert.equal(config.autoApprovePersistent, false);
     assert.equal(config.query, "inspect workspace");
   });
 
@@ -32,7 +33,16 @@ describe("CliConfig", () => {
     const config = parseCliArgs(["-y", "git", "status"]);
 
     assert.equal(config.autoApprove, true);
+    assert.equal(config.autoApprovePersistent, false);
     assert.equal(config.query, "git status");
+  });
+
+  it("handles --auto-approve-persistent flag", () => {
+    const config = parseCliArgs(["-y", "--auto-approve-persistent", "remember", "something"]);
+
+    assert.equal(config.autoApprove, true);
+    assert.equal(config.autoApprovePersistent, true);
+    assert.equal(config.query, "remember something");
   });
 
   it("parses --bot persona flag", () => {
@@ -60,6 +70,7 @@ describe("CliConfig", () => {
     assert.ok(config.endpoint);
     assert.ok(config.model);
     assert.equal(config.autoApprove, false);
+    assert.equal(config.autoApprovePersistent, false);
     assert.equal(config.query, undefined);
   });
 
@@ -68,6 +79,7 @@ describe("CliConfig", () => {
       endpoint: "https://api.openai.com/v1",
       model: "gpt-4o",
       autoApprove: false,
+      autoApprovePersistent: false,
     };
     const res = validateConfig(invalidConfig);
     assert.equal(res.valid, false);
@@ -77,6 +89,7 @@ describe("CliConfig", () => {
       endpoint: "http://127.0.0.1:11434/v1",
       model: "qwen3:8b",
       autoApprove: false,
+      autoApprovePersistent: false,
     };
     assert.equal(validateConfig(validLocalConfig).valid, true);
 
@@ -85,6 +98,7 @@ describe("CliConfig", () => {
       model: "gpt-4o",
       apiKey: "sk-actual-key",
       autoApprove: false,
+      autoApprovePersistent: false,
     };
     assert.equal(validateConfig(validKeyConfig).valid, true);
   });
@@ -97,6 +111,7 @@ describe("CliConfig", () => {
         endpoint: "http://custom-host:8000/v1",
         model: "deepseek-coder",
         autoApprove: true,
+        autoApprovePersistent: true,
       })
     );
 
@@ -105,6 +120,7 @@ describe("CliConfig", () => {
       assert.equal(loaded.endpoint, "http://custom-host:8000/v1");
       assert.equal(loaded.model, "deepseek-coder");
       assert.equal(loaded.autoApprove, true);
+      assert.equal(loaded.autoApprovePersistent, true);
     } finally {
       fs.unlinkSync(tmpPath);
     }

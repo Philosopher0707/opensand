@@ -24,3 +24,20 @@ A pre-existing `standing-allowlist.json` is migrated once, on the daemon's first
 ## Workspace Undo
 
 Every turn that mutates workspace files automatically creates a snapshot manifest in `.opensand-snapshots/`. Clicking **Undo** restores deleted and modified files to their exact pre-turn state and deletes any untracked files generated during the turn.
+
+## Auto-Approve Mode and Persistent Safety Gates
+
+Running OpenSand with `-y` or `--auto-approve` enables non-interactive auto-approval for ordinary tool calls (`exec_command`, local edits). However, **persistent changes that survive the session require explicit human approval**:
+
+1. **Skill Writes and Mounts:** `add_skill` and `mount_skill` turn text into standing instructions obeyed in every future turn. `-y` does not auto-approve them. In interactive sessions, OpenSand prompts the user. When no human approver is present (piped or non-interactive execution), persistent writes are refused.
+2. **Memory Writes:** `update_memory` (user/agent scope) and `import_memory` persist memories across future sessions. `-y` does not auto-approve them.
+
+### Explicit Opt-In: `--auto-approve-persistent`
+
+To auto-approve persistent state modifications in automated or scripted environments, an explicit opt-in must be provided:
+
+```bash
+opensand -y --auto-approve-persistent "your query"
+```
+
+This flag is off by default and must never be enabled implicitly. It ensures an AI model cannot plant lasting prompt instructions or persistent memories merely because a session runs with `-y`.

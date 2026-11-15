@@ -222,6 +222,11 @@
 * **Rule:** One engine per app; a fix verified only through HTTP must also be driven through the window's IPC path. `DesktopApp` takes its bridge from `server.getBridge()` after `server.start()`, the event forwarder is registered once, and both properties are asserted by a test that builds the real `DesktopApp` with a fake electron module and a temp `baseDir`, proven red when the second bridge or the per-window listener returns. Anything the turn waits on must also be visible where the user is looking: assert the card's on-screen bounds in a real window, not just its presence in the DOM.
 
 
+### 11.13 Auto-approve mode (-y) must not grant persistent standing instructions or memories without explicit opt-in
+* **Trap:** Running `opensand -y` or enabling desktop auto-approve allowed models to call `add_skill`, `mount_skill`, `update_memory`, and `import_memory` automatically. A model could plant a persistent instruction or memory in a single run that would be loaded into every future prompt.
+* **Root Cause:** Auto-approve mode treated all tool calls uniformly, returning `true` on the approval hook without distinguishing transient operations (`exec_command`, local edits) from persistent state modifications that survive across sessions.
+* **Rule:** Auto-approve (`-y` / `--auto-approve`) only covers transient operations. Persistent changes (skill write/mount, memory write/import) always require human confirmation. In interactive mode, prompt the user; when no human approver is present, fail closed with a clear refusal message. Auto-approving persistent changes requires an explicit, intentional opt-in flag (`--auto-approve-persistent`) that defaults to off and is never enabled implicitly.
+
 ---
 
 ## 12. Concurrency & Shared Temp State
