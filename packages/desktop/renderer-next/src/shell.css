@@ -57,3 +57,38 @@
 .receipt-lines, .receipt-muted { color: var(--text-muted); font-size: 12px; }
 @media (max-width: 600px) { .receipt-rows { grid-template-columns: 1fr; gap: 0; } .receipt-rows dd { margin-bottom: 8px; } }
 .mission-main { align-self: flex-start; display: flex; flex-direction: column; width: 100%; min-width: 0; }
+
+/* Shell Inbox ("NEEDS YOU") styles */
+.inbox-section { flex: none; border-bottom: 1px solid var(--border, rgba(128,128,128,.25)); padding-bottom: 4px; }
+.inbox-root { display: flex; flex-direction: column; width: 100%; }
+.inbox-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px 4px; }
+.inbox-badge { display: inline-flex; align-items: center; justify-content: space-between; width: 100%; background: none; border: none; padding: 4px 6px; margin: 0; font: inherit; cursor: pointer; color: inherit; border-radius: 6px; }
+.inbox-badge:hover { background: var(--bg-hover, rgba(128,128,128,.12)); }
+.inbox-badge:focus-visible { outline: 2px solid var(--accent, #4c8dff); outline-offset: -2px; }
+.inbox-badge-title { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted, #888); }
+.inbox-badge-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px; font-weight: 700; background: var(--bg-hover, rgba(128,128,128,.2)); color: var(--text-muted, #888); }
+.inbox-badge-count.has-pending { background: #d97706; color: #fff; }
+.inbox-loading { padding: 6px 12px 8px; font-size: 12px; color: var(--text-muted); }
+.inbox-error { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 12px 8px; font-size: 12px; color: #dc2626; }
+.inbox-empty { padding: 6px 12px 8px; }
+.inbox-empty-title { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.inbox-empty-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.inbox-list { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; }
+.inbox-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 12px; cursor: pointer; border-radius: 6px; margin: 0 6px; border-left: 3px solid #d97706; }
+.inbox-item:hover, .inbox-item.active { background: var(--bg-hover, rgba(128,128,128,.15)); }
+.inbox-item:focus-visible { outline: 2px solid var(--accent, #4c8dff); outline-offset: -2px; }
+.inbox-item-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.inbox-item-asking { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-item-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.inbox-item-wants { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-item-details { margin-top: 6px; padding: 8px; border-radius: 4px; background: rgba(0,0,0,.25); border: 1px solid var(--border, rgba(128,128,128,.2)); font-size: 11px; }
+.inbox-detail-row { margin-bottom: 4px; overflow-wrap: anywhere; }
+.inbox-args-box { margin: 4px 0 0; padding: 6px; background: rgba(0,0,0,.35); border-radius: 3px; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-x: auto; white-space: pre-wrap; max-height: 120px; }
+.inbox-detail-meta { display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; color: var(--text-muted); }
+.approval-detail-view { width: 100%; max-width: 728px; padding: 16px; align-self: flex-start; }
+.approval-detail-card { border: 1px solid var(--border, rgba(128,128,128,.35)); border-left: 4px solid #d97706; border-radius: 6px; padding: 16px; background: var(--bg-surface, rgba(128,128,128,.05)); }
+.approval-detail-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.approval-detail-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.approval-detail-body { font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
+.approval-row { overflow-wrap: anywhere; }
+.approval-meta-row { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--text-muted); }
