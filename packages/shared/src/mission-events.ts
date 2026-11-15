@@ -13,6 +13,7 @@ export const MISSION_EVENT = {
   STOPPED: "mission.stopped",
   NEEDS_YOU: "mission.needs-you",
   ANSWERED: "mission.answered",
+  SNAPSHOT_RESTORED: "snapshot.restored",
 } as const;
 
 export type MissionEventKind = (typeof MISSION_EVENT)[keyof typeof MISSION_EVENT];
@@ -31,4 +32,12 @@ export interface NodeStartedPayload {
   attempt?: number;
   snapshot?: string;
   [key: string]: unknown;
+}
+
+export interface SnapshotRestoredPayload {
+  missionId: string;
+  restoredSnapshot: string;
+  preRestoreSnapshot: string;
+  targetTree: string;
+  timestamp: string;
 }

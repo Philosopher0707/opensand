@@ -1,12 +1,13 @@
 import * as fsSync from "node:fs";
 import * as path from "node:path";
-import { EventLogReader, FolderTrustStore, GrantsStore } from "@opensand/shared";
-import type { EventFrame } from "@opensand/protocol";
+import { EventLogReader, EventLogWriter, FolderTrustStore, GrantsStore, MISSION_EVENT } from "@opensand/shared";
+import { type EventFrame, type RestoreSnapshotParams, type RestoreSnapshotResult, ErrorCodes, OspError } from "@opensand/protocol";
 import { logDirFor } from "../reconnect.js";
 import { MissionRunner, type MissionOptions } from "./runner.js";
 import { projectMission, type MissionProjection } from "./receipt.js";
 import type { MissionAgent } from "./agent.js";
 import { FolderTrustGate } from "./trust-gate.js";
+import { restoreSnapshot, sanitizeRefName } from "./workspace-diff.js";
 
 export class MissionRunnerManager {
   private activeRunners = new Map<string, MissionRunner>();
@@ -14,6 +15,7 @@ export class MissionRunnerManager {
   private settled = new Map<string, Promise<void>>();
   /** Set once shutdown begins: a start that lands after stopAll() took its snapshot would write into a removed state dir. */
   private stopping = false;
+  private restoringWorkspaces = new Set<string>();
 
   constructor(
     private readonly stateDir: string,
@@ -148,6 +150,116 @@ export class MissionRunnerManager {
       return events.length > 0 ? events[events.length - 1].seq : 0;
     } catch {
       return 0;
+    }
+  }
+
+
+  isWorkspaceActive(workspaceRoot: string): { active: boolean; missionId?: string } {
+    const canon = path.resolve(workspaceRoot);
+    for (const [id, runner] of this.activeRunners.entries()) {
+      if (path.resolve(runner.workspaceRoot) === canon) {
+        return { active: true, missionId: id };
+      }
+    }
+    return { active: false };
+  }
+
+  async restoreSnapshot(
+    params: RestoreSnapshotParams,
+    stateDir: string
+  ): Promise<RestoreSnapshotResult> {
+    const cleanMission = sanitizeRefName(params.missionId);
+
+    // Resolve workspaceRoot: either passed explicitly or read from mission log
+    let workspaceRoot = params.workspaceRoot;
+    if (!workspaceRoot) {
+      try {
+        const dir = logDirFor(stateDir, "mission", params.missionId);
+        if (fsSync.existsSync(dir)) {
+          const reader = new EventLogReader(dir);
+          const { events } = await reader.readWithRecovery();
+          const startEv = events.find((e) => e.kind === MISSION_EVENT.STARTED);
+          if (startEv?.data?.workspaceRoot && typeof startEv.data.workspaceRoot === "string") {
+            workspaceRoot = startEv.data.workspaceRoot;
+          }
+        }
+      } catch {}
+    }
+
+    if (!workspaceRoot) {
+      throw new OspError(ErrorCodes.InvalidParams, "workspaceRoot is required");
+    }
+
+    // Risk 4: Fail-fast active mission check
+    const active = this.isWorkspaceActive(workspaceRoot);
+    if (active.active) {
+      throw new OspError(
+        ErrorCodes.InvalidRequest,
+        `Cannot restore workspace while mission '${active.missionId}' is actively running. Stop or wait for the mission to complete before restoring.`
+      );
+    }
+
+    // Risk 7: Folder Trust gate
+    const trusted = await this.gate.isFolderTrusted(workspaceRoot);
+    if (!trusted) {
+      throw new OspError(ErrorCodes.InvalidRequest, "Workspace folder is untrusted");
+    }
+
+    // Risk 7: Mission Ref Confinement
+    const snapStr = String(params.snapshot).trim();
+    if (snapStr.startsWith("refs/opensand/missions/")) {
+      const expectedPrefix = `refs/opensand/missions/${cleanMission}/`;
+      if (!snapStr.startsWith(expectedPrefix)) {
+        throw new OspError(ErrorCodes.InvalidParams, `Ref does not belong to mission ${params.missionId}`);
+      }
+    }
+
+    // Concurrency lock per workspace
+    const canonRoot = path.resolve(workspaceRoot);
+    if (this.restoringWorkspaces.has(canonRoot)) {
+      throw new OspError(ErrorCodes.InvalidRequest, `A restore is already in progress on workspace ${workspaceRoot}`);
+    }
+    this.restoringWorkspaces.add(canonRoot);
+
+    try {
+      const summary = await restoreSnapshot(workspaceRoot, params.missionId, params.snapshot);
+
+      // Append SNAPSHOT_RESTORED event to mission log
+      const dir = logDirFor(stateDir, "mission", params.missionId);
+      if (fsSync.existsSync(dir)) {
+        try {
+          const writer = new EventLogWriter(dir, { sessionId: params.missionId });
+          await writer.append({
+            sessionId: params.missionId,
+            kind: MISSION_EVENT.SNAPSHOT_RESTORED,
+            data: {
+              missionId: params.missionId,
+              restoredSnapshot: summary.restoredSnapshot,
+              preRestoreSnapshot: summary.preRestoreSnapshot,
+              targetTree: summary.targetTree,
+              timestamp: new Date().toISOString(),
+            },
+          });
+        } catch (err) {
+          console.warn(`Failed to append SNAPSHOT_RESTORED event:`, err);
+        }
+      }
+
+      return {
+        success: true,
+        missionId: params.missionId,
+        restoredSnapshot: summary.restoredSnapshot,
+        preRestoreSnapshot: summary.preRestoreSnapshot,
+        targetTree: summary.targetTree,
+        restoredFilesCount: summary.restoredFilesCount,
+        deletedFilesCount: summary.deletedFilesCount,
+        restoredFiles: summary.restoredFiles,
+        overwrittenFiles: summary.overwrittenFiles,
+        deletedFiles: summary.deletedFiles,
+        skippedSubmodules: summary.skippedSubmodules,
+      };
+    } finally {
+      this.restoringWorkspaces.delete(canonRoot);
     }
   }
 

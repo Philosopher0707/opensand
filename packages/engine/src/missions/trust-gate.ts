@@ -24,6 +24,16 @@ interface Parked {
 export class FolderTrustGate {
   private readonly parked = new Map<string, Parked>();
 
+  async isFolderTrusted(workspaceRoot: string): Promise<boolean> {
+    try {
+      const folder = FolderTrustStore.canonicalFolder(workspaceRoot);
+      const level = await this.store.getLevel(folder);
+      return level === "trusted";
+    } catch {
+      return false;
+    }
+  }
+
   constructor(
     private readonly store: FolderTrustStore,
     private readonly grants: GrantsStore,
