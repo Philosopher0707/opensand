@@ -1,6 +1,31 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import { wrapUntrusted } from "@opensand/shared";
+
+/**
+ * One rule per block, so a forged tag cannot escape its fence and one long
+ * rule cannot swallow the rules after it.
+ */
+function splitRuleBlocks(markdown: string): string[] {
+  const blocks: string[] = [];
+  let current: string[] = [];
+  const flush = () => {
+    const text = current.join("\n").trim();
+    if (text) blocks.push(text);
+    current = [];
+  };
+  for (const line of markdown.split("\n")) {
+    if (/^\s*[-*]\s/.test(line)) {
+      flush();
+      blocks.push(line.trim());
+    } else {
+      current.push(line);
+    }
+  }
+  flush();
+  return blocks;
+}
 
 export interface LearnedPreference {
   category: "workflow" | "tool_usage" | "formatting" | "correction";
@@ -161,6 +186,19 @@ export class HabitExtractor {
     } catch {
       return "";
     }
+  }
+
+  /**
+   * The learned rules are written from model-influenced transcript text, so the
+   * copy that enters a prompt is fenced: each rule is data inside a data_source
+   * tag. The raw reader above stays raw for the UI.
+   */
+  async getLearnedRulesPromptContext(): Promise<string> {
+    const raw = await this.getLearnedRulesMarkdown();
+    if (!raw.trim()) return "";
+    return splitRuleBlocks(raw)
+      .map((block) => wrapUntrusted(block, { source: "memory", origin: "learned-rules", maxChars: 2000 }))
+      .join("\n");
   }
 
   private isUserCorrection(query: string): boolean {

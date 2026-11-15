@@ -592,7 +592,7 @@ export class DesktopIpcBridge extends EventEmitter {
       provider: this.settings.provider,
     });
 
-    const learnedRules = await this.habitExtractor.getLearnedRulesMarkdown();
+    const learnedRules = await this.habitExtractor.getLearnedRulesPromptContext();
     const memoryContext = await this.memoryStore.getPromptMemoryContext(agentId);
     const skillsContext = agentId ? await this.skillStore.formatSkillsPrompt(agentId) : '';
 
