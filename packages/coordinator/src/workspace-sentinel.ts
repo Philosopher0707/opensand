@@ -4,7 +4,7 @@ import * as os from "node:os";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { EventEmitter } from "node:events";
-import { wrapUntrusted } from "@opensand/shared";
+import { escapeUntrustedText, wrapUntrusted } from "@opensand/shared";
 
 const execAsync = promisify(exec);
 
@@ -48,9 +48,9 @@ export function createAutonomousHealer(
   return async (event: SentinelDiagnosticEvent) => {
     const errorDetails = event.errorMessage || event.output;
     const prompt = `[AUTOMATED SENTINEL HEALER]
-A diagnostic check failed following changes to ${event.triggerFile}.
-Working directory: ${event.targetDir || process.cwd()}
-Failed Command: ${event.checkCommand || 'N/A'}
+A diagnostic check failed following changes to ${escapeUntrustedText(event.triggerFile)}.
+Working directory: ${escapeUntrustedText(event.targetDir || process.cwd())}
+Failed Command: ${escapeUntrustedText(event.checkCommand || 'N/A')}
 Error details:
 ${wrapUntrusted(String(errorDetails ?? ""), { source: "command", origin: "sentinel" })}
 

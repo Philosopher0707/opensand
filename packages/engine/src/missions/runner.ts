@@ -1,6 +1,6 @@
 import { START, END, StateGraph } from "@opensand/shared";
 import { EventLogWriter, EventLogReader } from "@opensand/shared";
-import { wrapUntrusted } from "@opensand/shared";
+import { wrapUntrusted, escapeUntrustedText } from "@opensand/shared";
 import { MISSION_EVENT, FolderTrustStore, GrantsStore, resolveSandboxProfile } from "@opensand/shared";
 import type { EventFrame } from "@opensand/protocol";
 import { logDirFor, eventNameForKind } from "../reconnect.js";
@@ -377,7 +377,8 @@ export class MissionRunner {
       const reviewRes = await this.agent.review(
         {
           goal: state.initialQuery,
-          diff: diffStr,
+          // The diff text comes from the workspace: it must not be able to forge a tag.
+          diff: escapeUntrustedText(diffStr),
           check: {
             exitCode: state.lastCheck?.exitCode ?? null,
             outputTail: wrapUntrusted(state.lastCheck?.outputTail ?? "", { source: "command", origin: "check" }),
