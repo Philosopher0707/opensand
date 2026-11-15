@@ -7,6 +7,7 @@ import * as path from "node:path";
 import { EventLogReader, FolderTrustStore, GrantsStore, type SessionEvent } from "@opensand/shared";
 import { EngineServer } from "../src/server.js";
 import type { MissionAgent } from "../src/missions/agent.js";
+import { cleanGitEnv } from "./helpers.js";
 
 interface Frame {
   id?: string | null;
@@ -204,7 +205,7 @@ describe("untrusted text in mission agent input", () => {
     const shim = installHostileTreeGit(h.root);
     try {
       const ws = h.folder("ws");
-      execFileSync("git", ["init", "-q"], { cwd: ws });
+      execFileSync("git", ["init", "-q"], { cwd: ws, env: cleanGitEnv() });
       const missionId = await h.start(ws, `node -e "console.log('fine')"`);
       const q = await h.needsYou(missionId);
       const ans = await h.request("inbox.Approvals.answer", { missionId, level: "trusted", epoch: q.data.epoch });

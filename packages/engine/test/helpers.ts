@@ -26,6 +26,14 @@ export function removeDir(dir: string): void {
   fsSync.rmSync(dir, { recursive: true, force: true });
 }
 
+export function cleanGitEnv(): NodeJS.ProcessEnv {
+  const env: Record<string, string | undefined> = { ...process.env };
+  for (const k of Object.keys(env)) {
+    if (k.startsWith("GIT_")) delete env[k];
+  }
+  return env as NodeJS.ProcessEnv;
+}
+
 export class EngineProcess {
   readonly child: ChildProcessWithoutNullStreams;
   readonly frames: WireFrame[] = [];

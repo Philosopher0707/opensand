@@ -5,7 +5,9 @@ import * as path from "node:path";
 /** Env for test git calls: hooks export GIT_DIR/GIT_INDEX_FILE, which must never reach a fixture repo. */
 export function cleanGitEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
-  for (const k of ["GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"]) delete env[k];
+  for (const k of Object.keys(env)) {
+    if (k.startsWith("GIT_")) delete env[k];
+  }
   return env;
 }
 

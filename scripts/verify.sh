@@ -61,6 +61,18 @@ fi
 
 pnpm -r run build
 
+# --- Shared git config core.bare guard (before tests) -----------------
+echo "verify: snapshotting git common config core.bare..."
+COMMON_GIT_DIR="$(git rev-parse --git-common-dir 2>/dev/null || git rev-parse --git-dir 2>/dev/null || true)"
+COMMON_CONFIG=""
+BEFORE_CORE_BARE=""
+if [[ -n "$COMMON_GIT_DIR" && -d "$COMMON_GIT_DIR" ]]; then
+  COMMON_CONFIG="$COMMON_GIT_DIR/config"
+  if [[ -f "$COMMON_CONFIG" ]]; then
+    BEFORE_CORE_BARE="$(git config --file "$COMMON_CONFIG" core.bare 2>/dev/null || echo "unset")"
+  fi
+fi
+
 # Each package's tests run once, with the output kept in a log. A failing package is named and its
 # failing lines printed, instead of the script dying silently inside a command substitution.
 # The zero-test guard reads the same logs rather than running the suites a second time.
@@ -98,5 +110,17 @@ for pkg_json in packages/*/package.json; do
     fi
   fi
 done
+
+# --- Shared git config core.bare guard (after tests) ------------------
+if [[ -n "$COMMON_CONFIG" && -f "$COMMON_CONFIG" ]]; then
+  AFTER_CORE_BARE="$(git config --file "$COMMON_CONFIG" core.bare 2>/dev/null || echo "unset")"
+  if [[ "$BEFORE_CORE_BARE" != "$AFTER_CORE_BARE" || "$AFTER_CORE_BARE" == "true" ]]; then
+    echo "verify error: Test run modified repository git config ($COMMON_CONFIG)!" >&2
+    echo "  core.bare before: $BEFORE_CORE_BARE" >&2
+    echo "  core.bare after:  $AFTER_CORE_BARE" >&2
+    exit 1
+  fi
+  echo "verify: git config core.bare preserved ($AFTER_CORE_BARE)"
+fi
 
 echo "verify: ok"

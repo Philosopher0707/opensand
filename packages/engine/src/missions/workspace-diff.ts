@@ -1,3 +1,13 @@
+function cleanGitEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (!k.startsWith("GIT_") && v !== undefined) {
+      env[k] = v;
+    }
+  }
+  return env;
+}
+
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -26,6 +36,7 @@ export async function isGitRepository(workspaceRoot: string): Promise<boolean> {
       command: "git rev-parse --is-inside-work-tree",
       cwd: workspaceRoot,
       workspaceRoot,
+      env: cleanGitEnv(),
     });
     return res.exitCode === 0 && res.stdout.trim() === "true";
   } catch {
@@ -49,7 +60,7 @@ export async function treeOf(workspaceRoot: string): Promise<TreeResult> {
       command: "git add -A && git write-tree",
       cwd: workspaceRoot,
       workspaceRoot,
-      env: { GIT_INDEX_FILE: tmpIndex },
+      env: { ...cleanGitEnv(), GIT_INDEX_FILE: tmpIndex },
     });
 
     if (res.exitCode !== 0) {
@@ -157,6 +168,7 @@ export async function changedLinesBetweenTrees(
     command: `git diff --unified=0 --no-color ${baseTree} ${finalTree}`,
     cwd: workspaceRoot,
     workspaceRoot,
+    env: cleanGitEnv(),
   });
 
   if (res.exitCode !== 0) {
@@ -188,7 +200,7 @@ export async function pinTrees(
         cwd: workspaceRoot,
         workspaceRoot,
         // A git hook exports these; the ref belongs in the workspace's own repository.
-        env: { GIT_DIR: undefined, GIT_INDEX_FILE: undefined, GIT_WORK_TREE: undefined } as any,
+        env: cleanGitEnv() as any,
       });
       if (res.exitCode === 0) out[key] = id;
     } catch {

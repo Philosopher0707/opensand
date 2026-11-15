@@ -5,14 +5,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { EventLogReader, type SessionEvent } from "@opensand/shared";
-import { EngineProcess, removeDir, tempDir, trustFolder } from "./helpers.js";
+import { EngineProcess, removeDir, tempDir, trustFolder, cleanGitEnv } from "./helpers.js";
 import { renderReceipt } from "../src/missions/receipt.js";
 
 function git(args: string[], cwd: string): string {
   const result = spawnSync("git", args, {
     cwd,
     encoding: "utf8",
-    env: { ...process.env, GIT_DIR: undefined, GIT_INDEX_FILE: undefined },
+    env: cleanGitEnv(),
   });
   if (result.status !== 0) {
     throw new Error(`git ${args.join(" ")} failed: ${result.stderr}`);

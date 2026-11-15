@@ -48,6 +48,9 @@ for v in GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX GIT_OBJECT_DIRECTORY \
          GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CEILING_DIRECTORIES; do
   unset "$v"
 done
+for v in $(env | grep -E '^GIT_' | cut -d= -f1 || true); do
+  unset "$v"
+done
 
 # --- Tripwire ------------------------------------------------------------
 # Snapshot repo-local state the suite must never touch; compare afterwards.
