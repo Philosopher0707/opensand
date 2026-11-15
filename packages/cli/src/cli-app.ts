@@ -359,7 +359,7 @@ Examples:
     }
   }
 
-  const learnedRules = await habitExtractor.getLearnedRulesMarkdown();
+  const learnedRules = await habitExtractor.getLearnedRulesPromptContext();
   // Stored memories were previously only injected by the desktop bridge; the
   // CLI started every session blind. Load them here so both surfaces agree.
   const memoryStore = new MemoryStore();
