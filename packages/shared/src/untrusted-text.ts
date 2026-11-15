@@ -13,7 +13,8 @@ export type UntrustedSource =
   | "message"
   | "subagent"
   | "webhook"
-  | "tool";
+  | "tool"
+  | "memory";
 
 export interface WrapUntrustedOptions {
   source: UntrustedSource;

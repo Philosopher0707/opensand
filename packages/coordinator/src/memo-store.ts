@@ -13,6 +13,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
+import { wrapUntrusted } from "@opensand/shared";
 
 export interface MemoFact {
   id: number;
@@ -101,7 +102,13 @@ export class MemoStore {
     if (facts.length === 0) return [];
     const lines = [`### ${title}`];
     for (const f of facts) {
-      lines.push(`- ${f.subject} — ${f.predicate}: ${f.object}`);
+      lines.push(
+        `- ${wrapUntrusted(`${f.subject} — ${f.predicate}: ${f.object}`, {
+          source: "memory",
+          origin: "memo",
+          maxChars: 2000,
+        })}`
+      );
     }
     return lines;
   }
