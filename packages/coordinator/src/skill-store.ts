@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as crypto from "node:crypto";
 import { AgentStore } from "./agent-store.js";
+import { escapeUntrustedText } from "@opensand/shared";
 
 /**
  * Clean-room parity with Grok Bot's Skill Architecture:
@@ -81,6 +82,22 @@ export function parseSkillContent(rawContent: string): ParsedSkillFrontmatter {
     body,
     hasFrontmatter: true,
   };
+}
+
+/** One line telling the model who put a skill's instructions in the prompt. */
+function skillProvenance(skill: Pick<SkillRecord, "origin" | "createdAtMs">): string {
+  const date = new Date(skill.createdAtMs).toISOString().slice(0, 10);
+  switch (skill.origin) {
+    case "file":
+      return `Provenance: imported from a folder on ${date}.`;
+    case "agent":
+      return `Provenance: written by the AI on ${date}.`;
+    case "user":
+    case "installed":
+      return `Provenance: installed by you on ${date}.`;
+    default:
+      return "Provenance: origin not recorded.";
+  }
 }
 
 export class SkillStore {
@@ -355,7 +372,10 @@ export class SkillStore {
 
     let prompt = "## Active Agent Skills\n";
     for (const s of skills) {
-      prompt += `\n### Skill: ${s.name}\n${s.description ? `*${s.description}*\n` : ""}\n${s.content}\n`;
+      // A skill is obeyed, so its body is not wrapped as data. Name, description and body are escaped
+      // instead: no skill text can forge a fence, and the provenance line says who put it here.
+      const description = s.description ? `*${escapeUntrustedText(s.description)}*\n` : "";
+      prompt += `\n### Skill: ${escapeUntrustedText(s.name)}\n${description}${skillProvenance(s)}\n${escapeUntrustedText(s.content)}\n`;
     }
     return prompt.trim();
   }

@@ -5,7 +5,7 @@ import {
   RestorePoint,
   RevertResult,
 } from "@opensand/shared";
-import { LocalExecDaemon, ToolExecutionResult, PolicyDecision, ToolDefinition, memoryWriteNeedsGate } from "@opensand/local-exec-daemon";
+import { LocalExecDaemon, ToolExecutionResult, PolicyDecision, ToolDefinition, memoryWriteNeedsGate, skillWriteNeedsGate } from "@opensand/local-exec-daemon";
 import { wrapUntrusted, untrustedSourceFor, isStandingExecAllowed } from "@opensand/shared";
 import { isParallelSafeTool } from "./tool-parallelism.js";
 import { UniversalLLMClient, ConsolidatedAssistantResponse } from "./llm-client.js";
@@ -393,6 +393,11 @@ export class AgentCoordinator {
 
         // Model-written memory outlives this session: ask a person unless a standing memory-write gate is open.
         if (memoryWriteNeedsGate(tc.function.name, args) && !gates.memoryWriteAllowed) {
+          needsApproval = true;
+        }
+
+        // A skill body is obeyed in every later prompt, so writing or mounting one always asks a person.
+        if (skillWriteNeedsGate(tc.function.name)) {
           needsApproval = true;
         }
 
