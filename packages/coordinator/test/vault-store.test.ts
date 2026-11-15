@@ -6,7 +6,7 @@ import * as os from 'node:os';
 import { VaultStore } from '../src/vault-store.js';
 
 test('VaultStore - securely stores, decrypts and lists secrets', async () => {
-  const tmpDir = path.join(os.tmpdir(), `opensand-vault-test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-vault-test-"));
   try {
     const vault = new VaultStore({ baseDir: tmpDir });
 
@@ -52,7 +52,7 @@ test('VaultStore - securely stores, decrypts and lists secrets', async () => {
 });
 
 test('VaultStore - securely manages credentials and accounts', async () => {
-  const tmpDir = path.join(os.tmpdir(), `opensand-cred-test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-cred-test-"));
   try {
     const vault = new VaultStore({ baseDir: tmpDir });
 
@@ -85,7 +85,7 @@ test('VaultStore - securely manages credentials and accounts', async () => {
 });
 
 test('VaultStore - automatically redacts known secrets from text', async () => {
-  const tmpDir = path.join(os.tmpdir(), `opensand-redact-test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-redact-test-"));
   try {
     const vault = new VaultStore({ baseDir: tmpDir });
 
@@ -113,7 +113,7 @@ test('VaultStore - automatically redacts known secrets from text', async () => {
 });
 
 test('VaultStore - generates authentic 256-bit random master key file and migrates legacy vaults', async () => {
-  const tmpDir = path.join(os.tmpdir(), `opensand-masterkey-test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-masterkey-test-"));
   try {
     const vault = new VaultStore({ baseDir: tmpDir });
     await vault.putSecret({

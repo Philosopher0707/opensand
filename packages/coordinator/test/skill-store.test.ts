@@ -12,7 +12,7 @@ import {
 import { AgentStore } from '../src/agent-store.js';
 
 test('SkillStore - creates, lists, mounts, and formats skills for agents', async () => {
-  const tmpDir = path.join(os.tmpdir(), `opensand-skill-test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-skill-test-"));
   const agentDir = path.join(tmpDir, 'agents');
   const skillDir = path.join(tmpDir, 'skills');
 
@@ -82,7 +82,7 @@ test('SkillStore - creates, lists, mounts, and formats skills for agents', async
 });
 
 test('SkillStore - Grok Bot YAML frontmatter parsing, file import, and size limits', async () => {
-  const tmpDir = path.join(os.tmpdir(), `opensand-skill-invariants-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-skill-invariants-"));
   const agentDir = path.join(tmpDir, 'agents');
   const skillDir = path.join(tmpDir, 'skills');
 
