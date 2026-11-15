@@ -127,3 +127,39 @@ test("TaskStore - listTasks breaks an updatedAt tie deterministically", async ()
     await fs.rm(tmpDir, { recursive: true, force: true });
   }
 });
+
+test("TaskStore - same-millisecond task creation produces deterministic unique ids and stable order", async () => {
+  TaskStore.resetSequenceForTesting();
+  const FIXED_TIME = 1_700_000_000_000;
+  const originalNow = Date.now;
+  Date.now = () => FIXED_TIME;
+
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-task-frozen-"));
+  try {
+    const store = new TaskStore(tmpDir);
+
+    const t1 = await store.createTask({ title: "Task 1" });
+    const t2 = await store.createTask({ title: "Task 2" });
+    const t3 = await store.createTask({ title: "Task 3" });
+
+    // IDs must be unique even when created in the exact same millisecond
+    assert.notEqual(t1.id, t2.id);
+    assert.notEqual(t2.id, t3.id);
+    assert.notEqual(t1.id, t3.id);
+
+    // IDs must be deterministic (monotonic sequence tiebreaker, not random hex)
+    assert.equal(t1.id, `task_${FIXED_TIME}_0000`);
+    assert.equal(t2.id, `task_${FIXED_TIME}_0001`);
+    assert.equal(t3.id, `task_${FIXED_TIME}_0002`);
+
+    // listTasks must return deterministic stable order
+    const list1 = await store.listTasks();
+    assert.deepEqual(list1.map((t) => t.id), [t1.id, t2.id, t3.id]);
+
+    const list2 = await store.listTasks();
+    assert.deepEqual(list2.map((t) => t.id), [t1.id, t2.id, t3.id]);
+  } finally {
+    Date.now = originalNow;
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});

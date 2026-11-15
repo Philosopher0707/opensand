@@ -104,7 +104,8 @@ describe("CliConfig", () => {
   });
 
   it("loads user config from custom json path", () => {
-    const tmpPath = path.join(os.tmpdir(), `opensand-cfg-${Date.now()}.json`);
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-cfg-"));
+    const tmpPath = path.join(tmpDir, "config.json");
     fs.writeFileSync(
       tmpPath,
       JSON.stringify({
@@ -122,7 +123,7 @@ describe("CliConfig", () => {
       assert.equal(loaded.autoApprove, true);
       assert.equal(loaded.autoApprovePersistent, true);
     } finally {
-      fs.unlinkSync(tmpPath);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
