@@ -84,4 +84,41 @@ describe("LocalExecDaemon", () => {
     }
   });
 
+  it("stop() waits for a heartbeat write already in flight", async () => {
+    const stopDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-daemon-stop-"));
+    try {
+      const fastDaemon = new LocalExecDaemon({ stateDir: stopDir, heartbeatIntervalMs: 5 });
+      await fastDaemon.start();
+
+      // Hold the next daemon-state write, so one is provably still in flight
+      // when stop() is called (start()'s own writes are not gated).
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      let armed = false;
+      let held = 0;
+      const realWrite = fastDaemon.state.writeDaemonState.bind(fastDaemon.state);
+      (fastDaemon.state as any).writeDaemonState = async (state: any) => {
+        if (armed && held++ === 0) await gate;
+        return realWrite(state);
+      };
+
+      armed = true;
+      await new Promise((r) => setTimeout(r, 20)); // let a heartbeat tick enter the gated write
+
+      let stopped = false;
+      const stopping = fastDaemon.stop().then(() => {
+        stopped = true;
+      });
+      await new Promise((r) => setTimeout(r, 50));
+      assert.equal(stopped, false, "stop() resolved while a state write was still in flight");
+
+      release();
+      await stopping;
+      assert.equal(stopped, true);
+      assert.equal(fastDaemon.running, false);
+    } finally {
+      await fs.rm(stopDir, { recursive: true, force: true });
+    }
+  });
+
 });
