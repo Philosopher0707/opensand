@@ -93,7 +93,7 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 * **`file-ops.ts`**: Atomic file operations. `writeFileOperation` writes to a temporary file with `0600` permissions and atomically renames to destination; computes SHA-256 digest. `readFileOperation` supports line range slicing (`start_line`, `end_line`). `listDirectoryOperation` scans files recursively with type and mtime metadata.
 * **`state-manager.ts`**: Manages `~/.opensand/state/` JSON files (`local-exec-daemon.json`, `local-exec-supervisor.json`, `local-computer-use-gate.json`, `local-device-tools-gate.json`) using atomic temporary-file renames, and reads standing permission from `grants.json` only.
 * **`command-runner.ts`**: Spawns bash processes with execution timeouts, SIGTERM $\rightarrow$ SIGKILL termination ladders, and output buffering.
-* **`tool-registry.ts`**: Maps tools to OpenAI function schemas (`exec_command`, `read_file`, `write_file`, `list_directory`). Enforces dual-authorization gates (standing allowlist match vs. explicit approval ID).
+* **`tool-registry.ts`**: Maps tools to OpenAI function schemas (`exec_command`, `read_file`, `write_file`, `list_directory`). Enforces dual-authorization gates (standing grant match vs. explicit approval ID).
 * **`daemon.ts`**: Coordinates lifecycle, pulses background supervisor heartbeats, and dispatches tool execution.
 * **Tests**: 29 unit tests (`test/*.test.ts`) covering all modules with 100% pass rate.
 
@@ -140,7 +140,7 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 * **`preload.ts`**: Hardened context bridge (`contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`) exposing `window.opensand`.
 * **`desktop-server.ts`**: Zero-dependency local HTTP/SSE UI server running at `http://127.0.0.1:3456`, serving REST endpoints (`/api/agents`, `/api/tasks`, `/api/learned-rules`, `/api/routines`, `/api/rooms`, `/api/skills`, `/api/vault`, `/api/settings`, `/api/tokens`, `/api/models`), unified Connect/RPC gateways (`/aiserver.v1.*`), AG-UI protocol handlers, and real-time SSE stream (`/api/events`). Enforces token-based session authentication (`server.token` with 0600 permissions), cookie exchange (`POST /api/auth/token-exchange`), and Host/Origin boundary checks. `GET /api/settings` uses `getSanitizedSettingsResolved()`: it resolves the vault `default-api-key` at startup, so the API key shows as `********` immediately after boot; a blank API key on save means "keep the saved key" (both UI `app.js` omits it and `ipc-bridge.ts:updateSettings()` deletes `''` like `'********'`).
 * **`renderer/`**: Interactive dark mode chat UI with streaming Markdown, live tool execution status cards, interactive permission approval modals ("Approve Once", "Always Allow", "Reject"), model settings panel, and interactive authentication dialog (`#authModal`) with dynamic token attachment.
-* **Tests**: 57 unit tests (`test/*.test.ts`) covering IPC bridge, standing allowlist additions, REST endpoints, unified RPC services, AG-UI gateway, webhook rate limiting, and token authentication.
+* **Tests**: 57 unit tests (`test/*.test.ts`) covering IPC bridge, standing grant additions, REST endpoints, unified RPC services, AG-UI gateway, webhook rate limiting, and token authentication.
 
 ---
 
