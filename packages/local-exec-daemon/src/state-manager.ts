@@ -28,7 +28,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as crypto from "node:crypto";
-import { GrantsStore, standingExecPatterns } from "@opensand/shared";
+import { GrantsStore } from "@opensand/shared";
 import type { CapabilityGrant } from "@opensand/shared";
 import { migrateLegacyAllowlist } from "./legacy-allowlist-migration.js";
 import { DaemonState, DaemonConnection, DaemonSupervisorHeartbeat, PermissionGates, DaemonLivenessResult } from "./types.js";
@@ -38,7 +38,6 @@ export class StateManager {
   private baseDir: string;
   private readonly grants: GrantsStore;
   private migration: Promise<void> | null = null;
-  private warnedLegacyWrite = false;
 
   /**
    * `grants` defaults to the store beside the state dir (`<base>/state` -> `<base>/grants.json`),
@@ -159,7 +158,6 @@ export class StateManager {
       computerUseAllowed: computerUse?.allowed ?? false,
       deviceToolsAllowed: deviceTools?.allowed ?? false,
       memoryWriteAllowed: memoryWrite?.allowed ?? false,
-      standingAllowlist: standingExecPatterns(standing.standingGrants),
       ...standing,
     };
   }
@@ -205,12 +203,6 @@ export class StateManager {
     }
     if (gates.memoryWriteAllowed !== undefined) {
       await this.writeJsonAtomic("local-memory-write-gate.json", { allowed: gates.memoryWriteAllowed });
-    }
-    if (gates.standingAllowlist !== undefined && !this.warnedLegacyWrite) {
-      // standingAllowlist is a derived view of grants.json. Narrow or widen it with GrantsStore
-      // (revokeGrant, narrowAuthority, addGrant); a bare rewrite would skip the epoch bump.
-      this.warnedLegacyWrite = true;
-      process.stderr.write("[local-exec-daemon] ignoring write to standingAllowlist: standing permission now lives in grants.json\n");
     }
   }
 

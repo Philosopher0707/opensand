@@ -86,12 +86,13 @@ describe("standing exec permission comes from grants.json", () => {
     assert.equal((await daemon.getGates()).grantsError, undefined);
   });
 
-  it("derives the legacy standingAllowlist view from grants and ignores writes to it", async () => {
+  it("reads standing permission only from grants.json; a legacy-view write changes nothing", async () => {
     await store.addGrant({ tool: "exec_command", scope: "git *", lifetime: "always" });
     await store.addGrant({ tool: "exec_command", scope: "ls -la", lifetime: "always" });
-    assert.deepEqual((await daemon.getGates()).standingAllowlist, ["git", "ls -la"]);
-    await daemon.updateGates({ standingAllowlist: ["rm"] });
-    assert.deepEqual((await daemon.getGates()).standingAllowlist, ["git", "ls -la"]);
+    const gates = await daemon.getGates();
+    assert.deepEqual(gates.standingGrants?.map((g) => g.scope), ["git *", "ls -la"]);
+    await daemon.updateGates({} as any);
+    assert.deepEqual((await daemon.getGates()).standingGrants?.map((g) => g.scope), ["git *", "ls -la"]);
     assert.equal(fs.existsSync(path.join(base, "state", "standing-allowlist.json")), false);
   });
 

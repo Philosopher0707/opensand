@@ -241,8 +241,8 @@ export class LocalExecDaemon {
     }
     if (current !== undefined && current === gates.grantsEpoch) return context;
     const fresh = await this.state.readPermissionGates();
-    const { standingGrants, standingAllowlist, grantsEpoch, grantsError } = fresh;
-    const refreshed: PermissionGates = { ...gates, standingGrants, standingAllowlist, grantsEpoch };
+    const { standingGrants, grantsEpoch, grantsError } = fresh;
+    const refreshed: PermissionGates = { ...gates, standingGrants, grantsEpoch };
     if (grantsError) refreshed.grantsError = true; else delete refreshed.grantsError;
     return { ...context, permissionGates: refreshed };
   }

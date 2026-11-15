@@ -41,11 +41,6 @@ export function isStandingExecAllowed(
   return isToolExecutionGranted(standingExecGrants(grants, now), { tool: "exec_command", command }, now);
 }
 
-/** Legacy standing-allowlist view of the grants: `git *` becomes `git`, exact scopes stay as they are. */
-export function standingExecPatterns(grants: readonly CapabilityGrant[] | undefined, now: number = Date.now()): string[] {
-  return standingExecGrants(grants, now).map((g) => (g.scope.endsWith(" *") ? g.scope.slice(0, -2) : g.scope));
-}
-
 export interface SkippedLegacyPattern {
   pattern: unknown;
   reason: string;

@@ -302,7 +302,6 @@ describe("ToolRegistry PTY Tools Integration", () => {
         permissionGates: {
           computerUseAllowed: false,
           deviceToolsAllowed: false,
-          standingAllowlist: [],
           standingGrants: [{ id: "g1", tool: "exec_command", scope: "ls *", lifetime: "always", epoch: 1, createdAt: 0 }],
         },
       }
@@ -323,7 +322,6 @@ describe("ToolRegistry PTY Tools Integration", () => {
         permissionGates: {
           computerUseAllowed: false,
           deviceToolsAllowed: false,
-          standingAllowlist: [],
         },
         approvalGranted: true,
       }

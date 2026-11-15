@@ -50,7 +50,6 @@ describe("NativeBridge", () => {
         permissionGates: {
           computerUseAllowed: false,
           deviceToolsAllowed: false,
-          standingAllowlist: [],
         },
       }
     );

@@ -123,7 +123,7 @@ describe("denial reasons on daemon tool results", () => {
     const res = await new ToolRegistry().dispatch(
       "exec_command",
       { command: "ls" },
-      { permissionGates: { computerUseAllowed: false, deviceToolsAllowed: false, standingAllowlist: [] } } as any
+      { permissionGates: { computerUseAllowed: false, deviceToolsAllowed: false } } as any
     );
     assert.equal(res.status, "permission_pending");
     assert.equal(res.error?.reason, "approval_required");
