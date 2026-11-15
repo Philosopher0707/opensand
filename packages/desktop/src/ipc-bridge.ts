@@ -1277,7 +1277,8 @@ export class DesktopIpcBridge extends EventEmitter {
 
   // Skills API (Grok Bot Parity: AddGrokBotAgentSkill / ListGrokBotAgentSkills)
   public async createSkill(input: any): Promise<SkillRecord> {
-    return this.skillStore.createSkill(input);
+    // The origin is decided here, never by the renderer: a skill made in the desktop UI is the person's own.
+    return this.skillStore.createSkill({ ...input, origin: "user" });
   }
 
   public async listSkills(category?: string): Promise<SkillRecord[]> {
