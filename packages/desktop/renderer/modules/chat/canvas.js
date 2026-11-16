@@ -406,7 +406,17 @@ export function createArtifactCanvas(options = {}) {
     if (previewPaneEl) previewPaneEl.classList.toggle('hidden', state.activeTab !== 'preview');
     if (diffPaneEl) diffPaneEl.classList.toggle('hidden', state.activeTab !== 'diff');
 
+    revealActiveTab();
     if (onStateChange) onStateChange({ ...state });
+  }
+
+  /** Keep the active tab visible when the strip overflows. Needs a laid-out strip, so it runs after the panel is shown. */
+  function revealActiveTab() {
+    if (!tabStripEl || typeof tabStripEl.querySelector !== 'function' || !state.isOpen) return;
+    const el = tabStripEl.querySelector('.canvas-file-tab.active');
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    }
   }
 
   function switchTab(tabName) {
@@ -559,14 +569,21 @@ export function createArtifactCanvas(options = {}) {
     updateUi();
   }
 
-  /** Close the whole canvas: every tab. Kept under the old name for callers. */
+  /** Explicit "close all": drops every tab. Only call this from a deliberate user action. */
   function closeArtifact() {
     closeAllTabs();
   }
 
+  /** Hide the panel. Tabs and their content stay exactly as they were. */
+  function hideCanvas() {
+    if (!state.isOpen) return;
+    state.isOpen = false;
+    updateUi();
+  }
+
   function toggleCanvas() {
     if (state.isOpen) {
-      closeArtifact();
+      hideCanvas();
     } else {
       state.isOpen = true;
       updateUi();
@@ -637,7 +654,7 @@ export function createArtifactCanvas(options = {}) {
   if (copyBtn) copyBtn.addEventListener('click', copyContent);
   if (downloadBtn) downloadBtn.addEventListener('click', downloadContent);
   if (expandBtn) expandBtn.addEventListener('click', toggleFullscreen);
-  if (closeBtn) closeBtn.addEventListener('click', closeArtifact);
+  if (closeBtn) closeBtn.addEventListener('click', hideCanvas);
   if (toggleBtn) toggleBtn.addEventListener('click', toggleCanvas);
 
   // Tab strip: one delegated listener, since the strip is re-rendered on change.
@@ -670,6 +687,7 @@ export function createArtifactCanvas(options = {}) {
     getTabs,
     openArtifact,
     closeArtifact,
+    hideCanvas,
     closeTab,
     selectTab,
     nextTab,

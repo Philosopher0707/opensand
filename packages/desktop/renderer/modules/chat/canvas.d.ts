@@ -78,6 +78,7 @@ export interface ArtifactCanvasController {
   openArtifact: (artifact?: ArtifactOptions) => void;
   /** Close every tab and hide the canvas. */
   closeArtifact: () => void;
+  hideCanvas: () => void;
   /** Close one tab by key; activates a neighbour when the active tab closes. */
   closeTab: (key: string) => void;
   /** Focus a tab by key. */

@@ -5,6 +5,7 @@
 import { renderMarkdown, renderMarkdownCached, escapeHtml } from './modules/chat/markdown.js';
 import { createApprovalQueue } from './modules/chat/approval-queue.js';
 import { createArtifactCanvas } from './modules/chat/canvas.js';
+import { createFileModel, artifactForToolResult } from './modules/chat/file-model.js';
 
 // Native title bar is hiddenInset on macOS; CSS keys traffic-light clearance off this.
 // Detected via userAgent for instant CSS styling, and via window.opensand for IPC bridge.
@@ -4895,7 +4896,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (artifactCanvas.getState().isFullscreen) {
           artifactCanvas.setFullscreen(false);
         } else {
-          artifactCanvas.closeArtifact();
+          artifactCanvas.hideCanvas();
         }
         return;
       }
@@ -4988,6 +4989,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   const lastToolArgs = new Map();
+  const canvasFiles = createFileModel();
 
   // Real-time Event Stream Handling
   client.onEvent((event) => {
@@ -5147,33 +5149,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // Auto-open Artifact Canvas on file write / edit / git_diff (Grok Bot & OpenBot Parity)
       const callArgs = lastToolArgs.get(toolName) || {};
-      if (toolName === 'write_file' && callArgs.path && callArgs.content && artifactCanvas) {
-        const filePath = String(callArgs.path);
-        const fileName = filePath.split('/').pop() || 'file';
-        const ext = fileName.includes('.') ? fileName.split('.').pop() : 'text';
-        artifactCanvas.openArtifact({
-          title: fileName,
-          filePath,
-          language: ext,
-          content: String(callArgs.content),
-          autoPreview: true,
-        });
-      } else if (toolName === 'edit_file' && callArgs.path && artifactCanvas) {
-        const filePath = String(callArgs.path);
-        const fileName = filePath.split('/').pop() || 'file';
-        const ext = fileName.includes('.') ? fileName.split('.').pop() : 'text';
-        let diffPreview = '';
-        if (callArgs.target && callArgs.replacement !== undefined) {
-          diffPreview = `--- a/${fileName}\n+++ b/${fileName}\n@@ -1,1 +1,1 @@\n-${callArgs.target}\n+${callArgs.replacement}`;
-        }
-        artifactCanvas.openArtifact({
-          title: `${fileName} (edit)`,
-          filePath,
-          language: ext,
-          content: String(callArgs.replacement || ''),
-          diff: diffPreview,
-          defaultTab: diffPreview ? 'diff' : 'code',
-        });
+      const fileArtifact = artifactCanvas ? artifactForToolResult(canvasFiles, toolName, callArgs, result) : null;
+      if (fileArtifact) {
+        artifactCanvas.openArtifact(fileArtifact);
       } else if (toolName === 'git_diff' && result && artifactCanvas) {
         const diffText = typeof result === 'string' ? result : (result.output || (typeof result === 'object' ? JSON.stringify(result, null, 2) : ''));
         if (diffText && diffText.trim()) {
