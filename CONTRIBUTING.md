@@ -82,9 +82,19 @@ Use the supervisor instead of launching `node .../desktop-server.js` directly:
    by a hook, CI job, or a test — not by remembering.
 
 6. **Read `AGENTS_LEARNING.md` before changing a gate, settings, or interactive
-   behaviour.** It records the traps we already paid for. Run gates on the CI
+   behaviour.** It records the traps we already paid for. New lessons go one
+   file each in `docs/lessons/` (see its `INDEX.md`), never appended to
+   `AGENTS_LEARNING.md`; run `scripts/lessons-index.sh` after adding one. Run gates on the CI
    runtime: `.nvmrc` pins Node 22, and a gate that only passed locally is not
    proven.
+
+7. **Save after each green step.** In a job worktree, run
+   `scripts/worktree.sh save "<message>"` once the build and tests for a step
+   pass. It refuses secret shapes (`sk-`, `ghp_`, `AKIA`, private key blocks,
+   `.env` files), commits with hooks on, pushes, and opens a draft PR on the
+   first push. Unsaved work lives only on this disk; `scripts/worktree.sh done`
+   refuses to remove a worktree that has unpushed commits. Run
+   `gh pr ready <N>` when the PR is ready, then `scripts/pr-gate.sh --when-green <N>`.
 
 ## Commands
 
@@ -105,7 +115,7 @@ Use the supervisor instead of launching `node .../desktop-server.js` directly:
 | `scripts/clean-disk-selftest.sh` | Hermetic selftest suite for clean-disk.sh |
 | `scripts/check-scripts-catalog.sh` | Validate completeness of scripts/README.md catalog and gate selftests |
 | `scripts/check-scripts-catalog-selftest.sh` | Hermetic selftest suite for check-scripts-catalog.sh |
-| `scripts/worktree.sh <new|review|done|list|prune>` | Automated worktree lifecycle manager for bots and developers |
+| `scripts/worktree.sh <new|review|save|done|list|prune>` | Automated worktree lifecycle manager for bots and developers (`save` commits with a secret scan, pushes and opens a draft PR) |
 | `scripts/worktree-selftest.sh` | Hermetic selftest suite for worktree.sh |
 
 CI (`.github/workflows/ci.yml`) runs build + test on every push and pull

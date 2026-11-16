@@ -5,11 +5,15 @@
 #   2. No stale/nonexistent scripts are cataloged in scripts/README.md.
 #   3. Gate and critical release scripts (pr-gate.sh, release.sh, clean-disk.sh, verify.sh, check-scripts-catalog.sh)
 #      have a corresponding hermetic selftest (*-selftest.sh) on disk.
+#   4. CONTRIBUTING.md names every required workflow step (the save and merge-gate commands), so an agent
+#      that reads the contributor guide is told to run them.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPTS_DIR="${OPENSAND_SCRIPTS_DIR:-$ROOT/scripts}"
 CATALOG_FILE="${OPENSAND_CATALOG_FILE:-$SCRIPTS_DIR/README.md}"
+CONTRIBUTING_FILE="${OPENSAND_CONTRIBUTING_FILE:-$ROOT/CONTRIBUTING.md}"
+REQUIRED_WORKFLOW_STEPS=("scripts/worktree.sh save" "scripts/pr-gate.sh")
 
 if [[ ! -f "$CATALOG_FILE" ]]; then
   echo "FAIL: scripts catalog file not found: $CATALOG_FILE" >&2
@@ -63,10 +67,24 @@ for gate in "${GATE_SCRIPTS[@]}"; do
   fi
 done
 
+# --- Check 4: CONTRIBUTING.md names the required workflow steps ---
+echo "==> [Check 4/4] Checking that $(basename "$CONTRIBUTING_FILE") names the required workflow steps..."
+if [[ ! -f "$CONTRIBUTING_FILE" ]]; then
+  echo "FAIL: contributor guide not found: $CONTRIBUTING_FILE" >&2
+  FAILED=1
+else
+  for step in "${REQUIRED_WORKFLOW_STEPS[@]}"; do
+    if ! grep -qF "$step" "$CONTRIBUTING_FILE"; then
+      echo "FAIL: $CONTRIBUTING_FILE does not name the required workflow step '$step'" >&2
+      FAILED=1
+    fi
+  done
+fi
+
 if [[ "$FAILED" -ne 0 ]]; then
   echo "FAIL: scripts catalog validation failed." >&2
   exit 1
 fi
 
-echo "PASS: scripts catalog is complete, valid, and all gate scripts have selftests."
+echo "PASS: scripts catalog is complete, valid, all gate scripts have selftests, and the contributor guide names the workflow steps."
 exit 0

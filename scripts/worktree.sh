@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # OpenSand automated worktree lifecycle manager
 # Usage:
+#   scripts/worktree.sh base
 #   scripts/worktree.sh new <job-name> [--branch <b>]
 #   scripts/worktree.sh review <PR>
+#   scripts/worktree.sh save "<message>" [-- <path>...]
 #   scripts/worktree.sh done <job-name>
 #   scripts/worktree.sh list
 #   scripts/worktree.sh prune [--dry-run|--yes]
+# Job worktrees hang off one reusable base clone (OPENSAND_BASE_DIR, default <scratch>/opensand-base,
+# cloned from OPENSAND_REPO_URL or the current origin), refreshed to origin/main by `base` and by `new`.
+# `save` (run inside a job worktree) commits with the repository's hooks on, refuses a staged diff
+# that matches a secret pattern, pushes the branch, and opens a draft PR on the first push.
 set -euo pipefail
 
 # Resolve script root (can be called from any clone or directory)
@@ -39,10 +45,57 @@ else
   GIT_EXEC=(git)
 fi
 
+BASE_DIR="$(base_clone_dir)"
+
+# ensure_base: create the base clone if absent, else refresh it; leaves it detached at origin/main.
+ensure_base() {
+  local url="${OPENSAND_REPO_URL:-}"
+  if [[ -z "$url" ]]; then
+    url=$("${GIT_EXEC[@]}" remote get-url origin 2>/dev/null || echo "https://github.com/Philosopher0707/opensand.git")
+  fi
+
+  if is_fixed_protected_path "$BASE_DIR"; then
+    echo "FAIL: base clone path $BASE_DIR is a protected repository or application path." >&2
+    return 1
+  fi
+
+  if [[ ! -e "$BASE_DIR" ]]; then
+    mkdir -p "$(dirname "$BASE_DIR")"
+    echo "Cloning base clone into $BASE_DIR..."
+    if ! git clone --quiet "$url" "$BASE_DIR"; then
+      echo "FAIL: could not clone $url into $BASE_DIR." >&2
+      rm -rf "$BASE_DIR"
+      return 1
+    fi
+  elif ! git -C "$BASE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "FAIL: $BASE_DIR exists but is not a git clone; move it aside." >&2
+    return 1
+  elif is_worktree_dirty "$BASE_DIR"; then
+    echo "FAIL: base clone $BASE_DIR has uncommitted changes; it must stay clean (nobody works there)." >&2
+    return 1
+  fi
+
+  if ! git -C "$BASE_DIR" fetch --quiet origin main; then
+    echo "FAIL: could not fetch origin/main in base clone $BASE_DIR." >&2
+    return 1
+  fi
+  git -C "$BASE_DIR" checkout --quiet --detach origin/main
+  echo "Base clone: $BASE_DIR at $(git -C "$BASE_DIR" rev-parse --short origin/main) (origin/main)"
+}
+
 cmd="${1:-}"
 shift || true
 
 case "$cmd" in
+  base)
+    if [[ $# -gt 0 ]]; then
+      echo "FAIL: 'base' takes no arguments (got '$1')" >&2
+      exit 1
+    fi
+    ensure_base || exit 1
+    exit 0
+    ;;
+
   new)
     JOB_NAME=""
     CUSTOM_BRANCH=""
@@ -83,16 +136,6 @@ case "$cmd" in
       exit 1
     fi
 
-    # 2. Refuse if branch already exists locally or on remote
-    if "${GIT_EXEC[@]}" show-ref --verify --quiet "refs/heads/$TARGET_BRANCH"; then
-      echo "FAIL: branch '$TARGET_BRANCH' already exists locally." >&2
-      exit 1
-    fi
-    if "${GIT_EXEC[@]}" show-ref --verify --quiet "refs/remotes/origin/$TARGET_BRANCH"; then
-      echo "FAIL: branch '$TARGET_BRANCH' already exists on remote origin." >&2
-      exit 1
-    fi
-
     # 3. Check free disk space (< 3 GB check after attempting clean-disk.sh --yes)
     AVAIL_GB=$(df -k / 2>/dev/null | awk 'NR==2 {print int($4 / 1024 / 1024)}' || echo "10")
     if [[ "$AVAIL_GB" -lt 3 ]]; then
@@ -107,8 +150,9 @@ case "$cmd" in
       fi
     fi
 
-    # 4. Fetch origin to ensure latest origin/main
-    "${GIT_EXEC[@]}" fetch origin main >/dev/null 2>&1 || true
+    # 4. Create or refresh the base clone (fetches origin/main) and work through it from here on
+    ensure_base || exit 1
+    GIT_EXEC=(git -C "$BASE_DIR")
 
     ORIGIN_MAIN_SHA=$("${GIT_EXEC[@]}" rev-parse origin/main 2>/dev/null || echo "")
     if [[ -z "$ORIGIN_MAIN_SHA" ]]; then
@@ -116,7 +160,17 @@ case "$cmd" in
       exit 1
     fi
 
-    # 5. Create worktree
+    # 5. Refuse if the branch already exists locally (base clone) or on the remote (asked live)
+    if "${GIT_EXEC[@]}" show-ref --verify --quiet "refs/heads/$TARGET_BRANCH"; then
+      echo "FAIL: branch '$TARGET_BRANCH' already exists locally." >&2
+      exit 1
+    fi
+    if "${GIT_EXEC[@]}" ls-remote --exit-code --heads origin "$TARGET_BRANCH" >/dev/null 2>&1; then
+      echo "FAIL: branch '$TARGET_BRANCH' already exists on remote origin." >&2
+      exit 1
+    fi
+
+    # 6. Create worktree
     mkdir -p "$SCRATCH_DIR"
     "${GIT_EXEC[@]}" worktree add -b "$TARGET_BRANCH" "$TARGET_PATH" origin/main >/dev/null
 
@@ -124,6 +178,120 @@ case "$cmd" in
     echo "Created worktree at: $TARGET_PATH"
     echo "Branch: $TARGET_BRANCH"
     echo "Base SHA: $BASE_SHA"
+    echo "Next: work in $TARGET_PATH; 'scripts/worktree.sh save \"<message>\"' there commits, pushes and opens the draft PR on the first push."
+    exit 0
+    ;;
+
+  save)
+    SAVE_MSG="${1:-}"
+    if [[ -z "$SAVE_MSG" || "$SAVE_MSG" == -* ]]; then
+      echo "Usage: scripts/worktree.sh save \"<message>\" [-- <path>...]" >&2
+      exit 1
+    fi
+    shift
+    SAVE_PATHS=()
+    if [[ $# -gt 0 ]]; then
+      if [[ "$1" != "--" ]]; then
+        echo "FAIL: unexpected argument '$1' (paths go after --)" >&2
+        exit 1
+      fi
+      shift
+      SAVE_PATHS=("$@")
+    fi
+
+    WT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+    if [[ -z "$WT" ]]; then
+      echo "FAIL: 'save' must run inside a job worktree." >&2
+      exit 1
+    fi
+    WT="$(cd "$WT" && pwd -P)"
+    if is_forbidden_worktree_path "$WT"; then
+      echo "FAIL: $WT is a protected repository or application path (the base clone or ~/dev/opensand); save only works in a job worktree." >&2
+      exit 1
+    fi
+    if [[ ! -f "$WT/.git" ]]; then
+      echo "FAIL: $WT is not a linked job worktree (create one with: scripts/worktree.sh new <job-name>)." >&2
+      exit 1
+    fi
+    SAVE_BRANCH=$(git -C "$WT" symbolic-ref --short HEAD 2>/dev/null || true)
+    if [[ -z "$SAVE_BRANCH" ]]; then
+      echo "FAIL: $WT has a detached HEAD; save needs a branch." >&2
+      exit 1
+    fi
+    if [[ "$SAVE_BRANCH" == "main" || "$SAVE_BRANCH" == "master" ]]; then
+      echo "FAIL: refusing to save onto '$SAVE_BRANCH'; work on a job branch." >&2
+      exit 1
+    fi
+
+    # 1. Stage by explicit path (never `git add -A`): the given paths, or every changed or new file
+    #    in this private job worktree listed one by one (ignored files stay out).
+    if [[ ${#SAVE_PATHS[@]} -gt 0 ]]; then
+      git -C "$WT" add -- "${SAVE_PATHS[@]}"
+    else
+      while IFS= read -r -d '' entry; do
+        # porcelain -z: "XY path" (a rename is followed by a second NUL-separated old path)
+        status_code="${entry:0:2}"
+        entry_path="${entry:3}"
+        if [[ "$status_code" == R* || "$status_code" == C* ]]; then
+          IFS= read -r -d '' _old_path || true
+        fi
+        git -C "$WT" add -- "$entry_path"
+      done < <(git -C "$WT" status --porcelain -z --untracked-files=all)
+    fi
+
+    # 2. Secret scan of what is staged. Nothing is committed or pushed when it finds something.
+    if FINDINGS=$(staged_secret_findings "$WT"); then
+      echo "FAIL: refusing to save: the staged diff looks like it contains secrets (nothing committed, nothing pushed):" >&2
+      echo "$FINDINGS" | sed 's/^/  /' >&2
+      echo "Remove or unstage them (git restore --staged <path>), keep real secrets out of the repo, then save again." >&2
+      exit 1
+    fi
+
+    # 3. Commit with the repository's hooks on. A failing hook stops here: no push.
+    if git -C "$WT" diff --cached --quiet; then
+      echo "Nothing new to commit."
+    else
+      if ! git -C "$WT" commit -q -m "$SAVE_MSG"; then
+        echo "FAIL: commit was refused (a hook or git failed); nothing was pushed." >&2
+        exit 1
+      fi
+      echo "Committed: $(git -C "$WT" log -1 --format='%h %s')"
+    fi
+
+    # 4. Push the branch (never forced) and verify the remote has exactly our HEAD.
+    if ! git -C "$WT" push -q -u origin "$SAVE_BRANCH" 2>&1; then
+      echo "FAIL: push of '$SAVE_BRANCH' failed; the work is committed locally but NOT on the remote." >&2
+      exit 1
+    fi
+    LOCAL_SHA=$(git -C "$WT" rev-parse HEAD)
+    REMOTE_SHA=$(git -C "$WT" ls-remote origin "refs/heads/$SAVE_BRANCH" 2>/dev/null | awk '{print $1}')
+    if [[ "$LOCAL_SHA" != "$REMOTE_SHA" ]]; then
+      echo "FAIL: after the push, origin/$SAVE_BRANCH is ${REMOTE_SHA:-missing}, expected $LOCAL_SHA." >&2
+      exit 1
+    fi
+    echo "Pushed: origin/$SAVE_BRANCH at ${LOCAL_SHA:0:7} (verified on the remote)"
+
+    # 5. First push: open a draft PR (a branch with no commits yet cannot have one). If an existing PR
+    #    cannot be ruled out, say so instead of guessing.
+    if ! PR_COUNT=$(cd "$WT" && gh pr list --head "$SAVE_BRANCH" --state all --json number --jq 'length' 2>/dev/null); then
+      echo "FAIL: saved and pushed, but could not check for an existing PR (gh failed); run save again to retry." >&2
+      exit 1
+    fi
+    if [[ ! "$PR_COUNT" =~ ^[0-9]+$ ]]; then
+      echo "FAIL: saved and pushed, but gh gave an unreadable PR count ('$PR_COUNT'); run save again to retry." >&2
+      exit 1
+    fi
+    if [[ "$PR_COUNT" -eq 0 ]]; then
+      PR_TITLE="${SAVE_MSG%%$'\n'*}"
+      PR_BODY="Draft opened automatically by \`scripts/worktree.sh save\` on the first push of \`$SAVE_BRANCH\`. Not ready for review or merge: run \`gh pr ready\` when it is, then \`scripts/pr-gate.sh --when-green <PR>\`."
+      if ! PR_URL=$(cd "$WT" && gh pr create --draft --base main --head "$SAVE_BRANCH" --title "$PR_TITLE" --body "$PR_BODY" 2>&1); then
+        echo "FAIL: saved and pushed, but the draft PR could not be created: $PR_URL" >&2
+        exit 1
+      fi
+      echo "Draft PR: ${PR_URL##*$'\n'}"
+    else
+      echo "PR: already exists for '$SAVE_BRANCH'"
+    fi
     exit 0
     ;;
 
@@ -160,8 +328,7 @@ case "$cmd" in
     # If already exists, refresh it
     if [[ -d "$TARGET_PATH" ]]; then
       echo "Refreshing existing review worktree at $TARGET_PATH..."
-      "${GIT_EXEC[@]}" worktree remove --force "$TARGET_PATH" >/dev/null 2>&1 || rm -rf "$TARGET_PATH"
-      "${GIT_EXEC[@]}" worktree prune >/dev/null 2>&1 || true
+      remove_worktree "$TARGET_PATH"
     fi
 
     mkdir -p "$SCRATCH_DIR"
@@ -202,8 +369,14 @@ case "$cmd" in
     fi
 
     echo "Removing worktree $TARGET_PATH..."
-    "${GIT_EXEC[@]}" worktree remove --force "$TARGET_PATH" >/dev/null 2>&1 || rm -rf "$TARGET_PATH"
-    "${GIT_EXEC[@]}" worktree prune >/dev/null 2>&1 || true
+    DONE_BRANCH=$(git -C "$TARGET_PATH" symbolic-ref --short HEAD 2>/dev/null || true)
+    DONE_COMMON=$(git -C "$TARGET_PATH" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+    remove_worktree "$TARGET_PATH"
+    # The branch is merged (checked above), so its local ref goes too: otherwise `new` with the same
+    # name would refuse. Remote branches are never touched.
+    if [[ -n "$DONE_BRANCH" && -n "$DONE_COMMON" ]]; then
+      git --git-dir="$DONE_COMMON" branch -D "$DONE_BRANCH" >/dev/null 2>&1 || true
+    fi
     echo "PASS: successfully removed $TARGET_PATH (remote branches untouched)."
     exit 0
     ;;
@@ -274,7 +447,7 @@ case "$cmd" in
       esac
     done
 
-    echo "==> Pruning clean & merged opensand-* worktrees (Mode: $MODE)..."
+    echo "==> Pruning clean, merged, non-live opensand-* worktrees (Mode: $MODE)..."
     PRUNED_COUNT=0
 
     if [[ -d "$SCRATCH_DIR" ]]; then
@@ -282,12 +455,11 @@ case "$cmd" in
         [[ -d "$dir" ]] || continue
         wt_name="$(basename "$dir")"
 
-        # Check safety predicate via shared helper
-        if check_worktree_safe_to_remove "$dir" "$ROOT" 2>/dev/null; then
+        # Check safety predicate (clean, merged, not live) via shared helper
+        if check_worktree_safe_to_prune "$dir" "$ROOT" 2>/dev/null; then
           if [[ "$MODE" == "live" ]]; then
             echo "Pruning $wt_name..."
-            "${GIT_EXEC[@]}" worktree remove --force "$dir" >/dev/null 2>&1 || rm -rf "$dir"
-            "${GIT_EXEC[@]}" worktree prune >/dev/null 2>&1 || true
+            remove_worktree "$dir"
             PRUNED_COUNT=$((PRUNED_COUNT + 1))
           else
             echo "DRY RUN: would remove $wt_name ($dir)"
@@ -312,17 +484,19 @@ case "$cmd" in
     echo "Usage: scripts/worktree.sh <command> [args...]"
     echo ""
     echo "Commands:"
-    echo "  new <job-name> [--branch <b>]   Create a new scratch worktree based on origin/main"
+    echo "  base                           Create or refresh the reusable base clone (default <scratch>/opensand-base) at origin/main"
+    echo "  new <job-name> [--branch <b>]   Create a new scratch worktree based on origin/main (via the base clone)"
+    echo "  save \"<message>\" [-- <path>...]  In a job worktree: stage, refuse secrets, commit (hooks on), push, open a draft PR on first push"
     echo "  review <PR>                    Create or refresh a detached read-only review worktree"
     echo "  done <job-name>                Remove worktree if clean and merged into origin/main"
     echo "  list                           List opensand-* worktrees with status, size, and commit date"
-    echo "  prune [--dry-run|--yes]        Prune all clean & merged opensand-* worktrees"
+    echo "  prune [--dry-run|--yes]        Prune clean, merged, non-live opensand-* worktrees (live = open PR or file changed in last 2h)"
     exit 0
     ;;
 
   *)
     echo "FAIL: unknown command '$cmd'" >&2
-    echo "Usage: scripts/worktree.sh <new|review|done|list|prune>" >&2
+    echo "Usage: scripts/worktree.sh <base|new|save|review|done|list|prune>" >&2
     exit 1
     ;;
 esac

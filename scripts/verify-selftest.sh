@@ -16,7 +16,11 @@ make_workspace() {
   mkdir -p "$dir/scripts" "$dir/packages/good/src" "$dir/packages/target/src"
   cp "$VERIFY" "$dir/scripts/verify.sh"
   cp "$ROOT/scripts/sync-versions.js" "$dir/scripts/sync-versions.js"
-  echo "exit 0" > "$dir/scripts/check-scripts-catalog.sh"
+  # The two checkers verify.sh calls have their own selftests; here they are stubs, and the lessons
+  # one fails on demand so the wiring in verify.sh is tested.
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$dir/scripts/check-scripts-catalog.sh"
+  printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../.lessons-stale" ]] && { echo "FAIL: docs/lessons/INDEX.md is stale. Run: bash scripts/lessons-index.sh" >&2; exit 1; }\nexit 0\n' > "$dir/scripts/lessons-index.sh"
+
   printf '{"name":"root","version":"1.0.0","private":true,"type":"module"}\n' > "$dir/package.json"
   printf 'packages:\n  - "packages/*"\n' > "$dir/pnpm-workspace.yaml"
   printf '{"name":"@fake/good","version":"1.0.0","scripts":{"build":"node -e 0","test":"node --test test.mjs"}}\n' > "$dir/packages/good/package.json"
@@ -27,6 +31,8 @@ make_workspace() {
   case "$kind" in
     ok)      printf "import test from 'node:test';\ntest('target passes', () => {});\n" > "$dir/packages/target/test.mjs" ;;
     failing) printf "import test from 'node:test';\nimport assert from 'node:assert';\ntest('deliberately failing test', () => { assert.equal(1, 2); });\n" > "$dir/packages/target/test.mjs" ;;
+    lessons-stale) printf "import test from 'node:test';\ntest('target passes', () => {});\n" > "$dir/packages/target/test.mjs"
+             touch "$dir/.lessons-stale" ;;
     zero)    printf '{"name":"@fake/target","version":"1.0.0","scripts":{"build":"node -e 0","test":"node zero.mjs"}}\n' > "$dir/packages/target/package.json"
              echo "console.log('# tests 0');" > "$dir/packages/target/zero.mjs" ;;
     # Passes the first time and fails the second: proves the suite is run once, not twice.
@@ -156,6 +162,7 @@ expect healthy ok 0 "verify: ok"
 expect failing-test failing 1 "verify error: Package @fake/target failed its tests" "✖ deliberately failing test" "verify error: Log directory:" "opensand-verify." "/@fake__target.log"
 expect single-run second-run-fails 0 "verify: ok"
 expect zero-tests zero 1 "Package @fake/target has TypeScript sources in src/ but reported 0 tests!"
+expect lessons-stale lessons-stale 1 "FAIL: docs/lessons/INDEX.md is stale"
 expect_parallel_runs
 
 
