@@ -97,6 +97,8 @@ Use the supervisor instead of launching `node .../desktop-server.js` directly:
 | `pnpm --filter @opensand/desktop build` | Build one package |
 | `scripts/pre-commit.sh` | Manual run of the pre-commit hook |
 | `scripts/release-check.sh` | Run full verification suite and packaged app smoke launch gate |
+| `scripts/pr-gate.sh <PR>` | Pre-merge verification gate (CI rollups, base freshness, forbidden diffs, checkpoint tag, merge) |
+| `scripts/pr-gate-selftest.sh` | Selftest suite for `pr-gate.sh` with stubbed `gh` and `git` on PATH |
 
 CI (`.github/workflows/ci.yml`) runs build + test on every push and pull
 request to `main` on Node 22.
