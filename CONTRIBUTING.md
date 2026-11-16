@@ -105,6 +105,8 @@ Use the supervisor instead of launching `node .../desktop-server.js` directly:
 | `scripts/clean-disk-selftest.sh` | Hermetic selftest suite for clean-disk.sh |
 | `scripts/check-scripts-catalog.sh` | Validate completeness of scripts/README.md catalog and gate selftests |
 | `scripts/check-scripts-catalog-selftest.sh` | Hermetic selftest suite for check-scripts-catalog.sh |
+| `scripts/worktree.sh <new|review|done|list|prune>` | Automated worktree lifecycle manager for bots and developers |
+| `scripts/worktree-selftest.sh` | Hermetic selftest suite for worktree.sh |
 
 CI (`.github/workflows/ci.yml`) runs build + test on every push and pull
 request to `main` on Node 22.
