@@ -15,8 +15,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Source shared safety helper
+source "$ROOT/scripts/lib/worktree-safety.sh"
+
 SCRATCH_DIR="${OPENSAND_SCRATCH_DIR:-$HOME/dev/_scratch}"
-FORBIDDEN_PATHS=("$HOME/dev/opensand" "$HOME/.opensand" "/Applications/OpenSand.app")
 
 YES=0
 
@@ -56,12 +58,10 @@ if [[ -d "$SCRATCH_DIR" ]]; then
     [[ -d "$dir" ]] || continue
 
     # Check forbidden paths
-    for forbidden in "${FORBIDDEN_PATHS[@]}"; do
-      if [[ "$dir" == "$forbidden" || "$dir" == "$forbidden"/* ]]; then
-        echo "SKIP: $dir matches forbidden path $forbidden"
-        continue 2
-      fi
-    done
+    if is_forbidden_worktree_path "$dir"; then
+      echo "SKIP: $dir matches forbidden path"
+      continue
+    fi
 
     # Check git repo status
     if ! git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -70,27 +70,14 @@ if [[ -d "$SCRATCH_DIR" ]]; then
     fi
 
     # Check for uncommitted changes (dirty guard)
-    DIRTY_OUTPUT=$(git -C "$dir" status --porcelain 2>/dev/null || true)
-    if [[ -n "$DIRTY_OUTPUT" ]]; then
+    if is_worktree_dirty "$dir"; then
       echo "SKIP: $dir has uncommitted changes (dirty)"
       continue
     fi
 
     # Check if HEAD is merged into origin/main
-    HEAD_SHA=$(git -C "$dir" rev-parse HEAD 2>/dev/null || true)
-    if [[ -z "$HEAD_SHA" ]]; then
-      echo "SKIP: could not determine HEAD for $dir"
-      continue
-    fi
-
-    IS_MERGED=0
-    if git -C "$dir" merge-base --is-ancestor "$HEAD_SHA" origin/main 2>/dev/null; then
-      IS_MERGED=1
-    elif git -C "$ROOT" merge-base --is-ancestor "$HEAD_SHA" origin/main 2>/dev/null; then
-      IS_MERGED=1
-    fi
-
-    if [[ "$IS_MERGED" -eq 0 ]]; then
+    if ! is_worktree_merged "$dir" "$ROOT"; then
+      HEAD_SHA=$(git -C "$dir" rev-parse HEAD 2>/dev/null || echo "unknown")
       echo "SKIP: $dir (commit $HEAD_SHA) is not merged into origin/main"
       continue
     fi

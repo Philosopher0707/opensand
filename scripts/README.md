@@ -33,6 +33,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `verify-linux.sh` | Run verification suite inside isolated Linux container | Local pre-CI cross-platform test | None |
 | `verify-selftest.sh` | Hermetic selftest for verify.sh guardrails | Verification test suite | Self |
 | `verify.sh` | Core repository verification gate (versions, build, tests, tripwires) | CI, pre-commit, manual | `verify-selftest.sh` |
+| `worktree.sh` | OpenSand automated worktree lifecycle manager (new, review, done, list, prune) | Developer, bots, release automation | `worktree-selftest.sh` |
+| `worktree-selftest.sh` | Hermetic selftest suite for worktree lifecycle manager | Pre-commit / verification | Self |
 
 ---
 
@@ -198,3 +200,17 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: `0` on healthy repository, `1` on guardrail violation or test failure.
 - **Selftest**: `scripts/verify-selftest.sh`.
 - **Trigger**: CI workflow, pre-commit hook, developer verification.
+
+### `worktree.sh`
+- **Purpose**: Manage developer and agent worktrees in `~/dev/_scratch/` safely (`new`, `review`, `done`, `list`, `prune`).
+- **Usage**: `scripts/worktree.sh <new|review|done|list|prune> [args...]`
+- **Exit Codes**: `0` on success, `1` on error or safety refusal.
+- **Selftest**: `scripts/worktree-selftest.sh`.
+- **Trigger**: Developer CLI, Gump/Rigel bot tasks, automation routines.
+
+### `worktree-selftest.sh`
+- **Purpose**: Hermetic selftest suite verifying worktree creation, branch isolation, review worktree detachment, dirty/unmerged refusal, and pruning dry-run.
+- **Usage**: `scripts/worktree-selftest.sh`
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, test verification.
