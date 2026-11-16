@@ -5,7 +5,7 @@
 import { renderMarkdown, renderMarkdownCached, escapeHtml } from './modules/chat/markdown.js';
 import { createApprovalQueue } from './modules/chat/approval-queue.js';
 import { createArtifactCanvas } from './modules/chat/canvas.js';
-import { createFileModel, artifactForToolResult } from './modules/chat/file-model.js';
+import { createFileModel, artifactForToolResult, wholeFileForPartialEdit } from './modules/chat/file-model.js';
 
 // Native title bar is hiddenInset on macOS; CSS keys traffic-light clearance off this.
 // Detected via userAgent for instant CSS styling, and via window.opensand for IPC bridge.
@@ -5152,6 +5152,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       const fileArtifact = artifactCanvas ? artifactForToolResult(canvasFiles, toolName, callArgs, result) : null;
       if (fileArtifact) {
         artifactCanvas.openArtifact(fileArtifact);
+        // A file never seen whole: show the snippet now, then swap in the real file from the workspace.
+        if (fileArtifact.partial && typeof window.opensand?.readWorkspaceFile === 'function') {
+          wholeFileForPartialEdit(canvasFiles, callArgs, result, (p) => window.opensand.readWorkspaceFile(p))
+            .then((whole) => { if (whole) artifactCanvas.openArtifact(whole); })
+            .catch(() => {});
+        }
       } else if (toolName === 'git_diff' && result && artifactCanvas) {
         const diffText = typeof result === 'string' ? result : (result.output || (typeof result === 'object' ? JSON.stringify(result, null, 2) : ''));
         if (diffText && diffText.trim()) {
