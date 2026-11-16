@@ -15,6 +15,9 @@ node scripts/sync-versions.js --check
 echo "verify: checking scripts catalog completeness..."
 bash scripts/check-scripts-catalog.sh
 
+echo "verify: checking lessons index is up to date..."
+bash scripts/lessons-index.sh --check
+
 # Release tag guard: when in release context, ensure tag matches package version
 RELEASE_TAG="${RELEASE_TAG:-}"
 if [[ -z "${RELEASE_TAG:-}" ]]; then

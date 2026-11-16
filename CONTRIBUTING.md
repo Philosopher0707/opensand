@@ -82,7 +82,9 @@ Use the supervisor instead of launching `node .../desktop-server.js` directly:
    by a hook, CI job, or a test — not by remembering.
 
 6. **Read `AGENTS_LEARNING.md` before changing a gate, settings, or interactive
-   behaviour.** It records the traps we already paid for. Run gates on the CI
+   behaviour.** It records the traps we already paid for. New lessons go one
+   file each in `docs/lessons/` (see its `INDEX.md`), never appended to
+   `AGENTS_LEARNING.md`; run `scripts/lessons-index.sh` after adding one. Run gates on the CI
    runtime: `.nvmrc` pins Node 22, and a gate that only passed locally is not
    proven.
 

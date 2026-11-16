@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Hermetic checks for lessons-index.sh on throwaway lessons directories (OPENSAND_LESSONS_DIR).
+# Usage: scripts/lessons-index-selftest.sh   (LESSONS_INDEX_SCRIPT=<path> to test a mutated copy)
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT="${LESSONS_INDEX_SCRIPT:-$ROOT/scripts/lessons-index.sh}"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/opensand-lessons-selftest.XXXXXX")"
+trap 'rm -rf "$WORK"' EXIT
+FAILED=0
+
+lesson() { # lesson <dir> <file> <title>
+  printf '# %s\n\n- **Trap:** t\n- **Root Cause:** c\n- **Rule:** r\n' "$3" > "$1/$2"
+}
+
+# run <label> <dir> <want exit> <needle-or-empty> <args...>
+run() {
+  local label="$1" dir="$2" want="$3" needle="$4"; shift 4
+  local out status
+  out=$(OPENSAND_LESSONS_DIR="$dir" bash "$SCRIPT" "$@" 2>&1); status=$?
+  if [[ "$status" -eq "$want" ]] && { [[ -z "$needle" ]] || grep -qF -- "$needle" <<<"$out"; }; then
+    echo "PASS $label (exit $status)"
+  else
+    echo "FAIL $label: exit $status, wanted $want, needed: ${needle:-<none>}"
+    echo "$out" | sed 's/^/    | /'
+    FAILED=1
+  fi
+}
+
+D="$WORK/a"; mkdir -p "$D"
+lesson "$D" 2026-11-16-bravo.md "Bravo lesson"
+lesson "$D" 2026-11-15-alpha.md "Alpha lesson"
+
+run "check-missing-index" "$D" 1 "INDEX.md is missing" --check
+run "generate" "$D" 0 "Wrote"
+a_line=$(grep -n 'Alpha lesson' "$D/INDEX.md" | cut -d: -f1); b_line=$(grep -n 'Bravo lesson' "$D/INDEX.md" | cut -d: -f1)
+if [[ -n "$a_line" && -n "$b_line" && "$a_line" -lt "$b_line" ]]; then
+  echo "PASS sorted-by-filename"
+else
+  echo "FAIL sorted-by-filename"; sed 's/^/    | /' "$D/INDEX.md"; FAILED=1
+fi
+run "check-fresh" "$D" 0 "up to date" --check
+
+# a new lesson makes the committed index stale
+lesson "$D" 2026-11-17-charlie.md "Charlie lesson"
+run "check-stale-after-new-lesson" "$D" 1 "is stale" --check
+run "regenerate" "$D" 0 "Wrote"
+run "check-fresh-again" "$D" 0 "up to date" --check
+
+# a hand edit is caught, including a lone trailing newline
+printf '\n' >> "$D/INDEX.md"
+run "check-stale-after-hand-edit" "$D" 1 "is stale" --check
+run "regenerate-2" "$D" 0 "Wrote"
+
+# determinism: a second run changes nothing
+cp "$D/INDEX.md" "$WORK/before.md"
+OPENSAND_LESSONS_DIR="$D" bash "$SCRIPT" >/dev/null 2>&1
+if cmp -s "$WORK/before.md" "$D/INDEX.md"; then echo "PASS deterministic"; else echo "FAIL deterministic"; FAILED=1; fi
+
+# malformed entries are refused and name the file
+B="$WORK/bad-name"; mkdir -p "$B"; lesson "$B" notes.md "No date"
+run "bad-filename" "$B" 1 "notes.md is not named"
+B="$WORK/bad-title"; mkdir -p "$B"; printf 'no heading\n**Trap:** a **Root Cause:** b **Rule:** c\n' > "$B/2026-11-16-x.md"
+run "bad-title" "$B" 1 "must start with a '# Title'"
+B="$WORK/no-rule"; mkdir -p "$B"; printf '# T\n**Trap:** a\n**Root Cause:** b\n' > "$B/2026-11-16-x.md"
+run "missing-rule" "$B" 1 "missing a **Rule:**"
+B="$WORK/bad-date"; mkdir -p "$B"; lesson "$B" 2026-13-40-x.md "Bad date"
+run "impossible-date" "$B" 1 "is not named"
+
+run "missing-dir" "$WORK/nope" 1 "lessons directory not found"
+run "unknown-arg" "$D" 1 "unknown argument" --bogus
+
+# the real repository index must be current
+out=$(bash "$SCRIPT" --check 2>&1); status=$?
+if [[ "$status" -eq 0 ]]; then echo "PASS repo-index-current"; else echo "FAIL repo-index-current: $out"; FAILED=1; fi
+
+exit "$FAILED"
