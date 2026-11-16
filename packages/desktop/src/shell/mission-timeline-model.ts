@@ -11,6 +11,7 @@ export type StepKind = "start" | "plan" | "act" | "tool" | "check" | "review" | 
 
 export interface TimelineStep {
   key: string;
+  seq?: number;
   kind: StepKind;
   kindLabel: string;
   summary: string;
@@ -18,6 +19,7 @@ export interface TimelineStep {
   tone: "neutral" | "ok" | "bad" | "attention";
   /** Hidden snapshot ref taken just before this step ran; present only on work and repair steps. */
   snapshot?: string;
+  isRestorable?: boolean;
 }
 
 export const TIMELINE_PAGE = 200;
@@ -37,7 +39,7 @@ const KIND_LABELS: Record<StepKind, string> = {
 };
 
 function step(ev: RawTimelineEvent, kind: StepKind, summary: string, tone: TimelineStep["tone"] = "neutral"): TimelineStep {
-  return { key: `${ev.seq}-${ev.kind}`, kind, kindLabel: KIND_LABELS[kind], summary, ts: ev.ts, tone };
+  return { key: `${ev.seq}-${ev.kind}`, seq: ev.seq, kind, kindLabel: KIND_LABELS[kind], summary, ts: ev.ts, tone };
 }
 
 function oneLine(text: unknown, max = 140): string {
@@ -75,7 +77,10 @@ export function toTimelineSteps(events: RawTimelineEvent[]): TimelineStep[] {
         const base = kind === "act" && d.claim ? oneLine(d.claim) : `${KIND_LABELS[kind]} finished`;
         const made = step(ev, kind, base + seconds(d.durationMs));
         const snap = pendingSnapshot.get(String(d.node));
-        if (snap) made.snapshot = snap;
+        if (snap) {
+          made.snapshot = snap;
+          made.isRestorable = isRestorableRef(snap);
+        }
         pendingSnapshot.delete(String(d.node));
         steps.push(made);
         break;

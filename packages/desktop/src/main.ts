@@ -11,6 +11,7 @@ import { readMissionTimeline } from './shell/mission-timeline-source.js';
 import { readMissionReceipt } from './shell/mission-receipt-source.js';
 import { readMissionFileDiff } from './shell/mission-diff-source.js';
 import { createMissionRestore, createMissionPreviewRestore, type RestoreFn, type PreviewRestoreFn } from './mission-restore.js';
+import { createMissionFork, type ForkFn } from './mission-fork.js';
 import { readWorkspaceFile } from './workspace-file-read.js';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 
@@ -54,6 +55,7 @@ export function isSmokeMode(env: NodeJS.ProcessEnv = process.env): boolean {
 export class DesktopApp {
   private bridge!: DesktopIpcBridge;
   private missionRestore?: RestoreFn;
+  private missionFork?: ForkFn;
   private missionPreviewRestore?: PreviewRestoreFn;
   private trayManager: DesktopTrayManager | null = null;
   private mainWindow: any = null;
@@ -319,6 +321,12 @@ export class DesktopApp {
     ipcMain.handle('opensand:restoreMissionSnapshot', async (_: any, { missionId, snapshot }: { missionId: string; snapshot: string }) => {
       this.missionRestore ??= createMissionRestore(this.baseDir);
       return this.missionRestore(missionId, snapshot);
+    });
+
+    // Human click only (the renderer's Fork button). The engine's handler enforces folder trust and snapshot pinning.
+    ipcMain.handle('opensand:forkMission', async (_: any, { missionId, snapshot, newTitle, newInstruction }: { missionId: string; snapshot: string | number; newTitle?: string; newInstruction?: string }) => {
+      this.missionFork ??= createMissionFork(this.baseDir);
+      return this.missionFork(missionId, snapshot, { newTitle, newInstruction });
     });
 
     // Read-only: current text of one file inside the open workspace (the canvas shows an edited file whole).

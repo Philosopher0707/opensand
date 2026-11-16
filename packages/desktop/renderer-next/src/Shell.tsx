@@ -104,7 +104,7 @@ export function Shell({ data }: ShellProps) {
             </div>
           ) : missionId ? (
             <div class="mission-main">
-              <MissionTimeline data={data} missionId={missionId} />
+              <MissionTimeline data={data} missionId={missionId} onSelectMission={handleSelectMission} />
               <MissionReceipt data={data} missionId={missionId} />
             </div>
           ) : (
