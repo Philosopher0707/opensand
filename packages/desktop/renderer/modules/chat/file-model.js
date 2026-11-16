@@ -156,3 +156,61 @@ export function artifactForToolResult(model, toolName, callArgs, result) {
   }
   return null;
 }
+
+/**
+ * Upgrades a "(partial)" edit artifact to the whole file by reading it from the workspace. The edit
+ * is already on disk, so the text read is the file AFTER the edit; the "before" side of the diff is
+ * rebuilt by undoing the edit, and only when that is unambiguous. Otherwise the code tab still shows
+ * the whole file and the diff keeps the honest snippet. Returns null when nothing better is known.
+ * `readFile(path)` resolves to `{ok, content}` (the desktop's read-only workspace read).
+ */
+export async function wholeFileForPartialEdit(model, callArgs, result, readFile) {
+  const args = callArgs || {};
+  if (!args.path || typeof readFile !== 'function') return null;
+  let read;
+  try {
+    read = await readFile(String(args.path));
+  } catch {
+    return null;
+  }
+  if (!read || read.ok !== true || typeof read.content !== 'string') return null;
+  const text = read.content;
+  const filePath = String(args.path);
+  const fileName = baseName(filePath);
+  model.recordWrite(filePath, text);
+
+  const oldStr = args.old_string !== undefined ? args.old_string : args.target;
+  const newStr = args.new_string !== undefined ? args.new_string : args.replacement;
+  const out = unwrapOutput(result);
+  const count = out && typeof out.replacementCount === 'number' ? out.replacementCount : 1;
+  let diff = '';
+  let exact = false;
+  if (typeof oldStr === 'string' && typeof newStr === 'string' && newStr !== '' && oldStr !== '') {
+    const pieces = text.split(newStr);
+    const occurrences = pieces.length - 1;
+    const expected = args.replace_all ? count : 1;
+    if (occurrences === expected && occurrences > 0) {
+      const before = pieces.join(oldStr);
+      diff = buildUnifiedDiff(before, text, fileName);
+      exact = true;
+    }
+  }
+  if (!exact && typeof oldStr === 'string' && typeof newStr === 'string') {
+    diff = [
+      `--- a/${fileName}`,
+      `+++ b/${fileName}`,
+      `@@ -1,${oldStr.split('\n').length} +1,${newStr.split('\n').length} @@`,
+      ...oldStr.split('\n').map((l) => `-${l}`),
+      ...newStr.split('\n').map((l) => `+${l}`),
+    ].join('\n');
+  }
+  return {
+    title: fileName,
+    filePath,
+    language: extOf(fileName),
+    content: text,
+    diff,
+    defaultTab: 'code',
+    diffExact: exact,
+  };
+}

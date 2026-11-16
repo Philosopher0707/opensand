@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@opensand/coordinator": "workspace:*",
+    "@opensand/engine": "workspace:*",
     "@opensand/local-exec-daemon": "workspace:*",
     "@opensand/native-bridge": "workspace:*",
     "@opensand/shared": "workspace:*",
