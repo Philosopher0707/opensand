@@ -16,10 +16,14 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `check-scripts-catalog-selftest.sh` | Hermetic selftest for scripts catalog checker | Pre-commit / verification | Self |
 | `clean-disk.sh` | Safe disk reclamation of merged/clean scratch worktrees and caches | Manual / low disk space in release | `clean-disk-selftest.sh` |
 | `clean-disk-selftest.sh` | Hermetic selftest for disk cleanup script | Pre-commit / verification | Self |
+| `mutate.sh` | Apply single-line mutation to verify test fails, restoring file in trap | Automated job proof / mutation testing | `proof-selftest.sh` |
 | `opensand-completion.bash` | Bash tab completion definitions | User shell environment | None |
 | `opensand-completion.zsh` | Zsh tab completion definitions | User shell environment | None |
 | `opensand-desktop.sh` | Helper script to launch OpenSand desktop in development | Manual local development | None |
 | `package-cli.sh` | Package standalone CLI executables and archives | Release workflows / CI | None |
+| `proof-red-green.sh` | Prove test fails on base ref and passes on HEAD | Automated job proof / CI / pre-PR | `proof-selftest.sh` |
+| `proof-report.sh` | Generate markdown proof report with PR metadata, diff hunks, CI IDs, red-green, and mutation logs | Automated job proof / PR review | `proof-selftest.sh` |
+| `proof-selftest.sh` | Hermetic selftest suite for proof-red-green, mutate, and proof-report scripts | Pre-commit / verification | Self |
 | `pr-gate.sh` | 5-step automated pre-merge verification and checkpoint gate | Pre-merge review workflow | `pr-gate-selftest.sh` |
 | `pr-gate-selftest.sh` | Hermetic selftest for PR gate script | Pre-commit / verification | Self |
 | `pre-commit.sh` | Git pre-commit hook enforcing blanket-add guard and test suite | Git pre-commit hook | None (tested by verify) |
@@ -82,6 +86,13 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Selftest**: Self-testing.
 - **Trigger**: Pre-commit hook, test verification.
 
+### `mutate.sh`
+- **Purpose**: Apply a single-line replacement to a file, execute a test command, and verify the test fails under mutation while restoring the original file byte-identically even on interruption (SIGINT/SIGTERM/SIGHUP).
+- **Usage**: `scripts/mutate.sh <file> <line> <replacement> -- <test command>`
+- **Exit Codes**: `0` on test caught mutation (failed as expected), `1` on test passed despite mutation, `2` on mutation/restore/syntax error.
+- **Selftest**: `scripts/proof-selftest.sh`.
+- **Trigger**: Automated job proof, mutation testing.
+
 ### `opensand-completion.bash`
 - **Purpose**: Programmable command line completion for bash users.
 - **Usage**: `source scripts/opensand-completion.bash`
@@ -109,6 +120,27 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: `0` on success, `1` on build failure.
 - **Selftest**: None.
 - **Trigger**: Release CI workflows.
+
+### `proof-red-green.sh`
+- **Purpose**: Verify red-green test cycle by executing a test file against a base ref (isolated temporary worktree) and against current HEAD, proving the test fails on base and passes on HEAD.
+- **Usage**: `scripts/proof-red-green.sh <test-file> [--base <ref>] [-- <test-args...>]`
+- **Exit Codes**: `0` on base fail & HEAD pass, `1` on validation or test status failure.
+- **Selftest**: `scripts/proof-selftest.sh`.
+- **Trigger**: Automated job proof, pre-PR verification.
+
+### `proof-report.sh`
+- **Purpose**: Assemble an automated Markdown proof report for a GitHub PR including metadata, diff hunks with line ranges, commit SHA, CI run IDs and conclusions, and embedded red-green/mutation logs.
+- **Usage**: `scripts/proof-report.sh <PR-number> [--red-green <file>] [--mutate <file>]`
+- **Exit Codes**: `0` on success, `1` on error.
+- **Selftest**: `scripts/proof-selftest.sh`.
+- **Trigger**: Automated job proof, PR verification report.
+
+### `proof-selftest.sh`
+- **Purpose**: Hermetic selftest suite verifying all pass and failure modes of `proof-red-green.sh`, `mutate.sh`, and `proof-report.sh` using a throwaway git repository.
+- **Usage**: `scripts/proof-selftest.sh`
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, test verification (`verify-selftest.sh`).
 
 ### `pr-gate.sh`
 - **Purpose**: 5-step automated pre-merge verification gate: CI rollup check, base freshness, diff hygiene, checkpoint tag creation/remote verification, and merge.

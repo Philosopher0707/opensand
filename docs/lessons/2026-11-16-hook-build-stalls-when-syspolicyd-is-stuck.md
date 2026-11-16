@@ -1,0 +1,6 @@
+# A pre-commit build can hang for good when macOS policy daemon is stuck
+
+- **Trap:** `git commit` (hooks on) ran `pnpm run build` and never returned. The default shell limit killed it twice, and the build then hung for over 25 minutes with no output. A `--no-verify` or `core.hooksPath` override was the wrong way out.
+- **Root Cause:** The stall was not in the code. `vite build` loads native addons (`@rollup/rollup-darwin-arm64`, `esbuild`). Their `dlopen` and first execution blocked in macOS `syspolicyd`, which had been running at high CPU for about six days. Even `esbuild --version` on a copy with the provenance attribute cleared hung. `node` and `/usr/bin/true` still ran, so the stall is per unknown binary, not global.
+- **Rule:** Before any commit that runs the build hook, check the native toolchain with a bounded probe: run `esbuild --version` from `node_modules/.pnpm/@esbuild+darwin-arm64@*/` under a 10-second limit. If it hangs, the hook cannot pass on this host. Report it as blocked on the host. Do not bypass the hook, and do not spend time on the signing check. Restarting `syspolicyd` or rebooting needs the owner.
+- **Rule (tool):** Use `/bin/cp -f` in scripts and shells where `cp` is aliased to `cp -i`. An interactive overwrite prompt hung a restore and left a probe mutation in place for a moment.

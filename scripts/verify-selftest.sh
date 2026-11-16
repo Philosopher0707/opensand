@@ -16,6 +16,7 @@ make_workspace() {
   mkdir -p "$dir/scripts" "$dir/packages/good/src" "$dir/packages/target/src"
   cp "$VERIFY" "$dir/scripts/verify.sh"
   cp "$ROOT/scripts/sync-versions.js" "$dir/scripts/sync-versions.js"
+  echo "exit 0" > "$dir/scripts/check-scripts-catalog.sh"
   printf '{"name":"root","version":"1.0.0","private":true,"type":"module"}\n' > "$dir/package.json"
   printf 'packages:\n  - "packages/*"\n' > "$dir/pnpm-workspace.yaml"
   printf '{"name":"@fake/good","version":"1.0.0","scripts":{"build":"node -e 0","test":"node --test test.mjs"}}\n' > "$dir/packages/good/package.json"
@@ -156,5 +157,11 @@ expect failing-test failing 1 "verify error: Package @fake/target failed its tes
 expect single-run second-run-fails 0 "verify: ok"
 expect zero-tests zero 1 "Package @fake/target has TypeScript sources in src/ but reported 0 tests!"
 expect_parallel_runs
+
+
+if [[ -f "$ROOT/scripts/proof-selftest.sh" ]]; then
+  echo "==> Running proof-selftest.sh..."
+  bash "$ROOT/scripts/proof-selftest.sh" || FAILED=1
+fi
 
 exit "$FAILED"
