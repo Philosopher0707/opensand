@@ -578,4 +578,36 @@ describe("Time Machine PR 2: restoreSnapshot", () => {
       removeDir(root);
     }
   });
+  it("Test 10 (C1): a file untracked at mission start and later added by the agent survives restore", async () => {
+    const root = tempDir("restore-t10");
+    try {
+      const workspace = makeGitWorkspace(root, { "base.txt": "base content" });
+      const missionId = "m-test10";
+
+      // Untracked at mission start: treeOf() records it in the base tree, so it is a pre-mission user file.
+      fs.writeFileSync(path.join(workspace, "user_file.txt"), "user content", "utf8");
+      const baseTreeRes = await treeOf(workspace);
+      assert.ok(baseTreeRes.tree);
+      await pinTrees(workspace, missionId, baseTreeRes.tree);
+
+      // Step 1: the agent deletes the user's file, so s-1 does not contain it.
+      fs.unlinkSync(path.join(workspace, "user_file.txt"));
+      const snap1 = await createStepSnapshot(workspace, missionId, 1);
+      assert.ok(snap1);
+
+      // Step 2: the user recreates it and the agent stages it, so s-2 does contain it.
+      fs.writeFileSync(path.join(workspace, "user_file.txt"), "user content", "utf8");
+      git(["add", "user_file.txt"], workspace);
+      const snap2 = await createStepSnapshot(workspace, missionId, 2);
+      assert.ok(snap2);
+
+      const res = await restoreSnapshot(workspace, missionId, "s-1");
+      assert.ok(res);
+
+      // It is absent from s-1 and present in s-2, but it predates the mission: it must never be unlinked.
+      assert.equal(fs.readFileSync(path.join(workspace, "user_file.txt"), "utf8"), "user content");
+    } finally {
+      removeDir(root);
+    }
+  });
 });
