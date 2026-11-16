@@ -14,6 +14,9 @@ set -euo pipefail
 #      clone is never removed or pruned; 'done' also drops the merged local branch so the name is reusable
 #   9. Live rule: 'prune --yes' keeps worktrees whose branch has an OPEN PR or with a file
 #      changed in the last 2 hours, and fails closed when the PR state cannot be read
+#  11. 'save' stages by explicit path, refuses secrets (nothing committed or pushed), commits with the
+#      hooks on (a failing hook stops the push), verifies the push, opens a draft PR once on the first
+#      push, and refuses outside a job worktree; 'done' refuses unpushed work
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKTREE_SCRIPT="$ROOT/scripts/worktree.sh"
@@ -36,6 +39,17 @@ if [ -n "${GH_STUB_FAIL:-}" ]; then
   echo "gh stub: simulated failure" >&2
   exit 1
 fi
+if [ "$1" = "pr" ] && [ "$2" = "create" ]; then
+  echo "gh $*" >> "$GH_CREATE_LOG"
+  head=""
+  while [ $# -gt 0 ]; do
+    if [ "$1" = "--head" ]; then head="$2"; fi
+    shift
+  done
+  echo "$head" >> "$GH_OPEN_PR_BRANCHES"
+  echo "https://github.com/example/opensand/pull/777"
+  exit 0
+fi
 branch=""
 while [ $# -gt 0 ]; do
   if [ "$1" = "--head" ]; then branch="$2"; fi
@@ -50,6 +64,9 @@ EOS
 chmod +x "$STUB_BIN/gh"
 export GH_OPEN_PR_BRANCHES="$WORK/open_pr_branches"
 : > "$GH_OPEN_PR_BRANCHES"
+export GH_CREATE_LOG="$WORK/pr_create.log"
+export GIT_AUTHOR_NAME="Selftest" GIT_AUTHOR_EMAIL="selftest@example.com"
+export GIT_COMMITTER_NAME="Selftest" GIT_COMMITTER_EMAIL="selftest@example.com"
 export PATH="$STUB_BIN:$PATH"
 
 # Backdate every file outside .git so the 2-hour live rule does not trip on checkout files
@@ -207,6 +224,7 @@ git -C "$NEW_WT" checkout file.txt
   cd "$NEW_WT"
   echo "unmerged commit" >> file.txt
   git commit -am "unmerged work" >/dev/null
+  git push -q origin job/test-job:refs/heads/scratch-test5
 )
 status=0
 out=$(
@@ -463,6 +481,168 @@ if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "already exists on remote orig
   FAILED=1
 fi
 echo "PASS test-10: base clone created, refreshed, protected; worktrees removed via the owning repo"
+
+
+# --- Test 11: save / done-refuses-unpushed ---
+echo "==> Testing 'worktree.sh save' and unpushed-work refusal..."
+run_wt() { # run_wt <dir> <args...>: run worktree.sh inside <dir>, merged stdout+stderr
+  local d="$1"; shift
+  (cd "$d" && OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" bash "$WORKTREE_SCRIPT" "$@" 2>&1)
+}
+fake_token() { # built at runtime so this file never holds a real-looking secret (push protection)
+  case "$1" in
+    sk)  printf '%s%s' 'sk' '-abcdefghij0123456789ABCDEFGH' ;;
+    ghp) printf '%s%s' 'gh' 'p_abcdefghij0123456789ABCDEFGHIJ0123' ;;
+    aws) printf '%s%s' 'AK' 'IAABCDEFGHIJKLMNOP' ;;
+    pem) printf '%s%s' '-----BEGIN ' 'PRIVATE KEY-----' ;;
+  esac
+}
+remote_sha() { git -C "$MOCK_ORIGIN" rev-parse "refs/heads/$1" 2>/dev/null || echo none; }
+
+run_wt "$MOCK_LOCAL" new save-job >/dev/null
+SAVE_WT="$FAKE_SCRATCH/opensand-save-job"
+age_files "$SAVE_WT"
+
+# 11a. plain save: explicit-path staging of modified + new files (ignored ones stay out), hooks-on
+#      commit, verified push, exactly one draft PR
+echo "tracked edit" >> "$SAVE_WT/file.txt"
+echo "brand new" > "$SAVE_WT/new.txt"
+mkdir -p "$SAVE_WT/dist"; echo "build output" > "$SAVE_WT/dist/out.js"
+status=0; out=$(run_wt "$SAVE_WT" save "selftest: first save") || status=$?
+[ "$status" -eq 0 ] || { echo "FAIL test-11a: save exit $status: $out"; FAILED=1; }
+[ "$(git -C "$SAVE_WT" log -1 --format=%s)" = "selftest: first save" ] || { echo "FAIL test-11a: commit message not used"; FAILED=1; }
+git -C "$SAVE_WT" cat-file -e HEAD:new.txt 2>/dev/null || { echo "FAIL test-11a: the new file was not committed"; FAILED=1; }
+if git -C "$SAVE_WT" cat-file -e HEAD:dist/out.js 2>/dev/null; then echo "FAIL test-11a: an ignored file was committed"; FAILED=1; fi
+[ "$(remote_sha job/save-job)" = "$(git -C "$SAVE_WT" rev-parse HEAD)" ] || { echo "FAIL test-11a: remote branch is not at HEAD"; FAILED=1; }
+echo "$out" | grep -q "verified on the remote" || { echo "FAIL test-11a: no push verification line"; FAILED=1; }
+echo "$out" | grep -q "Draft PR: https://github.com/example/opensand/pull/777" || { echo "FAIL test-11a: draft PR not reported: $out"; FAILED=1; }
+if [ "$(grep -c -- '--draft' "$GH_CREATE_LOG")" -ne 1 ] || ! grep -q -- '--head job/save-job' "$GH_CREATE_LOG"; then
+  echo "FAIL test-11a: expected exactly one 'gh pr create --draft --head job/save-job'"; FAILED=1
+fi
+
+# 11b. second save reuses the PR; an empty save still verifies the push
+echo "second edit" >> "$SAVE_WT/file.txt"
+status=0; out=$(run_wt "$SAVE_WT" save "selftest: second save") || status=$?
+if [ "$status" -ne 0 ] || ! echo "$out" | grep -q "PR: already exists"; then echo "FAIL test-11b: second save did not reuse the PR: $out"; FAILED=1; fi
+[ "$(wc -l < "$GH_CREATE_LOG" | tr -d ' ')" -eq 1 ] || { echo "FAIL test-11b: a second draft PR was created"; FAILED=1; }
+status=0; out=$(run_wt "$SAVE_WT" save "selftest: nothing") || status=$?
+if [ "$status" -ne 0 ] || ! echo "$out" | grep -q "Nothing new to commit"; then echo "FAIL test-11b: empty save: $out"; FAILED=1; fi
+
+# 11c. 'done' refuses unpushed commits with the actionable message; after save it reaches the merge check
+(cd "$SAVE_WT" && echo "local only" >> file.txt && git commit -q -am "local only commit")
+status=0; out=$(run_wt "$MOCK_LOCAL" done save-job) || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "unpushed"; then
+  echo "FAIL test-11c: 'done' did not refuse unpushed work (status $status): $out"; FAILED=1
+fi
+[ -d "$SAVE_WT" ] || { echo "FAIL test-11c: 'done' removed a worktree with unpushed work"; FAILED=1; }
+run_wt "$SAVE_WT" save "selftest: push the local commit" >/dev/null
+status=0; out=$(run_wt "$MOCK_LOCAL" done save-job) || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "is not merged into origin/main"; then
+  echo "FAIL test-11c: after the push, 'done' should reach the merge check (status $status): $out"; FAILED=1
+fi
+
+# 11d. secrets: each pattern refuses; nothing is committed or pushed; the value is never printed
+BEFORE_SHA=$(git -C "$SAVE_WT" rev-parse HEAD); REMOTE_BEFORE=$(remote_sha job/save-job)
+check_refused() { # check_refused <label> <file> <expected finding text>
+  local label="$1" file="$2" want="$3" rstatus=0 rout
+  rout=$(run_wt "$SAVE_WT" save "selftest: must be refused") || rstatus=$?
+  if [ "$rstatus" -eq 0 ] || ! echo "$rout" | grep -qF "$want"; then
+    echo "FAIL test-11d ($label): expected refusal mentioning '$want' (status $rstatus): $rout"; FAILED=1
+  fi
+  if echo "$rout" | grep -qE 'abcdefghij0123456789|BEGIN PRIVATE'; then
+    echo "FAIL test-11d ($label): the secret value was printed"; FAILED=1
+  fi
+  if [ "$(git -C "$SAVE_WT" rev-parse HEAD)" != "$BEFORE_SHA" ] || [ "$(remote_sha job/save-job)" != "$REMOTE_BEFORE" ]; then
+    echo "FAIL test-11d ($label): something was committed or pushed despite the secret"; FAILED=1
+  fi
+  git -C "$SAVE_WT" reset -q >/dev/null 2>&1 || true
+  git -C "$SAVE_WT" clean -fq -- "$file"
+}
+printf 'KEY=%s\n' "$(fake_token sk)" > "$SAVE_WT/cfg-sk.txt";    check_refused "sk-"   cfg-sk.txt  "cfg-sk.txt:1: looks like a sk- API key"
+printf 'x\nT=%s\n' "$(fake_token ghp)" > "$SAVE_WT/cfg-gh.txt"; check_refused "ghp_"  cfg-gh.txt  "cfg-gh.txt:2: looks like a GitHub token"
+printf 'A=%s\n' "$(fake_token aws)" > "$SAVE_WT/cfg-aws.txt";    check_refused "AKIA"  cfg-aws.txt "cfg-aws.txt:1: looks like a AWS access key"
+printf '%s\n' "$(fake_token pem)" > "$SAVE_WT/cfg-pem.txt";      check_refused "pem"   cfg-pem.txt "cfg-pem.txt:1: looks like a private key block"
+printf 'FOO=bar\n' > "$SAVE_WT/.env";                            check_refused ".env"  .env        ".env: .env file is staged"
+mkdir -p "$SAVE_WT/sub"; printf 'FOO=bar\n' > "$SAVE_WT/sub/prod.env"
+check_refused "*.env" sub/prod.env "sub/prod.env: .env file is staged"
+# explicit paths: the file is refused when only it is named
+printf 'KEY=%s\n' "$(fake_token sk)" > "$SAVE_WT/cfg-sk2.txt"
+status=0; out=$(run_wt "$SAVE_WT" save "selftest: explicit" -- cfg-sk2.txt) || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "cfg-sk2.txt:1"; then echo "FAIL test-11d: explicit path with a secret was not refused"; FAILED=1; fi
+git -C "$SAVE_WT" reset -q >/dev/null 2>&1 || true
+git -C "$SAVE_WT" clean -fq -- cfg-sk2.txt
+
+# no false positives: ordinary text, a short 'sk-', and the documented .env templates pass
+printf 'disk-usage and task-queue; risk-aware sk-short\n' > "$SAVE_WT/notes.txt"
+printf 'FOO=\n' > "$SAVE_WT/.env.example"
+status=0; out=$(run_wt "$SAVE_WT" save "selftest: clean text and .env.example") || status=$?
+[ "$status" -eq 0 ] || { echo "FAIL test-11d: false positive on ordinary text or .env.example: $out"; FAILED=1; }
+
+# 11g. explicit paths: 'save "<msg>" -- <path>' commits only that path
+echo "only me" > "$SAVE_WT/only.txt"; echo "not me" > "$SAVE_WT/other.txt"
+run_wt "$SAVE_WT" save "selftest: only one path" -- only.txt >/dev/null
+git -C "$SAVE_WT" cat-file -e HEAD:only.txt 2>/dev/null || { echo "FAIL test-11g: the named path was not committed"; FAILED=1; }
+if git -C "$SAVE_WT" cat-file -e HEAD:other.txt 2>/dev/null; then echo "FAIL test-11g: a path that was not named was committed"; FAILED=1; fi
+git -C "$SAVE_WT" clean -fq -- other.txt
+
+# 11e. hooks stay on: a pre-commit hook runs on save; a failing hook blocks commit and push
+HOOK="$BASE_CLONE/.git/hooks/pre-commit"
+# shebang-free like the gh stub (AGENTS_LEARNING 12.27: an interpreter launch of a temp script can stall on macOS)
+printf 'echo ran >> "%s"\n[ "$(cat "%s")" = fail ] && exit 1\nexit 0\n' "$WORK/hook.log" "$WORK/hook_mode" > "$HOOK"
+chmod +x "$HOOK"
+echo pass > "$WORK/hook_mode"
+echo "hooked" >> "$SAVE_WT/file.txt"
+run_wt "$SAVE_WT" save "selftest: hook passes" >/dev/null
+[ -s "$WORK/hook.log" ] || { echo "FAIL test-11e: the pre-commit hook did not run on save"; FAILED=1; }
+echo fail > "$WORK/hook_mode"
+echo "blocked by hook" >> "$SAVE_WT/file.txt"
+BEFORE_SHA=$(git -C "$SAVE_WT" rev-parse HEAD); REMOTE_BEFORE=$(remote_sha job/save-job)
+status=0; out=$(run_wt "$SAVE_WT" save "selftest: hook fails") || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "commit was refused"; then
+  echo "FAIL test-11e: a failing hook did not fail save (status $status): $out"; FAILED=1
+fi
+if [ "$(git -C "$SAVE_WT" rev-parse HEAD)" != "$BEFORE_SHA" ] || [ "$(remote_sha job/save-job)" != "$REMOTE_BEFORE" ]; then
+  echo "FAIL test-11e: a hook-refused save still committed or pushed"; FAILED=1
+fi
+printf 'exit 0\n' > "$HOOK"
+git -C "$SAVE_WT" reset -q >/dev/null 2>&1 || true
+git -C "$SAVE_WT" checkout -q -- file.txt
+if grep -qE -- '--no-verify|hooksPath' "$WORKTREE_SCRIPT" "$ROOT/scripts/lib/worktree-safety.sh"; then
+  echo "FAIL test-11e: worktree.sh or its library mentions --no-verify or hooksPath"; FAILED=1
+fi
+
+# 11h. a push that "succeeds" but does not land on the remote we read back is reported as a failure:
+#      pushes go to a different bare repo (pushurl) than the one ls-remote reads (origin's fetch url)
+git init -q --bare "$WORK/elsewhere.git" >/dev/null 2>&1
+git -C "$SAVE_WT" config remote.origin.pushurl "$WORK/elsewhere.git"
+echo "diverted" >> "$SAVE_WT/file.txt"
+status=0; out=$(run_wt "$SAVE_WT" save "selftest: push goes elsewhere") || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "after the push, origin/job/save-job is"; then
+  echo "FAIL test-11h: an unverifiable push was reported as success (status $status): $out"; FAILED=1
+fi
+git -C "$SAVE_WT" config --unset remote.origin.pushurl
+
+# 11f. save refuses where it must not run, and fails honestly when gh is down
+status=0; out=$(run_wt "$BASE_CLONE" save "selftest: base") || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "protected repository"; then echo "FAIL test-11f: save ran in the base clone (status $status): $out"; FAILED=1; fi
+git clone -q "$MOCK_ORIGIN" "$WORK/plain_clone" >/dev/null 2>&1
+status=0; out=$(run_wt "$WORK/plain_clone" save "selftest: plain clone") || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "not a linked job worktree"; then echo "FAIL test-11f: save ran in a plain clone (status $status): $out"; FAILED=1; fi
+git -C "$BASE_CLONE" worktree add -q --detach "$FAKE_SCRATCH/opensand-detached-probe" origin/main >/dev/null 2>&1
+status=0; out=$(run_wt "$FAKE_SCRATCH/opensand-detached-probe" save "selftest: detached") || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "detached HEAD"; then echo "FAIL test-11f: save ran on a detached HEAD (status $status): $out"; FAILED=1; fi
+git -C "$BASE_CLONE" worktree add -q -B main "$FAKE_SCRATCH/opensand-on-main-probe" origin/main >/dev/null 2>&1
+status=0; out=$(run_wt "$FAKE_SCRATCH/opensand-on-main-probe" save "selftest: on main") || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "refusing to save onto 'main'"; then echo "FAIL test-11f: save ran on main (status $status): $out"; FAILED=1; fi
+status=0; out=$(run_wt "$SAVE_WT" save "") || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "Usage:"; then echo "FAIL test-11f: empty message was accepted"; FAILED=1; fi
+echo "gh down" >> "$SAVE_WT/file.txt"
+status=0; out=$(GH_STUB_FAIL=1 run_wt "$SAVE_WT" save "selftest: gh down") || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "could not check for an existing PR"; then
+  echo "FAIL test-11f: gh failure did not fail save honestly (status $status): $out"; FAILED=1
+fi
+[ "$(remote_sha job/save-job)" = "$(git -C "$SAVE_WT" rev-parse HEAD)" ] || { echo "FAIL test-11f: work was not pushed before the PR step failed"; FAILED=1; }
+echo "PASS test-11: save commits with hooks on, refuses secrets, pushes verified, drafts one PR; done refuses unpushed work"
 
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL WORKTREE SELFTESTS PASSED."

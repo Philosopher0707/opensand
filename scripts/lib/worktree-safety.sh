@@ -12,6 +12,8 @@
 #   - The reusable base clone (OPENSAND_BASE_DIR, default <scratch>/opensand-base) and any primary clone
 #     that owns linked worktrees are protected: they are never removed, pruned or cleaned.
 #   - Removal goes through the owning repository's common git dir, not the caller's current repo.
+#   - Nothing is removed while it holds commits that exist on no remote branch (has_unpushed_work).
+#   - staged_secret_findings scans a worktree's staged diff for secrets (used by worktree.sh save).
 
 # base_clone_dir: where the reusable base clone lives
 base_clone_dir() {
@@ -58,6 +60,74 @@ is_forbidden_worktree_path() {
     fi
   fi
   return 1
+}
+
+# has_unpushed_work <worktree_dir>
+# Returns 0 and sets UNPUSHED_COUNT when HEAD has commits that are on no remote-tracking branch.
+# An unreadable HEAD counts as unpushed (fail closed).
+has_unpushed_work() {
+  local target_dir="$1" count
+  UNPUSHED_COUNT=0
+  if ! count=$(git -C "$target_dir" rev-list --count HEAD --not --remotes 2>/dev/null); then
+    UNPUSHED_COUNT="unknown"
+    return 0
+  fi
+  if [[ "$count" =~ ^[0-9]+$ && "$count" -gt 0 ]]; then
+    UNPUSHED_COUNT="$count"
+    return 0
+  fi
+  return 1
+}
+
+# staged_secret_findings <worktree_dir>
+# Scans what is staged (added lines only, plus file names) for secrets. Prints one line per finding
+# as "path[:line]: reason" and never the matching text. Returns 0 when something was found, 1 when clean.
+# Patterns are token-shaped so words such as "disk-usage" or "task-queue" do not match "sk-".
+# .env files are refused by name (.env, .env.*, *.env) except the documented templates
+# .env.example, .env.sample, .env.template.
+SECRET_PATTERN_NAMES=("sk- API key" "GitHub token (ghp_/gho_/ghu_/ghs_/ghr_)" "AWS access key (AKIA)" "private key block")
+SECRET_PATTERNS=(
+  '(^|[^A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}'
+  '(^|[^A-Za-z0-9])gh[pousr]_[A-Za-z0-9]{20,}'
+  '(^|[^A-Za-z0-9])AKIA[0-9A-Z]{16}'
+  'BEGIN ([A-Z0-9]+ )*PRIVATE KEY'
+)
+staged_secret_findings() {
+  local target_dir="$1" found=1 path base line file="" lineno=0 i
+  local hunk_re='^@@ -[0-9,]+ \+([0-9]+)'
+
+  while IFS= read -r -d '' path; do
+    base="${path##*/}"
+    case "$base" in
+      .env.example|.env.sample|.env.template) ;;
+      .env|.env.*|*.env)
+        echo "$path: .env file is staged"
+        found=0
+        ;;
+    esac
+  done < <(git -C "$target_dir" diff --cached --name-only -z --diff-filter=ACMR 2>/dev/null)
+
+  while IFS= read -r line; do
+    if [[ "$line" == "+++ b/"* ]]; then
+      file="${line#+++ b/}"
+      continue
+    fi
+    if [[ "$line" =~ $hunk_re ]]; then
+      lineno="${BASH_REMATCH[1]}"
+      continue
+    fi
+    if [[ "$line" == "+"* ]]; then
+      for i in "${!SECRET_PATTERNS[@]}"; do
+        if [[ "$line" =~ ${SECRET_PATTERNS[$i]} ]]; then
+          echo "$file:$lineno: looks like a ${SECRET_PATTERN_NAMES[$i]}"
+          found=0
+        fi
+      done
+      lineno=$((lineno + 1))
+    fi
+  done < <(git -C "$target_dir" diff --cached --no-color -U0 --diff-filter=ACMR 2>/dev/null)
+
+  return "$found"
 }
 
 # remove_worktree <worktree_dir>
@@ -175,6 +245,11 @@ check_worktree_safe_to_remove() {
 
   if is_worktree_dirty "$target_dir"; then
     echo "Refusing: $target_dir has uncommitted changes (dirty)." >&2
+    return 1
+  fi
+
+  if has_unpushed_work "$target_dir"; then
+    echo "Refusing: $target_dir has $UNPUSHED_COUNT commit(s) that are on no remote branch (unpushed). Run: scripts/worktree.sh save \"<message>\"" >&2
     return 1
   fi
 

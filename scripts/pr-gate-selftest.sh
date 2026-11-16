@@ -16,6 +16,7 @@
 # 15. --timeout validation
 # 16. --when-green: CI has not registered any check yet -> waits for it, then watches and merges
 # 17. --when-green: no check ever appears -> exit 3 naming "no CI checks", no merge
+# 18. a draft PR is refused before any checkpoint tag or merge, naming `gh pr ready`
 # Usage: scripts/pr-gate-selftest.sh (PR_GATE_SCRIPT=<path> to test another copy)
 set -uo pipefail
 
@@ -535,6 +536,28 @@ if [[ -f "$dir/checks_calls.log" ]]; then
   echo "FAIL case17: gh pr checks was called although no check ever appeared"
   FAILED=1
 fi
+
+# --- Case 18: a draft PR (opened by worktree.sh save) -> exit 1 before the tag, no merge ---
+dir="$WORK/case18-draft"
+setup_defaults "$dir"
+cat << 'JSON' > "$dir/pr_view.json"
+{
+  "state": "OPEN",
+  "isDraft": true,
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": [
+    {"name": "Build & test (Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"},
+    {"name": "Build & test (macOS, Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"}
+  ]
+}
+JSON
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("is still a draft" "gh pr ready 42")
+run_test_case "case18-draft" 42
 
 # --- Case 14: without --when-green, gh pr checks is never called ---
 if [[ -f "$WORK/case1-all-green/checks_calls.log" || -f "$WORK/case2-pending-ci/checks_calls.log" ]]; then
