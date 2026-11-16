@@ -96,7 +96,9 @@ describe(
 
     it("fails when writing outside the workspace (Test 1)", async () => {
       const uuid = randomUUID();
-      const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "sandbox_containment_test_"));
+      // Under the system temp, not the per-user temp root: that root is writable now
+      // (macOS's mktemp needs it), so "outside" has to be outside the allowlist.
+      const baseDir = fs.mkdtempSync("/tmp/sandbox_containment_test_");
       const outsideDir = path.join(baseDir, "outside");
       const wsDir = path.join(baseDir, "workspace");
       const isolatedTemp = path.join(baseDir, "temp");
@@ -211,6 +213,54 @@ describe(
             fs.rmSync(wsDir, { recursive: true, force: true });
           } catch {}
         }
+      }
+    });
+
+    it("sandboxed mktemp works when TMPDIR points at a subfolder", async () => {
+      // macOS's mktemp ignores $TMPDIR and writes to the per-user temp root, so a
+      // custom TMPDIR must not leave that root outside the allowlist.
+      const wsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sandbox_test_ws_"));
+      const customTmp = fs.mkdtempSync(path.join(os.tmpdir(), "sandbox_test_tmp_"));
+      const previousTmpdir = process.env.TMPDIR;
+      process.env.TMPDIR = customTmp;
+      try {
+        const res = await runCommandOperation({
+          command: `TFILE=$(mktemp) && echo "temp_ok" > "$TFILE" && cat "$TFILE" && rm -f "$TFILE"`,
+          cwd: wsDir,
+          workspaceRoot: wsDir,
+          sandboxProfile: "workspace-write",
+        });
+
+        assert.equal(res.exitCode, 0, res.stderr);
+        assert.match(res.stdout, /temp_ok/);
+      } finally {
+        if (previousTmpdir === undefined) delete process.env.TMPDIR;
+        else process.env.TMPDIR = previousTmpdir;
+        fs.rmSync(wsDir, { recursive: true, force: true });
+        fs.rmSync(customTmp, { recursive: true, force: true });
+      }
+    });
+
+    it("still denies a write outside the workspace and the temp areas", async () => {
+      // The per-user temp root is writable (macOS's mktemp needs it); the system
+      // temp is not: nothing outside the allowlist may be written.
+      const wsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sandbox_test_ws_"));
+      const systemTmp = fs.mkdtempSync("/tmp/sandbox_outside_");
+      const escapeFile = path.join(systemTmp, `sandbox_escape_${randomUUID()}.txt`);
+      try {
+        const res = await runCommandOperation({
+          command: `touch "${escapeFile}"`,
+          cwd: wsDir,
+          workspaceRoot: wsDir,
+          sandboxProfile: "workspace-write",
+        });
+
+        assert.notEqual(res.exitCode, 0, "a write outside the allowlist must fail");
+        assert.match(res.stderr, /Operation not permitted|Permission denied/);
+        assert.ok(!fs.existsSync(escapeFile), "the file must not be created");
+      } finally {
+        fs.rmSync(wsDir, { recursive: true, force: true });
+        fs.rmSync(systemTmp, { recursive: true, force: true });
       }
     });
 

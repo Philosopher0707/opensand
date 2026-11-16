@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { execFileSync } from "node:child_process";
 import { DENIED_SECRET_REL_PATHS } from "./constants.js";
 
 export type SandboxProfileType = "read-only" | "workspace-write" | "full";
@@ -15,6 +16,31 @@ export interface GenerateMacosSandboxProfileOptions {
 
 function escapeSchemeString(str: string): string {
   return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+let userTempRoot: string | undefined;
+let userTempRootResolved = false;
+
+/**
+ * The per-user temp root, /var/folders/<xx>/<hash>/T (confstr
+ * _CS_DARWIN_USER_TEMP_DIR). macOS's own tools ignore $TMPDIR and always write
+ * here: mktemp's default template lands in this root, not in $TMPDIR. When
+ * OpenSand runs with TMPDIR set to a subfolder, that root is outside the
+ * allowlist and a plain `mktemp` fails with "Operation not permitted".
+ *
+ * One root is allowed, not all of /var/folders and not /tmp.
+ */
+function darwinUserTempRoot(): string | undefined {
+  if (!userTempRootResolved) {
+    userTempRootResolved = true;
+    try {
+      userTempRoot =
+        execFileSync("getconf", ["DARWIN_USER_TEMP_DIR"], { encoding: "utf-8" }).trim() || undefined;
+    } catch {
+      userTempRoot = undefined;
+    }
+  }
+  return userTempRoot;
 }
 
 function addCanonicalPaths(targetPath: string, pathSet: Set<string>): void {
@@ -100,6 +126,14 @@ export function generateMacosSandboxProfile(options: GenerateMacosSandboxProfile
     const effectiveTempDir = tempDir ?? (process.env.TMPDIR || os.tmpdir());
     if (effectiveTempDir) {
       addCanonicalPaths(effectiveTempDir, allowedWritePaths);
+    }
+
+    // 3.2b The per-user temp root. macOS's mktemp ignores $TMPDIR and writes
+    // there, so a custom TMPDIR alone leaves every plain `mktemp` outside the
+    // allowlist and the command fails with "Operation not permitted".
+    const perUserTempRoot = darwinUserTempRoot();
+    if (perUserTempRoot) {
+      addCanonicalPaths(perUserTempRoot, allowedWritePaths);
     }
 
     // 3.3 Standard user caches

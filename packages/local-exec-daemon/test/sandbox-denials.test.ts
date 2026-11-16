@@ -68,7 +68,9 @@ describe("parseSandboxDenials", () => {
 
 describe("sandboxed exec_command reports denials", { skip: !isDarwin ? "needs sandbox-exec" : false }, () => {
   it("names the path a write outside the workspace was refused at", async () => {
-    const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "sbx-deny-")));
+    // Under the system temp: the per-user temp root is writable now (macOS's mktemp
+    // needs it), so "outside every writable root" has to live outside that root.
+    const base = fs.realpathSync(fs.mkdtempSync("/tmp/sbx-deny-"));
     const ws = path.join(base, "ws");
     fs.mkdirSync(ws);
     try {

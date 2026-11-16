@@ -14,7 +14,9 @@ if (!isDarwin) {
 }
 
 function makeFixture(): { base: string; workspace: string; outside: string; home: string; tempDir: string } {
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), "sandbox_pty_macos_test_"));
+  // Under the system temp: the per-user temp root is writable now (macOS's mktemp
+  // needs it), so the "outside" directory has to be outside that root.
+  const base = fs.mkdtempSync("/tmp/sandbox_pty_macos_test_");
   const workspace = path.join(base, "workspace");
   const outside = path.join(base, "outside");
   const home = path.join(base, "fake-home");
