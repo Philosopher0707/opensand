@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Selftest for proof-red-green.sh, mutate.sh, and proof-report.sh.
+# Selftest for proof-red-green.sh, mutation-probe.sh, and proof-report.sh.
 # Uses a tiny throwaway git repo in a temp dir.
 # Covers:
 #   - test already passing on base -> fail
@@ -7,6 +7,9 @@
 #   - mutation not caught -> fail
 #   - mutation caught -> pass (exit 0)
 #   - restore check (byte-identical file after mutation)
+#   - both mutation forms (perl substitution, one line replaced)
+#   - an untracked target is refused
+#   - the old name mutate.sh still works as a wrapper
 #   - proof-report markdown generation with diff hunks and CI rollups
 # Usage:
 #   scripts/proof-selftest.sh
@@ -14,6 +17,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROOF_RG="${PROOF_RG_SCRIPT:-$ROOT/scripts/proof-red-green.sh}"
+PROBE="${PROBE_SCRIPT:-$ROOT/scripts/mutation-probe.sh}"
 MUTATE="${MUTATE_SCRIPT:-$ROOT/scripts/mutate.sh}"
 PROOF_REPORT="${PROOF_REPORT_SCRIPT:-$ROOT/scripts/proof-report.sh}"
 
@@ -123,19 +127,19 @@ check "rg-failing-on-head" "$status" 1 "$out"
 rm -f "$REPO/test_broken.sh"
 
 # -------------------------------------------------------------
-# Part 2: mutate.sh tests
+# Part 2: mutation-probe.sh tests
 # -------------------------------------------------------------
-echo "==> Testing mutate.sh..."
+echo "==> Testing mutation-probe.sh..."
 
 ORIG_HASH=$(shasum "$REPO/math.sh" | awk '{print $1}')
 
 # Case 2.1: Happy path - mutation breaks add(), test catches it
 out=""
 status=0
-out=$(cd "$REPO" && bash "$MUTATE" math.sh 2 '  echo $(($1 - $2))' -- bash test_add.sh 2>&1) || status=$?
-check "mutate-caught" "$status" 0 "$out"
+out=$(cd "$REPO" && bash "$PROBE" math.sh 2 '  echo $(($1 - $2))' -- bash test_add.sh 2>&1) || status=$?
+check "probe-caught" "$status" 0 "$out"
 if ! grep -q "mutation caught" <<< "$out"; then
-  echo "FAIL: mutate-caught missing expected success notice"
+  echo "FAIL: probe-caught missing expected success notice"
   FAILED=1
 fi
 
@@ -144,7 +148,7 @@ if [[ "$ORIG_HASH" != "$AFTER_HASH" ]]; then
   echo "FAIL: restore check failed: file hash changed after successful mutate run ($ORIG_HASH vs $AFTER_HASH)"
   FAILED=1
 else
-  echo "PASS mutate-restore-check (file byte-identical after run)"
+  echo "PASS probe-restore-check (file byte-identical after run)"
 fi
 
 # Case 2.2: Mutation not caught -> test passes under mutation -> must FAIL
@@ -155,10 +159,10 @@ echo "# harmless comment" >> "$REPO/math.sh"
 COMMENT_LINE=$(wc -l < "$REPO/math.sh" | tr -d ' ')
 COMMENT_ORIG_HASH=$(shasum "$REPO/math.sh" | awk '{print $1}')
 
-out=$(cd "$REPO" && bash "$MUTATE" math.sh "$COMMENT_LINE" '# another comment' -- bash test_add.sh 2>&1) || status=$?
-check "mutate-not-caught-fails" "$status" 1 "$out"
+out=$(cd "$REPO" && bash "$PROBE" math.sh "$COMMENT_LINE" '# another comment' -- bash test_add.sh 2>&1) || status=$?
+check "probe-not-caught-fails" "$status" 1 "$out"
 if ! grep -q "unexpectedly PASSED under mutation" <<< "$out"; then
-  echo "FAIL: mutate-not-caught missing expected failure notice"
+  echo "FAIL: probe-not-caught missing expected failure notice"
   FAILED=1
 fi
 
@@ -167,17 +171,67 @@ if [[ "$COMMENT_ORIG_HASH" != "$COMMENT_AFTER_HASH" ]]; then
   echo "FAIL: restore check failed: file hash changed after failed mutate run"
   FAILED=1
 else
-  echo "PASS mutate-not-caught-restore-check (file byte-identical after failure)"
+  echo "PASS probe-not-caught-restore-check (file byte-identical after failure)"
 fi
 
 # Clean up temporary comment line
 git -C "$REPO" checkout -q -- math.sh
 
-# Case 2.3: mutate.sh argument validation
+# Case 2.3: argument validation
 out=""
 status=0
-out=$(bash "$MUTATE" 2>&1) || status=$?
-check "mutate-missing-args" "$status" 1 "$out"
+out=$(bash "$PROBE" 2>&1) || status=$?
+check "probe-missing-args" "$status" 2 "$out"
+
+# Case 2.4: the perl form of the mutation also works
+out=""
+status=0
+out=$(cd "$REPO" && bash "$PROBE" math.sh 's/\$\(\(\$1 \+ \$2\)\)/\$((\$1 - \$2))/' -- bash test_add.sh 2>&1) || status=$?
+check "probe-perl-form" "$status" 0 "$out"
+if ! grep -q "mutation caught" <<< "$out"; then
+  echo "FAIL: probe-perl-form missing expected success notice"
+  FAILED=1
+fi
+PERL_AFTER_HASH=$(shasum "$REPO/math.sh" | awk '{print $1}')
+if [[ "$ORIG_HASH" != "$PERL_AFTER_HASH" ]]; then
+  echo "FAIL: restore check failed: file hash changed after the perl-form run ($ORIG_HASH vs $PERL_AFTER_HASH)"
+  FAILED=1
+else
+  echo "PASS probe-perl-form-restore-check (file byte-identical after run)"
+fi
+
+# Case 2.5: an untracked target is refused (a build artifact is not a real mutation)
+printf 'echo hi\n' > "$REPO/untracked.sh"
+out=""
+status=0
+out=$(cd "$REPO" && bash "$PROBE" untracked.sh 1 'echo bye' -- bash test_add.sh 2>&1) || status=$?
+check "probe-untracked-refused" "$status" 2 "$out"
+if ! grep -q "git does not track it" <<< "$out"; then
+  echo "FAIL: probe-untracked-refused missing the refusal reason"
+  FAILED=1
+fi
+if [[ -f "$REPO/untracked.sh" && "$(cat "$REPO/untracked.sh")" != "echo hi" ]]; then
+  echo "FAIL: probe-untracked-refused modified the untracked file"
+  FAILED=1
+fi
+rm -f "$REPO/untracked.sh"
+
+# Case 2.6: the old name still works: mutate.sh forwards to mutation-probe.sh
+out=""
+status=0
+out=$(cd "$REPO" && bash "$MUTATE" math.sh 2 '  echo $(($1 - $2))' -- bash test_add.sh 2>&1) || status=$?
+check "mutate-wrapper-forwards" "$status" 0 "$out"
+if ! grep -q "mutation caught" <<< "$out"; then
+  echo "FAIL: mutate-wrapper-forwards missing expected success notice"
+  FAILED=1
+fi
+WRAPPER_AFTER_HASH=$(shasum "$REPO/math.sh" | awk '{print $1}')
+if [[ "$ORIG_HASH" != "$WRAPPER_AFTER_HASH" ]]; then
+  echo "FAIL: restore check failed: file hash changed after the wrapper run ($ORIG_HASH vs $WRAPPER_AFTER_HASH)"
+  FAILED=1
+else
+  echo "PASS mutate-wrapper-restore-check (file byte-identical after run)"
+fi
 
 # -------------------------------------------------------------
 # Part 3: proof-report.sh tests
