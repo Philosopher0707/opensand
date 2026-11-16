@@ -3261,6 +3261,8 @@ textarea#promptInput {
 .canvas-code-pane {
   display: flex;
   flex-direction: row;
+  align-items: flex-start;
+  /* One scroll container for gutter and code: numbers cannot drift from their lines. */
   overflow: auto;
   background: var(--bg-code, #0d1117);
   font-family: var(--font-mono);
@@ -3279,14 +3281,27 @@ textarea#promptInput {
   font-family: var(--font-mono);
   white-space: pre;
   min-width: 44px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  /* Pinned on horizontal scroll, moves with the code on vertical scroll. */
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-height: 100%;
+  background: var(--bg-code, #0d1117);
+  line-height: 1.6;
 }
 
 .canvas-code-pre {
   margin: 0;
   padding: 16px 20px;
-  flex: 1;
-  overflow: auto;
+  flex: 1 0 auto;
+  min-height: 100%;
+  box-sizing: border-box;
+  overflow: visible;
   background: transparent;
+  line-height: 1.6;
+  font-size: inherit;
 }
 
 .canvas-code-content {
