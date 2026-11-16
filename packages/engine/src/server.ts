@@ -11,6 +11,7 @@ import {
 import { createEngineHandlers } from "./handlers/engine.js";
 import { createSessionHandlers } from "./handlers/sessions.js";
 import { createMissionHandlers } from "./handlers/missions.js";
+import { createTimelineHandlers } from "./handlers/timeline.js";
 import { MissionRunnerManager } from "./missions/manager.js";
 import type { MissionAgent } from "./missions/agent.js";
 import type { EngineConnection, Handler, HandlerContext } from "./types.js";
@@ -54,6 +55,7 @@ export class EngineServer {
       ...Object.entries(createEngineHandlers()),
       ...Object.entries(createSessionHandlers()),
       ...Object.entries(createMissionHandlers(this.missionManager)),
+      ...Object.entries(createTimelineHandlers(this.missionManager)),
     ]) {
       this.handlers.set(method, handler);
     }

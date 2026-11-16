@@ -116,7 +116,7 @@ function installGitShim(dir: string): { log: string; restore: () => void } {
   const bin = path.join(dir, "shim-bin");
   fs.mkdirSync(bin, { recursive: true });
   const log = path.join(dir, "calls.log");
-  fs.writeFileSync(path.join(bin, "git"), `#!/bin/sh\necho "$@" >> "${log}"\nexec "${realGit}" "$@"\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, "git"), `echo "$@" >> "${log}"\nexec "${realGit}" "$@"\n`, { mode: 0o755 });
   const prev = process.env.PATH;
   process.env.PATH = `${bin}${path.delimiter}${prev}`;
   return { log, restore: () => void (process.env.PATH = prev) };

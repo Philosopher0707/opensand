@@ -5,3 +5,4 @@ export type { LogScope, ReplayResult } from "./reconnect.js";
 export type { EngineConnection, Handler, HandlerContext } from "./types.js";
 export { MissionRunnerManager } from "./missions/manager.js";
 export { createMissionHandlers } from "./handlers/missions.js";
+export { createTimelineHandlers } from "./handlers/timeline.js";

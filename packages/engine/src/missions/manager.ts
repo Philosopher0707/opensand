@@ -1,13 +1,28 @@
 import * as fsSync from "node:fs";
 import * as path from "node:path";
 import { EventLogReader, EventLogWriter, FolderTrustStore, GrantsStore, MISSION_EVENT } from "@opensand/shared";
-import { type EventFrame, type RestoreSnapshotParams, type RestoreSnapshotResult, type PreviewRestoreParams, type PreviewRestoreResult, ErrorCodes, OspError } from "@opensand/protocol";
+import { randomUUID } from "node:crypto";
+import {
+  type EventFrame,
+  type RestoreSnapshotParams,
+  type RestoreSnapshotResult,
+  type PreviewRestoreParams,
+  type PreviewRestoreResult,
+  type TimelineGetParams,
+  type TimelineGetResult,
+  type TimelineForkParams,
+  type TimelineForkResult,
+  ErrorCodes,
+  OspError,
+} from "@opensand/protocol";
+import { runCommandOperation } from "@opensand/local-exec-daemon";
+import { projectTimelineSteps } from "./timeline.js";
 import { logDirFor } from "../reconnect.js";
 import { MissionRunner, type MissionOptions } from "./runner.js";
 import { projectMission, type MissionProjection } from "./receipt.js";
 import type { MissionAgent } from "./agent.js";
 import { FolderTrustGate } from "./trust-gate.js";
-import { restoreSnapshot, previewRestore, sanitizeRefName } from "./workspace-diff.js";
+import { restoreSnapshot, previewRestore, sanitizeRefName, resolveAndValidateRestoreTarget, treeOf, cleanGitEnv, type RestoreExecutionSummary } from "./workspace-diff.js";
 
 export class MissionRunnerManager {
   private activeRunners = new Map<string, MissionRunner>();
@@ -292,6 +307,239 @@ export class MissionRunnerManager {
     } finally {
       this.restoringWorkspaces.delete(canonRoot);
     }
+  }
+
+
+  async timelineGet(
+    params: TimelineGetParams,
+    stateDir: string
+  ): Promise<TimelineGetResult> {
+    if (!params || typeof params.missionId !== "string" || !params.missionId.trim()) {
+      throw new OspError(ErrorCodes.InvalidParams, "missionId is required");
+    }
+
+    const cleanMission = sanitizeRefName(params.missionId);
+    if (!cleanMission || cleanMission !== params.missionId || params.missionId.includes("..")) {
+      throw new OspError(ErrorCodes.InvalidParams, `Invalid mission id: ${params.missionId}`);
+    }
+
+    let dir: string;
+    try {
+      dir = logDirFor(stateDir, "mission", params.missionId);
+    } catch {
+      throw new OspError(ErrorCodes.InvalidParams, `Invalid mission id: ${params.missionId}`);
+    }
+
+    if (!fsSync.existsSync(dir)) {
+      throw new OspError(ErrorCodes.InvalidParams, `Mission not found: ${params.missionId}`);
+    }
+
+    try {
+      const reader = new EventLogReader(dir);
+      const { events } = await reader.readWithRecovery();
+      const steps = projectTimelineSteps(events);
+      return {
+        missionId: params.missionId,
+        steps,
+      };
+    } catch (err: any) {
+      if (err instanceof OspError) throw err;
+      throw new OspError(ErrorCodes.InvalidParams, `Failed to read timeline for mission ${params.missionId}: ${err.message}`);
+    }
+  }
+
+  async fork(
+    params: TimelineForkParams,
+    stateDir: string,
+    options?: { _simulateFailure?: "checkout" | "unlink" }
+  ): Promise<TimelineForkResult> {
+    if (!params || typeof params.missionId !== "string" || !params.missionId.trim()) {
+      throw new OspError(ErrorCodes.InvalidParams, "missionId is required");
+    }
+    if (params.snapshot === undefined || params.snapshot === null || params.snapshot === "") {
+      throw new OspError(ErrorCodes.InvalidParams, "snapshot is required");
+    }
+
+    const cleanParent = sanitizeRefName(params.missionId);
+    if (!cleanParent || cleanParent !== params.missionId || params.missionId.includes("..")) {
+      throw new OspError(ErrorCodes.InvalidParams, `Invalid mission id: ${params.missionId}`);
+    }
+
+    let parentDir: string;
+    try {
+      parentDir = logDirFor(stateDir, "mission", params.missionId);
+    } catch {
+      throw new OspError(ErrorCodes.InvalidParams, `Invalid mission id: ${params.missionId}`);
+    }
+
+    if (!fsSync.existsSync(parentDir)) {
+      throw new OspError(ErrorCodes.InvalidParams, `Mission not found: ${params.missionId}`);
+    }
+
+    const reader = new EventLogReader(parentDir);
+    const { events } = await reader.readWithRecovery();
+    if (events.length === 0) {
+      throw new OspError(ErrorCodes.InvalidParams, `Parent mission ${params.missionId} has no events`);
+    }
+
+    const startEv = events.find(
+      (e) => e.kind === MISSION_EVENT.STARTED || e.kind === MISSION_EVENT.FORKED
+    );
+    const parentWorkspaceRoot = startEv?.data?.workspaceRoot as string | undefined;
+    const parentTitle = (startEv?.data?.title as string | undefined) ?? "Mission";
+    const parentInitialQuery = (startEv?.data?.initialQuery as string | undefined) ?? "";
+    const parentCheckCommand = (startEv?.data?.checkCommand as string | undefined) ?? "";
+    const parentBudget = (startEv?.data?.budget as any) ?? {
+      budgetUsd: startEv?.data?.budgetUsd as number | undefined,
+      maxRepairs: startEv?.data?.maxRepairs as number | undefined,
+    };
+
+    const workspaceRoot = params.workspaceRoot ?? parentWorkspaceRoot;
+    if (!workspaceRoot) {
+      throw new OspError(ErrorCodes.InvalidParams, "workspaceRoot is required");
+    }
+
+    // Fail-fast active mission check (§4)
+    const active = this.isWorkspaceActive(workspaceRoot);
+    if (active.active) {
+      throw new OspError(
+        ErrorCodes.InvalidRequest,
+        `Cannot fork workspace while mission \x27${active.missionId}\x27 is actively running. Stop or wait for the mission to complete before forking.`
+      );
+    }
+
+    // Folder trust gate (§4)
+    const trusted = await this.gate.isFolderTrusted(workspaceRoot);
+    if (!trusted) {
+      throw new OspError(ErrorCodes.InvalidRequest, "Workspace folder is untrusted");
+    }
+
+    // Concurrency lock per workspace (§4)
+    const canonRoot = path.resolve(workspaceRoot);
+    if (this.restoringWorkspaces.has(canonRoot)) {
+      throw new OspError(
+        ErrorCodes.InvalidRequest,
+        `A restore or fork is already in progress on workspace ${workspaceRoot}`
+      );
+    }
+
+    // Foreign mission ref prefix check (§4)
+    const snapStr = String(params.snapshot).trim();
+    if (snapStr.startsWith("refs/opensand/missions/")) {
+      const expectedPrefix = `refs/opensand/missions/${cleanParent}/`;
+      if (!snapStr.startsWith(expectedPrefix)) {
+        throw new OspError(ErrorCodes.InvalidParams, `Ref does not belong to mission ${params.missionId}`);
+      }
+    }
+
+    // Target validation and tree safety check
+    const resolved = await resolveAndValidateRestoreTarget(workspaceRoot, params.missionId, params.snapshot);
+
+    // No-op fork check (§4)
+    const currentTreeRes = await treeOf(workspaceRoot);
+    if (currentTreeRes.available && currentTreeRes.tree === resolved.targetTree) {
+      throw new OspError(
+        ErrorCodes.InvalidRequest,
+        "No-op fork: workspace is already at the target snapshot"
+      );
+    }
+
+    // Restore under concurrency lock
+    this.restoringWorkspaces.add(canonRoot);
+    let summary: RestoreExecutionSummary;
+    try {
+      summary = await restoreSnapshot(workspaceRoot, params.missionId, params.snapshot, options);
+    } finally {
+      this.restoringWorkspaces.delete(canonRoot);
+    }
+
+    // Identity and inheritance (§3)
+    const newMissionId = `m-${randomUUID().slice(0, 8)}`;
+    const cleanNewMissionId = sanitizeRefName(newMissionId);
+    const newTitle = params.newTitle ?? `${parentTitle} (fork)`;
+    const newInstruction = params.newInstruction ?? parentInitialQuery;
+    const checkCommand = parentCheckCommand;
+    const budget = {
+      budgetUsd: typeof params.budgetUsd === "number" ? params.budgetUsd : (parentBudget?.budgetUsd ?? undefined),
+      maxRepairs: typeof params.maxRepairs === "number" ? params.maxRepairs : (parentBudget?.maxRepairs ?? 3),
+    };
+
+    // Pin base tree and lineage fork-parent ref (§2)
+    await runCommandOperation({
+      command: `git update-ref refs/opensand/missions/${cleanNewMissionId}/base ${resolved.targetTree}`,
+      cwd: workspaceRoot,
+      workspaceRoot,
+      env: cleanGitEnv(),
+    });
+    await runCommandOperation({
+      command: `git update-ref refs/opensand/missions/${cleanNewMissionId}/fork-parent "${resolved.targetRef}"`,
+      cwd: workspaceRoot,
+      workspaceRoot,
+      env: cleanGitEnv(),
+    });
+
+    // Write initial MISSION_FORKED event to new mission log (§3)
+    const newMissionDir = logDirFor(stateDir, "mission", newMissionId);
+    const writer = new EventLogWriter(newMissionDir, { sessionId: newMissionId });
+    await writer.append({
+      sessionId: newMissionId,
+      kind: MISSION_EVENT.FORKED,
+      data: {
+        missionId: newMissionId,
+        forkedFrom: {
+          missionId: params.missionId,
+          snapshot: resolved.targetRef,
+          targetTree: resolved.targetTree,
+        },
+        workspaceRoot,
+        title: newTitle,
+        initialQuery: newInstruction,
+        checkCommand,
+        budget,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    // If agent configured, start runner
+    if (this.hasAgent()) {
+      try {
+        await this.startMission({
+          missionId: newMissionId,
+          workspaceRoot,
+          title: newTitle,
+          initialQuery: newInstruction,
+          checkCommand,
+          budget,
+          forkedFrom: {
+            missionId: params.missionId,
+            snapshot: resolved.targetRef,
+            targetTree: resolved.targetTree,
+          },
+        });
+      } catch (err: any) {
+        try {
+          fsSync.rmSync(newMissionDir, { recursive: true, force: true });
+        } catch {}
+        throw new OspError(
+          ErrorCodes.InternalError,
+          `Failed to start mission runner for fork: ${err.message}. Pre-restore snapshot pinned at ${summary.preRestoreSnapshot}`,
+          { preRestoreSnapshot: summary.preRestoreSnapshot }
+        );
+      }
+    }
+
+    return {
+      success: true,
+      newMissionId,
+      forkedFrom: {
+        missionId: params.missionId,
+        snapshot: resolved.targetRef,
+        targetTree: resolved.targetTree,
+      },
+      restoredFilesCount: summary.restoredFilesCount,
+      deletedFilesCount: summary.deletedFilesCount,
+      preRestoreSnapshot: summary.preRestoreSnapshot,
+    };
   }
 
   async stopAll(): Promise<void> {

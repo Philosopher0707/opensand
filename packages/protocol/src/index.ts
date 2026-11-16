@@ -12,6 +12,7 @@ export type {
   SuccessResponseFrame,
 } from "./frames.js";
 export { LineDecoder } from "./line-decoder.js";
+export { isRestorableRef, RESTORABLE_REF_PATTERN } from "./types.js";
 export type {
   ApprovalDecision,
   ApprovalItem,
@@ -19,6 +20,12 @@ export type {
   ChatMessage,
   SessionSummary,
   TimelineNode,
+  TimelineStep,
+  TimelineStepNode,
+  TimelineGetParams,
+  TimelineGetResult,
+  TimelineForkParams,
+  TimelineForkResult,
   RestoreSnapshotParams,
   RestoreSnapshotResult,
   PreviewRestoreParams,

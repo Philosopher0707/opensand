@@ -23,6 +23,11 @@ export interface MissionOptions {
   initialQuery: string;
   checkCommand: string;
   budget?: Partial<MissionBudget>;
+  forkedFrom?: {
+    missionId: string;
+    snapshot: string;
+    targetTree: string;
+  };
 }
 
 interface MissionState extends Record<string, unknown> {
@@ -51,6 +56,7 @@ export class MissionRunner {
   readonly initialQuery: string;
   readonly checkCommand: string;
   readonly budget: MissionBudget;
+  private readonly options: MissionOptions;
   private readonly stateDir: string;
   private readonly agent: MissionAgent;
   private readonly gate: FolderTrustGate;
@@ -75,6 +81,7 @@ export class MissionRunner {
       publish: (frame: EventFrame) => void;
     }
   ) {
+    this.options = options;
     this.missionId = options.missionId;
     this.workspaceRoot = options.workspaceRoot;
     this.title = options.title;
@@ -165,12 +172,14 @@ export class MissionRunner {
 
   private async run(): Promise<void> {
     // Log-only; no command runs before the folder-trust gate below.
-    await this.appendAndPublish(MISSION_EVENT.STARTED, {
+    if (!this.options.forkedFrom) {
+      await this.appendAndPublish(MISSION_EVENT.STARTED, {
       missionId: this.missionId,
       title: this.title,
       workspaceRoot: this.workspaceRoot,
       budgetUsd: this.budget.budgetUsd ?? 0,
     });
+    }
 
     let trust;
     try {
