@@ -6,6 +6,7 @@ import path from "node:path";
 import { EventLogWriter, EventLogReader } from "@opensand/shared";
 import { createMissionFork } from "../src/mission-fork.js";
 import { makeGitWorkspace, runScriptedMission, trustFolderIn, git } from "./engine-mission-fixture.js";
+import { canForkStep } from "../src/shell/mission-fork-model.js";
 
 const SPEC = [
   { writes: { "file.txt": "step1\n", "extra.txt": "made by step 1\n" }, review: { accept: false, note: "again" } },
@@ -117,4 +118,11 @@ test("fork wiring: empty ids are rejected before any engine call", async () => {
   const fork = createMissionFork(path.join(os.tmpdir(), "opensand-no-such-state"));
   await assert.rejects(fork("", "refs/x"), /required/);
   await assert.rejects(fork("m-1", ""), /required/);
+});
+
+test("canForkStep offers Fork only for steps flagged isRestorable", () => {
+  assert.strictEqual(canForkStep({ snapshot: "refs/opensand/missions/m/s-1", isRestorable: true }), true);
+  assert.strictEqual(canForkStep({ snapshot: "refs/opensand/missions/m/s-1", isRestorable: false }), false);
+  assert.strictEqual(canForkStep({ snapshot: "refs/opensand/missions/m/s-1" }), false);
+  assert.strictEqual(canForkStep({ isRestorable: true }), false);
 });

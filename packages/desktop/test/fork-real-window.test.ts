@@ -11,7 +11,7 @@ import { hermeticElectronEnv, makeTempHome } from "./hermetic-env.js";
 import { git, makeGitWorkspace, runScriptedMission, trustFolderIn } from "./engine-mission-fixture.js";
 
 const pkgRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const defaultShotDir = path.join(pkgRoot, "artifacts");
+const defaultShotDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-fork-shots-"));
 const shotDir = process.env.OPENSAND_FORK_SHOT_DIR || defaultShotDir;
 
 function skipReason(): string | undefined {

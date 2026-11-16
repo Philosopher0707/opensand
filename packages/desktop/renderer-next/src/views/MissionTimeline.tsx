@@ -9,6 +9,7 @@ import {
 } from "../../../src/shell/mission-restore-model";
 import {
   classifyForkError,
+  canForkStep,
   forkSuccessView,
 } from "../../../src/shell/mission-fork-model";
 import {
@@ -212,7 +213,7 @@ export function MissionTimeline({ data, missionId, onSelectMission }: MissionTim
                 <span class="timeline-kind">{s.kindLabel}</span>
                 <span class="timeline-summary">{s.summary}</span>
                 <time class="timeline-time" dateTime={s.ts}>{formatStepTime(s.ts)}</time>
-                {s.snapshot && (
+                {canForkStep(s) && (
                   <div class="timeline-step-actions">
                     <button
                       type="button"

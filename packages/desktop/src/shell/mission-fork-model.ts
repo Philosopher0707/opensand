@@ -8,6 +8,12 @@ export interface TimelineForkResult {
 }
 
 import { isRestorableRef } from "./mission-restore-model.js";
+import type { TimelineStep } from "./mission-timeline-model.js";
+
+/** The Fork action is offered only for steps flagged restorable, not merely those carrying a snapshot string. */
+export function canForkStep(step: Pick<TimelineStep, "snapshot" | "isRestorable">): boolean {
+  return step.isRestorable === true && typeof step.snapshot === "string";
+}
 
 export type ForkErrorKind =
   | "untrusted"
