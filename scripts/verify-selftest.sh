@@ -10,7 +10,7 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/opensand-verify-selftest.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 FAILED=0
 
-# make_workspace <dir> <kind>: kind is ok | failing | zero | second-run-fails
+# make_workspace <dir> <kind>: kind is ok | failing | zero | second-run-fails | parallel-ok | parallel-failing
 make_workspace() {
   local dir="$1" kind="$2"
   mkdir -p "$dir/scripts" "$dir/packages/good/src" "$dir/packages/target/src"
@@ -31,6 +31,40 @@ make_workspace() {
     # Passes the first time and fails the second: proves the suite is run once, not twice.
     second-run-fails)
       printf "import test from 'node:test';\nimport fs from 'node:fs';\ntest('fails on a second run', () => {\n  if (fs.existsSync('.ran')) throw new Error('suite ran twice');\n  fs.writeFileSync('.ran', '1');\n});\n" > "$dir/packages/target/test.mjs" ;;
+    parallel-ok)
+      cat << 'EOF' > "$dir/packages/target/test.mjs"
+import test from "node:test";
+import fs from "node:fs";
+test("target passes", async () => {
+  const b = process.env.BARRIER_DIR;
+  if (b) {
+    fs.writeFileSync(`${b}/pass_ready`, "1");
+    for (let i = 0; i < 100 && !fs.existsSync(`${b}/fail_ready`); i++) {
+      await new Promise(r => setTimeout(r, 20));
+    }
+    await new Promise(r => setTimeout(r, 80));
+  }
+});
+EOF
+      ;;
+    parallel-failing)
+      cat << 'EOF' > "$dir/packages/target/test.mjs"
+import test from "node:test";
+import assert from "node:assert";
+import fs from "node:fs";
+test("deliberately failing test", async () => {
+  const b = process.env.BARRIER_DIR;
+  if (b) {
+    fs.writeFileSync(`${b}/fail_ready`, "1");
+    for (let i = 0; i < 100 && !fs.existsSync(`${b}/pass_ready`); i++) {
+      await new Promise(r => setTimeout(r, 20));
+    }
+    await new Promise(r => setTimeout(r, 40));
+  }
+  assert.equal(1, 2);
+});
+EOF
+      ;;
   esac
 }
 
@@ -55,10 +89,72 @@ expect() {
   fi
 }
 
+expect_parallel_runs() {
+  local label="parallel-runs"
+  local shared_tmp="$WORK/parallel-shared-tmp"
+  mkdir -p "$shared_tmp"
+  local dir_pass="$WORK/parallel-pass"
+  local dir_fail="$WORK/parallel-fail"
+  make_workspace "$dir_pass" parallel-ok
+  make_workspace "$dir_fail" parallel-failing
+
+  local out_pass="$WORK/out-pass.log"
+  local out_fail="$WORK/out-fail.log"
+
+  (cd "$dir_pass" && SKIP_INSTALL=1 TMPDIR="$shared_tmp" BARRIER_DIR="$shared_tmp" bash scripts/verify.sh > "$out_pass" 2>&1 < /dev/null) &
+  local pid_pass=$!
+  (cd "$dir_fail" && SKIP_INSTALL=1 TMPDIR="$shared_tmp" BARRIER_DIR="$shared_tmp" bash scripts/verify.sh > "$out_fail" 2>&1 < /dev/null) &
+  local pid_fail=$!
+
+  local status_pass=0 status_fail=0
+  wait "$pid_pass" || status_pass=$?
+  wait "$pid_fail" || status_fail=$?
+
+  local ok=1
+  [[ "$status_pass" -eq 0 ]] || ok=0
+  [[ "$status_fail" -eq 1 ]] || ok=0
+
+  grep -qF "verify: ok" "$out_pass" || ok=0
+  if grep -qF "verify error:" "$out_pass"; then ok=0; fi
+
+  grep -qF "verify error: Package @fake/target failed its tests" "$out_fail" || ok=0
+  grep -qF "✖ deliberately failing test" "$out_fail" || ok=0
+  grep -qF "verify error: Log directory:" "$out_fail" || ok=0
+  grep -qF "opensand-verify." "$out_fail" || ok=0
+
+  local fail_log
+  fail_log=$(grep -E 'verify error: Full output: ' "$out_fail" | awk '{print $NF}')
+  if [[ -z "$fail_log" || ! -f "$fail_log" ]]; then
+    ok=0
+  else
+    # Clobber check: failing log must contain its own failure, and must NOT contain target passes from the parallel run
+    grep -qF "deliberately failing test" "$fail_log" || ok=0
+    if grep -qF "target passes" "$fail_log"; then
+      ok=0
+    fi
+  fi
+
+  if [[ "$ok" -eq 1 ]]; then
+    echo "PASS $label (pass exit $status_pass, fail exit $status_fail)"
+  else
+    echo "FAIL $label: pass exit $status_pass (wanted 0), fail exit $status_fail (wanted 1)"
+    echo "--- pass output ---"
+    cat "$out_pass" | sed 's/^/    | /'
+    echo "--- fail output ---"
+    cat "$out_fail" | sed 's/^/    | /'
+    if [[ -n "${fail_log:-}" && -f "${fail_log:-}" ]]; then
+      echo "--- fail log ($fail_log) ---"
+      cat "$fail_log" | sed 's/^/    | /'
+    fi
+    FAILED=1
+  fi
+}
+
 mkdir -p "$WORK"
 expect healthy ok 0 "verify: ok"
-expect failing-test failing 1 "verify error: Package @fake/target failed its tests" "✖ deliberately failing test" "opensand-verify/@fake__target.log"
+expect failing-test failing 1 "verify error: Package @fake/target failed its tests" "✖ deliberately failing test" "verify error: Log directory:" "opensand-verify." "/@fake__target.log"
 expect single-run second-run-fails 0 "verify: ok"
 expect zero-tests zero 1 "Package @fake/target has TypeScript sources in src/ but reported 0 tests!"
+expect_parallel_runs
 
 exit "$FAILED"
