@@ -179,6 +179,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 ### `release.sh`
 - **Purpose**: 8-step automated release pipeline (disk space guard, bump PR, pr-gate merge, tag push, artifact download, smoke check, DMG plist verification, and optional install).
 - **Usage**: `scripts/release.sh [--dry-run] [--install] <version>`
+- **Env**: `RELEASE_DOWNLOAD_TIMEOUT_SECONDS` (default `600`) and `RELEASE_DOWNLOAD_POLL_SECONDS` (default `15`) bound the Step 5 retry that waits for `release.yml` to publish the assets.
 - **Exit Codes**: `0` on success, `1` on general failure, `2` on smoke test failure, `3` on pending bump PR CI.
 - **Selftest**: `scripts/release-selftest.sh`.
 - **Trigger**: QA & Release Engineer or automated release routine.

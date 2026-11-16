@@ -210,18 +210,45 @@ else
     ZIP_PATH="$DOWNLOAD_DIR/OpenSand-${VERSION}-arm64-mac.zip"
     DMG_PATH="$DOWNLOAD_DIR/OpenSand-${VERSION}-arm64.dmg"
   else
-    echo "Downloading release assets from GitHub for $TAG..."
-    if ! gh release download "$TAG" -D "$DOWNLOAD_DIR" --pattern "*.zip" --pattern "*.dmg"; then
-      echo "FAIL: failed to download release assets for $TAG" >&2
-      exit 1
-    fi
-    ZIP_PATH=$(find "$DOWNLOAD_DIR" -name "*.zip" | head -n 1)
-    DMG_PATH=$(find "$DOWNLOAD_DIR" -name "*.dmg" | head -n 1)
-    if [[ -z "$ZIP_PATH" || -z "$DMG_PATH" ]]; then
-      echo "FAIL: downloaded release assets missing zip or dmg in $DOWNLOAD_DIR" >&2
-      exit 1
-    fi
-    echo "PASS: downloaded $ZIP_PATH and $DMG_PATH"
+    # Pushing the tag starts the async release.yml build on macos-latest (~4-5 min); until
+    # softprops/action-gh-release runs there is no release to download. Retry until the assets
+    # exist instead of failing the first time (AGENTS_LEARNING: release asset download race).
+    DOWNLOAD_TIMEOUT_SECONDS="${RELEASE_DOWNLOAD_TIMEOUT_SECONDS:-600}"
+    DOWNLOAD_POLL_SECONDS="${RELEASE_DOWNLOAD_POLL_SECONDS:-15}"
+    MAX_ATTEMPTS=$(( DOWNLOAD_TIMEOUT_SECONDS / DOWNLOAD_POLL_SECONDS + 1 ))
+    ATTEMPT=0
+    echo "Downloading release assets from GitHub for $TAG (up to ${DOWNLOAD_TIMEOUT_SECONDS}s)..."
+    while :; do
+      ATTEMPT=$((ATTEMPT + 1))
+      DOWNLOAD_ERR=""
+      DOWNLOAD_ERR=$(gh release download "$TAG" -D "$DOWNLOAD_DIR" --pattern "*.zip" --pattern "*.dmg" 2>&1) || true
+
+      ZIP_PATH=$(find "$DOWNLOAD_DIR" -name "*.zip" | head -n 1 || true)
+      DMG_PATH=$(find "$DOWNLOAD_DIR" -name "*.dmg" | head -n 1 || true)
+      if [[ -n "$ZIP_PATH" && -n "$DMG_PATH" ]]; then
+        echo "PASS: downloaded $ZIP_PATH and $DMG_PATH (attempt $ATTEMPT)"
+        break
+      fi
+
+      # An auth failure never fixes itself by retrying: fail now, naming the fix.
+      if [[ "$DOWNLOAD_ERR" =~ (HTTP 40[13]|Bad credentials|authentication|GH_TOKEN|not logged in|gh auth login) ]]; then
+        echo "FAIL: cannot download release assets for $TAG: GitHub CLI is not authenticated." >&2
+        echo "  gh said: $DOWNLOAD_ERR" >&2
+        echo "  Export a token with release scope before re-running, e.g. 'export GH_TOKEN=\$(gh auth token)'." >&2
+        exit 1
+      fi
+
+      if [[ "$ATTEMPT" -ge "$MAX_ATTEMPTS" ]]; then
+        echo "FAIL: release assets for $TAG did not appear within ${DOWNLOAD_TIMEOUT_SECONDS}s ($ATTEMPT attempts)." >&2
+        echo "  Last error: ${DOWNLOAD_ERR:-no error output}" >&2
+        echo "  The release.yml build may have failed; check https://github.com/Philosopher0707/opensand/actions/workflows/release.yml" >&2
+        echo "  The script is idempotent: fix the build and re-run 'scripts/release.sh $VERSION'." >&2
+        exit 1
+      fi
+
+      echo "  assets for $TAG not published yet (attempt $ATTEMPT/$MAX_ATTEMPTS); retrying in ${DOWNLOAD_POLL_SECONDS}s..."
+      sleep "$DOWNLOAD_POLL_SECONDS"
+    done
   fi
 fi
 
