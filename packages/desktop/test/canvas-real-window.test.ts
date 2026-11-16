@@ -31,6 +31,7 @@ const shotDir = process.env.OPENSAND_CANVAS_SHOT_DIR || '';
 const timeout = setTimeout(() => { console.error('[runner] timeout'); app.quit(); process.exit(1); }, 40000);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let win;
+const wait = async (fn) => { for (let i = 0; i < 200; i++) { if (await js('Boolean(' + fn + ')')) return; await sleep(50); } throw new Error('wait timed out: ' + fn); };
 const js = (code) => win.webContents.executeJavaScript(code).catch((e) => { console.error('[js failed] ' + String(code).slice(0, 90).replace(/\s+/g, ' ')); throw e; });
 const emit = (type, data) => win.webContents.send('opensand:event', { type, data });
 async function shot(label) {
@@ -78,21 +79,24 @@ app.on('browser-window-created', (_e, w) => {
       await sleep(600);
       // Start a turn the way a user would, so app.js has an assistant message to attach tool lines to.
       await js("(() => { const p = document.getElementById('promptInput'); p.value = 'edit please'; p.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('btnSend').click(); })()");
+      await wait("document.querySelector('.message-assistant')");
       const call = (name, args) => emit('tool_call', { name, args });
       const result = (name, r) => emit('tool_result', { name, result: r });
       call('write_file', { path: '/proj/src/big.ts', content: BIG }); result('write_file', { status: 'ok' });
-      await sleep(300);
+      await wait("document.querySelector('.canvas-code-pre') && document.querySelector('.canvas-code-pre').textContent.includes('const line1500')");
       call('edit_file', { path: '/proj/src/big.ts', old_string: 'const line700 = 700; // row', new_string: 'const line700 = 700; // EDITED_MARKER' });
       result('edit_file', { status: 'ok', output: { path: '/proj/src/big.ts', replacementCount: 1 } });
-      await sleep(500);
+      await wait("document.querySelector('.canvas-code-pre') && document.querySelector('.canvas-code-pre').textContent.includes('EDITED_MARKER')");
       const edited = await js(STATE);
       if (edited.stateError) console.error(edited.stateError);
       await js("document.querySelector('#canvasTabDiff').click()");
+      await wait("document.querySelector('#canvasTabDiff.active') && /@@ -[0-9]+,[0-9]+ [+][0-9]+,[0-9]+ @@/.test(document.querySelector('#canvasDiffContent') ? document.querySelector('#canvasDiffContent').textContent : '')");
       const onDiff = await js(STATE);
       await shot('1-edited-file-diff-tab');
       await js("document.querySelector('#canvasTabCode').click()");
+      await wait("document.querySelector('#canvasTabCode.active')");
       await js("(() => { const p = document.getElementById('canvasCodePane'); p.scrollTop = 700 * 19.2 - 200; })()");
-      await sleep(300);
+      await wait("document.getElementById('canvasCodePane')?.scrollTop > 5000");
       const scrolled = await js(STATE);
       await shot('2-line-numbers-after-scroll');
 
@@ -100,15 +104,15 @@ app.on('browser-window-created', (_e, w) => {
         call('write_file', { path: '/proj/src/module-' + i + '.ts', content: 'export const m' + i + ' = ' + i + ';\n' });
         result('write_file', { status: 'ok' });
       }
-      await sleep(500);
+      await wait("document.querySelectorAll('#canvasTabStrip .canvas-file-tab').length === 12");
       const piled = await js(STATE);
       await shot('4-twelve-tabs');
 
       await js("document.getElementById('btnToggleCanvas').click()");
-      await sleep(300);
+      await wait("document.getElementById('artifactCanvas')?.classList.contains('hidden')");
       const hidden = await js(STATE);
       await js("document.getElementById('btnToggleCanvas').click()");
-      await sleep(400);
+      await wait("!document.getElementById('artifactCanvas')?.classList.contains('hidden')");
       const shown = await js(STATE);
       await shot('3-tabs-after-toggle-off-on');
 
