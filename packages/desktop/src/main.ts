@@ -19,6 +19,36 @@ export interface DesktopAppDeps {
   loadElectron?: () => Promise<any>;
   /** Test seam: state dir; DesktopServer already defaults to ~/.opensand. */
   baseDir?: string;
+  /** Test seam: environment overrides for testing flag/path resolution without mutating process.env. */
+  env?: NodeJS.ProcessEnv;
+}
+
+/**
+ * Resolves the state directory for OpenSand.
+ * Priority:
+ * 1. Explicit override argument (e.g. from tests or programmatic callers)
+ * 2. OPENSAND_STATE_DIR environment variable
+ * 3. Default: ~/.opensand
+ */
+export function resolveStateDir(env: NodeJS.ProcessEnv = process.env, overrideBaseDir?: string): string {
+  if (overrideBaseDir && overrideBaseDir.trim()) {
+    return path.resolve(overrideBaseDir.trim());
+  }
+  const envDir = env.OPENSAND_STATE_DIR?.trim();
+  if (envDir) {
+    return path.resolve(envDir);
+  }
+  return path.join(os.homedir(), '.opensand');
+}
+
+/**
+ * Parses the OPENSAND_SMOKE flag.
+ * Truthy values: '1', 'true', 'yes' (case-insensitive).
+ * When active, skips the single-instance lock and keyboard-focus steal.
+ */
+export function isSmokeMode(env: NodeJS.ProcessEnv = process.env): boolean {
+  const val = env.OPENSAND_SMOKE?.trim().toLowerCase();
+  return val === '1' || val === 'true' || val === 'yes';
 }
 
 export class DesktopApp {
@@ -30,13 +60,24 @@ export class DesktopApp {
   private server: DesktopServer | null = null;
   private electron: any = null;
   private loadElectron: () => Promise<any>;
-  private baseDir?: string;
+  private baseDir: string;
+  private isSmoke: boolean;
 
   constructor(deps: DesktopAppDeps = {}) {
     // Dynamic import keeps this module loadable in plain Node (tests, web mode);
     // in plain Node 'electron' resolves to a path string, so app/BrowserWindow are absent.
     this.loadElectron = deps.loadElectron ?? (() => import('electron'));
-    this.baseDir = deps.baseDir;
+    const env = deps.env ?? process.env;
+    this.isSmoke = isSmokeMode(env);
+    this.baseDir = resolveStateDir(env, deps.baseDir);
+  }
+
+  public getStateDir(): string {
+    return this.baseDir;
+  }
+
+  public getIsSmoke(): boolean {
+    return this.isSmoke;
   }
 
   public async start(): Promise<void> {
@@ -55,9 +96,20 @@ export class DesktopApp {
     }
     this.electron = electron;
 
-    if (!app.requestSingleInstanceLock()) {
-      app.quit();
-      return;
+    if (!this.isSmoke) {
+      if (!app.requestSingleInstanceLock()) {
+        app.quit();
+        return;
+      }
+    }
+
+    // Isolate Electron user data directory when a custom state dir is specified
+    if (this.baseDir !== path.join(os.homedir(), '.opensand')) {
+      try {
+        app.setPath?.('userData', path.join(this.baseDir, 'electron-user-data'));
+      } catch {
+        // Non-fatal if app already initialized userData
+      }
     }
 
     await app.whenReady();
@@ -73,6 +125,7 @@ export class DesktopApp {
     }
 
     app.on('second-instance', () => {
+      if (this.isSmoke) return;
       if (this.mainWindow) {
         if (this.mainWindow.isMinimized()) this.mainWindow.restore();
         this.mainWindow.focus();
@@ -83,8 +136,14 @@ export class DesktopApp {
       // Ephemeral port: the window loads whatever URL the server returns, so a
       // dev server already on 3456 cannot block the app from starting.
       this.server = new DesktopServer({ port: 0, baseDir: this.baseDir, appVersion: app.getVersion() });
-      const { url } = await this.server.start();
+      const { url, port } = await this.server.start();
       console.log('[OpenSand Desktop] server listening:', url.split('?')[0]);
+
+      try {
+        fs.writeFileSync(path.join(this.baseDir, 'server.port'), `${port}\n`, { mode: 0o600 });
+      } catch {
+        // Non-fatal
+      }
 
       // One engine per app: the window's IPC handlers must drive the same bridge
       // the HTTP API uses, or a query's trust question lands nowhere the UI can see.
@@ -145,6 +204,8 @@ export class DesktopApp {
       title: 'OpenSand',
       backgroundColor: '#18181b',
       titleBarStyle: 'hiddenInset',
+      show: !this.isSmoke,
+      focusable: !this.isSmoke,
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
@@ -228,33 +289,33 @@ export class DesktopApp {
 
     // Read-only: summarises <~/.opensand>/missions logs for the Preact mission list.
     ipcMain.handle('opensand:listMissions', async () => {
-      return listMissionSummaries(path.join(os.homedir(), '.opensand'));
+      return listMissionSummaries(this.baseDir);
     });
 
     // Read-only: one mission's event log, trimmed to the fields the timeline shows.
     ipcMain.handle('opensand:getMissionTimeline', async (_: any, { missionId }: { missionId: string }) => {
-      return readMissionTimeline(path.join(os.homedir(), '.opensand'), missionId);
+      return readMissionTimeline(this.baseDir, missionId);
     });
 
     // Read-only: the ended mission's receipt as display fields, or null while it has none.
     ipcMain.handle('opensand:getMissionReceipt', async (_: any, { missionId }: { missionId: string }) => {
-      return readMissionReceipt(path.join(os.homedir(), '.opensand'), missionId);
+      return readMissionReceipt(this.baseDir, missionId);
     });
 
     // Read-only: one changed file's hunks for an ended mission, found by index in its receipt.
     ipcMain.handle('opensand:getMissionFileDiff', async (_: any, { missionId, fileIndex }: { missionId: string; fileIndex: number }) => {
-      return readMissionFileDiff(path.join(os.homedir(), '.opensand'), missionId, fileIndex);
+      return readMissionFileDiff(this.baseDir, missionId, fileIndex);
     });
 
     // Read-only preview: human click on Restore to see counts and file lists before confirming.
     ipcMain.handle('opensand:previewRestoreMissionSnapshot', async (_: any, { missionId, snapshot }: { missionId: string; snapshot: string }) => {
-      this.missionPreviewRestore ??= createMissionPreviewRestore(path.join(os.homedir(), '.opensand'));
+      this.missionPreviewRestore ??= createMissionPreviewRestore(this.baseDir);
       return this.missionPreviewRestore(missionId, snapshot);
     });
 
     // Human click only (the renderer's Restore / Undo button). The engine's handler enforces folder trust.
     ipcMain.handle('opensand:restoreMissionSnapshot', async (_: any, { missionId, snapshot }: { missionId: string; snapshot: string }) => {
-      this.missionRestore ??= createMissionRestore(path.join(os.homedir(), '.opensand'));
+      this.missionRestore ??= createMissionRestore(this.baseDir);
       return this.missionRestore(missionId, snapshot);
     });
 
@@ -293,6 +354,7 @@ export class DesktopApp {
   }
 
   private setupTray(): void {
+    if (this.isSmoke) return;
     this.trayManager = new DesktopTrayManager({
       onToggleWindow: () => {
         if (this.mainWindow) {

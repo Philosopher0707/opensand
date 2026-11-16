@@ -96,6 +96,7 @@ Use the supervisor instead of launching `node .../desktop-server.js` directly:
 | `pnpm --filter @opensand/desktop test` | Tests for one package |
 | `pnpm --filter @opensand/desktop build` | Build one package |
 | `scripts/pre-commit.sh` | Manual run of the pre-commit hook |
+| `scripts/release-check.sh` | Run full verification suite and packaged app smoke launch gate |
 
 CI (`.github/workflows/ci.yml`) runs build + test on every push and pull
 request to `main` on Node 22.
