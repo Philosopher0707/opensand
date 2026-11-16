@@ -311,6 +311,15 @@ export interface RestoreOptions {
   _simulateFailure?: "checkout" | "unlink";
 }
 
+export interface RestorePreviewResult {
+  targetRef: string;
+  targetTree: string;
+  overwrittenFiles: string[];
+  restoredFiles: string[];
+  deletedFiles: string[];
+  skippedSubmodules: string[];
+}
+
 export interface RestoreExecutionSummary {
   restoredSnapshot: string;
   preRestoreSnapshot: string;
@@ -696,12 +705,24 @@ export async function computeFilesToDelete(
 /**
  * Restores workspace files to match a step snapshot without modifying HEAD, index, branch, or stash.
  */
-export async function restoreSnapshot(
+export interface ResolvedRestoreTarget {
+  targetRef: string;
+  targetSeqNumber?: number;
+  targetTree: string;
+  safety: TreeSafetyResult;
+  overwrittenFiles: string[];
+}
+
+/**
+ * Resolves snapshot identifier, verifies git repository, checks tree safety,
+ * and collects files that would be overwritten by target blobs.
+ * Shared by previewRestore and restoreSnapshot.
+ */
+export async function resolveAndValidateRestoreTarget(
   workspaceRoot: string,
   missionId: string,
-  snapshotRefOrSeq: string | number,
-  options?: RestoreOptions
-): Promise<RestoreExecutionSummary> {
+  snapshotRefOrSeq: string | number
+): Promise<ResolvedRestoreTarget> {
   const isGit = await isGitRepository(workspaceRoot);
   if (!isGit) {
     throw new OspError(ErrorCodes.InvalidParams, "Workspace is not a git repository");
@@ -798,6 +819,62 @@ export async function restoreSnapshot(
     }
   }
 
+  return {
+    targetRef,
+    targetSeqNumber,
+    targetTree,
+    safety,
+    overwrittenFiles,
+  };
+}
+
+/**
+ * Read-only preview of workspace file changes that a restoreSnapshot would perform.
+ * Does not write any refs, does not modify index or files.
+ */
+export async function previewRestore(
+  workspaceRoot: string,
+  missionId: string,
+  snapshotRefOrSeq: string | number
+): Promise<RestorePreviewResult> {
+  const resolved = await resolveAndValidateRestoreTarget(workspaceRoot, missionId, snapshotRefOrSeq);
+  const cleanMission = sanitizeRefName(missionId);
+
+  // Current workspace tree for computeFilesToDelete without creating a ref:
+  // treeOf builds it with a temporary GIT_INDEX_FILE + git add -A + git write-tree
+  const currentTreeRes = await treeOf(workspaceRoot);
+  const currentTree = currentTreeRes.available ? currentTreeRes.tree : undefined;
+
+  const filesToDelete = await computeFilesToDelete(
+    workspaceRoot,
+    cleanMission,
+    resolved.targetTree,
+    resolved.targetSeqNumber,
+    currentTree
+  );
+
+  return {
+    targetRef: resolved.targetRef,
+    targetTree: resolved.targetTree,
+    overwrittenFiles: resolved.overwrittenFiles,
+    restoredFiles: resolved.safety.paths,
+    deletedFiles: filesToDelete,
+    skippedSubmodules: resolved.safety.submodules,
+  };
+}
+
+/**
+ * Restores workspace files to match a step snapshot without modifying HEAD, index, branch, or stash.
+ */
+export async function restoreSnapshot(
+  workspaceRoot: string,
+  missionId: string,
+  snapshotRefOrSeq: string | number,
+  options?: RestoreOptions
+): Promise<RestoreExecutionSummary> {
+  const resolved = await resolveAndValidateRestoreTarget(workspaceRoot, missionId, snapshotRefOrSeq);
+  const cleanMission = sanitizeRefName(missionId);
+
   // Phase 2: Capture pre-restore safety snapshot
   let preRestoreSnap: StepSnapshotResult | null = null;
   if (!options?.skipPreRestoreSnapshot) {
@@ -812,8 +889,8 @@ export async function restoreSnapshot(
   const filesToDelete = await computeFilesToDelete(
     workspaceRoot,
     cleanMission,
-    targetTree,
-    targetSeqNumber,
+    resolved.targetTree,
+    resolved.targetSeqNumber,
     preRestoreSnap?.tree
   );
 
@@ -825,7 +902,7 @@ export async function restoreSnapshot(
     }
     // 4a. Read tree into isolated index
     const readRes = await runCommandOperation({
-      command: `git read-tree "${targetTree}"`,
+      command: `git read-tree "${resolved.targetTree}"`,
       cwd: workspaceRoot,
       workspaceRoot,
       env: { ...cleanGitEnv(), GIT_INDEX_FILE: tmpIndex },
@@ -835,7 +912,7 @@ export async function restoreSnapshot(
     }
 
     // 4b. Skip submodules per C5: remove from temp index
-    for (const sub of safety.submodules) {
+    for (const sub of resolved.safety.submodules) {
       await runCommandOperation({
         command: `git update-index --force-remove -- "${sub}"`,
         cwd: workspaceRoot,
@@ -873,15 +950,15 @@ export async function restoreSnapshot(
     }
 
     return {
-      restoredSnapshot: targetRef,
+      restoredSnapshot: resolved.targetRef,
       preRestoreSnapshot: preRestoreSnap?.ref ?? "",
-      targetTree,
-      restoredFilesCount: safety.paths.length,
+      targetTree: resolved.targetTree,
+      restoredFilesCount: resolved.safety.paths.length,
       deletedFilesCount: filesToDelete.length,
-      restoredFiles: safety.paths,
-      overwrittenFiles,
+      restoredFiles: resolved.safety.paths,
+      overwrittenFiles: resolved.overwrittenFiles,
       deletedFiles: filesToDelete,
-      skippedSubmodules: safety.submodules,
+      skippedSubmodules: resolved.safety.submodules,
     };
   } catch (err: any) {
     console.error(`Restore error, executing emergency rollback:`, err);

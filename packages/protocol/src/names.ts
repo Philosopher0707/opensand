@@ -15,6 +15,7 @@ export const METHODS = [
   "inbox.Approvals.subscribe",
   "timeline.Timeline.get",
   "mission.Missions.restoreSnapshot",
+  "mission.Missions.previewRestore",
   "timeline.Timeline.fork",
   "session.Sessions.create",
   "session.Sessions.get",

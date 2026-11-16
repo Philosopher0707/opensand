@@ -4,7 +4,7 @@ import { EVENTS, METHODS, isKnownMethod, isWellFormedName } from "../src/names.j
 
 describe("protocol names", () => {
   it("registers the methods and events listed in the OSP spec", () => {
-    assert.equal(METHODS.length, 22);
+    assert.equal(METHODS.length, 23);
     assert.equal(EVENTS.length, 15);
   });
 
@@ -18,6 +18,7 @@ describe("protocol names", () => {
 
   it("recognises registered methods and rejects unknown ones", () => {
     assert.equal(isKnownMethod("mission.Missions.start"), true);
+    assert.equal(isKnownMethod("mission.Missions.previewRestore"), true);
     assert.equal(isKnownMethod("mission.Missions.nope"), false);
     assert.equal(isKnownMethod("mission.Missions.nodeStarted"), false);
   });

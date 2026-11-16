@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createHash } from "node:crypto";
 import { execSync, spawnSync } from "node:child_process";
 import { EventLogReader, FolderTrustStore, GrantsStore, type SessionEvent } from "@opensand/shared";
 import { ErrorCodes, OspError } from "@opensand/protocol";
@@ -11,6 +12,7 @@ import {
   treeOf,
   pinTrees,
   restoreSnapshot,
+  previewRestore,
   validateTreeSafety,
   computeFilesToDelete,
 } from "../src/missions/workspace-diff.js";
@@ -606,6 +608,284 @@ describe("Time Machine PR 2: restoreSnapshot", () => {
 
       // It is absent from s-1 and present in s-2, but it predates the mission: it must never be unlinked.
       assert.equal(fs.readFileSync(path.join(workspace, "user_file.txt"), "utf8"), "user content");
+    } finally {
+      removeDir(root);
+    }
+  });
+});
+
+
+describe("Time Machine Preview: previewRestore", () => {
+  it("Preview list exactness: preview matches restore execution summary with overwritten, restored, and deleted all non-empty", async () => {
+    const root = tempDir("prev-t1");
+    try {
+      const workspace = makeGitWorkspace(root, {
+        "shared.txt": "shared v0",
+        "sub/keep.txt": "sub keep v0",
+      });
+      const missionId = "m-prev-exact";
+
+      // Step 1:
+      // - shared.txt updated to "shared v1" (will be overwritten later)
+      // - recreated.txt created (will be deleted in step 2, so restored on restore)
+      fs.writeFileSync(path.join(workspace, "shared.txt"), "shared v1", "utf8");
+      fs.writeFileSync(path.join(workspace, "recreated.txt"), "recreated v1", "utf8");
+      const snap1 = await createStepSnapshot(workspace, missionId, 1);
+      assert.ok(snap1);
+
+      // Step 2:
+      // - shared.txt updated to "shared v2"
+      // - recreated.txt unlinked
+      // - added_step2.txt added (will be deleted when restoring to step 1)
+      fs.writeFileSync(path.join(workspace, "shared.txt"), "shared v2", "utf8");
+      fs.unlinkSync(path.join(workspace, "recreated.txt"));
+      fs.writeFileSync(path.join(workspace, "added_step2.txt"), "added in step 2", "utf8");
+      const snap2 = await createStepSnapshot(workspace, missionId, 2);
+      assert.ok(snap2);
+
+      // Verify current workspace state before preview/restore:
+      // shared.txt has v2
+      // recreated.txt is absent
+      // added_step2.txt is present
+      assert.equal(fs.readFileSync(path.join(workspace, "shared.txt"), "utf8"), "shared v2");
+      assert.equal(fs.existsSync(path.join(workspace, "recreated.txt")), false);
+      assert.equal(fs.existsSync(path.join(workspace, "added_step2.txt")), true);
+
+      // Run preview
+      const preview = await previewRestore(workspace, missionId, "s-1");
+
+      // Verify all 3 lists are non-empty
+      assert.ok(preview.overwrittenFiles.length > 0, "overwrittenFiles must not be empty");
+      assert.ok(preview.restoredFiles.length > 0, "restoredFiles must not be empty");
+      assert.ok(preview.deletedFiles.length > 0, "deletedFiles must not be empty");
+
+      assert.ok(preview.overwrittenFiles.includes("shared.txt"), "shared.txt must be in overwrittenFiles");
+      assert.ok(preview.restoredFiles.includes("recreated.txt"), "recreated.txt must be in restoredFiles");
+      assert.ok(preview.deletedFiles.includes("added_step2.txt"), "added_step2.txt must be in deletedFiles");
+
+      // Run real restore
+      const restored = await restoreSnapshot(workspace, missionId, "s-1");
+
+      // Assert preview lists equal real restore results
+      assert.deepEqual(
+        [...preview.overwrittenFiles].sort(),
+        [...restored.overwrittenFiles].sort(),
+        "preview.overwrittenFiles must equal restore.overwrittenFiles"
+      );
+      assert.deepEqual(
+        [...preview.restoredFiles].sort(),
+        [...restored.restoredFiles].sort(),
+        "preview.restoredFiles must equal restore.restoredFiles"
+      );
+      assert.deepEqual(
+        [...preview.deletedFiles].sort(),
+        [...restored.deletedFiles].sort(),
+        "preview.deletedFiles must equal restore.deletedFiles"
+      );
+      assert.deepEqual(
+        [...preview.skippedSubmodules].sort(),
+        [...restored.skippedSubmodules].sort(),
+        "preview.skippedSubmodules must equal restore.skippedSubmodules"
+      );
+      assert.equal(preview.targetTree, restored.targetTree);
+      assert.equal(preview.targetRef, restored.restoredSnapshot);
+    } finally {
+      removeDir(root);
+    }
+  });
+
+  it("Read-only witness: preview leaves refs, git status, .git/index bytes, workspace file hashes, and mission log untouched", async () => {
+    const root = tempDir("prev-t2");
+    try {
+      const workspace = makeGitWorkspace(root, {
+        "file1.txt": "v1 content",
+        "nested/file2.txt": "v2 content",
+      });
+      const missionId = "m-prev-witness";
+      const stateDir = path.join(root, "state");
+      fs.mkdirSync(stateDir, { recursive: true });
+      trustFolder(stateDir, workspace);
+
+      // Step 1:
+      const snap1 = await createStepSnapshot(workspace, missionId, 1);
+      assert.ok(snap1);
+
+      // Step 2:
+      fs.writeFileSync(path.join(workspace, "file1.txt"), "v1 updated", "utf8");
+      fs.writeFileSync(path.join(workspace, "new_file.txt"), "new content", "utf8");
+      const snap2 = await createStepSnapshot(workspace, missionId, 2);
+      assert.ok(snap2);
+
+      const manager = new MissionRunnerManager(stateDir, undefined, () => {});
+
+      // Record pre-existing mission log event
+      const logDir = path.join(stateDir, "logs", "missions", missionId);
+      fs.mkdirSync(logDir, { recursive: true });
+      const { EventLogWriter, MISSION_EVENT } = await import("@opensand/shared");
+      const writer = new EventLogWriter(logDir, { sessionId: missionId });
+      await writer.append({
+        sessionId: missionId,
+        kind: MISSION_EVENT.STARTED,
+        data: { missionId, workspaceRoot: workspace },
+      });
+
+      // Capture before witness state
+      const refsBefore = git(["for-each-ref"], workspace);
+      const statusBefore = git(["status", "--porcelain"], workspace);
+      const indexBefore = fs.readFileSync(path.join(workspace, ".git", "index"));
+
+      const fileHashesBefore = new Map<string, string>();
+      const walkFiles = (dir: string) => {
+        for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (ent.name === ".git") continue;
+          const full = path.join(dir, ent.name);
+          if (ent.isDirectory()) {
+            walkFiles(full);
+          } else {
+            const rel = path.relative(workspace, full);
+            const hash = createHash("sha256").update(fs.readFileSync(full)).digest("hex");
+            fileHashesBefore.set(rel, hash);
+          }
+        }
+      };
+      walkFiles(workspace);
+
+      const reader = new EventLogReader(logDir);
+      const { events: eventsBefore } = await reader.readWithRecovery();
+
+      // Execute preview via manager
+      const preview = await manager.previewRestore(
+        { missionId, snapshot: "s-1", workspaceRoot: workspace },
+        stateDir
+      );
+      assert.ok(preview);
+      assert.equal(preview.success, true);
+
+      // Capture after witness state
+      const refsAfter = git(["for-each-ref"], workspace);
+      const statusAfter = git(["status", "--porcelain"], workspace);
+      const indexAfter = fs.readFileSync(path.join(workspace, ".git", "index"));
+
+      const fileHashesAfter = new Map<string, string>();
+      walkFiles(workspace);
+      for (const [k, v] of fileHashesBefore) {
+        fileHashesAfter.set(k, createHash("sha256").update(fs.readFileSync(path.join(workspace, k))).digest("hex"));
+      }
+
+      const { events: eventsAfter } = await reader.readWithRecovery();
+
+      // Assert read-only witness invariant
+      assert.equal(refsAfter, refsBefore, "Witness check: git for-each-ref must be identical");
+      assert.equal(statusAfter, statusBefore, "Witness check: git status --porcelain must be identical");
+      assert.deepEqual(indexAfter, indexBefore, "Witness check: .git/index bytes must be identical");
+      assert.deepEqual(Object.fromEntries(fileHashesAfter), Object.fromEntries(fileHashesBefore), "Witness check: all file hashes must be identical");
+      assert.deepEqual(eventsAfter, eventsBefore, "Witness check: mission event log must gain 0 events");
+    } finally {
+      removeDir(root);
+    }
+  });
+
+  it("Security gates: Untrusted folder and foreign mission ref are refused by preview", async () => {
+    const root = tempDir("prev-t3");
+    try {
+      const workspace = makeGitWorkspace(root, { "file.txt": "content" });
+      const missionId = "m-prev-sec";
+      const snap1 = await createStepSnapshot(workspace, missionId, 1);
+      assert.ok(snap1);
+
+      const stateDir = path.join(root, "state");
+      fs.mkdirSync(stateDir, { recursive: true });
+
+      const manager = new MissionRunnerManager(stateDir, undefined, () => {});
+
+      // 1. Untrusted folder refusal:
+      await assert.rejects(
+        manager.previewRestore(
+          { missionId, snapshot: "s-1", workspaceRoot: workspace },
+          stateDir
+        ),
+        (err: any) => {
+          assert.equal(err.code, ErrorCodes.InvalidRequest);
+          assert.equal(err.message, "Workspace folder is untrusted");
+          return true;
+        },
+        "Untrusted folder must be refused"
+      );
+
+      // Now trust the workspace folder
+      trustFolder(stateDir, workspace);
+
+      // 2. Foreign mission ref refusal via manager:
+      await assert.rejects(
+        manager.previewRestore(
+          { missionId, snapshot: "refs/opensand/missions/foreign-mission/s-1", workspaceRoot: workspace },
+          stateDir
+        ),
+        (err: any) => {
+          assert.equal(err.code, ErrorCodes.InvalidParams);
+          assert.ok(err.message.includes("Ref does not belong to mission"));
+          return true;
+        },
+        "Foreign mission ref must be refused by manager"
+      );
+
+      // 3. Foreign mission ref refusal via workspace-diff function:
+      await assert.rejects(
+        previewRestore(
+          workspace,
+          missionId,
+          "refs/opensand/missions/foreign-mission/s-1"
+        ),
+        (err: any) => {
+          assert.equal(err.code, ErrorCodes.InvalidParams);
+          assert.ok(err.message.includes("Ref does not belong to mission"));
+          return true;
+        },
+        "Foreign mission ref must be refused by previewRestore"
+      );
+    } finally {
+      removeDir(root);
+    }
+  });
+
+  it("Protocol OSP Integration Test: mission.Missions.previewRestore succeeds over OSP without mutating disk", async () => {
+    const root = tempDir("prev-t4");
+    try {
+      const stateDir = path.join(root, "state");
+      fs.mkdirSync(stateDir, { recursive: true });
+
+      const workspace = makeGitWorkspace(root, { "doc.txt": "step 0 doc" });
+      trustFolder(stateDir, workspace);
+
+      const missionId = "m-prev-osp";
+      fs.writeFileSync(path.join(workspace, "doc.txt"), "step 1 doc", "utf8");
+      const snap1 = await createStepSnapshot(workspace, missionId, 1);
+      assert.ok(snap1);
+
+      fs.writeFileSync(path.join(workspace, "doc.txt"), "step 2 doc", "utf8");
+      const snap2 = await createStepSnapshot(workspace, missionId, 2);
+      assert.ok(snap2);
+
+      const engine = new EngineProcess(stateDir);
+      try {
+        const previewRes = await engine.request("req-preview", "mission.Missions.previewRestore", {
+          missionId,
+          snapshot: "s-1",
+          workspaceRoot: workspace,
+        });
+
+        assert.ok(previewRes.result, "previewRestore must return a result object");
+        assert.equal(previewRes.result.success, true);
+        assert.equal(previewRes.result.missionId, missionId);
+        assert.ok(previewRes.result.targetRef.includes("s-1"));
+        assert.ok(Array.isArray(previewRes.result.overwrittenFiles));
+        assert.ok(previewRes.result.overwrittenFiles.includes("doc.txt"));
+
+        // Disk must NOT be modified by preview
+        assert.equal(fs.readFileSync(path.join(workspace, "doc.txt"), "utf8"), "step 2 doc");
+      } finally {
+        await engine.kill();
+      }
     } finally {
       removeDir(root);
     }

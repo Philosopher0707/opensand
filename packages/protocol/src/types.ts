@@ -64,3 +64,22 @@ export interface RestoreSnapshotResult {
   deletedFiles: string[];
   skippedSubmodules: string[];
 }
+
+export interface PreviewRestoreParams {
+  missionId: string;
+  snapshot: string | number;
+  workspaceRoot?: string;
+}
+
+export interface PreviewRestoreResult {
+  success: boolean;
+  missionId: string;
+  targetRef: string;
+  targetTree: string;
+  restoredFilesCount: number;
+  deletedFilesCount: number;
+  restoredFiles: string[];
+  overwrittenFiles: string[];
+  deletedFiles: string[];
+  skippedSubmodules: string[];
+}
