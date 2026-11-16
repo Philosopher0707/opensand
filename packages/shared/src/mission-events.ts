@@ -4,6 +4,7 @@
 
 export const MISSION_EVENT = {
   STARTED: "mission.started",
+  FORKED: "mission.forked",
   NODE_STARTED: "node.started",
   NODE_COMPLETED: "node.completed",
   CHECK_COMPLETED: "check.completed",
@@ -40,4 +41,22 @@ export interface SnapshotRestoredPayload {
   preRestoreSnapshot: string;
   targetTree: string;
   timestamp: string;
+}
+
+export interface MissionForkedPayload {
+  missionId: string;
+  forkedFrom: {
+    missionId: string;
+    snapshot: string;
+    targetTree: string;
+  };
+  workspaceRoot: string;
+  title: string;
+  initialQuery: string;
+  checkCommand: string;
+  timestamp: string;
+  budget?: {
+    budgetUsd?: number;
+    maxRepairs?: number;
+  };
 }

@@ -83,3 +83,63 @@ export interface PreviewRestoreResult {
   deletedFiles: string[];
   skippedSubmodules: string[];
 }
+
+export type TimelineStepNode =
+  | "start"
+  | "plan"
+  | "act"
+  | "check"
+  | "review"
+  | "repair"
+  | "receipt"
+  | "end";
+
+export interface TimelineStep {
+  seq: number;
+  node: TimelineStepNode;
+  title: string;
+  claim?: string;
+  passed?: boolean;
+  durationMs?: number;
+  timestamp: string;
+  snapshotRef?: string;
+  isRestorable: boolean;
+}
+
+export interface TimelineGetParams {
+  missionId: string;
+}
+
+export interface TimelineGetResult {
+  missionId: string;
+  steps: TimelineStep[];
+}
+
+export interface TimelineForkParams {
+  missionId: string;
+  snapshot: string | number;
+  workspaceRoot?: string;
+  newInstruction?: string;
+  newTitle?: string;
+  budgetUsd?: number;
+  maxRepairs?: number;
+}
+
+export interface TimelineForkResult {
+  success: true;
+  newMissionId: string;
+  forkedFrom: {
+    missionId: string;
+    snapshot: string;
+    targetTree: string;
+  };
+  restoredFilesCount: number;
+  deletedFilesCount: number;
+  preRestoreSnapshot: string;
+}
+
+export const RESTORABLE_REF_PATTERN = /^refs\/opensand\/missions\/[A-Za-z0-9][A-Za-z0-9._-]*\/s-[A-Za-z0-9._-]+$/;
+
+export function isRestorableRef(ref: unknown): ref is string {
+  return typeof ref === "string" && RESTORABLE_REF_PATTERN.test(ref) && !ref.includes("..");
+}

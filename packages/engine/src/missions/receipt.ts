@@ -214,7 +214,7 @@ export function projectMission(events: SessionEvent[]): MissionProjection {
     if (ev.sessionId) missionId = ev.sessionId;
 
     status = nextMissionStatus(status, ev.kind);
-    if (ev.kind === "mission.started") {
+    if (ev.kind === "mission.started" || ev.kind === "mission.forked") {
       title = ev.data?.title ?? title;
     } else if (ev.kind === "node.started") {
       currentNode = ev.data?.node ?? currentNode;

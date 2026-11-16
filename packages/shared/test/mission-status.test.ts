@@ -7,6 +7,7 @@ describe('mission status projection', () => {
   it('maps every status-moving event kind', () => {
     const cases: Array<[string, MissionStatus, MissionStatus]> = [
       [MISSION_EVENT.STARTED, 'failed', 'running'],
+      [MISSION_EVENT.FORKED, 'failed', 'running'],
       [MISSION_EVENT.NEEDS_YOU, 'running', 'needs-you'],
       [MISSION_EVENT.ANSWERED, 'needs-you', 'running'],
       [MISSION_EVENT.VERIFIED, 'running', 'verified'],

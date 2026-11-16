@@ -9,6 +9,7 @@ import type { MissionStatus } from "./mission-events.js";
 export function nextMissionStatus(current: MissionStatus, kind: string): MissionStatus {
   switch (kind) {
     case MISSION_EVENT.STARTED:
+    case MISSION_EVENT.FORKED:
     case MISSION_EVENT.ANSWERED:
       return "running";
     case MISSION_EVENT.NEEDS_YOU:
