@@ -92,6 +92,18 @@
 .approval-detail-body { font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
 .approval-row { overflow-wrap: anywhere; }
 .approval-meta-row { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--text-muted); }
+
+.timeline-step-actions { display: flex; gap: 6px; align-items: center; }
+.btn-fork-step { padding: 2px 8px; font-size: 11px; cursor: pointer; border: 1px solid var(--border, rgba(128,128,128,.35)); border-radius: 6px; background: transparent; color: inherit; }
+.btn-fork-step:hover { background: var(--bg-hover, rgba(128,128,128,.15)); }
+.btn-fork-step:focus-visible, .btn-fork-cancel:focus-visible, .btn-fork-confirm:focus-visible { outline: 2px solid var(--accent, #4c8dff); outline-offset: 2px; }
+.fork-instruction-field { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 14px; }
+.fork-instruction-label { font-size: 12px; font-weight: 500; color: var(--text-primary, #e2e8f0); }
+.fork-instruction-input { width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 12px; font-family: inherit; background: var(--bg-surface, rgba(0,0,0,.25)); border: 1px solid var(--border, rgba(128,128,128,.35)); border-radius: 6px; color: inherit; resize: vertical; }
+.fork-instruction-input:focus { outline: 2px solid var(--accent, #4c8dff); outline-offset: -1px; }
+.btn-fork-confirm { background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 600; }
+.fork-recovery-hint { margin: 6px 0 0; padding: 6px 8px; background: rgba(0,0,0,.3); border-radius: 4px; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; color: #fca5a5; }
+
 .btn-restore-step { padding: 2px 8px; font-size: 11px; cursor: pointer; border: 1px solid var(--border, rgba(128,128,128,.35)); border-radius: 6px; background: transparent; color: inherit; }
 .btn-restore-step:hover { background: var(--bg-hover, rgba(128,128,128,.15)); }
 .btn-restore-step:focus-visible, .btn-restore-cancel:focus-visible, .btn-restore-confirm:focus-visible, .btn-restore-undo:focus-visible, .btn-restore-dismiss:focus-visible { outline: 2px solid var(--accent, #4c8dff); outline-offset: 2px; }
@@ -128,4 +140,4 @@
 .restore-toast { position: fixed; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 10px; max-width: 380px; padding: 10px 12px; border-radius: 8px; font-size: 12px; background: var(--bg-elevated, #16161a); border: 1px solid var(--border, rgba(128,128,128,.35)); border-left: 3px solid #16a34a; box-shadow: 0 8px 24px rgba(0,0,0,.4); z-index: 60; }
 .restore-toast-bad { border-left-color: #dc2626; }
 .btn-restore-dismiss { background: none; border: none; color: inherit; cursor: pointer; font-size: 14px; padding: 0 4px; }
-@media (max-width: 600px) { .timeline-step { grid-template-columns: 1fr auto; } .btn-restore-step { grid-column: 1 / -1; justify-self: start; } .restore-toast { left: 16px; max-width: none; } }
+@media (max-width: 600px) { .timeline-step { grid-template-columns: 1fr auto; } .timeline-step-actions { grid-column: 1 / -1; justify-self: start; flex-wrap: wrap; } .btn-restore-step, .btn-fork-step { grid-column: 1 / -1; justify-self: start; } .restore-toast { left: 16px; max-width: none; } }

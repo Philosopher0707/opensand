@@ -1,11 +1,16 @@
 import { useState, useEffect, useRef } from "preact/hooks";
 import type { ShellData } from "../data";
 import { RestoreDialog } from "./RestoreDialog";
+import { ForkDialog } from "./ForkDialog";
 import {
   classifyRestoreError,
   restoreSuccessView,
   type PreviewRestoreResult,
 } from "../../../src/shell/mission-restore-model";
+import {
+  classifyForkError,
+  forkSuccessView,
+} from "../../../src/shell/mission-fork-model";
 import {
   toTimelineSteps,
   windowSteps,
@@ -19,6 +24,7 @@ import {
 export interface MissionTimelineProps {
   data: ShellData;
   missionId: string;
+  onSelectMission?: (newMissionId: string) => void;
 }
 
 type Load =
@@ -26,17 +32,29 @@ type Load =
   | { state: "error" }
   | { state: "ready"; steps: TimelineStep[] };
 
-export function MissionTimeline({ data, missionId }: MissionTimelineProps) {
+export function MissionTimeline({ data, missionId, onSelectMission }: MissionTimelineProps) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [limit, setLimit] = useState(TIMELINE_PAGE);
   const [attempt, setAttempt] = useState(0);
   const listRef = useRef<HTMLOListElement>(null);
+
+  // Restore dialog state
   const [pending, setPending] = useState<TimelineStep | null>(null);
   const [preview, setPreview] = useState<PreviewRestoreResult | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
+
+  // Fork dialog state
+  const [pendingFork, setPendingFork] = useState<TimelineStep | null>(null);
+  const [forkPreview, setForkPreview] = useState<PreviewRestoreResult | null>(null);
+  const [forkPreviewLoading, setForkPreviewLoading] = useState(false);
+  const [forkPreviewError, setForkPreviewError] = useState<string | null>(null);
+  const [forkRecoveryHint, setForkRecoveryHint] = useState<string | null>(null);
+  const [forkBusy, setForkBusy] = useState(false);
+  const [forkDialogError, setForkDialogError] = useState<string | null>(null);
+
   const [toast, setToast] = useState<{ tone: "ok" | "bad"; message: string; undo?: string } | null>(null);
 
   const openRestore = (step: TimelineStep) => {
@@ -83,6 +101,56 @@ export function MissionTimeline({ data, missionId }: MissionTimelineProps) {
       }
     } finally {
       setBusy(false);
+    }
+  };
+
+  const openFork = (step: TimelineStep) => {
+    setForkDialogError(null);
+    setForkPreviewError(null);
+    setForkRecoveryHint(null);
+    setForkPreview(null);
+    setPendingFork(step);
+    setForkPreviewLoading(true);
+    data
+      .previewRestoreMissionSnapshot(missionId, step.snapshot!)
+      .then((res) => {
+        setForkPreview(res);
+      })
+      .catch((err) => {
+        const e = classifyForkError(err);
+        setForkPreviewError(e.message);
+        setForkRecoveryHint(e.recoveryHint ?? null);
+      })
+      .finally(() => {
+        setForkPreviewLoading(false);
+      });
+  };
+
+  const closeFork = () => {
+    setPendingFork(null);
+    setForkPreview(null);
+    setForkPreviewError(null);
+    setForkRecoveryHint(null);
+    setForkDialogError(null);
+  };
+
+  const runFork = async (options: { newInstruction?: string; newTitle?: string }) => {
+    if (!pendingFork?.snapshot) return;
+    setForkBusy(true);
+    setForkDialogError(null);
+    setForkRecoveryHint(null);
+    try {
+      const res = await data.forkMission(missionId, pendingFork.snapshot, options);
+      const view = forkSuccessView(res, pendingFork.seq);
+      closeFork();
+      setToast({ tone: "ok", message: view.message });
+      onSelectMission?.(res.newMissionId);
+    } catch (err) {
+      const e = classifyForkError(err);
+      setForkDialogError(e.message);
+      setForkRecoveryHint(e.recoveryHint ?? null);
+    } finally {
+      setForkBusy(false);
     }
   };
 
@@ -145,14 +213,24 @@ export function MissionTimeline({ data, missionId }: MissionTimelineProps) {
                 <span class="timeline-summary">{s.summary}</span>
                 <time class="timeline-time" dateTime={s.ts}>{formatStepTime(s.ts)}</time>
                 {s.snapshot && (
-                  <button
-                    type="button"
-                    class="btn-restore-step"
-                    aria-label={`Restore to this step: ${s.kindLabel}, ${s.summary}`}
-                    onClick={() => openRestore(s)}
-                  >
-                    Restore to this step
-                  </button>
+                  <div class="timeline-step-actions">
+                    <button
+                      type="button"
+                      class="btn-restore-step"
+                      aria-label={`Restore to this step: ${s.kindLabel}, ${s.summary}`}
+                      onClick={() => openRestore(s)}
+                    >
+                      Restore to this step
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-fork-step"
+                      aria-label={`Fork from this step: ${s.kindLabel}, ${s.summary}`}
+                      onClick={() => openFork(s)}
+                    >
+                      Fork from this step
+                    </button>
+                  </div>
                 )}
               </li>
             ))}
@@ -177,6 +255,18 @@ export function MissionTimeline({ data, missionId }: MissionTimelineProps) {
           error={previewError || dialogError}
           onConfirm={() => runRestore(pending.snapshot!, false)}
           onCancel={closeRestore}
+        />
+      )}
+      {pendingFork && pendingFork.snapshot && (
+        <ForkDialog
+          step={pendingFork}
+          preview={forkPreview}
+          loading={forkPreviewLoading}
+          busy={forkBusy}
+          error={forkPreviewError || forkDialogError}
+          recoveryHint={forkRecoveryHint}
+          onConfirm={runFork}
+          onCancel={closeFork}
         />
       )}
     </section>

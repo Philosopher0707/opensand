@@ -46,6 +46,8 @@ try {
         ipcRenderer.invoke('opensand:previewRestoreMissionSnapshot', { missionId, snapshot }),
       restoreMissionSnapshot: (missionId: string, snapshot: string) =>
         ipcRenderer.invoke('opensand:restoreMissionSnapshot', { missionId, snapshot }),
+      forkMission: (missionId: string, snapshot: string | number, options?: { newTitle?: string; newInstruction?: string }) =>
+        ipcRenderer.invoke('opensand:forkMission', { missionId, snapshot, ...options }),
       readWorkspaceFile: (path: string) =>
         ipcRenderer.invoke('opensand:readWorkspaceFile', { path }),
       loadSession: (sessionId: string) =>

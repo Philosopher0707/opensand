@@ -4,9 +4,10 @@ import type { RawTimelineEvent } from "../../src/shell/mission-timeline-model";
 import type { FileDiffView } from "../../src/shell/mission-diff-model";
 import type { ReceiptView } from "../../src/shell/mission-receipt-model";
 import type { RestoreResult, PreviewRestoreResult } from "../../src/shell/mission-restore-model";
+import type { TimelineForkResult } from "../../src/shell/mission-fork-model";
 import type { ToolApprovalRequest } from "../../src/shell/inbox-model";
 
-export type { SessionSummary, MissionSummary, ToolApprovalRequest, PreviewRestoreResult };
+export type { SessionSummary, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult };
 
 export interface ShellData {
   listSessions(): Promise<SessionSummary[]>;
@@ -18,6 +19,7 @@ export interface ShellData {
   /** Rejects (never resolves empty) when the desktop has no restore channel, so the UI shows an error. */
   previewRestoreMissionSnapshot(missionId: string, snapshot: string): Promise<PreviewRestoreResult>;
   restoreMissionSnapshot(missionId: string, snapshot: string): Promise<RestoreResult>;
+  forkMission(missionId: string, snapshot: string | number, options?: { newTitle?: string; newInstruction?: string }): Promise<TimelineForkResult>;
   listPendingApprovals(): Promise<ToolApprovalRequest[]>;
   onApprovalChange?(callback: () => void): () => void;
 }
@@ -68,6 +70,13 @@ export function windowBridgeData(): ShellData {
         throw new Error("Preview restore is not available in this build");
       }
       return (await bridge.previewRestoreMissionSnapshot(missionId, snapshot)) as PreviewRestoreResult;
+    },
+    async forkMission(missionId: string, snapshot: string | number, options?: { newTitle?: string; newInstruction?: string }): Promise<TimelineForkResult> {
+      const bridge = (window as any).opensand;
+      if (!bridge?.forkMission) {
+        throw new Error("Fork is not available in this build");
+      }
+      return (await bridge.forkMission(missionId, snapshot, options)) as TimelineForkResult;
     },
     async restoreMissionSnapshot(missionId: string, snapshot: string): Promise<RestoreResult> {
       const bridge = (window as any).opensand;
