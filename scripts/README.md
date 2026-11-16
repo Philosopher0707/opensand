@@ -16,10 +16,10 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `check-scripts-catalog-selftest.sh` | Hermetic selftest for scripts catalog checker | Pre-commit / verification | Self |
 | `clean-disk.sh` | Safe disk reclamation of merged/clean scratch worktrees and caches | Manual / low disk space in release | `clean-disk-selftest.sh` |
 | `clean-disk-selftest.sh` | Hermetic selftest for disk cleanup script | Pre-commit / verification | Self |
-| `mutate.sh` | Apply single-line mutation to verify test fails, restoring file in trap | Automated job proof / mutation testing | `proof-selftest.sh` |
+| `mutate.sh` | Thin wrapper kept for the older name; forwards every argument to `mutation-probe.sh` | Automated job proof / mutation testing | `proof-selftest.sh` |
 | `lessons-index.sh` | Generate `docs/lessons/INDEX.md` from the one-file-per-lesson entries; `--check` fails when the index is stale | `scripts/verify.sh` (`--check`), developer after adding a lesson | `lessons-index-selftest.sh` |
 | `lessons-index-selftest.sh` | Hermetic selftest for the lessons index generator and its staleness check | Pre-commit / verification | Self |
-| `mutation-probe.sh` | Mutation probe: break a file on purpose, prove its selftest goes red, restore, prove green | Selftest authors, QA / Release Engineer | None (it runs another script's selftest) |
+| `mutation-probe.sh` | The one mutation probe: break a tracked file on purpose, prove the test goes red, restore it byte-identically, prove green again | Selftest authors, QA / Release Engineer | `proof-selftest.sh` |
 
 | `opensand-completion.bash` | Bash tab completion definitions | User shell environment | None |
 | `opensand-completion.zsh` | Zsh tab completion definitions | User shell environment | None |
@@ -91,9 +91,9 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Pre-commit hook, test verification.
 
 ### `mutate.sh`
-- **Purpose**: Apply a single-line replacement to a file, execute a test command, and verify the test fails under mutation while restoring the original file byte-identically even on interruption (SIGINT/SIGTERM/SIGHUP).
-- **Usage**: `scripts/mutate.sh <file> <line> <replacement> -- <test command>`
-- **Exit Codes**: `0` on test caught mutation (failed as expected), `1` on test passed despite mutation, `2` on mutation/restore/syntax error.
+- **Purpose**: Thin wrapper kept for the older name. The implementation is `mutation-probe.sh`, which supports both mutation forms (a perl substitution, or one line replaced); this script forwards every argument unchanged, so callers that still use `mutate.sh` keep working.
+- **Usage**: `scripts/mutate.sh <file> <line> <replacement> -- <test command>` (forwarded to `mutation-probe.sh`).
+- **Exit Codes**: whatever `mutation-probe.sh` returns.
 - **Selftest**: `scripts/proof-selftest.sh`.
 - **Trigger**: Automated job proof, mutation testing.
 
@@ -140,7 +140,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Automated job proof, PR verification report.
 
 ### `proof-selftest.sh`
-- **Purpose**: Hermetic selftest suite verifying all pass and failure modes of `proof-red-green.sh`, `mutate.sh`, and `proof-report.sh` using a throwaway git repository.
+- **Purpose**: Hermetic selftest suite verifying all pass and failure modes of `proof-red-green.sh`, `mutation-probe.sh` (both mutation forms, the untracked-target refusal and the `mutate.sh` wrapper) and `proof-report.sh` using a throwaway git repository.
 - **Usage**: `scripts/proof-selftest.sh`
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
@@ -254,11 +254,11 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Pre-commit hook, test verification.
 
 ### `mutation-probe.sh`
-- **Purpose**: Mutation probe. Applies a perl substitution to a file, requires the given selftest command to go RED, restores the file byte-for-byte, and requires GREEN again.
-- **Usage**: `scripts/mutation-probe.sh <file> <perl-substitution> -- <selftest command...>`
-- **Exit Codes**: `0` baseline GREEN, mutant RED, restored GREEN; `1` mutant survived or baseline/restore not green; `2` bad usage or pattern not found.
-- **Selftest**: None (exercised by running it against the selftests of other scripts).
-- **Trigger**: Manual, when adding or changing a gate and its selftest.
+- **Purpose**: The one mutation probe. Applies a mutation to a file git tracks, requires the given test command to go RED, restores the file byte-for-byte (also on interruption), and requires GREEN again. A target git does not track is refused: a build artifact is not a real mutation, cannot be restored from git, and survives every incremental build.
+- **Usage**: `scripts/mutation-probe.sh <file> <perl-substitution> -- <command...>` or `scripts/mutation-probe.sh <file> <line> <replacement> -- <command...>` (two arguments before `--` means a perl substitution, three means one line replaced). `--log <file>` writes the summary to a file.
+- **Exit Codes**: `0` baseline GREEN, mutant RED, restored GREEN; `1` mutant survived or baseline/restore not green; `2` bad usage, untracked target, or a failed restore check.
+- **Selftest**: `scripts/proof-selftest.sh`.
+- **Trigger**: Selftest authors, QA / Release Engineer, automated job proof.
 
 ### `worktree.sh`
 - **Purpose**: Manage developer and agent worktrees in `~/dev/_scratch/` safely (`base`, `new`, `save`, `review`, `done`, `list`, `prune`). `base` creates or refreshes the reusable base clone (`OPENSAND_BASE_DIR`, default `~/dev/_scratch/opensand-base`, cloned from `OPENSAND_REPO_URL` or the current origin) and leaves it clean and detached at `origin/main`; `new` refreshes it and hangs the job worktree off it, so no throwaway clone in `/tmp` is needed. The base clone, and any clone that owns linked worktrees, is never removed, pruned or cleaned, and removal goes through the owning repository. `done` also drops the merged local branch so the job name is reusable (remote branches are never touched). `prune` and `clean-disk.sh` never touch a *live* worktree (branch has an OPEN PR, or any file changed in the last 2 hours; rule in `scripts/lib/worktree-safety.sh`, which also fails closed when `gh` cannot be read).
