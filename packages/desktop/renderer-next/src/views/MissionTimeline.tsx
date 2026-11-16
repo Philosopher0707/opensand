@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef } from "preact/hooks";
 import type { ShellData } from "../data";
 import { RestoreDialog } from "./RestoreDialog";
-import { classifyRestoreError, restoreSuccessView } from "../../../src/shell/mission-restore-model";
+import {
+  classifyRestoreError,
+  restoreSuccessView,
+  type PreviewRestoreResult,
+} from "../../../src/shell/mission-restore-model";
 import {
   toTimelineSteps,
   windowSteps,
@@ -28,9 +32,39 @@ export function MissionTimeline({ data, missionId }: MissionTimelineProps) {
   const [attempt, setAttempt] = useState(0);
   const listRef = useRef<HTMLOListElement>(null);
   const [pending, setPending] = useState<TimelineStep | null>(null);
+  const [preview, setPreview] = useState<PreviewRestoreResult | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ tone: "ok" | "bad"; message: string; undo?: string } | null>(null);
+
+  const openRestore = (step: TimelineStep) => {
+    setDialogError(null);
+    setPreviewError(null);
+    setPreview(null);
+    setPending(step);
+    setPreviewLoading(true);
+    data
+      .previewRestoreMissionSnapshot(missionId, step.snapshot!)
+      .then((res) => {
+        setPreview(res);
+      })
+      .catch((err) => {
+        const e = classifyRestoreError(err);
+        setPreviewError(e.message);
+      })
+      .finally(() => {
+        setPreviewLoading(false);
+      });
+  };
+
+  const closeRestore = () => {
+    setPending(null);
+    setPreview(null);
+    setPreviewError(null);
+    setDialogError(null);
+  };
 
   const runRestore = async (snapshot: string, isUndo: boolean) => {
     setBusy(true);
@@ -38,7 +72,7 @@ export function MissionTimeline({ data, missionId }: MissionTimelineProps) {
     try {
       const res = await data.restoreMissionSnapshot(missionId, snapshot);
       const view = restoreSuccessView(res);
-      setPending(null);
+      closeRestore();
       setToast({ tone: "ok", message: isUndo ? "Restore undone." : view.message, undo: isUndo ? undefined : view.undoSnapshot });
     } catch (err) {
       const e = classifyRestoreError(err);
@@ -115,7 +149,7 @@ export function MissionTimeline({ data, missionId }: MissionTimelineProps) {
                     type="button"
                     class="btn-restore-step"
                     aria-label={`Restore to this step: ${s.kindLabel}, ${s.summary}`}
-                    onClick={() => { setDialogError(null); setPending(s); }}
+                    onClick={() => openRestore(s)}
                   >
                     Restore to this step
                   </button>
@@ -137,10 +171,12 @@ export function MissionTimeline({ data, missionId }: MissionTimelineProps) {
       {pending && pending.snapshot && (
         <RestoreDialog
           step={pending}
+          preview={preview}
+          loading={previewLoading}
           busy={busy}
-          error={dialogError}
+          error={previewError || dialogError}
           onConfirm={() => runRestore(pending.snapshot!, false)}
-          onCancel={() => setPending(null)}
+          onCancel={closeRestore}
         />
       )}
     </section>

@@ -42,6 +42,8 @@ try {
         ipcRenderer.invoke('opensand:getMissionReceipt', { missionId }),
       getMissionFileDiff: (missionId: string, fileIndex: number) =>
         ipcRenderer.invoke('opensand:getMissionFileDiff', { missionId, fileIndex }),
+      previewRestoreMissionSnapshot: (missionId: string, snapshot: string) =>
+        ipcRenderer.invoke('opensand:previewRestoreMissionSnapshot', { missionId, snapshot }),
       restoreMissionSnapshot: (missionId: string, snapshot: string) =>
         ipcRenderer.invoke('opensand:restoreMissionSnapshot', { missionId, snapshot }),
       readWorkspaceFile: (path: string) =>

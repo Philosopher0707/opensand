@@ -10,7 +10,7 @@ import { listMissionSummaries } from './shell/mission-list-source.js';
 import { readMissionTimeline } from './shell/mission-timeline-source.js';
 import { readMissionReceipt } from './shell/mission-receipt-source.js';
 import { readMissionFileDiff } from './shell/mission-diff-source.js';
-import { createMissionRestore, type RestoreFn } from './mission-restore.js';
+import { createMissionRestore, createMissionPreviewRestore, type RestoreFn, type PreviewRestoreFn } from './mission-restore.js';
 import { readWorkspaceFile } from './workspace-file-read.js';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 
@@ -24,6 +24,7 @@ export interface DesktopAppDeps {
 export class DesktopApp {
   private bridge!: DesktopIpcBridge;
   private missionRestore?: RestoreFn;
+  private missionPreviewRestore?: PreviewRestoreFn;
   private trayManager: DesktopTrayManager | null = null;
   private mainWindow: any = null;
   private server: DesktopServer | null = null;
@@ -243,6 +244,12 @@ export class DesktopApp {
     // Read-only: one changed file's hunks for an ended mission, found by index in its receipt.
     ipcMain.handle('opensand:getMissionFileDiff', async (_: any, { missionId, fileIndex }: { missionId: string; fileIndex: number }) => {
       return readMissionFileDiff(path.join(os.homedir(), '.opensand'), missionId, fileIndex);
+    });
+
+    // Read-only preview: human click on Restore to see counts and file lists before confirming.
+    ipcMain.handle('opensand:previewRestoreMissionSnapshot', async (_: any, { missionId, snapshot }: { missionId: string; snapshot: string }) => {
+      this.missionPreviewRestore ??= createMissionPreviewRestore(path.join(os.homedir(), '.opensand'));
+      return this.missionPreviewRestore(missionId, snapshot);
     });
 
     // Human click only (the renderer's Restore / Undo button). The engine's handler enforces folder trust.

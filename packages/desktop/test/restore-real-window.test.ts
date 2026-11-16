@@ -66,20 +66,36 @@ await import(process.env.OPENSAND_MAIN);
 `;
 
 const RESTORE_BODY = String.raw`
-      const result = { exposed: await js("[typeof window.opensand.restoreMissionSnapshot, typeof window.opensand.readWorkspaceFile]") };
+      const result = { exposed: await js("[typeof window.opensand.restoreMissionSnapshot, typeof window.opensand.previewRestoreMissionSnapshot, typeof window.opensand.readWorkspaceFile]") };
       result.before = disk();
       await wait("document.querySelector('.mission-item')");
       await js("document.querySelector('.mission-item').click()");
       await wait("document.querySelector('.btn-restore-step')");
       await shot('r1-timeline');
+
+      // 1. Click Restore to trigger preview and show dialog
       await js("document.querySelector('.btn-restore-step').click()");
       await wait("document.querySelector('.btn-restore-confirm')");
-      await shot('r2-confirm-dialog');
+      result.previewDialog = await js("Boolean(document.querySelector('.restore-preview-lists'))");
+      result.previewDeletedCount = await js("document.querySelector('.badge-deleted')?.textContent || ''");
+      result.previewOverwrittenCount = await js("document.querySelector('.badge-overwritten')?.textContent || ''");
+      await shot('r2-preview-dialog');
+
+      // 2. Click Cancel: verify dialog closes and disk files remain unchanged
+      await js("document.querySelector('.btn-restore-cancel').click()");
+      await wait("!document.querySelector('.restore-dialog')");
+      result.afterCancel = disk();
+
+      // 3. Click Restore again and confirm
+      await js("document.querySelector('.btn-restore-step').click()");
+      await wait("document.querySelector('.btn-restore-confirm')");
       await js("document.querySelector('.btn-restore-confirm').click()");
       await wait("document.querySelector('.btn-restore-undo')");
       result.afterRestore = disk();
       result.toast = await js("document.querySelector('.btn-restore-undo').closest('[role]')?.textContent || ''");
       await shot('r3-restored');
+
+      // 4. Click Undo to bring files back
       await js("document.querySelector('.btn-restore-undo').click()");
       for (let i = 0; i < 100 && disk()['file.txt'] === result.afterRestore['file.txt']; i++) await sleep(100);
       result.afterUndo = disk();
@@ -149,8 +165,12 @@ test("Restore in the real window: a real mission's files change on disk, then Un
     assert.strictEqual(fs.readFileSync(path.join(ws, "file.txt"), "utf8"), "step2", "the mission really changed the file");
 
     const r = await runElectron(RESTORE_BODY, { renderer: "preact", home, workspace: ws });
-    assert.deepStrictEqual(r.exposed, ["function", "function"], "preload exposes both new bridge calls");
+    assert.deepStrictEqual(r.exposed, ["function", "function", "function"], "preload exposes restore, previewRestore, and readWorkspaceFile");
     assert.deepStrictEqual(r.before, { "file.txt": "step2", "extra.txt": "created by step 1" });
+    assert.strictEqual(r.previewDialog, true, "the real Electron window rendered preview lists");
+    assert.strictEqual(r.previewDeletedCount, "1", "preview shows 1 deleted file");
+    assert.strictEqual(r.previewOverwrittenCount, "1", "preview shows 1 changed back file");
+    assert.deepStrictEqual(r.afterCancel, r.before, "Cancel left workspace files completely unchanged on disk");
     assert.deepStrictEqual(r.afterRestore, { "file.txt": "initial", "extra.txt": null }, "Restore rewrote the files on disk");
     assert.deepStrictEqual(r.afterUndo, { "file.txt": "step2", "extra.txt": "created by step 1" }, "Undo brought them back");
     if (shotDir) {
