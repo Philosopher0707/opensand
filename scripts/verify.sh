@@ -12,6 +12,9 @@ command -v pnpm >/dev/null 2>&1 || { echo "verify: pnpm 10 is required" >&2; exi
 echo "verify: checking workspace package version consistency..."
 node scripts/sync-versions.js --check
 
+echo "verify: checking scripts catalog completeness..."
+bash scripts/check-scripts-catalog.sh
+
 # Release tag guard: when in release context, ensure tag matches package version
 RELEASE_TAG="${RELEASE_TAG:-}"
 if [[ -z "${RELEASE_TAG:-}" ]]; then
