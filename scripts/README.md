@@ -16,6 +16,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `check-scripts-catalog-selftest.sh` | Hermetic selftest for scripts catalog checker | Pre-commit / verification | Self |
 | `clean-disk.sh` | Safe disk reclamation of merged/clean scratch worktrees and caches | Manual / low disk space in release | `clean-disk-selftest.sh` |
 | `clean-disk-selftest.sh` | Hermetic selftest for disk cleanup script | Pre-commit / verification | Self |
+| `mutation-probe.sh` | Mutation probe: break a file on purpose, prove its selftest goes red, restore, prove green | Selftest authors, QA / Release Engineer | None (it runs another script's selftest) |
 | `opensand-completion.bash` | Bash tab completion definitions | User shell environment | None |
 | `opensand-completion.zsh` | Zsh tab completion definitions | User shell environment | None |
 | `opensand-desktop.sh` | Helper script to launch OpenSand desktop in development | Manual local development | None |
@@ -112,8 +113,9 @@ All scripts in this directory are cataloged below. Automated verification is enf
 
 ### `pr-gate.sh`
 - **Purpose**: 5-step automated pre-merge verification gate: CI rollup check, base freshness, diff hygiene, checkpoint tag creation/remote verification, and merge.
-- **Usage**: `scripts/pr-gate.sh [--allow-lockfile] [--allow-binary] [--dry-run] <PR-number>`
-- **Exit Codes**: `0` on success, `1` on validation failure, `3` on pending CI.
+- **Usage**: `scripts/pr-gate.sh [--allow-lockfile] [--allow-binary] [--dry-run] [--when-green [--timeout <min>]] <PR-number>`
+- **`--when-green`**: first watches pending CI with `gh pr checks --watch`, bounded by `--timeout` minutes (default 40), then runs the normal 5 checks and merges. Red CI exits `1` and names the failing job; a timeout exits `3`.
+- **Exit Codes**: `0` on success, `1` on validation failure or red CI, `3` on pending CI (or `--when-green` timeout).
 - **Selftest**: `scripts/pr-gate-selftest.sh`.
 - **Trigger**: Pre-merge workflow.
 
@@ -201,8 +203,15 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Selftest**: `scripts/verify-selftest.sh`.
 - **Trigger**: CI workflow, pre-commit hook, developer verification.
 
+### `mutation-probe.sh`
+- **Purpose**: Mutation probe. Applies a perl substitution to a file, requires the given selftest command to go RED, restores the file byte-for-byte, and requires GREEN again.
+- **Usage**: `scripts/mutation-probe.sh <file> <perl-substitution> -- <selftest command...>`
+- **Exit Codes**: `0` baseline GREEN, mutant RED, restored GREEN; `1` mutant survived or baseline/restore not green; `2` bad usage or pattern not found.
+- **Selftest**: None (exercised by running it against the selftests of other scripts).
+- **Trigger**: Manual, when adding or changing a gate and its selftest.
+
 ### `worktree.sh`
-- **Purpose**: Manage developer and agent worktrees in `~/dev/_scratch/` safely (`new`, `review`, `done`, `list`, `prune`).
+- **Purpose**: Manage developer and agent worktrees in `~/dev/_scratch/` safely (`new`, `review`, `done`, `list`, `prune`). `prune` and `clean-disk.sh` never touch a *live* worktree (branch has an OPEN PR, or any file changed in the last 2 hours; rule in `scripts/lib/worktree-safety.sh`, which also fails closed when `gh` cannot be read).
 - **Usage**: `scripts/worktree.sh <new|review|done|list|prune> [args...]`
 - **Exit Codes**: `0` on success, `1` on error or safety refusal.
 - **Selftest**: `scripts/worktree-selftest.sh`.

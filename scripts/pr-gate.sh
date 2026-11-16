@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Pre-merge gate for OpenSand PRs: runs checks 1-5 and merges only when all pass.
-# Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] <PR-number>
+# Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] [--when-green [--timeout <min>]] <PR-number>
+#
+# --when-green  First wait for pending CI with `gh pr checks --watch` (bounded by
+#               --timeout minutes, default 40), then run the normal 5 checks and merge.
+#               Red CI exits 1 and names the failing job; a timeout exits 3.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -9,7 +13,12 @@ cd "$ROOT"
 DRY_RUN=0
 ALLOW_LOCKFILE=0
 ALLOW_BINARY=0
+WHEN_GREEN=0
+TIMEOUT_MIN=40
+# Seconds per --timeout unit (60 = minutes); only the selftest overrides it.
+TIMEOUT_UNIT_SECONDS="${PR_GATE_TIMEOUT_UNIT_SECONDS:-60}"
 PR=""
+USAGE="Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] [--when-green [--timeout <min>]] <PR-number>"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -25,8 +34,20 @@ while [[ $# -gt 0 ]]; do
       ALLOW_BINARY=1
       shift
       ;;
+    --when-green)
+      WHEN_GREEN=1
+      shift
+      ;;
+    --timeout)
+      if [[ $# -lt 2 || ! "$2" =~ ^[1-9][0-9]*$ ]]; then
+        echo "FAIL: --timeout needs a positive whole number of minutes" >&2
+        exit 1
+      fi
+      TIMEOUT_MIN="$2"
+      shift 2
+      ;;
     -h|--help)
-      echo "Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] <PR-number>"
+      echo "$USAGE"
       exit 0
       ;;
     *)
@@ -35,7 +56,7 @@ while [[ $# -gt 0 ]]; do
         shift
       else
         echo "FAIL: unknown argument or invalid PR number: $1" >&2
-        echo "Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] <PR-number>" >&2
+        echo "$USAGE" >&2
         exit 1
       fi
       ;;
@@ -44,8 +65,53 @@ done
 
 if [[ -z "$PR" ]]; then
   echo "FAIL: missing PR number" >&2
-  echo "Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] <PR-number>" >&2
+  echo "$USAGE" >&2
   exit 1
+fi
+
+if [[ "$WHEN_GREEN" -eq 1 ]]; then
+  echo "==> [when-green] Watching CI for PR #$PR (timeout ${TIMEOUT_MIN} min)..."
+  DEADLINE=$((SECONDS + TIMEOUT_MIN * TIMEOUT_UNIT_SECONDS))
+  gh pr checks "$PR" --watch &
+  WATCH_PID=$!
+  TIMED_OUT=0
+  # One bounded poll of our own child (no timeout binary on macOS); gh does the real CI polling.
+  while kill -0 "$WATCH_PID" 2>/dev/null; do
+    if [[ "$SECONDS" -ge "$DEADLINE" ]]; then
+      TIMED_OUT=1
+      kill "$WATCH_PID" 2>/dev/null || true
+      break
+    fi
+    sleep 1
+  done
+  WATCH_STATUS=0
+  wait "$WATCH_PID" 2>/dev/null || WATCH_STATUS=$?
+
+  if [[ "$TIMED_OUT" -eq 1 ]]; then
+    echo "FAIL: --when-green timed out after ${TIMEOUT_MIN} min: CI for PR #$PR is still pending" >&2
+    exit 3
+  fi
+
+  if [[ "$WATCH_STATUS" -ne 0 ]]; then
+    RED_JOBS=""
+    if WATCH_JSON=$(gh pr view "$PR" --json statusCheckRollup 2>/dev/null); then
+      RED_JOBS=$(node -e '
+const rollup = (JSON.parse(process.argv[1]).statusCheckRollup) || [];
+const bad = rollup.filter(j => {
+  const c = (j.conclusion || "").toUpperCase();
+  return c && !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(c);
+});
+console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")").join(", "));
+' "$WATCH_JSON" 2>/dev/null || true)
+    fi
+    if [[ -n "$RED_JOBS" ]]; then
+      echo "FAIL: CI is red for PR #$PR: $RED_JOBS" >&2
+    else
+      echo "FAIL: gh pr checks --watch exited $WATCH_STATUS for PR #$PR and no failing job could be identified" >&2
+    fi
+    exit 1
+  fi
+  echo "PASS: [when-green] CI finished green for PR #$PR; continuing with the normal checks."
 fi
 
 echo "==> [Check 1/5] Checking PR #$PR status and CI rollups..."

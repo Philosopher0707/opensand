@@ -5,7 +5,8 @@
 #
 # Safe reclaim:
 #   - Deletes ONLY node_modules and dist in ~/dev/_scratch/*
-#     that are clean (no uncommitted changes) and merged into origin/main.
+#     that are clean (no uncommitted changes), merged into origin/main, and not live
+#     (no OPEN PR on the branch, no file changed in the last 2 hours).
 #   - Prunes pnpm store and npm/Electron cache directories.
 #   - Defaults to dry-run; requires --yes to delete.
 #   - Displays df -h before and after.
@@ -82,7 +83,13 @@ if [[ -d "$SCRATCH_DIR" ]]; then
       continue
     fi
 
-    echo "TARGET: $dir is clean and merged into origin/main"
+    # Live rule: open PR on the branch, or any file changed in the last 2 hours
+    if is_worktree_live "$dir"; then
+      echo "SKIP: $dir is live: $LIVE_REASON"
+      continue
+    fi
+
+    echo "TARGET: $dir is clean, merged into origin/main, and not live"
     # Find candidates
     CANDIDATES=()
     for pattern in "node_modules" "dist" "packages/*/node_modules" "packages/*/dist"; do
