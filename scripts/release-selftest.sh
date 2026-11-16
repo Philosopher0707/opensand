@@ -64,6 +64,24 @@ case "$1" in
             shift
           fi
         done
+        # Failure injection: count attempts, and fail until the configured deadline
+        # (simulates release.yml publishing the assets after release.sh has started).
+        call_file="$TEST_CASE_DIR/download_calls"
+        calls=0
+        [ -f "$call_file" ] && calls=$(cat "$call_file")
+        calls=$((calls + 1))
+        echo "$calls" > "$call_file"
+        if [ -f "$TEST_CASE_DIR/download_auth_error" ]; then
+          echo "HTTP 401: Bad credentials (https://api.github.com/graphql)" >&2
+          exit 1
+        fi
+        if [ -f "$TEST_CASE_DIR/download_fail_until" ]; then
+          fail_until=$(cat "$TEST_CASE_DIR/download_fail_until")
+          if [ "$calls" -le "$fail_until" ]; then
+            echo "release not found" >&2
+            exit 1
+          fi
+        fi
         mkdir -p "$dest_dir"
         echo "mock zip content" > "$dest_dir/OpenSand-0.1.11-arm64-mac.zip"
         echo "mock dmg content" > "$dest_dir/OpenSand-0.1.11-arm64.dmg"
@@ -194,8 +212,11 @@ run_test() {
     OPENSAND_INSTALL_APP_DEST="$dir/Applications/OpenSand.app" \
     OPENSAND_ARCHIVE_DIR_BASE="$dir/archive" \
     RELEASE_DOWNLOAD_DIR="$dir/download" \
+    RELEASE_DOWNLOAD_POLL_SECONDS=1 \
+    RELEASE_DOWNLOAD_TIMEOUT_SECONDS=10 \
     bash "$RELEASE_SCRIPT" "$@" 2>&1
   ) || status=$?
+  printf '%s\n' "$out" > "$dir/run.out"
 
   if [ "$status" -ne "$expected_exit" ]; then
     echo "FAIL $label: exit $status, wanted $expected_exit"
@@ -295,6 +316,43 @@ new_ver=$(grep -A 1 CFBundleShortVersionString "$dir/Applications/OpenSand.app/C
 if [ "$new_ver" != "0.1.11" ]; then
   echo "FAIL case8-install: installed version is $new_ver, wanted 0.1.11"
   FAILED=1
+fi
+
+# --- Case 9: Release assets published late (release.yml still building) -> retry, then succeed ---
+dir="$WORK/case9-late-assets"
+mkdir -p "$dir"
+touch "$dir/tag_exists"
+echo '[{"number": 42, "state": "MERGED"}]' > "$dir/pr_list.json"
+echo '{"state": "MERGED"}' > "$dir/pr_view.json"
+echo "2" > "$dir/download_fail_until"
+create_mock_app "$dir/mock_dmg_app/OpenSand.app" "0.1.11"
+run_test "case9-late-assets" 0 0.1.11
+calls=$(cat "$dir/download_calls" 2>/dev/null || echo 0)
+if [ "$calls" -lt 3 ]; then
+  echo "FAIL case9-late-assets: expected at least 3 download attempts, saw $calls"
+  FAILED=1
+else
+  echo "PASS case9-late-assets: retried $calls times and succeeded"
+fi
+
+# --- Case 10: Unauthenticated gh -> fail fast, never retry ---
+dir="$WORK/case10-auth-failure"
+mkdir -p "$dir"
+touch "$dir/tag_exists"
+echo '[{"number": 42, "state": "MERGED"}]' > "$dir/pr_list.json"
+echo '{"state": "MERGED"}' > "$dir/pr_view.json"
+touch "$dir/download_auth_error"
+create_mock_app "$dir/mock_dmg_app/OpenSand.app" "0.1.11"
+run_test "case10-auth-failure" 1 0.1.11
+auth_calls=$(cat "$dir/download_calls" 2>/dev/null || echo 0)
+if [ "$auth_calls" -ne 1 ]; then
+  echo "FAIL case10-auth-failure: expected exactly 1 download attempt, saw $auth_calls"
+  FAILED=1
+elif ! grep -q "GH_TOKEN" "$dir/run.out" 2>/dev/null; then
+  echo "FAIL case10-auth-failure: failure message does not name GH_TOKEN"
+  FAILED=1
+else
+  echo "PASS case10-auth-failure: failed after 1 attempt without retrying"
 fi
 
 if [ "$FAILED" -eq 0 ]; then
