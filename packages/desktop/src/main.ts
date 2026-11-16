@@ -139,10 +139,12 @@ export class DesktopApp {
       const { url, port } = await this.server.start();
       console.log('[OpenSand Desktop] server listening:', url.split('?')[0]);
 
-      try {
-        fs.writeFileSync(path.join(this.baseDir, 'server.port'), `${port}\n`, { mode: 0o600 });
-      } catch {
-        // Non-fatal
+      if (this.isSmoke || this.baseDir !== path.join(os.homedir(), '.opensand')) {
+        try {
+          fs.writeFileSync(path.join(this.baseDir, 'server.port'), `${port}\n`, { mode: 0o600 });
+        } catch {
+          // Non-fatal
+        }
       }
 
       // One engine per app: the window's IPC handlers must drive the same bridge

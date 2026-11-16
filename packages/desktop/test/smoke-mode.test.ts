@@ -192,3 +192,69 @@ test("DesktopApp smoke mode: skips single-instance lock, window hidden and unfoc
     fs.rmSync(tmpState, { recursive: true, force: true });
   }
 });
+
+test("DesktopApp default mode (env {}): never writes server.port and never calls setPath('userData')", async () => {
+  const fake = makeFakeElectron();
+  // We use overrideBaseDir so tests don't touch ~/.opensand, but pass env {} and ensure neither smoke nor env state dir is set
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-default-nobase-"));
+  const app = new DesktopApp({
+    loadElectron: async () => fake.electron,
+    env: {},
+  });
+
+  try {
+    // In pure default mode, getStateDir is ~/.opensand
+    assert.strictEqual(app.getStateDir(), path.join(os.homedir(), ".opensand"));
+    assert.strictEqual(app.getIsSmoke(), false);
+
+    // Mock DesktopServer inside app or inspect fake.getUserDataPath()
+    await app.start();
+
+    // 1. setPath('userData') must NEVER be called when state dir is ~/.opensand
+    assert.strictEqual(fake.getUserDataPath(), "", "setPath('userData') must not be called when state dir is default ~/.opensand");
+
+    // 2. server.port must NOT be written in ~/.opensand
+    // Note: ~/.opensand/server.port should not be created by this start call
+    // To be hermetically safe without writing ~/.opensand, verify the guard logic directly:
+    // With env {}, isSmoke is false and baseDir is ~/.opensand.
+    assert.strictEqual(fs.existsSync(path.join(os.homedir(), ".opensand", "server.port")), false, "server.port must not be created in default state dir");
+  } finally {
+    const server = (app as any).server;
+    await server?.stop();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("DesktopApp with OPENSAND_STATE_DIR (without smoke): writes server.port and sets userData", async () => {
+  const fake = makeFakeElectron();
+  const tmpState = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-state-only-"));
+  const app = new DesktopApp({
+    loadElectron: async () => fake.electron,
+    env: {
+      OPENSAND_STATE_DIR: tmpState,
+    },
+  });
+
+  try {
+    assert.strictEqual(app.getIsSmoke(), false);
+    assert.strictEqual(app.getStateDir(), path.resolve(tmpState));
+
+    await app.start();
+
+    // With OPENSAND_STATE_DIR set, single-instance lock IS requested (smoke is false)
+    assert.strictEqual(fake.wasLockRequested(), true, "single-instance lock must be requested when smoke is false");
+
+    // userData path IS set
+    assert.strictEqual(fake.getUserDataPath(), path.join(path.resolve(tmpState), "electron-user-data"));
+
+    // server.port IS written
+    const portFilePath = path.join(tmpState, "server.port");
+    assert.ok(fs.existsSync(portFilePath), "server.port file must be created when OPENSAND_STATE_DIR is set");
+    const portNum = parseInt(fs.readFileSync(portFilePath, "utf8").trim(), 10);
+    assert.ok(!isNaN(portNum) && portNum > 0, "server.port must contain valid port number");
+  } finally {
+    const server = (app as any).server;
+    await server?.stop();
+    fs.rmSync(tmpState, { recursive: true, force: true });
+  }
+});

@@ -112,38 +112,40 @@ if [[ -z "$BUNDLE_VERSION" ]]; then
 fi
 echo "smoke-packaged: bundle version detected: $BUNDLE_VERSION"
 
-# Support packages:
+# Bundle support check:
 # If the unpacked bundle does not honour OPENSAND_STATE_DIR in dist/src/main.js,
-# supply the updated compiled main.js so the bundle runs in complete isolation.
+# it cannot be smoke tested in isolation. The gate passes only when the shipped
+# app binary itself launches natively, without repo code injection.
 UNPACKED_MAIN_JS="$APP_RESOURCES_DIR/dist/src/main.js"
 if [[ -f "$UNPACKED_MAIN_JS" ]] && ! grep -q "OPENSAND_STATE_DIR" "$UNPACKED_MAIN_JS"; then
-  echo "smoke-packaged: notice: bundle $BUNDLE_VERSION predates native OPENSAND_STATE_DIR/OPENSAND_SMOKE in main.js."
-  REPO_MAIN_JS="$REPO_ROOT/packages/desktop/dist/src/main.js"
-  if [[ ! -f "$REPO_MAIN_JS" ]]; then
-    echo "smoke-packaged: compiling @opensand/desktop..."
-    (cd "$REPO_ROOT" && pnpm --filter @opensand/desktop build)
-  fi
-  echo "smoke-packaged: installing state-isolated entrypoint into unpacked bundle..."
-  cp "$REPO_MAIN_JS" "$UNPACKED_MAIN_JS"
+  echo "smoke-packaged: UNVERIFIED: bundle $BUNDLE_VERSION predates smoke mode; gate valid from v0.1.11" >&2
+  exit 2
 fi
-
 echo "smoke-packaged: launching in smoke mode..."
 echo "smoke-packaged: OPENSAND_STATE_DIR=$STATE_DIR"
 echo "smoke-packaged: OPENSAND_SMOKE=1"
 
-# Launch app in background with isolated state dir and smoke flag
-# Try the packaged binary first. If macOS gatekeeper/dyld restrictions halt
-# an ad-hoc unpacked binary in a temp directory, fall back to launching the
-# unpacked app bundle resources via the workspace Electron runner.
-env -u ELECTRON_RUN_AS_NODE     OPENSAND_STATE_DIR="$STATE_DIR"     OPENSAND_SMOKE=1     "$EXEC_PATH" > "$LOG_FILE" 2>&1 &
+# Launch packaged binary in background with isolated state dir and smoke flag.
+# The gate passes only when the shipped app binary itself launches and writes
+# server.port/token. Never falls back to workspace Electron or repo code.
+env -u ELECTRON_RUN_AS_NODE \
+    OPENSAND_STATE_DIR="$STATE_DIR" \
+    OPENSAND_SMOKE=1 \
+    "$EXEC_PATH" > "$LOG_FILE" 2>&1 &
 APP_PID=$!
 
 echo "smoke-packaged: app running with PID $APP_PID"
 
-# Wait for local API to initialize and output port / token
+# Wait up to 30 seconds (60 x 0.5s) for local API to initialize and output port / token
 PORT=""
 TOKEN=""
-for ((i=1; i<=10; i++)); do
+for ((i=1; i<=60; i++)); do
+  if ! kill -0 "$APP_PID" 2>/dev/null; then
+    echo "smoke-packaged error: app process ($APP_PID) exited unexpectedly." >&2
+    echo "--- App Log ---" >&2
+    cat "$LOG_FILE" >&2
+    exit 1
+  fi
   if [[ -f "$STATE_DIR/server.token" && -z "$TOKEN" ]]; then
     TOKEN=$(tr -d '\r\n' < "$STATE_DIR/server.token")
   fi
@@ -157,42 +159,6 @@ for ((i=1; i<=10; i++)); do
   fi
   sleep 0.5
 done
-
-# If initial launch didn't write server.port/token, use Electron runner for the unpacked app bundle
-if [[ -z "$PORT" || -z "$TOKEN" ]]; then
-  echo "smoke-packaged: switching to Electron runtime for unpacked bundle..."
-  if kill -0 "$APP_PID" 2>/dev/null; then
-    kill -9 "$APP_PID" 2>/dev/null || true
-    wait "$APP_PID" 2>/dev/null || true
-  fi
-  WORKSPACE_ELECTRON="$REPO_ROOT/packages/desktop/node_modules/.bin/electron"
-  if [[ ! -x "$WORKSPACE_ELECTRON" ]]; then
-    WORKSPACE_ELECTRON="electron"
-  fi
-  env -u ELECTRON_RUN_AS_NODE       OPENSAND_STATE_DIR="$STATE_DIR"       OPENSAND_SMOKE=1       "$WORKSPACE_ELECTRON" "$APP_RESOURCES_DIR" > "$LOG_FILE" 2>&1 &
-  APP_PID=$!
-
-  for ((i=1; i<=30; i++)); do
-    if ! kill -0 "$APP_PID" 2>/dev/null; then
-      echo "smoke-packaged error: app process ($APP_PID) exited unexpectedly." >&2
-      echo "--- App Log ---" >&2
-      cat "$LOG_FILE" >&2
-      exit 1
-    fi
-    if [[ -f "$STATE_DIR/server.token" && -z "$TOKEN" ]]; then
-      TOKEN=$(tr -d '\r\n' < "$STATE_DIR/server.token")
-    fi
-    if [[ -f "$STATE_DIR/server.port" && -z "$PORT" ]]; then
-      PORT=$(tr -d '\r\n' < "$STATE_DIR/server.port")
-    elif [[ -z "$PORT" && -f "$LOG_FILE" ]]; then
-      PORT=$(grep -oE "server listening: http://[^:]+:([0-9]+)" "$LOG_FILE" 2>/dev/null | head -n 1 | awk -F: '{print $NF}' || true)
-    fi
-    if [[ -n "$PORT" && -n "$TOKEN" ]]; then
-      break
-    fi
-    sleep 0.5
-  done
-fi
 
 if [[ -z "$PORT" || -z "$TOKEN" ]]; then
   echo "smoke-packaged error: Timed out waiting for server port and token (port='$PORT', token_found='$([[ -n "$TOKEN" ]] && echo yes || echo no)')" >&2
