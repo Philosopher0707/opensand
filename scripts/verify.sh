@@ -76,10 +76,7 @@ fi
 # Each package's tests run once, with the output kept in a log. A failing package is named and its
 # failing lines printed, instead of the script dying silently inside a command substitution.
 # The zero-test guard reads the same logs rather than running the suites a second time.
-LOG_DIR="${TMPDIR:-/tmp}/opensand-verify"
-LOG_DIR="${LOG_DIR%/}"
-rm -rf "$LOG_DIR"
-mkdir -p "$LOG_DIR"
+LOG_DIR=$(mktemp -d "${TMPDIR:-/tmp}/opensand-verify.XXXXXX")
 
 for pkg_json in packages/*/package.json; do
   [[ -f "$pkg_json" ]] || continue
@@ -95,6 +92,7 @@ for pkg_json in packages/*/package.json; do
     echo "" >&2
     echo "verify error: Package $pkg_name failed its tests (exit $status). Failing lines:" >&2
     grep -E -m 5 -A 30 '^[[:space:]]*(✖|not ok)' "$log" >&2 || tail -n 30 "$log" >&2
+    echo "verify error: Log directory: $LOG_DIR" >&2
     echo "verify error: Full output: $log" >&2
     exit 1
   fi
@@ -106,6 +104,8 @@ for pkg_json in packages/*/package.json; do
     test_count=$(grep -E "(#|ℹ) (tests|pass) [0-9]+" "$log" | awk '{print $NF}' | tail -n 1 || true)
     if [[ -z "$test_count" || "$test_count" -le 0 ]]; then
       echo "verify error: Package $pkg_name has TypeScript sources in src/ but reported 0 tests!" >&2
+      echo "verify error: Log directory: $LOG_DIR" >&2
+      echo "verify error: Full output: $log" >&2
       exit 1
     fi
   fi
