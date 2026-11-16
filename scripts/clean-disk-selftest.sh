@@ -8,6 +8,8 @@ set -euo pipefail
 #   4. Unmerged worktrees are NEVER cleaned (even with --yes)
 #   5. Forbidden paths are protected
 #   6. CLI argument validation
+#   7. Live rule: a worktree whose branch has an OPEN PR, or with a file changed in the last
+#      2 hours, or whose open-PR state cannot be read, is NEVER cleaned (even with --yes)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLEAN_DISK_SCRIPT="$ROOT/scripts/clean-disk.sh"
@@ -20,6 +22,35 @@ trap cleanup EXIT
 
 FAKE_SCRATCH="$WORK/scratch"
 mkdir -p "$FAKE_SCRATCH"
+
+# Stubbed gh (no shebang, AGENTS_LEARNING 12.27): `gh pr list --head <b>` counts <b> in $GH_OPEN_PR_BRANCHES
+STUB_BIN="$WORK/bin"
+mkdir -p "$STUB_BIN"
+cat << 'EOS' > "$STUB_BIN/gh"
+if [ -n "${GH_STUB_FAIL:-}" ]; then
+  echo "gh stub: simulated failure" >&2
+  exit 1
+fi
+branch=""
+while [ $# -gt 0 ]; do
+  if [ "$1" = "--head" ]; then branch="$2"; fi
+  shift
+done
+if [ -n "$branch" ] && grep -qx -- "$branch" "$GH_OPEN_PR_BRANCHES" 2>/dev/null; then
+  echo 1
+else
+  echo 0
+fi
+EOS
+chmod +x "$STUB_BIN/gh"
+export GH_OPEN_PR_BRANCHES="$WORK/open_pr_branches"
+: > "$GH_OPEN_PR_BRANCHES"
+export PATH="$STUB_BIN:$PATH"
+
+# Backdate every file outside .git so the 2-hour live rule does not trip on setup files
+age_files() {
+  find "$1" -path "$1/.git" -prune -o -exec touch -t 202001010000 {} +
+}
 
 # Create a central mock origin bare repo
 MOCK_ORIGIN="$WORK/mock_origin.git"
@@ -69,6 +100,25 @@ git clone "$MOCK_ORIGIN" "$UNMERGED_WORKTREE" >/dev/null 2>&1
 mkdir -p "$UNMERGED_WORKTREE/node_modules/fake-pkg"
 touch "$UNMERGED_WORKTREE/node_modules/fake-pkg/index.js"
 
+# 4. Live worktrees: clean + merged + old files, but must still be preserved
+LIVE_OPEN_PR="$FAKE_SCRATCH/live-open-pr"
+git clone "$MOCK_ORIGIN" "$LIVE_OPEN_PR" >/dev/null 2>&1
+git -C "$LIVE_OPEN_PR" checkout -b feature-open-pr >/dev/null 2>&1
+mkdir -p "$LIVE_OPEN_PR/node_modules/fake-pkg"
+touch "$LIVE_OPEN_PR/node_modules/fake-pkg/index.js"
+echo "feature-open-pr" >> "$GH_OPEN_PR_BRANCHES"
+
+LIVE_RECENT="$FAKE_SCRATCH/live-recent"
+git clone "$MOCK_ORIGIN" "$LIVE_RECENT" >/dev/null 2>&1
+mkdir -p "$LIVE_RECENT/node_modules/fake-pkg"
+touch "$LIVE_RECENT/node_modules/fake-pkg/index.js"
+
+for wt in "$CLEAN_MERGED" "$DIRTY_WORKTREE" "$UNMERGED_WORKTREE" "$LIVE_OPEN_PR" "$LIVE_RECENT"; do
+  age_files "$wt"
+done
+# A gitignored file touched just now keeps the worktree clean but live
+touch "$LIVE_RECENT/node_modules/fake-pkg/fresh.log"
+
 FAILED=0
 
 # --- Test 1: Argument validation & help ---
@@ -91,7 +141,7 @@ echo "PASS: argument validation"
 # --- Test 2: Dry-run execution ---
 echo "==> Testing dry-run execution..."
 dry_out=$(OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" bash "$CLEAN_DISK_SCRIPT" 2>&1)
-echo "$dry_out" | grep -q "clean-merged is clean and merged into origin/main" || {
+echo "$dry_out" | grep -q "clean-merged is clean, merged into origin/main, and not live" || {
   echo "FAIL: clean_merged not recognized as target in dry-run"
   FAILED=1
 }
@@ -101,6 +151,14 @@ echo "$dry_out" | grep -q "dirty-worktree has uncommitted changes" || {
 }
 echo "$dry_out" | grep -q "unmerged-worktree.*is not merged into origin/main" || {
   echo "FAIL: unmerged_worktree was not skipped in dry-run"
+  FAILED=1
+}
+echo "$dry_out" | grep -q "live-open-pr is live: branch 'feature-open-pr' has an OPEN PR" || {
+  echo "FAIL: live-open-pr was not skipped as live in dry-run"
+  FAILED=1
+}
+echo "$dry_out" | grep -q "live-recent is live: a file changed in the last 120 minutes" || {
+  echo "FAIL: live-recent was not skipped as live in dry-run"
   FAILED=1
 }
 # Verify nothing was deleted in dry-run
@@ -146,6 +204,32 @@ if [ ! -d "$UNMERGED_WORKTREE/node_modules" ]; then
   FAILED=1
 fi
 echo "PASS: live execution (--yes) preserved dirty and unmerged worktrees while cleaning merged targets"
+
+# --- Test 4: Live rule keeps open-PR, recently-changed and unverifiable worktrees ---
+echo "==> Testing live rule (open PR, recent file, gh failure)..."
+if [ ! -d "$LIVE_OPEN_PR/node_modules" ]; then
+  echo "FAIL: live mode deleted node_modules of a worktree whose branch has an OPEN PR!"
+  FAILED=1
+fi
+if [ ! -d "$LIVE_RECENT/node_modules" ]; then
+  echo "FAIL: live mode deleted node_modules of a worktree with a file changed in the last 2h!"
+  FAILED=1
+fi
+
+# Fail closed: with gh failing, even the old clean+merged worktree must be kept
+mkdir -p "$CLEAN_MERGED/node_modules/fake-pkg"
+touch "$CLEAN_MERGED/node_modules/fake-pkg/index.js"
+age_files "$CLEAN_MERGED"
+fail_out=$(GH_STUB_FAIL=1 OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" bash "$CLEAN_DISK_SCRIPT" --yes 2>&1)
+echo "$fail_out" | grep -q "clean-merged is live: cannot verify open PRs" || {
+  echo "FAIL: gh failure did not fail closed"
+  FAILED=1
+}
+if [ ! -d "$CLEAN_MERGED/node_modules" ]; then
+  echo "FAIL: gh failure still allowed deletion"
+  FAILED=1
+fi
+echo "PASS: live rule preserved open-PR, recently-changed and unverifiable worktrees"
 
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL CLEAN-DISK SELFTESTS PASSED."

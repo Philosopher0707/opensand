@@ -10,6 +10,8 @@ set -euo pipefail
 #   6. 'done' removes clean + merged worktree (leaving remote branches intact)
 #   7. 'list' prints worktree status
 #   8. 'prune --dry-run' deletes nothing
+#   9. Live rule: 'prune --yes' keeps worktrees whose branch has an OPEN PR or with a file
+#      changed in the last 2 hours, and fails closed when the PR state cannot be read
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKTREE_SCRIPT="$ROOT/scripts/worktree.sh"
@@ -23,6 +25,35 @@ trap cleanup EXIT
 
 FAKE_SCRATCH="$WORK/scratch"
 mkdir -p "$FAKE_SCRATCH"
+
+# Stubbed gh (no shebang, AGENTS_LEARNING 12.27): `gh pr list --head <b>` counts <b> in $GH_OPEN_PR_BRANCHES
+STUB_BIN="$WORK/bin"
+mkdir -p "$STUB_BIN"
+cat << 'EOS' > "$STUB_BIN/gh"
+if [ -n "${GH_STUB_FAIL:-}" ]; then
+  echo "gh stub: simulated failure" >&2
+  exit 1
+fi
+branch=""
+while [ $# -gt 0 ]; do
+  if [ "$1" = "--head" ]; then branch="$2"; fi
+  shift
+done
+if [ -n "$branch" ] && grep -qx -- "$branch" "$GH_OPEN_PR_BRANCHES" 2>/dev/null; then
+  echo 1
+else
+  echo 0
+fi
+EOS
+chmod +x "$STUB_BIN/gh"
+export GH_OPEN_PR_BRANCHES="$WORK/open_pr_branches"
+: > "$GH_OPEN_PR_BRANCHES"
+export PATH="$STUB_BIN:$PATH"
+
+# Backdate every file outside .git so the 2-hour live rule does not trip on checkout files
+age_files() {
+  find "$1" -path "$1/.git" -prune -o -exec touch -t 202001010000 {} +
+}
 
 # Set up central bare origin
 MOCK_ORIGIN="$WORK/mock_origin.git"
@@ -223,6 +254,17 @@ git -C "$MOCK_LOCAL" worktree add -b sample-unmerged "$FAKE_SCRATCH/opensand-unm
   git commit -am "unmerged sample commit" >/dev/null
 )
 
+# Live samples: clean + merged + old files, but one has an OPEN PR and one has a fresh file
+git -C "$MOCK_LOCAL" worktree add -b sample-open-pr "$FAKE_SCRATCH/opensand-open-pr-sample" origin/main >/dev/null 2>&1
+echo "sample-open-pr" >> "$GH_OPEN_PR_BRANCHES"
+git -C "$MOCK_LOCAL" worktree add -b sample-branched "$FAKE_SCRATCH/opensand-branched-sample" origin/main >/dev/null 2>&1
+git -C "$MOCK_LOCAL" worktree add -b sample-recent "$FAKE_SCRATCH/opensand-recent-sample" origin/main >/dev/null 2>&1
+for wt in opensand-merged-sample opensand-unmerged-sample opensand-open-pr-sample opensand-branched-sample opensand-recent-sample; do
+  age_files "$FAKE_SCRATCH/$wt"
+done
+mkdir -p "$FAKE_SCRATCH/opensand-recent-sample/node_modules"
+touch "$FAKE_SCRATCH/opensand-recent-sample/node_modules/fresh.log"
+
 list_out=$(
   cd "$MOCK_LOCAL" && \
   OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" \
@@ -251,7 +293,51 @@ if [ ! -d "$FAKE_SCRATCH/opensand-merged-sample" ]; then
   echo "FAIL test-8: prune dry-run deleted worktree directory!"
   FAILED=1
 fi
+echo "$prune_out" | grep -q "opensand-open-pr-sample" && {
+  echo "FAIL test-8: prune dry-run listed an OPEN-PR worktree"
+  FAILED=1
+}
+echo "$prune_out" | grep -q "opensand-recent-sample" && {
+  echo "FAIL test-8: prune dry-run listed a recently-changed worktree"
+  FAILED=1
+}
 echo "PASS test-8: prune --dry-run reports targets without deleting"
+
+# --- Test 9: live rule on 'prune --yes' ---
+echo "==> Testing live rule on 'worktree.sh prune --yes'..."
+# Fail closed: gh failing means no worktree that has a branch may be pruned
+fail_out=$(
+  cd "$MOCK_LOCAL" && \
+  GH_STUB_FAIL=1 OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" \
+  bash "$WORKTREE_SCRIPT" prune --yes
+)
+if [ ! -d "$FAKE_SCRATCH/opensand-branched-sample" ]; then
+  echo "FAIL test-9: prune --yes removed a branched worktree while gh failed (must fail closed)"
+  FAILED=1
+fi
+
+(
+  cd "$MOCK_LOCAL" && \
+  OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" \
+  bash "$WORKTREE_SCRIPT" prune --yes >/dev/null
+)
+if [ -d "$FAKE_SCRATCH/opensand-merged-sample" ] || [ -d "$FAKE_SCRATCH/opensand-branched-sample" ]; then
+  echo "FAIL test-9: old, clean, merged, no-PR worktree was not pruned"
+  FAILED=1
+fi
+if [ ! -d "$FAKE_SCRATCH/opensand-open-pr-sample" ]; then
+  echo "FAIL test-9: prune removed a worktree whose branch has an OPEN PR"
+  FAILED=1
+fi
+if [ ! -d "$FAKE_SCRATCH/opensand-recent-sample" ]; then
+  echo "FAIL test-9: prune removed a worktree with a file changed in the last 2h"
+  FAILED=1
+fi
+if [ ! -d "$FAKE_SCRATCH/opensand-unmerged-sample" ]; then
+  echo "FAIL test-9: prune removed an unmerged worktree"
+  FAILED=1
+fi
+echo "PASS test-9: prune --yes removed only old, clean, merged, PR-less worktrees"
 
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL WORKTREE SELFTESTS PASSED."

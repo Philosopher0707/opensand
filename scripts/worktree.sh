@@ -274,7 +274,7 @@ case "$cmd" in
       esac
     done
 
-    echo "==> Pruning clean & merged opensand-* worktrees (Mode: $MODE)..."
+    echo "==> Pruning clean, merged, non-live opensand-* worktrees (Mode: $MODE)..."
     PRUNED_COUNT=0
 
     if [[ -d "$SCRATCH_DIR" ]]; then
@@ -282,8 +282,8 @@ case "$cmd" in
         [[ -d "$dir" ]] || continue
         wt_name="$(basename "$dir")"
 
-        # Check safety predicate via shared helper
-        if check_worktree_safe_to_remove "$dir" "$ROOT" 2>/dev/null; then
+        # Check safety predicate (clean, merged, not live) via shared helper
+        if check_worktree_safe_to_prune "$dir" "$ROOT" 2>/dev/null; then
           if [[ "$MODE" == "live" ]]; then
             echo "Pruning $wt_name..."
             "${GIT_EXEC[@]}" worktree remove --force "$dir" >/dev/null 2>&1 || rm -rf "$dir"
@@ -316,7 +316,7 @@ case "$cmd" in
     echo "  review <PR>                    Create or refresh a detached read-only review worktree"
     echo "  done <job-name>                Remove worktree if clean and merged into origin/main"
     echo "  list                           List opensand-* worktrees with status, size, and commit date"
-    echo "  prune [--dry-run|--yes]        Prune all clean & merged opensand-* worktrees"
+    echo "  prune [--dry-run|--yes]        Prune clean, merged, non-live opensand-* worktrees (live = open PR or file changed in last 2h)"
     exit 0
     ;;
 

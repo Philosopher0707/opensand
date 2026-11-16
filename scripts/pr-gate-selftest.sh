@@ -9,6 +9,11 @@
 # 6. --allow-binary -> passes with a warning
 # 7. stale base -> fail
 # 8. tag push fails -> no merge
+# 11. --when-green: pending CI turns green during the watch -> normal checks run and merge
+# 12. --when-green: CI goes red -> exit 1 naming the failing job, no tag, no merge
+# 13. --when-green: watch outlives --timeout -> exit 3, watcher killed, no merge
+# 14. without --when-green, gh pr checks is never called
+# 15. --timeout validation
 # Usage: scripts/pr-gate-selftest.sh (PR_GATE_SCRIPT=<path> to test another copy)
 set -uo pipefail
 
@@ -71,6 +76,19 @@ case "$1" in
           fi
           exit 0
         fi
+        ;;
+      checks)
+        echo "gh pr checks $*" >> "$TEST_CASE_DIR/checks_calls.log"
+        if [ -f "$TEST_CASE_DIR/checks_hang" ]; then
+          exec sleep 30
+        fi
+        if [ -f "$TEST_CASE_DIR/pr_view_after_watch.json" ]; then
+          cp "$TEST_CASE_DIR/pr_view_after_watch.json" "$TEST_CASE_DIR/pr_view.json"
+        fi
+        if [ -f "$TEST_CASE_DIR/checks_exit" ]; then
+          exit "$(cat "$TEST_CASE_DIR/checks_exit")"
+        fi
+        exit 0
         ;;
       merge)
         echo "gh pr merge $*" >> "$TEST_CASE_DIR/merge_calls.log"
@@ -393,5 +411,83 @@ EXPECT_MERGE=0
 EXPECT_TAG=0
 NEED_SUBSTRINGS=("DRY RUN: all pre-merge checks passed" "would create and push tag" "would merge PR #42")
 run_test_case "case10-dry-run" --dry-run 42
+
+# --- Case 11: --when-green, CI pending then green after the watch -> merges ---
+dir="$WORK/case11-when-green-pending-then-green"
+setup_defaults "$dir"
+cp "$dir/pr_view.json" "$dir/pr_view_after_watch.json"
+cat << 'JSON' > "$dir/pr_view.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": [
+    {"name": "Build & test (Node 22)", "status": "IN_PROGRESS", "conclusion": null},
+    {"name": "Build & test (macOS, Node 22)", "status": "IN_PROGRESS", "conclusion": null}
+  ]
+}
+JSON
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("[when-green] Watching CI for PR #42" "CI finished green" "PASS: PR #42 is OPEN" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+run_test_case "case11-when-green-pending-then-green" --when-green 42
+grep -q -- "--watch" "$dir/checks_calls.log" 2>/dev/null || { echo "FAIL case11: gh pr checks --watch was not called"; FAILED=1; }
+
+# --- Case 12: --when-green, CI red -> exit 1, names the failing job, no tag, no merge ---
+dir="$WORK/case12-when-green-red"
+setup_defaults "$dir"
+echo 1 > "$dir/checks_exit"
+cat << 'JSON' > "$dir/pr_view.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": [
+    {"name": "Build & test (Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"},
+    {"name": "Build & test (macOS, Node 22)", "status": "COMPLETED", "conclusion": "FAILURE"}
+  ]
+}
+JSON
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("FAIL: CI is red for PR #42" "Build & test (macOS, Node 22) (FAILURE)")
+run_test_case "case12-when-green-red" --when-green 42
+
+# --- Case 13: --when-green, watch outlives --timeout -> exit 3, no merge, watcher killed ---
+dir="$WORK/case13-when-green-timeout"
+setup_defaults "$dir"
+touch "$dir/checks_hang"
+EXPECT_EXIT=3
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("--when-green timed out after 1 min" "still pending")
+start=$SECONDS
+PR_GATE_TIMEOUT_UNIT_SECONDS=2 run_test_case "case13-when-green-timeout" --when-green --timeout 1 42
+elapsed=$((SECONDS - start))
+if [[ "$elapsed" -gt 10 ]]; then
+  echo "FAIL case13: timeout took ${elapsed}s, expected about 2s (watcher not bounded)"
+  FAILED=1
+fi
+
+# --- Case 14: without --when-green, gh pr checks is never called ---
+if [[ -f "$WORK/case1-all-green/checks_calls.log" || -f "$WORK/case2-pending-ci/checks_calls.log" ]]; then
+  echo "FAIL case14: gh pr checks called without --when-green"
+  FAILED=1
+else
+  echo "PASS case14 (no gh pr checks call without --when-green)"
+fi
+
+# --- Case 15: --timeout validation ---
+dir="$WORK/case15-bad-timeout"
+setup_defaults "$dir"
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("FAIL: --timeout needs a positive whole number of minutes")
+run_test_case "case15-bad-timeout" --when-green --timeout abc 42
 
 exit "$FAILED"
