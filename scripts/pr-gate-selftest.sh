@@ -14,6 +14,8 @@
 # 13. --when-green: watch outlives --timeout -> exit 3, watcher killed, no merge
 # 14. without --when-green, gh pr checks is never called
 # 15. --timeout validation
+# 16. --when-green: CI has not registered any check yet -> waits for it, then watches and merges
+# 17. --when-green: no check ever appears -> exit 3 naming "no CI checks", no merge
 # Usage: scripts/pr-gate-selftest.sh (PR_GATE_SCRIPT=<path> to test another copy)
 set -uo pipefail
 
@@ -50,6 +52,14 @@ case "$1" in
             echo '{"mergeCommit":{"oid":"f8cb8862e31cc85ca91373b99bc58aa5b6a176e6"},"state":"MERGED"}'
           fi
           exit 0
+        fi
+        # pr_view_late.json replaces pr_view.json after the first $(cat late_after) views: CI that
+        # registers its checks a few seconds after the PR was opened
+        if [ -f "$TEST_CASE_DIR/pr_view_late.json" ]; then
+          echo x >> "$TEST_CASE_DIR/view_count"
+          if [ "$(wc -l < "$TEST_CASE_DIR/view_count")" -gt "$(cat "$TEST_CASE_DIR/late_after")" ]; then
+            cp "$TEST_CASE_DIR/pr_view_late.json" "$TEST_CASE_DIR/pr_view.json"
+          fi
         fi
         if [ -f "$TEST_CASE_DIR/pr_view.json" ]; then
           cat "$TEST_CASE_DIR/pr_view.json"
@@ -470,6 +480,59 @@ PR_GATE_TIMEOUT_UNIT_SECONDS=2 run_test_case "case13-when-green-timeout" --when-
 elapsed=$((SECONDS - start))
 if [[ "$elapsed" -gt 10 ]]; then
   echo "FAIL case13: timeout took ${elapsed}s, expected about 2s (watcher not bounded)"
+  FAILED=1
+fi
+
+# --- Case 16: --when-green right after the PR was opened: no checks yet, they appear later ---
+dir="$WORK/case16-when-green-checks-appear"
+setup_defaults "$dir"
+cp "$dir/pr_view.json" "$dir/pr_view_late.json"
+echo 2 > "$dir/late_after"
+cat << 'JSON' > "$dir/pr_view.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": []
+}
+JSON
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("[when-green] Watching CI for PR #42" "CI finished green" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+PR_GATE_POLL_SECONDS=1 run_test_case "case16-when-green-checks-appear" --when-green 42
+grep -q -- "--watch" "$dir/checks_calls.log" 2>/dev/null || { echo "FAIL case16: gh pr checks --watch was not called once checks appeared"; FAILED=1; }
+if [[ "$(wc -l < "$dir/view_count" 2>/dev/null || echo 0)" -lt 3 ]]; then
+  echo "FAIL case16: the gate did not poll until the checks appeared"
+  FAILED=1
+fi
+
+# --- Case 17: --when-green and no check ever appears -> exit 3, no merge, no watch ---
+dir="$WORK/case17-when-green-no-checks"
+setup_defaults "$dir"
+cat << 'JSON' > "$dir/pr_view.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": []
+}
+JSON
+EXPECT_EXIT=3
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("no CI checks were reported for PR #42")
+start=$SECONDS
+PR_GATE_POLL_SECONDS=1 PR_GATE_TIMEOUT_UNIT_SECONDS=2 run_test_case "case17-when-green-no-checks" --when-green --timeout 1 42
+elapsed=$((SECONDS - start))
+if [[ "$elapsed" -gt 10 ]]; then
+  echo "FAIL case17: gave up after ${elapsed}s, expected about 2s"
+  FAILED=1
+fi
+if [[ -f "$dir/checks_calls.log" ]]; then
+  echo "FAIL case17: gh pr checks was called although no check ever appeared"
   FAILED=1
 fi
 

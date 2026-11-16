@@ -116,7 +116,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 ### `pr-gate.sh`
 - **Purpose**: 5-step automated pre-merge verification gate: CI rollup check, base freshness, diff hygiene, checkpoint tag creation/remote verification, and merge.
 - **Usage**: `scripts/pr-gate.sh [--allow-lockfile] [--allow-binary] [--dry-run] [--when-green [--timeout <min>]] <PR-number>`
-- **`--when-green`**: first watches pending CI with `gh pr checks --watch`, bounded by `--timeout` minutes (default 40), then runs the normal 5 checks and merges. Red CI exits `1` and names the failing job; a timeout exits `3`.
+- **`--when-green`**: first watches pending CI with `gh pr checks --watch`, bounded by `--timeout` minutes (default 40), then runs the normal 5 checks and merges. If CI has not registered any check yet (right after the PR is opened) it waits for the first one inside the same deadline. Red CI exits `1` and names the failing job; a timeout exits `3`.
 - **Exit Codes**: `0` on success, `1` on validation failure or red CI, `3` on pending CI (or `--when-green` timeout).
 - **Selftest**: `scripts/pr-gate-selftest.sh`.
 - **Trigger**: Pre-merge workflow.
