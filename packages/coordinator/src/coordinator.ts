@@ -63,13 +63,13 @@ export interface CoordinatorOptions {
 }
 
 /**
- * Quoted chat text inside a compaction summary must not be able to close the
- * summary block or forge a tag: the summary is sent as clearly-labelled data
- * with role user, not system. escapeUntrustedText covers the data_source shapes
- * (lookalike brackets and invisibles included); the second rule drops every other
- * tag start, and leading SYSTEM: lines are neutralised so the model never reads
- * quoted text as a system directive. Escape after slicing, so a cut can never
- * split an escape sequence.
+ * Text that is embedded in a prompt but must not be able to close a data block
+ * or forge a tag or a system directive: quoted chat text in a compaction
+ * summary, and the question of a side-question. escapeUntrustedText covers the
+ * data_source shapes (lookalike brackets and invisibles included); the second
+ * rule drops every other tag start, and leading SYSTEM: lines are neutralised so
+ * the model never reads the text as a system directive. Escape after slicing, so
+ * a cut can never split an escape sequence.
  */
 function escapeQuotedText(text: string): string {
   return escapeUntrustedText(neutraliseSystemLines(text)).replace(/<(?=[/A-Za-z])/g, "&lt;");
@@ -658,10 +658,12 @@ export class AgentCoordinator {
    * session history or appending to the persistent transcript.
    */
   async askSideQuestion(question: string, signal?: AbortSignal): Promise<string> {
+    // The question carries the asker's intent, so it stays an instruction; it must not be able
+    // to forge a data-source delimiter or a system directive in the prompt it lands in.
     const BTW_PROMPT_TEMPLATE = `You are answering a single ephemeral question about the user's current work. Use the provided conversation as context and respond directly in one answer. Do not ask follow-up questions, do not request mode switches, and do not mention tool limitations unless absolutely necessary.
 If the conversation does not contain enough to answer, say so briefly.
 
-${question}`;
+${escapeQuotedText(question)}`;
 
     const ephemeralMessages: ChatMessage[] = [
       ...this.messages,
