@@ -3,10 +3,10 @@ import type { MissionSummary } from "../../src/shell/mission-list-model";
 import type { RawTimelineEvent } from "../../src/shell/mission-timeline-model";
 import type { FileDiffView } from "../../src/shell/mission-diff-model";
 import type { ReceiptView } from "../../src/shell/mission-receipt-model";
-import type { RestoreResult } from "../../src/shell/mission-restore-model";
+import type { RestoreResult, PreviewRestoreResult } from "../../src/shell/mission-restore-model";
 import type { ToolApprovalRequest } from "../../src/shell/inbox-model";
 
-export type { SessionSummary, MissionSummary, ToolApprovalRequest };
+export type { SessionSummary, MissionSummary, ToolApprovalRequest, PreviewRestoreResult };
 
 export interface ShellData {
   listSessions(): Promise<SessionSummary[]>;
@@ -16,6 +16,7 @@ export interface ShellData {
   getMissionReceipt(missionId: string): Promise<ReceiptView | null>;
   getMissionFileDiff(missionId: string, fileIndex: number): Promise<FileDiffView | null>;
   /** Rejects (never resolves empty) when the desktop has no restore channel, so the UI shows an error. */
+  previewRestoreMissionSnapshot(missionId: string, snapshot: string): Promise<PreviewRestoreResult>;
   restoreMissionSnapshot(missionId: string, snapshot: string): Promise<RestoreResult>;
   listPendingApprovals(): Promise<ToolApprovalRequest[]>;
   onApprovalChange?(callback: () => void): () => void;
@@ -60,6 +61,13 @@ export function windowBridgeData(): ShellData {
         return null;
       }
       return (await bridge.getMissionFileDiff(missionId, fileIndex)) ?? null;
+    },
+    async previewRestoreMissionSnapshot(missionId: string, snapshot: string): Promise<PreviewRestoreResult> {
+      const bridge = (window as any).opensand;
+      if (!bridge?.previewRestoreMissionSnapshot) {
+        throw new Error("Preview restore is not available in this build");
+      }
+      return (await bridge.previewRestoreMissionSnapshot(missionId, snapshot)) as PreviewRestoreResult;
     },
     async restoreMissionSnapshot(missionId: string, snapshot: string): Promise<RestoreResult> {
       const bridge = (window as any).opensand;

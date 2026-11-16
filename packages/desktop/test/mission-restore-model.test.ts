@@ -6,8 +6,10 @@ import {
   restoreConfirmView,
   classifyRestoreError,
   restoreSuccessView,
+  groupPreviewFiles,
   trapFocusIndex,
   type RestoreResult,
+  type PreviewRestoreResult,
 } from "../src/shell/mission-restore-model.js";
 
 const ev = (seq: number, kind: string, data: Record<string, any> = {}): RawTimelineEvent => ({ seq, ts: "2026-11-16T09:00:00.000Z", kind, data });
@@ -48,7 +50,7 @@ test("restore: the confirm dialog names the step, says it overwrites changes, an
   assert.ok(v.body.includes("Edited a.ts"));
   assert.match(v.warning, /overwrit/i);
   assert.match(v.warning, /undo/i);
-  assert.strictEqual(v.confirmLabel, "Restore workspace");
+  assert.strictEqual(v.confirmLabel, "Confirm restore");
   assert.strictEqual(v.cancelLabel, "Cancel");
 });
 
@@ -78,6 +80,38 @@ test("restore: success view counts files and carries the undo target", () => {
   assert.match(one.message, /1 file restored/);
   assert.doesNotMatch(one.message, /deleted/);
   assert.strictEqual(restoreSuccessView({ ...r, preRestoreSnapshot: "HEAD" }).undoSnapshot, undefined);
+});
+
+test("restore: groupPreviewFiles partitions deleted, overwritten, and recreated files correctly", () => {
+  const preview: PreviewRestoreResult = {
+    success: true,
+    missionId: "m-1",
+    targetRef: REF,
+    overwrittenFiles: ["changed.ts"],
+    restoredFiles: ["changed.ts", "recreated.ts"],
+    deletedFiles: ["to-delete.ts"],
+  };
+  const g = groupPreviewFiles(preview);
+  assert.deepStrictEqual(g.deletedFiles, ["to-delete.ts"]);
+  assert.deepStrictEqual(g.overwrittenFiles, ["changed.ts"]);
+  assert.deepStrictEqual(g.recreatedFiles, ["recreated.ts"]);
+  assert.strictEqual(g.totalChanges, 3);
+});
+
+test("restore: groupPreviewFiles detects zero changes when all lists are empty", () => {
+  const empty: PreviewRestoreResult = {
+    success: true,
+    missionId: "m-1",
+    targetRef: REF,
+    overwrittenFiles: [],
+    restoredFiles: [],
+    deletedFiles: [],
+  };
+  const g = groupPreviewFiles(empty);
+  assert.strictEqual(g.totalChanges, 0);
+  assert.deepStrictEqual(g.deletedFiles, []);
+  assert.deepStrictEqual(g.overwrittenFiles, []);
+  assert.deepStrictEqual(g.recreatedFiles, []);
 });
 
 test("restore: Tab and Shift+Tab wrap inside the dialog", () => {

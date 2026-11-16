@@ -10,6 +10,41 @@ export interface RestoreResult {
   deletedFiles?: string[];
 }
 
+export interface PreviewRestoreResult {
+  success: boolean;
+  missionId: string;
+  targetRef: string;
+  targetTree?: string;
+  restoredFilesCount?: number;
+  deletedFilesCount?: number;
+  restoredFiles?: string[];
+  overwrittenFiles?: string[];
+  deletedFiles?: string[];
+  recreatedFiles?: string[];
+  skippedSubmodules?: string[];
+}
+
+export interface RestorePreviewGroups {
+  deletedFiles: string[];
+  overwrittenFiles: string[];
+  recreatedFiles: string[];
+  totalChanges: number;
+}
+
+export function groupPreviewFiles(preview: PreviewRestoreResult): RestorePreviewGroups {
+  const deletedFiles = Array.isArray(preview.deletedFiles) ? preview.deletedFiles : [];
+  const overwrittenFiles = Array.isArray(preview.overwrittenFiles) ? preview.overwrittenFiles : [];
+  const recreatedFiles = Array.isArray(preview.recreatedFiles)
+    ? preview.recreatedFiles
+    : (Array.isArray(preview.restoredFiles) ? preview.restoredFiles : []).filter((f) => !overwrittenFiles.includes(f));
+  return {
+    deletedFiles,
+    overwrittenFiles,
+    recreatedFiles,
+    totalChanges: deletedFiles.length + overwrittenFiles.length + recreatedFiles.length,
+  };
+}
+
 /** Only hidden mission snapshot refs (`refs/opensand/missions/<id>/s-<seq>`) are ever offered for restore. */
 const RESTORABLE_REF = /^refs\/opensand\/missions\/[A-Za-z0-9][A-Za-z0-9._-]*\/s-[A-Za-z0-9._-]+$/;
 
@@ -25,10 +60,6 @@ export interface RestoreConfirmView {
   cancelLabel: string;
 }
 
-/**
- * The engine has no dry-run, so the exact file list is only known after a restore. The dialog
- * therefore names the step and states the effect; the result (and its undo) lists the counts.
- */
 export function restoreConfirmView(step: { kindLabel: string; summary: string }): RestoreConfirmView {
   return {
     title: "Restore to this step?",
@@ -36,7 +67,7 @@ export function restoreConfirmView(step: { kindLabel: string; summary: string })
     warning:
       "Files changed since this step are overwritten, and files the mission created after it are deleted. " +
       "Your own untracked and ignored files are left alone. A safety copy is taken first, so you can Undo.",
-    confirmLabel: "Restore workspace",
+    confirmLabel: "Confirm restore",
     cancelLabel: "Cancel",
   };
 }

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { EventLogWriter } from '@opensand/shared';
-import { createMissionRestore } from '../src/mission-restore.js';
+import { createMissionRestore, createMissionPreviewRestore } from '../src/mission-restore.js';
 import { makeGitWorkspace, runScriptedMission, trustFolderIn, git } from './engine-mission-fixture.js';
 
 const SPEC = [
@@ -43,12 +43,38 @@ test('restore wiring: a real finished mission restores to a step on disk and Und
   } finally { r.done(); }
 });
 
+test('restore wiring: previewRestore returns file lists and counts without modifying disk', async () => {
+  const r = await realMission();
+  try {
+    const beforeFile = fs.readFileSync(path.join(r.ws, 'file.txt'), 'utf8');
+    const beforeExtra = fs.readFileSync(path.join(r.ws, 'extra.txt'), 'utf8');
+
+    const preview = createMissionPreviewRestore(r.stateDir);
+    const res: any = await preview(r.missionId, r.snapshots[0]);
+
+    assert.strictEqual(res.success, true);
+    assert.strictEqual(res.missionId, r.missionId);
+    assert.ok(Array.isArray(res.overwrittenFiles));
+    assert.ok(Array.isArray(res.restoredFiles));
+    assert.ok(Array.isArray(res.deletedFiles));
+
+    // For step 0 (initial): file.txt is overwritten back to initial, extra.txt will be deleted
+    assert.ok(res.overwrittenFiles.includes('file.txt'), 'file.txt should be in overwrittenFiles');
+    assert.ok(res.deletedFiles.includes('extra.txt'), 'extra.txt should be in deletedFiles');
+
+    // Disk must NOT be mutated by preview
+    assert.strictEqual(fs.readFileSync(path.join(r.ws, 'file.txt'), 'utf8'), beforeFile, 'file.txt unchanged on disk');
+    assert.strictEqual(fs.readFileSync(path.join(r.ws, 'extra.txt'), 'utf8'), beforeExtra, 'extra.txt unchanged on disk');
+  } finally { r.done(); }
+});
+
 test('restore wiring: an untrusted folder is refused by the engine gate and nothing changes', async () => {
   const r = await realMission();
   try {
     fs.rmSync(path.join(r.stateDir, 'folder-trust.json'));
     const before = fs.readFileSync(path.join(r.ws, 'file.txt'), 'utf8');
     await assert.rejects(createMissionRestore(r.stateDir)(r.missionId, r.snapshots[1]), /untrusted/i);
+    await assert.rejects(createMissionPreviewRestore(r.stateDir)(r.missionId, r.snapshots[1]), /untrusted/i);
     assert.strictEqual(fs.readFileSync(path.join(r.ws, 'file.txt'), 'utf8'), before);
   } finally { r.done(); }
 });
@@ -58,6 +84,7 @@ test('restore wiring: a snapshot ref of another mission is refused', async () =>
   try {
     const other = r.snapshots[1].replace(r.missionId, 'm-other');
     await assert.rejects(createMissionRestore(r.stateDir)(r.missionId, other), /does not belong/i);
+    await assert.rejects(createMissionPreviewRestore(r.stateDir)(r.missionId, other), /does not belong/i);
     assert.strictEqual(fs.readFileSync(path.join(r.ws, 'file.txt'), 'utf8'), 'step2\n');
   } finally { r.done(); }
 });
@@ -68,6 +95,7 @@ test('restore wiring: a mission whose log has not ended is "actively running" an
     const w = new EventLogWriter(path.join(r.stateDir, 'missions', 'm-live'), { sessionId: 'm-live' });
     await w.append({ kind: 'mission.started' as any, data: { title: 'still going', workspaceRoot: r.ws } });
     await assert.rejects(createMissionRestore(r.stateDir)('m-live', 'refs/opensand/missions/m-live/s-1'), /actively running/);
+    await assert.rejects(createMissionPreviewRestore(r.stateDir)('m-live', 'refs/opensand/missions/m-live/s-1'), /actively running/);
     assert.strictEqual(fs.readFileSync(path.join(r.ws, 'file.txt'), 'utf8'), 'step2\n');
   } finally { r.done(); }
 });
@@ -76,4 +104,8 @@ test('restore wiring: empty ids are rejected before any engine call', async () =
   const restore = createMissionRestore(path.join(os.tmpdir(), 'opensand-no-such-state'));
   await assert.rejects(restore('', 'refs/x'), /required/);
   await assert.rejects(restore('m-1', ''), /required/);
+
+  const preview = createMissionPreviewRestore(path.join(os.tmpdir(), 'opensand-no-such-state'));
+  await assert.rejects(preview('', 'refs/x'), /required/);
+  await assert.rejects(preview('m-1', ''), /required/);
 });
