@@ -129,7 +129,7 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
 fi
 
 echo "==> [Check 1/5] Checking PR #$PR status and CI rollups..."
-if ! PR_JSON=$(gh pr view "$PR" --json state,mergeable,baseRefOid,headRefOid,statusCheckRollup 2>&1); then
+if ! PR_JSON=$(gh pr view "$PR" --json state,isDraft,mergeable,baseRefOid,headRefOid,statusCheckRollup 2>&1); then
   echo "FAIL: gh pr view failed for PR #$PR: $PR_JSON" >&2
   exit 1
 fi
@@ -148,6 +148,11 @@ try {
 
 if (data.state !== "OPEN") {
   console.error("FAIL: PR state is " + data.state + ", expected OPEN");
+  process.exit(1);
+}
+
+if (data.isDraft === true) {
+  console.error("FAIL: PR #" + pr + " is still a draft (scripts/worktree.sh save opens drafts); GitHub refuses to merge a draft, and the checkpoint tag would already be pushed. Run: gh pr ready " + pr);
   process.exit(1);
 }
 

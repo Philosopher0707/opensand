@@ -36,7 +36,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `verify-linux.sh` | Run verification suite inside isolated Linux container | Local pre-CI cross-platform test | None |
 | `verify-selftest.sh` | Hermetic selftest for verify.sh guardrails | Verification test suite | Self |
 | `verify.sh` | Core repository verification gate (versions, build, tests, tripwires) | CI, pre-commit, manual | `verify-selftest.sh` |
-| `worktree.sh` | OpenSand automated worktree lifecycle manager (base, new, review, done, list, prune) | Developer, bots, release automation | `worktree-selftest.sh` |
+| `worktree.sh` | OpenSand automated worktree lifecycle manager (base, new, save, review, done, list, prune) | Developer, bots, release automation | `worktree-selftest.sh` |
 | `worktree-selftest.sh` | Hermetic selftest suite for worktree lifecycle manager | Pre-commit / verification | Self |
 
 ---
@@ -117,6 +117,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Purpose**: 5-step automated pre-merge verification gate: CI rollup check, base freshness, diff hygiene, checkpoint tag creation/remote verification, and merge.
 - **Usage**: `scripts/pr-gate.sh [--allow-lockfile] [--allow-binary] [--dry-run] [--when-green [--timeout <min>]] <PR-number>`
 - **`--when-green`**: first watches pending CI with `gh pr checks --watch`, bounded by `--timeout` minutes (default 40), then runs the normal 5 checks and merges. If CI has not registered any check yet (right after the PR is opened) it waits for the first one inside the same deadline. Red CI exits `1` and names the failing job; a timeout exits `3`.
+- **Drafts**: a PR that is still a draft (as opened by `worktree.sh save`) is refused in check 1, before the checkpoint tag is pushed, with the hint `gh pr ready <N>`.
 - **Exit Codes**: `0` on success, `1` on validation failure or red CI, `3` on pending CI (or `--when-green` timeout).
 - **Selftest**: `scripts/pr-gate-selftest.sh`.
 - **Trigger**: Pre-merge workflow.
@@ -227,14 +228,16 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Manual, when adding or changing a gate and its selftest.
 
 ### `worktree.sh`
-- **Purpose**: Manage developer and agent worktrees in `~/dev/_scratch/` safely (`base`, `new`, `review`, `done`, `list`, `prune`). `base` creates or refreshes the reusable base clone (`OPENSAND_BASE_DIR`, default `~/dev/_scratch/opensand-base`, cloned from `OPENSAND_REPO_URL` or the current origin) and leaves it clean and detached at `origin/main`; `new` refreshes it and hangs the job worktree off it, so no throwaway clone in `/tmp` is needed. The base clone, and any clone that owns linked worktrees, is never removed, pruned or cleaned, and removal goes through the owning repository. `done` also drops the merged local branch so the job name is reusable (remote branches are never touched). `prune` and `clean-disk.sh` never touch a *live* worktree (branch has an OPEN PR, or any file changed in the last 2 hours; rule in `scripts/lib/worktree-safety.sh`, which also fails closed when `gh` cannot be read).
-- **Usage**: `scripts/worktree.sh <base|new|review|done|list|prune> [args...]`
+- **Purpose**: Manage developer and agent worktrees in `~/dev/_scratch/` safely (`base`, `new`, `save`, `review`, `done`, `list`, `prune`). `base` creates or refreshes the reusable base clone (`OPENSAND_BASE_DIR`, default `~/dev/_scratch/opensand-base`, cloned from `OPENSAND_REPO_URL` or the current origin) and leaves it clean and detached at `origin/main`; `new` refreshes it and hangs the job worktree off it, so no throwaway clone in `/tmp` is needed. The base clone, and any clone that owns linked worktrees, is never removed, pruned or cleaned, and removal goes through the owning repository. `done` also drops the merged local branch so the job name is reusable (remote branches are never touched). `prune` and `clean-disk.sh` never touch a *live* worktree (branch has an OPEN PR, or any file changed in the last 2 hours; rule in `scripts/lib/worktree-safety.sh`, which also fails closed when `gh` cannot be read).
+- **`save "<message>" [-- <path>...]`**: run inside a job worktree to save work in one step. It stages by explicit path (the given paths, or every changed or new file listed one by one; ignored files stay out; never `git add -A`), refuses if the staged diff looks like a secret (`sk-`, `ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`, `AKIA`, `BEGIN ... PRIVATE KEY`, and `.env`, `.env.*`, `*.env` files except `.env.example`, `.env.sample`, `.env.template`; the finding names file and line, never the value, and nothing is committed or pushed), commits with the repository's hooks ON (a failing hook means no push; there is no `--no-verify`), pushes the branch (never forced) and verifies the remote has exactly that commit. The first push opens a **draft** PR (`gh pr create --draft`); later saves reuse it. It refuses in the base clone, a plain clone, a detached HEAD, or on `main`. `new` only creates the worktree and branch: a branch with no commits cannot have a PR, so the draft opens on the first `save`. Run `gh pr ready <N>` when the work is ready; `pr-gate.sh` refuses drafts.
+- **`done`** also refuses while HEAD holds commits that are on no remote branch (unpushed), naming `scripts/worktree.sh save`.
+- **Usage**: `scripts/worktree.sh <base|new|save|review|done|list|prune> [args...]`
 - **Exit Codes**: `0` on success, `1` on error or safety refusal.
 - **Selftest**: `scripts/worktree-selftest.sh`.
 - **Trigger**: Developer CLI, Gump/Rigel bot tasks, automation routines.
 
 ### `worktree-selftest.sh`
-- **Purpose**: Hermetic selftest suite verifying the base clone, worktree creation, branch isolation, review worktree detachment, dirty/unmerged refusal, and pruning dry-run.
+- **Purpose**: Hermetic selftest suite verifying the base clone, worktree creation, branch isolation, review worktree detachment, dirty/unmerged/unpushed refusal, pruning dry-run, and `save` (explicit-path staging, secret refusal per pattern with runtime-built fake tokens, hooks on, push verification, one draft PR).
 - **Usage**: `scripts/worktree-selftest.sh`
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
