@@ -7,6 +7,7 @@ set -euo pipefail
 #   3. Catalog reference to nonexistent script fails validation
 #   4. Missing selftest for gate/release script fails validation
 #   5. Real repository scripts catalog passes cleanly
+#   6. A contributor guide that does not name a required workflow step fails validation
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHECK_SCRIPT="$ROOT/scripts/check-scripts-catalog.sh"
@@ -83,6 +84,24 @@ cat << 'MD' > "$dir/README.md"
 MD
 touch "$dir/pr-gate.sh"
 run_fixture_test "case4-missing-gate-selftest" 1
+
+# --- Case 6: Contributor guide missing a required workflow step -> fail ---
+dir="$WORK/case6-guide-missing-step"
+mkdir -p "$dir"
+cat << 'MD' > "$dir/README.md"
+# Scripts
+| Script | Purpose |
+| `pr-gate.sh` | Gate |
+| `pr-gate-selftest.sh` | Selftest |
+MD
+touch "$dir/pr-gate.sh" "$dir/pr-gate-selftest.sh"
+printf '# Contributing\nRun scripts/pr-gate.sh only.\n' > "$dir/CONTRIBUTING.md"
+status=0; out=$(OPENSAND_SCRIPTS_DIR="$dir" OPENSAND_CATALOG_FILE="$dir/README.md" OPENSAND_CONTRIBUTING_FILE="$dir/CONTRIBUTING.md" bash "$CHECK_SCRIPT" 2>&1) || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -qF "'scripts/worktree.sh save'"; then
+  echo "FAIL case6-guide-missing-step (exit $status): $out"; FAILED=1
+else
+  echo "PASS case6-guide-missing-step (exit $status)"
+fi
 
 # --- Case 5: Real repository scripts catalog check ---
 echo "==> Testing real repository scripts/ directory..."

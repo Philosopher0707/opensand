@@ -5,5 +5,6 @@ One file per lesson, named `YYYY-MM-DD-slug.md`, each with **Trap**, **Root Caus
 Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 
 - 2026-11-16 · [Automatic saving: secrets are refused, hooks stay on, the PR is a draft until it is ready](2026-11-16-autosave-secret-scan-and-draft-pr.md)
+- 2026-11-16 · [The contributor guide must name the save step, or agents will not run it](2026-11-16-contributing-must-name-the-save-step.md)
 - 2026-11-16 · [One lesson, one file: lessons no longer conflict](2026-11-16-one-lesson-one-file.md)
 - 2026-11-16 · [A selftest's fake workspace must follow verify.sh, and worktrees need a stable base clone](2026-11-16-selftest-fake-workspace-and-base-clone.md)
