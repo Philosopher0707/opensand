@@ -99,6 +99,8 @@ Use the supervisor instead of launching `node .../desktop-server.js` directly:
 | `scripts/release-check.sh` | Run full verification suite and packaged app smoke launch gate |
 | `scripts/pr-gate.sh <PR>` | Pre-merge verification gate (CI rollups, base freshness, forbidden diffs, checkpoint tag, merge) |
 | `scripts/pr-gate-selftest.sh` | Selftest suite for `pr-gate.sh` with stubbed `gh` and `git` on PATH |
+| `scripts/release.sh [--dry-run] [--install] <version>` | OpenSand 8-step automated release pipeline |
+| `scripts/release-selftest.sh` | Hermetic selftest suite for release.sh |
 
 CI (`.github/workflows/ci.yml`) runs build + test on every push and pull
 request to `main` on Node 22.
