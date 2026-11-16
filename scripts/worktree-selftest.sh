@@ -10,6 +10,8 @@ set -euo pipefail
 #   6. 'done' removes clean + merged worktree (leaving remote branches intact)
 #   7. 'list' prints worktree status
 #   8. 'prune --dry-run' deletes nothing
+#  10. 'base' creates and refreshes the reusable base clone; 'new' hangs worktrees off it; the base
+#      clone is never removed or pruned; 'done' also drops the merged local branch so the name is reusable
 #   9. Live rule: 'prune --yes' keeps worktrees whose branch has an OPEN PR or with a file
 #      changed in the last 2 hours, and fails closed when the PR state cannot be read
 
@@ -94,6 +96,10 @@ if [ "$LOCAL_MAIN_SHA" = "$ORIGIN_MAIN_SHA" ]; then
   echo "FAIL: setup error, local main is not stale"
   exit 1
 fi
+
+# 'new' and 'base' clone from the mock origin into <scratch>/opensand-base
+export OPENSAND_REPO_URL="$MOCK_ORIGIN"
+BASE_CLONE="$FAKE_SCRATCH/opensand-base"
 
 FAILED=0
 
@@ -338,6 +344,125 @@ if [ ! -d "$FAKE_SCRATCH/opensand-unmerged-sample" ]; then
   FAILED=1
 fi
 echo "PASS test-9: prune --yes removed only old, clean, merged, PR-less worktrees"
+
+# --- Test 10: base clone ---
+echo "==> Testing 'worktree.sh base' and base-clone protection..."
+# Test 1 created the base clone through 'new'; it must be a detached, clean clone owning the worktrees
+if [ ! -d "$BASE_CLONE/.git" ]; then
+  echo "FAIL test-10: 'new' did not create the base clone at $BASE_CLONE"
+  FAILED=1
+fi
+if git -C "$BASE_CLONE" symbolic-ref HEAD >/dev/null 2>&1; then
+  echo "FAIL test-10: base clone should be detached at origin/main"
+  FAILED=1
+fi
+
+# Advance origin/main, then 'base' must refresh the existing clone
+(
+  cd "$MOCK_SEED"
+  git checkout main >/dev/null 2>&1
+  echo "commit after base" >> file.txt
+  git commit -am "advance main for base refresh" >/dev/null
+  git push origin main >/dev/null 2>&1
+)
+NEWER_SHA=$(git -C "$MOCK_SEED" rev-parse HEAD)
+base_out=$(cd "$MOCK_LOCAL" && OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" bash "$WORKTREE_SCRIPT" base 2>&1)
+if [ "$(git -C "$BASE_CLONE" rev-parse HEAD)" != "$NEWER_SHA" ]; then
+  echo "FAIL test-10: 'base' did not refresh the clone to origin/main $NEWER_SHA"
+  FAILED=1
+fi
+echo "$base_out" | grep -q "Base clone: $BASE_CLONE at" || {
+  echo "FAIL test-10: 'base' did not report the clone path and SHA"
+  FAILED=1
+}
+
+# 'base' creates the clone from nothing in a custom location
+CUSTOM_BASE="$WORK/custom-base"
+(cd "$MOCK_LOCAL" && OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" OPENSAND_BASE_DIR="$CUSTOM_BASE" bash "$WORKTREE_SCRIPT" base >/dev/null 2>&1)
+if [ "$(git -C "$CUSTOM_BASE" rev-parse HEAD 2>/dev/null)" != "$NEWER_SHA" ]; then
+  echo "FAIL test-10: 'base' did not create a fresh clone at OPENSAND_BASE_DIR"
+  FAILED=1
+fi
+
+# A dirty base clone is refused (nobody works there)
+echo "stray" > "$CUSTOM_BASE/stray.txt"
+status=0
+out=$(cd "$MOCK_LOCAL" && OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" OPENSAND_BASE_DIR="$CUSTOM_BASE" bash "$WORKTREE_SCRIPT" base 2>&1) || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "has uncommitted changes"; then
+  echo "FAIL test-10: 'base' accepted a dirty base clone (status $status)"
+  FAILED=1
+fi
+
+# A non-git directory at the base path is refused
+mkdir -p "$WORK/not-a-clone"
+status=0
+out=$(cd "$MOCK_LOCAL" && OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" OPENSAND_BASE_DIR="$WORK/not-a-clone" bash "$WORKTREE_SCRIPT" base 2>&1) || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "is not a git clone"; then
+  echo "FAIL test-10: 'base' accepted a non-git directory (status $status)"
+  FAILED=1
+fi
+
+# The protected application and repository paths are refused as base locations
+status=0
+out=$(cd "$MOCK_LOCAL" && OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" OPENSAND_BASE_DIR="$HOME/.opensand/base-selftest" bash "$WORKTREE_SCRIPT" base 2>&1) || status=$?
+if [ "$status" -eq 0 ] || [ -e "$HOME/.opensand/base-selftest" ]; then
+  echo "FAIL test-10: 'base' accepted a protected path (status $status)"
+  FAILED=1
+fi
+
+# The base clone owns worktrees and is old, clean and at origin/main, yet prune and done must keep it
+age_files "$BASE_CLONE"
+git -C "$BASE_CLONE" worktree add -b base-owned "$FAKE_SCRATCH/opensand-base-owned" origin/main >/dev/null 2>&1
+age_files "$FAKE_SCRATCH/opensand-base-owned"
+(cd "$MOCK_LOCAL" && OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" bash "$WORKTREE_SCRIPT" prune --yes >/dev/null 2>&1)
+if [ ! -d "$BASE_CLONE/.git" ]; then
+  echo "FAIL test-10: prune --yes removed the base clone"
+  FAILED=1
+fi
+if [ -d "$FAKE_SCRATCH/opensand-base-owned" ]; then
+  echo "FAIL test-10: prune --yes did not remove a clean, merged worktree owned by the base clone"
+  FAILED=1
+fi
+if git -C "$BASE_CLONE" worktree list --porcelain | grep -q "opensand-base-owned"; then
+  echo "FAIL test-10: base clone still lists the pruned worktree (removal must go through the owning repo)"
+  FAILED=1
+fi
+status=0
+out=$(cd "$MOCK_LOCAL" && OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" bash "$WORKTREE_SCRIPT" done base 2>&1) || status=$?
+if [ "$status" -eq 0 ] || [ ! -d "$BASE_CLONE/.git" ] || ! echo "$out" | grep -q "protected repository"; then
+  echo "FAIL test-10: 'done' did not refuse the base clone (status $status)"
+  FAILED=1
+fi
+# A primary clone that owns worktrees is protected even outside the base location
+OWNER="$FAKE_SCRATCH/opensand-owner-clone"
+git clone --quiet "$MOCK_ORIGIN" "$OWNER" >/dev/null 2>&1
+git -C "$OWNER" worktree add -b owner-child "$WORK/owner-child" origin/main >/dev/null 2>&1
+status=0
+out=$(cd "$MOCK_LOCAL" && OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" bash "$WORKTREE_SCRIPT" done owner-clone 2>&1) || status=$?
+if [ "$status" -eq 0 ] || [ ! -d "$OWNER/.git" ]; then
+  echo "FAIL test-10: 'done' removed a clone that owns worktrees (status $status)"
+  FAILED=1
+fi
+
+# 'new' from a worktree's own directory (not the caller's repo) works, and after 'done' the same
+# job name is reusable because the merged local branch was dropped (test 6 removed job/test-job)
+if git -C "$BASE_CLONE" show-ref --verify --quiet refs/heads/job/test-job; then
+  echo "FAIL test-10: 'done' left the merged local branch job/test-job behind"
+  FAILED=1
+fi
+(cd "$MOCK_LOCAL" && OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" bash "$WORKTREE_SCRIPT" new test-job >/dev/null 2>&1)
+if [ "$(git -C "$FAKE_SCRATCH/opensand-test-job" rev-parse HEAD 2>/dev/null)" != "$NEWER_SHA" ]; then
+  echo "FAIL test-10: 'new test-job' after 'done' did not create a worktree at the refreshed origin/main"
+  FAILED=1
+fi
+# A branch that exists only on the remote is refused (asked live, not from a stale ref)
+status=0
+out=$(cd "$MOCK_LOCAL" && OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" bash "$WORKTREE_SCRIPT" new remote-only --branch feature-pr99 2>&1) || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "already exists on remote origin"; then
+  echo "FAIL test-10: 'new' accepted a branch that exists on the remote (status $status)"
+  FAILED=1
+fi
+echo "PASS test-10: base clone created, refreshed, protected; worktrees removed via the owning repo"
 
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL WORKTREE SELFTESTS PASSED."

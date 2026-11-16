@@ -16,6 +16,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `check-scripts-catalog-selftest.sh` | Hermetic selftest for scripts catalog checker | Pre-commit / verification | Self |
 | `clean-disk.sh` | Safe disk reclamation of merged/clean scratch worktrees and caches | Manual / low disk space in release | `clean-disk-selftest.sh` |
 | `clean-disk-selftest.sh` | Hermetic selftest for disk cleanup script | Pre-commit / verification | Self |
+| `lessons-index.sh` | Generate `docs/lessons/INDEX.md` from the one-file-per-lesson entries; `--check` fails when the index is stale | `scripts/verify.sh` (`--check`), developer after adding a lesson | `lessons-index-selftest.sh` |
+| `lessons-index-selftest.sh` | Hermetic selftest for the lessons index generator and its staleness check | Pre-commit / verification | Self |
 | `mutation-probe.sh` | Mutation probe: break a file on purpose, prove its selftest goes red, restore, prove green | Selftest authors, QA / Release Engineer | None (it runs another script's selftest) |
 | `opensand-completion.bash` | Bash tab completion definitions | User shell environment | None |
 | `opensand-completion.zsh` | Zsh tab completion definitions | User shell environment | None |
@@ -34,7 +36,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `verify-linux.sh` | Run verification suite inside isolated Linux container | Local pre-CI cross-platform test | None |
 | `verify-selftest.sh` | Hermetic selftest for verify.sh guardrails | Verification test suite | Self |
 | `verify.sh` | Core repository verification gate (versions, build, tests, tripwires) | CI, pre-commit, manual | `verify-selftest.sh` |
-| `worktree.sh` | OpenSand automated worktree lifecycle manager (new, review, done, list, prune) | Developer, bots, release automation | `worktree-selftest.sh` |
+| `worktree.sh` | OpenSand automated worktree lifecycle manager (base, new, review, done, list, prune) | Developer, bots, release automation | `worktree-selftest.sh` |
 | `worktree-selftest.sh` | Hermetic selftest suite for worktree lifecycle manager | Pre-commit / verification | Self |
 
 ---
@@ -114,7 +116,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 ### `pr-gate.sh`
 - **Purpose**: 5-step automated pre-merge verification gate: CI rollup check, base freshness, diff hygiene, checkpoint tag creation/remote verification, and merge.
 - **Usage**: `scripts/pr-gate.sh [--allow-lockfile] [--allow-binary] [--dry-run] [--when-green [--timeout <min>]] <PR-number>`
-- **`--when-green`**: first watches pending CI with `gh pr checks --watch`, bounded by `--timeout` minutes (default 40), then runs the normal 5 checks and merges. Red CI exits `1` and names the failing job; a timeout exits `3`.
+- **`--when-green`**: first watches pending CI with `gh pr checks --watch`, bounded by `--timeout` minutes (default 40), then runs the normal 5 checks and merges. If CI has not registered any check yet (right after the PR is opened) it waits for the first one inside the same deadline. Red CI exits `1` and names the failing job; a timeout exits `3`.
 - **Exit Codes**: `0` on success, `1` on validation failure or red CI, `3` on pending CI (or `--when-green` timeout).
 - **Selftest**: `scripts/pr-gate-selftest.sh`.
 - **Trigger**: Pre-merge workflow.
@@ -203,6 +205,20 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Selftest**: `scripts/verify-selftest.sh`.
 - **Trigger**: CI workflow, pre-commit hook, developer verification.
 
+### `lessons-index.sh`
+- **Purpose**: Lessons are one file each in `docs/lessons/YYYY-MM-DD-slug.md` (`# Title`, then **Trap**, **Root Cause**, **Rule**), so two PRs never conflict on a shared file. This script validates every entry and generates `docs/lessons/INDEX.md` (sorted by filename). `scripts/verify.sh` runs it with `--check`, which fails while the index is stale. `AGENTS_LEARNING.md` history is not rewritten.
+- **Usage**: `scripts/lessons-index.sh [--check]` (`OPENSAND_LESSONS_DIR` overrides the directory, for the selftest)
+- **Exit Codes**: `0` index written or up to date; `1` a malformed entry, a missing or stale index, or bad usage.
+- **Selftest**: `scripts/lessons-index-selftest.sh`.
+- **Trigger**: Developer after adding a lesson (regenerate; after a merge conflict in `INDEX.md` take either side and regenerate); `verify.sh`, CI.
+
+### `lessons-index-selftest.sh`
+- **Purpose**: Hermetic selftest for `lessons-index.sh`: generation, sort order, stale detection (new lesson, hand edit, trailing newline), malformed entries, and that the repository's own index is current.
+- **Usage**: `scripts/lessons-index-selftest.sh` (`LESSONS_INDEX_SCRIPT=<path>` tests a mutated copy)
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, test verification.
+
 ### `mutation-probe.sh`
 - **Purpose**: Mutation probe. Applies a perl substitution to a file, requires the given selftest command to go RED, restores the file byte-for-byte, and requires GREEN again.
 - **Usage**: `scripts/mutation-probe.sh <file> <perl-substitution> -- <selftest command...>`
@@ -211,14 +227,14 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Manual, when adding or changing a gate and its selftest.
 
 ### `worktree.sh`
-- **Purpose**: Manage developer and agent worktrees in `~/dev/_scratch/` safely (`new`, `review`, `done`, `list`, `prune`). `prune` and `clean-disk.sh` never touch a *live* worktree (branch has an OPEN PR, or any file changed in the last 2 hours; rule in `scripts/lib/worktree-safety.sh`, which also fails closed when `gh` cannot be read).
-- **Usage**: `scripts/worktree.sh <new|review|done|list|prune> [args...]`
+- **Purpose**: Manage developer and agent worktrees in `~/dev/_scratch/` safely (`base`, `new`, `review`, `done`, `list`, `prune`). `base` creates or refreshes the reusable base clone (`OPENSAND_BASE_DIR`, default `~/dev/_scratch/opensand-base`, cloned from `OPENSAND_REPO_URL` or the current origin) and leaves it clean and detached at `origin/main`; `new` refreshes it and hangs the job worktree off it, so no throwaway clone in `/tmp` is needed. The base clone, and any clone that owns linked worktrees, is never removed, pruned or cleaned, and removal goes through the owning repository. `done` also drops the merged local branch so the job name is reusable (remote branches are never touched). `prune` and `clean-disk.sh` never touch a *live* worktree (branch has an OPEN PR, or any file changed in the last 2 hours; rule in `scripts/lib/worktree-safety.sh`, which also fails closed when `gh` cannot be read).
+- **Usage**: `scripts/worktree.sh <base|new|review|done|list|prune> [args...]`
 - **Exit Codes**: `0` on success, `1` on error or safety refusal.
 - **Selftest**: `scripts/worktree-selftest.sh`.
 - **Trigger**: Developer CLI, Gump/Rigel bot tasks, automation routines.
 
 ### `worktree-selftest.sh`
-- **Purpose**: Hermetic selftest suite verifying worktree creation, branch isolation, review worktree detachment, dirty/unmerged refusal, and pruning dry-run.
+- **Purpose**: Hermetic selftest suite verifying the base clone, worktree creation, branch isolation, review worktree detachment, dirty/unmerged refusal, and pruning dry-run.
 - **Usage**: `scripts/worktree-selftest.sh`
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.

@@ -72,6 +72,20 @@ fi
 if [[ "$WHEN_GREEN" -eq 1 ]]; then
   echo "==> [when-green] Watching CI for PR #$PR (timeout ${TIMEOUT_MIN} min)..."
   DEADLINE=$((SECONDS + TIMEOUT_MIN * TIMEOUT_UNIT_SECONDS))
+  POLL_SECONDS="${PR_GATE_POLL_SECONDS:-5}"
+
+  # CI registers a few seconds after a push or PR creation, and `gh pr checks` fails with "no checks
+  # reported" until then: wait (inside the same deadline) for the first check to appear.
+  while ROLLUP_JSON=$(gh pr view "$PR" --json statusCheckRollup 2>/dev/null); do
+    ROLLUP_COUNT=$(node -e 'console.log(((JSON.parse(process.argv[1]).statusCheckRollup) || []).length)' "$ROLLUP_JSON" 2>/dev/null || echo 1)
+    [[ "$ROLLUP_COUNT" =~ ^[0-9]+$ && "$ROLLUP_COUNT" -eq 0 ]] || break
+    if [[ "$SECONDS" -ge "$DEADLINE" ]]; then
+      echo "FAIL: --when-green timed out after ${TIMEOUT_MIN} min: no CI checks were reported for PR #$PR" >&2
+      exit 3
+    fi
+    sleep "$POLL_SECONDS"
+  done
+
   gh pr checks "$PR" --watch &
   WATCH_PID=$!
   TIMED_OUT=0

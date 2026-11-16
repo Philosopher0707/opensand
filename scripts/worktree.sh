@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # OpenSand automated worktree lifecycle manager
 # Usage:
+#   scripts/worktree.sh base
 #   scripts/worktree.sh new <job-name> [--branch <b>]
 #   scripts/worktree.sh review <PR>
 #   scripts/worktree.sh done <job-name>
 #   scripts/worktree.sh list
 #   scripts/worktree.sh prune [--dry-run|--yes]
+# Job worktrees hang off one reusable base clone (OPENSAND_BASE_DIR, default <scratch>/opensand-base,
+# cloned from OPENSAND_REPO_URL or the current origin), refreshed to origin/main by `base` and by `new`.
 set -euo pipefail
 
 # Resolve script root (can be called from any clone or directory)
@@ -39,10 +42,57 @@ else
   GIT_EXEC=(git)
 fi
 
+BASE_DIR="$(base_clone_dir)"
+
+# ensure_base: create the base clone if absent, else refresh it; leaves it detached at origin/main.
+ensure_base() {
+  local url="${OPENSAND_REPO_URL:-}"
+  if [[ -z "$url" ]]; then
+    url=$("${GIT_EXEC[@]}" remote get-url origin 2>/dev/null || echo "https://github.com/Philosopher0707/opensand.git")
+  fi
+
+  if is_fixed_protected_path "$BASE_DIR"; then
+    echo "FAIL: base clone path $BASE_DIR is a protected repository or application path." >&2
+    return 1
+  fi
+
+  if [[ ! -e "$BASE_DIR" ]]; then
+    mkdir -p "$(dirname "$BASE_DIR")"
+    echo "Cloning base clone into $BASE_DIR..."
+    if ! git clone --quiet "$url" "$BASE_DIR"; then
+      echo "FAIL: could not clone $url into $BASE_DIR." >&2
+      rm -rf "$BASE_DIR"
+      return 1
+    fi
+  elif ! git -C "$BASE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "FAIL: $BASE_DIR exists but is not a git clone; move it aside." >&2
+    return 1
+  elif is_worktree_dirty "$BASE_DIR"; then
+    echo "FAIL: base clone $BASE_DIR has uncommitted changes; it must stay clean (nobody works there)." >&2
+    return 1
+  fi
+
+  if ! git -C "$BASE_DIR" fetch --quiet origin main; then
+    echo "FAIL: could not fetch origin/main in base clone $BASE_DIR." >&2
+    return 1
+  fi
+  git -C "$BASE_DIR" checkout --quiet --detach origin/main
+  echo "Base clone: $BASE_DIR at $(git -C "$BASE_DIR" rev-parse --short origin/main) (origin/main)"
+}
+
 cmd="${1:-}"
 shift || true
 
 case "$cmd" in
+  base)
+    if [[ $# -gt 0 ]]; then
+      echo "FAIL: 'base' takes no arguments (got '$1')" >&2
+      exit 1
+    fi
+    ensure_base || exit 1
+    exit 0
+    ;;
+
   new)
     JOB_NAME=""
     CUSTOM_BRANCH=""
@@ -83,16 +133,6 @@ case "$cmd" in
       exit 1
     fi
 
-    # 2. Refuse if branch already exists locally or on remote
-    if "${GIT_EXEC[@]}" show-ref --verify --quiet "refs/heads/$TARGET_BRANCH"; then
-      echo "FAIL: branch '$TARGET_BRANCH' already exists locally." >&2
-      exit 1
-    fi
-    if "${GIT_EXEC[@]}" show-ref --verify --quiet "refs/remotes/origin/$TARGET_BRANCH"; then
-      echo "FAIL: branch '$TARGET_BRANCH' already exists on remote origin." >&2
-      exit 1
-    fi
-
     # 3. Check free disk space (< 3 GB check after attempting clean-disk.sh --yes)
     AVAIL_GB=$(df -k / 2>/dev/null | awk 'NR==2 {print int($4 / 1024 / 1024)}' || echo "10")
     if [[ "$AVAIL_GB" -lt 3 ]]; then
@@ -107,8 +147,9 @@ case "$cmd" in
       fi
     fi
 
-    # 4. Fetch origin to ensure latest origin/main
-    "${GIT_EXEC[@]}" fetch origin main >/dev/null 2>&1 || true
+    # 4. Create or refresh the base clone (fetches origin/main) and work through it from here on
+    ensure_base || exit 1
+    GIT_EXEC=(git -C "$BASE_DIR")
 
     ORIGIN_MAIN_SHA=$("${GIT_EXEC[@]}" rev-parse origin/main 2>/dev/null || echo "")
     if [[ -z "$ORIGIN_MAIN_SHA" ]]; then
@@ -116,7 +157,17 @@ case "$cmd" in
       exit 1
     fi
 
-    # 5. Create worktree
+    # 5. Refuse if the branch already exists locally (base clone) or on the remote (asked live)
+    if "${GIT_EXEC[@]}" show-ref --verify --quiet "refs/heads/$TARGET_BRANCH"; then
+      echo "FAIL: branch '$TARGET_BRANCH' already exists locally." >&2
+      exit 1
+    fi
+    if "${GIT_EXEC[@]}" ls-remote --exit-code --heads origin "$TARGET_BRANCH" >/dev/null 2>&1; then
+      echo "FAIL: branch '$TARGET_BRANCH' already exists on remote origin." >&2
+      exit 1
+    fi
+
+    # 6. Create worktree
     mkdir -p "$SCRATCH_DIR"
     "${GIT_EXEC[@]}" worktree add -b "$TARGET_BRANCH" "$TARGET_PATH" origin/main >/dev/null
 
@@ -160,8 +211,7 @@ case "$cmd" in
     # If already exists, refresh it
     if [[ -d "$TARGET_PATH" ]]; then
       echo "Refreshing existing review worktree at $TARGET_PATH..."
-      "${GIT_EXEC[@]}" worktree remove --force "$TARGET_PATH" >/dev/null 2>&1 || rm -rf "$TARGET_PATH"
-      "${GIT_EXEC[@]}" worktree prune >/dev/null 2>&1 || true
+      remove_worktree "$TARGET_PATH"
     fi
 
     mkdir -p "$SCRATCH_DIR"
@@ -202,8 +252,14 @@ case "$cmd" in
     fi
 
     echo "Removing worktree $TARGET_PATH..."
-    "${GIT_EXEC[@]}" worktree remove --force "$TARGET_PATH" >/dev/null 2>&1 || rm -rf "$TARGET_PATH"
-    "${GIT_EXEC[@]}" worktree prune >/dev/null 2>&1 || true
+    DONE_BRANCH=$(git -C "$TARGET_PATH" symbolic-ref --short HEAD 2>/dev/null || true)
+    DONE_COMMON=$(git -C "$TARGET_PATH" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+    remove_worktree "$TARGET_PATH"
+    # The branch is merged (checked above), so its local ref goes too: otherwise `new` with the same
+    # name would refuse. Remote branches are never touched.
+    if [[ -n "$DONE_BRANCH" && -n "$DONE_COMMON" ]]; then
+      git --git-dir="$DONE_COMMON" branch -D "$DONE_BRANCH" >/dev/null 2>&1 || true
+    fi
     echo "PASS: successfully removed $TARGET_PATH (remote branches untouched)."
     exit 0
     ;;
@@ -286,8 +342,7 @@ case "$cmd" in
         if check_worktree_safe_to_prune "$dir" "$ROOT" 2>/dev/null; then
           if [[ "$MODE" == "live" ]]; then
             echo "Pruning $wt_name..."
-            "${GIT_EXEC[@]}" worktree remove --force "$dir" >/dev/null 2>&1 || rm -rf "$dir"
-            "${GIT_EXEC[@]}" worktree prune >/dev/null 2>&1 || true
+            remove_worktree "$dir"
             PRUNED_COUNT=$((PRUNED_COUNT + 1))
           else
             echo "DRY RUN: would remove $wt_name ($dir)"
@@ -312,7 +367,8 @@ case "$cmd" in
     echo "Usage: scripts/worktree.sh <command> [args...]"
     echo ""
     echo "Commands:"
-    echo "  new <job-name> [--branch <b>]   Create a new scratch worktree based on origin/main"
+    echo "  base                           Create or refresh the reusable base clone (default <scratch>/opensand-base) at origin/main"
+    echo "  new <job-name> [--branch <b>]   Create a new scratch worktree based on origin/main (via the base clone)"
     echo "  review <PR>                    Create or refresh a detached read-only review worktree"
     echo "  done <job-name>                Remove worktree if clean and merged into origin/main"
     echo "  list                           List opensand-* worktrees with status, size, and commit date"
@@ -322,7 +378,7 @@ case "$cmd" in
 
   *)
     echo "FAIL: unknown command '$cmd'" >&2
-    echo "Usage: scripts/worktree.sh <new|review|done|list|prune>" >&2
+    echo "Usage: scripts/worktree.sh <base|new|review|done|list|prune>" >&2
     exit 1
     ;;
 esac

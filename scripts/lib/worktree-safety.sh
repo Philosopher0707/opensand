@@ -9,9 +9,18 @@
 #   - Live rule: a worktree is never pruned or cleaned while its branch has an OPEN PR or any
 #     file in it changed in the last 2 hours (OPENSAND_LIVE_WINDOW_MIN, default 120).
 #     If the open-PR state cannot be read (gh missing or failing) the worktree counts as live.
+#   - The reusable base clone (OPENSAND_BASE_DIR, default <scratch>/opensand-base) and any primary clone
+#     that owns linked worktrees are protected: they are never removed, pruned or cleaned.
+#   - Removal goes through the owning repository's common git dir, not the caller's current repo.
 
-is_forbidden_worktree_path() {
-  local target_dir="$1"
+# base_clone_dir: where the reusable base clone lives
+base_clone_dir() {
+  echo "${OPENSAND_BASE_DIR:-${OPENSAND_SCRATCH_DIR:-$HOME/dev/_scratch}/opensand-base}"
+}
+
+# is_fixed_protected_path <path>: ~/dev/opensand, ~/.opensand, /Applications/OpenSand.app and below
+is_fixed_protected_path() {
+  local target_dir="$1" forbidden
   local forbidden_paths=(
     "$HOME/dev/opensand"
     "$HOME/.opensand"
@@ -23,6 +32,51 @@ is_forbidden_worktree_path() {
     fi
   done
   return 1
+}
+
+is_forbidden_worktree_path() {
+  local target_dir="$1"
+  if is_fixed_protected_path "$target_dir"; then
+    return 0
+  fi
+
+  # The base clone is the repository the job worktrees hang off: never a removal target.
+  local base real_target real_base
+  base="$(base_clone_dir)"
+  real_target="$(cd "$target_dir" 2>/dev/null && pwd -P || echo "$target_dir")"
+  real_base="$(cd "$base" 2>/dev/null && pwd -P || echo "$base")"
+  if [[ "$real_target" == "$real_base" ]]; then
+    return 0
+  fi
+
+  # A primary clone (its .git is a directory) that still owns linked worktrees is protected too.
+  if [[ -d "$target_dir/.git" ]]; then
+    local owned
+    owned=$(git -C "$target_dir" worktree list --porcelain 2>/dev/null | grep -c '^worktree ' || true)
+    if [[ "${owned:-0}" -gt 1 ]]; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+# remove_worktree <worktree_dir>
+# Removes a linked worktree through the repository that owns it (its common git dir), so it works
+# from any current directory, then prunes that repository's stale worktree records.
+remove_worktree() {
+  local target_dir="$1" common owner
+  common=$(git -C "$target_dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+  if [[ -z "$common" ]]; then
+    rm -rf "$target_dir"
+    return 0
+  fi
+  if [[ "$(basename "$common")" == ".git" ]]; then
+    owner=(git -C "$(dirname "$common")")
+  else
+    owner=(git --git-dir="$common")
+  fi
+  "${owner[@]}" worktree remove --force "$target_dir" >/dev/null 2>&1 || rm -rf "$target_dir"
+  "${owner[@]}" worktree prune >/dev/null 2>&1 || true
 }
 
 is_worktree_dirty() {
