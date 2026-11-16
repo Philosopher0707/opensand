@@ -99,6 +99,26 @@ export function createMissionHandlers(manager: MissionRunnerManager): Record<str
       return { subscribed: true, currentSeq };
     },
 
+    "mission.Missions.previewRestore": async (params, context) => {
+      const missionId = typeof params.missionId === "string" ? params.missionId : undefined;
+      const snapshot = params.snapshot !== undefined && params.snapshot !== null ? params.snapshot : undefined;
+      if (!missionId) {
+        throw new OspError(ErrorCodes.InvalidParams, "missionId is required");
+      }
+      if (snapshot === undefined || snapshot === "") {
+        throw new OspError(ErrorCodes.InvalidParams, "snapshot is required");
+      }
+
+      return await manager.previewRestore(
+        {
+          missionId,
+          snapshot: snapshot as string | number,
+          workspaceRoot: typeof params.workspaceRoot === "string" ? params.workspaceRoot : undefined,
+        },
+        context.stateDir
+      );
+    },
+
     "mission.Missions.restoreSnapshot": async (params, context) => {
       const missionId = typeof params.missionId === "string" ? params.missionId : undefined;
       const snapshot = params.snapshot !== undefined && params.snapshot !== null ? params.snapshot : undefined;

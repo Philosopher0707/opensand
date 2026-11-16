@@ -1,13 +1,13 @@
 import * as fsSync from "node:fs";
 import * as path from "node:path";
 import { EventLogReader, EventLogWriter, FolderTrustStore, GrantsStore, MISSION_EVENT } from "@opensand/shared";
-import { type EventFrame, type RestoreSnapshotParams, type RestoreSnapshotResult, ErrorCodes, OspError } from "@opensand/protocol";
+import { type EventFrame, type RestoreSnapshotParams, type RestoreSnapshotResult, type PreviewRestoreParams, type PreviewRestoreResult, ErrorCodes, OspError } from "@opensand/protocol";
 import { logDirFor } from "../reconnect.js";
 import { MissionRunner, type MissionOptions } from "./runner.js";
 import { projectMission, type MissionProjection } from "./receipt.js";
 import type { MissionAgent } from "./agent.js";
 import { FolderTrustGate } from "./trust-gate.js";
-import { restoreSnapshot, sanitizeRefName } from "./workspace-diff.js";
+import { restoreSnapshot, previewRestore, sanitizeRefName } from "./workspace-diff.js";
 
 export class MissionRunnerManager {
   private activeRunners = new Map<string, MissionRunner>();
@@ -164,10 +164,10 @@ export class MissionRunnerManager {
     return { active: false };
   }
 
-  async restoreSnapshot(
-    params: RestoreSnapshotParams,
+  private async resolveAndValidateRestoreParams(
+    params: { missionId: string; snapshot: string | number; workspaceRoot?: string },
     stateDir: string
-  ): Promise<RestoreSnapshotResult> {
+  ): Promise<{ workspaceRoot: string; cleanMission: string }> {
     const cleanMission = sanitizeRefName(params.missionId);
 
     // Resolve workspaceRoot: either passed explicitly or read from mission log
@@ -213,6 +213,37 @@ export class MissionRunnerManager {
         throw new OspError(ErrorCodes.InvalidParams, `Ref does not belong to mission ${params.missionId}`);
       }
     }
+
+    return { workspaceRoot, cleanMission };
+  }
+
+  async previewRestore(
+    params: PreviewRestoreParams,
+    stateDir: string
+  ): Promise<PreviewRestoreResult> {
+    const { workspaceRoot } = await this.resolveAndValidateRestoreParams(params, stateDir);
+
+    const summary = await previewRestore(workspaceRoot, params.missionId, params.snapshot);
+
+    return {
+      success: true,
+      missionId: params.missionId,
+      targetRef: summary.targetRef,
+      targetTree: summary.targetTree,
+      restoredFilesCount: summary.restoredFiles.length,
+      deletedFilesCount: summary.deletedFiles.length,
+      restoredFiles: summary.restoredFiles,
+      overwrittenFiles: summary.overwrittenFiles,
+      deletedFiles: summary.deletedFiles,
+      skippedSubmodules: summary.skippedSubmodules,
+    };
+  }
+
+  async restoreSnapshot(
+    params: RestoreSnapshotParams,
+    stateDir: string
+  ): Promise<RestoreSnapshotResult> {
+    const { workspaceRoot } = await this.resolveAndValidateRestoreParams(params, stateDir);
 
     // Concurrency lock per workspace
     const canonRoot = path.resolve(workspaceRoot);

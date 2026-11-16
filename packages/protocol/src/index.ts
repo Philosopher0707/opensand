@@ -21,4 +21,6 @@ export type {
   TimelineNode,
   RestoreSnapshotParams,
   RestoreSnapshotResult,
+  PreviewRestoreParams,
+  PreviewRestoreResult,
 } from "./types.js";
