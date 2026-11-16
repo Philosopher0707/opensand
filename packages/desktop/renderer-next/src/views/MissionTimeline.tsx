@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "preact/hooks";
 import type { ShellData } from "../data";
+import { RestoreDialog } from "./RestoreDialog";
+import { classifyRestoreError, restoreSuccessView } from "../../../src/shell/mission-restore-model";
 import {
   toTimelineSteps,
   windowSteps,
@@ -25,6 +27,30 @@ export function MissionTimeline({ data, missionId }: MissionTimelineProps) {
   const [limit, setLimit] = useState(TIMELINE_PAGE);
   const [attempt, setAttempt] = useState(0);
   const listRef = useRef<HTMLOListElement>(null);
+  const [pending, setPending] = useState<TimelineStep | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ tone: "ok" | "bad"; message: string; undo?: string } | null>(null);
+
+  const runRestore = async (snapshot: string, isUndo: boolean) => {
+    setBusy(true);
+    setDialogError(null);
+    try {
+      const res = await data.restoreMissionSnapshot(missionId, snapshot);
+      const view = restoreSuccessView(res);
+      setPending(null);
+      setToast({ tone: "ok", message: isUndo ? "Restore undone." : view.message, undo: isUndo ? undefined : view.undoSnapshot });
+    } catch (err) {
+      const e = classifyRestoreError(err);
+      if (isUndo) {
+        setToast({ tone: "bad", message: e.message });
+      } else {
+        setDialogError(e.message);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -84,10 +110,38 @@ export function MissionTimeline({ data, missionId }: MissionTimelineProps) {
                 <span class="timeline-kind">{s.kindLabel}</span>
                 <span class="timeline-summary">{s.summary}</span>
                 <time class="timeline-time" dateTime={s.ts}>{formatStepTime(s.ts)}</time>
+                {s.snapshot && (
+                  <button
+                    type="button"
+                    class="btn-restore-step"
+                    aria-label={`Restore to this step: ${s.kindLabel}, ${s.summary}`}
+                    onClick={() => { setDialogError(null); setPending(s); }}
+                  >
+                    Restore to this step
+                  </button>
+                )}
               </li>
             ))}
           </ol>
         </>
+      )}
+      {toast && (
+        <div class={`restore-toast restore-toast-${toast.tone}`} role={toast.tone === "bad" ? "alert" : "status"}>
+          <span>{toast.message}</span>
+          {toast.undo && (
+            <button type="button" class="btn-restore-undo" disabled={busy} onClick={() => runRestore(toast.undo!, true)}>Undo</button>
+          )}
+          <button type="button" class="btn-restore-dismiss" aria-label="Dismiss" onClick={() => setToast(null)}>×</button>
+        </div>
+      )}
+      {pending && pending.snapshot && (
+        <RestoreDialog
+          step={pending}
+          busy={busy}
+          error={dialogError}
+          onConfirm={() => runRestore(pending.snapshot!, false)}
+          onCancel={() => setPending(null)}
+        />
       )}
     </section>
   );

@@ -3,6 +3,7 @@ import type { MissionSummary } from "../../src/shell/mission-list-model";
 import type { RawTimelineEvent } from "../../src/shell/mission-timeline-model";
 import type { FileDiffView } from "../../src/shell/mission-diff-model";
 import type { ReceiptView } from "../../src/shell/mission-receipt-model";
+import type { RestoreResult } from "../../src/shell/mission-restore-model";
 import type { ToolApprovalRequest } from "../../src/shell/inbox-model";
 
 export type { SessionSummary, MissionSummary, ToolApprovalRequest };
@@ -14,6 +15,8 @@ export interface ShellData {
   getMissionTimeline(missionId: string): Promise<RawTimelineEvent[]>;
   getMissionReceipt(missionId: string): Promise<ReceiptView | null>;
   getMissionFileDiff(missionId: string, fileIndex: number): Promise<FileDiffView | null>;
+  /** Rejects (never resolves empty) when the desktop has no restore channel, so the UI shows an error. */
+  restoreMissionSnapshot(missionId: string, snapshot: string): Promise<RestoreResult>;
   listPendingApprovals(): Promise<ToolApprovalRequest[]>;
   onApprovalChange?(callback: () => void): () => void;
 }
@@ -57,6 +60,13 @@ export function windowBridgeData(): ShellData {
         return null;
       }
       return (await bridge.getMissionFileDiff(missionId, fileIndex)) ?? null;
+    },
+    async restoreMissionSnapshot(missionId: string, snapshot: string): Promise<RestoreResult> {
+      const bridge = (window as any).opensand;
+      if (!bridge?.restoreMissionSnapshot) {
+        throw new Error("Restore is not available in this build");
+      }
+      return (await bridge.restoreMissionSnapshot(missionId, snapshot)) as RestoreResult;
     },
     async listPendingApprovals(): Promise<ToolApprovalRequest[]> {
       if (typeof window !== "undefined" && (window as any).__testPendingApprovals) {

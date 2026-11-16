@@ -1,3 +1,5 @@
+import { isRestorableRef } from "./mission-restore-model.js";
+
 export interface RawTimelineEvent {
   seq: number;
   ts: string;
@@ -14,6 +16,8 @@ export interface TimelineStep {
   summary: string;
   ts: string;
   tone: "neutral" | "ok" | "bad" | "attention";
+  /** Hidden snapshot ref taken just before this step ran; present only on work and repair steps. */
+  snapshot?: string;
 }
 
 export const TIMELINE_PAGE = 200;
@@ -54,6 +58,7 @@ const NODE_KINDS: Record<string, StepKind> = { plan: "plan", act: "act", repair:
  */
 export function toTimelineSteps(events: RawTimelineEvent[]): TimelineStep[] {
   const steps: TimelineStep[] = [];
+  const pendingSnapshot = new Map<string, string>();
   const sorted = [...events].sort((a, b) => a.seq - b.seq);
   for (const ev of sorted) {
     const d = ev.data ?? {};
@@ -61,11 +66,18 @@ export function toTimelineSteps(events: RawTimelineEvent[]): TimelineStep[] {
       case "mission.started":
         steps.push(step(ev, "start", oneLine(d.title) || "Mission started"));
         break;
+      case "node.started":
+        if (isRestorableRef(d.snapshot)) pendingSnapshot.set(String(d.node), d.snapshot);
+        break;
       case "node.completed": {
         const kind = NODE_KINDS[String(d.node)];
         if (!kind) break;
         const base = kind === "act" && d.claim ? oneLine(d.claim) : `${KIND_LABELS[kind]} finished`;
-        steps.push(step(ev, kind, base + seconds(d.durationMs)));
+        const made = step(ev, kind, base + seconds(d.durationMs));
+        const snap = pendingSnapshot.get(String(d.node));
+        if (snap) made.snapshot = snap;
+        pendingSnapshot.delete(String(d.node));
+        steps.push(made);
         break;
       }
       case "tool.completed":

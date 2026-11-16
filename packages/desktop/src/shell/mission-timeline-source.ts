@@ -7,7 +7,7 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const TAIL_MAX = 400;
 
 /** Fields the timeline shows. Receipts, change sets and workspace paths never cross IPC. */
-const SCALAR_FIELDS = ['node', 'attempt', 'title', 'claim', 'passed', 'exitCode', 'durationMs', 'accept', 'note', 'reason', 'question', 'folder', 'level', 'tool', 'name'] as const;
+const SCALAR_FIELDS = ['node', 'attempt', 'title', 'claim', 'passed', 'exitCode', 'durationMs', 'accept', 'note', 'reason', 'question', 'folder', 'level', 'tool', 'name', 'snapshot'] as const;
 
 function trim(v: string): string {
   return v.length > TAIL_MAX ? v.slice(0, TAIL_MAX) + '…' : v;
