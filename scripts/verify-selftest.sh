@@ -20,6 +20,7 @@ make_workspace() {
   # one fails on demand so the wiring in verify.sh is tested.
   printf '#!/usr/bin/env bash\nexit 0\n' > "$dir/scripts/check-scripts-catalog.sh"
   printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../.lessons-stale" ]] && { echo "FAIL: docs/lessons/INDEX.md is stale. Run: bash scripts/lessons-index.sh" >&2; exit 1; }\nexit 0\n' > "$dir/scripts/lessons-index.sh"
+
   printf '{"name":"root","version":"1.0.0","private":true,"type":"module"}\n' > "$dir/package.json"
   printf 'packages:\n  - "packages/*"\n' > "$dir/pnpm-workspace.yaml"
   printf '{"name":"@fake/good","version":"1.0.0","scripts":{"build":"node -e 0","test":"node --test test.mjs"}}\n' > "$dir/packages/good/package.json"
@@ -163,5 +164,11 @@ expect single-run second-run-fails 0 "verify: ok"
 expect zero-tests zero 1 "Package @fake/target has TypeScript sources in src/ but reported 0 tests!"
 expect lessons-stale lessons-stale 1 "FAIL: docs/lessons/INDEX.md is stale"
 expect_parallel_runs
+
+
+if [[ -f "$ROOT/scripts/proof-selftest.sh" ]]; then
+  echo "==> Running proof-selftest.sh..."
+  bash "$ROOT/scripts/proof-selftest.sh" || FAILED=1
+fi
 
 exit "$FAILED"
