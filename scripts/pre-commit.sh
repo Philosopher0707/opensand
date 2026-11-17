@@ -40,6 +40,17 @@ if [[ "${OPENSAND_ALLOW_BLANKET:-0}" != "1" ]]; then
   fi
 fi
 
+# --- Staged secret scan -----------------------------------------------
+# Same scan `scripts/worktree.sh save` runs: added lines only, file and line
+# named, matched value never printed. See scripts/lib/worktree-safety.sh.
+source "$ROOT/scripts/lib/worktree-safety.sh"
+if FINDINGS=$(staged_secret_findings "$ROOT"); then
+  echo "x pre-commit: refusing a commit whose staged changes look like secrets (values are not printed):" >&2
+  printf '%s\n' "$FINDINGS" | sed 's/^/  /' >&2
+  echo "  Remove or unstage them (git restore --staged <path>), then commit again." >&2
+  exit 1
+fi
+
 # --- Hook environment scrub -------------------------------------------
 # git exports GIT_DIR, GIT_INDEX_FILE, ... to hooks. Any test that runs git
 # would inherit them and write into THIS repo's config, refs and index
