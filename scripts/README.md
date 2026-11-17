@@ -31,7 +31,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `pr-gate.sh` | 5-step automated pre-merge verification and checkpoint gate | Pre-merge review workflow | `pr-gate-selftest.sh` |
 | `pr-gate-selftest.sh` | Hermetic selftest for PR gate script | Pre-commit / verification | Self |
 | `pre-commit.sh` | Git pre-commit hook enforcing staged-secret scan, blanket-add guard and test suite | Git pre-commit hook | `pre-commit-selftest.sh` |
-| `pre-commit-selftest.sh` | Hermetic selftest for the staged secret scan in `pre-commit.sh` (clean commit allowed, each blocked pattern refused) | Pre-commit / verification | Self |
+| `pre-commit-selftest.sh` | Hermetic selftest for the staged secret scan in `pre-commit.sh` (clean commit allowed, each blocked pattern refused, hook run from outside the repo) | Pre-commit / verification | Self |
 | `provenance-gate.sh` | Build artifact provenance and digest verification gate | Release workflows / CI | None |
 | `release.sh` | 9-step end-to-end automated release pipeline | Release Engineer / CI | `release-selftest.sh` |
 | `release-check.sh` | Full release verification and smoke test gate | Pre-release sanity gate | None |

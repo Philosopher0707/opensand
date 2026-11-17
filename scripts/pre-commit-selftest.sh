@@ -6,6 +6,9 @@ set -euo pipefail
 #   2-6. Each blocked pattern refuses the commit (exit 1): sk-, sk-or-, ghp_,
 #        AKIA + 16, and a PEM private key block
 #   7. A refusal names the file and line and never prints the matched value
+#   8-9. The hook run from outside the repo (no scripts/ folder there) allows a
+#        clean commit and refuses an sk- key, so it loads its library from its
+#        own directory, not from the repo being committed
 #
 # Fake keys are built at runtime from short pieces, so no complete key literal
 # exists in this file (GitHub push protection rejects one on push).
@@ -85,6 +88,60 @@ expect_blocked() {
   echo "PASS $label (exit 1, file and line named, value withheld)"
 }
 
+# run_outside <dir>: runs THIS checkout's hook by absolute path from a git repo
+# that has no scripts/ folder. The hook must load its scan library from its own
+# directory; loading it from the repo being committed would fail here.
+run_outside() {
+  local dir="$1"
+  ( cd "$dir" && OPENSAND_PRECOMMIT_BUILD_CMD=true OPENSAND_PRECOMMIT_TEST_CMD=true bash "$ROOT/scripts/pre-commit.sh" 2>&1 )
+}
+
+# expect_outside_clean: a harmless change from outside the repo must commit.
+expect_outside_clean() {
+  local dir status=0 out
+  dir=$(mktemp -d "$WORK/outside.XXXXXX")
+  git -C "$dir" init -q
+  printf 'harmless\n' > "$dir/clean.txt"
+  git -C "$dir" add clean.txt
+  out=$(run_outside "$dir") || status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "FAIL outside-repo-clean-allowed: clean commit was refused (exit $status)"
+    echo "$out" | sed 's/^/    | /'
+    FAILED=1
+    return
+  fi
+  echo "PASS outside-repo-clean-allowed (exit 0)"
+}
+
+# expect_outside_blocked: a secret staged in a repo outside this checkout must
+# refuse the commit, name the file and line, and never echo the value.
+expect_outside_blocked() {
+  local secret="$1" dir status=0 out
+  dir=$(mktemp -d "$WORK/outside.XXXXXX")
+  git -C "$dir" init -q
+  printf 'first line\nsecret=%s\n' "$secret" > "$dir/leak.txt"
+  git -C "$dir" add leak.txt
+  out=$(run_outside "$dir") || status=$?
+  if [ "$status" -ne 1 ]; then
+    echo "FAIL outside-repo-blocked: exit $status, wanted 1"
+    echo "$out" | sed 's/^/    | /'
+    FAILED=1
+    return
+  fi
+  if ! echo "$out" | grep -qF "leak.txt:2:"; then
+    echo "FAIL outside-repo-blocked: refusal does not name leak.txt:2"
+    echo "$out" | sed 's/^/    | /'
+    FAILED=1
+    return
+  fi
+  if [[ "$out" == *"$secret"* ]]; then
+    echo "FAIL outside-repo-blocked: refusal printed the matched value"
+    FAILED=1
+    return
+  fi
+  echo "PASS outside-repo-blocked (exit 1, file and line named, value withheld)"
+}
+
 tail30=$(printf 'a%.0s' {1..30})
 tail36=$(printf 'b%.0s' {1..36})
 
@@ -101,6 +158,9 @@ expect_blocked "blocks-sk-or" "${skor_prefix}v1-${tail36}"
 expect_blocked "blocks-ghp" "${ghp_prefix}${tail36}"
 expect_blocked "blocks-akia" "${akia_prefix}ABCDEFGHIJKLMNOP"
 expect_blocked "blocks-private-key" "${pem_begin}RSA ${pem_end}"
+
+expect_outside_clean
+expect_outside_blocked "${sk_prefix}${tail30}"
 
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL PRE-COMMIT SELFTESTS PASSED."
