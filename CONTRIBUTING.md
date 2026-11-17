@@ -109,7 +109,7 @@ Use the supervisor instead of launching `node .../desktop-server.js` directly:
 | `scripts/release-check.sh` | Run full verification suite and packaged app smoke launch gate |
 | `scripts/pr-gate.sh <PR>` | Pre-merge verification gate (CI rollups, base freshness, forbidden diffs, checkpoint tag, merge) |
 | `scripts/pr-gate-selftest.sh` | Selftest suite for `pr-gate.sh` with stubbed `gh` and `git` on PATH |
-| `scripts/release.sh [--dry-run] [--install] <version>` | OpenSand 8-step automated release pipeline |
+| `scripts/release.sh [--dry-run] [--install] <version>` | OpenSand 9-step automated release pipeline |
 | `scripts/release-selftest.sh` | Hermetic selftest suite for release.sh |
 | `scripts/clean-disk.sh [--yes]` | Safe reclaim of node_modules/dist in clean, merged scratch worktrees and caches |
 | `scripts/clean-disk-selftest.sh` | Hermetic selftest suite for clean-disk.sh |

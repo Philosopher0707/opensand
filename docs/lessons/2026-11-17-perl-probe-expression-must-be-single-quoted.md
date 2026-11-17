@@ -1,0 +1,7 @@
+# A mutation probe must single-quote its perl expression, or the shell eats the pattern
+
+- **Trap:** A mutation probe passed an expression in double quotes, so the shell expanded a `$` variable inside it before perl ever saw the text. The pattern matched nothing, perl exited 0, and the file stayed unchanged — but the run looked like a probe being run. The probe itself had a "mutation did not change the file" guard, and that guard is what turned a silent no-op into a visible failure.
+- **Root Cause:** Double-quoted shell strings expand `$name`, backticks and `$(...)`. A perl substitution written for the literal text `$pr.number` or `$var` therefore reaches perl after the shell has replaced it, usually with an empty string, so the regex no longer matches the source. The mutant is never applied, and a probe that does not verify the file changed reports success against an unmodified tree.
+- **Rule:** Single-quote every perl substitution passed to `scripts/mutation-probe.sh` (for example `'s/\(\$pr\.number\)/(#0)/'`), and treat "the mutation did not change the file (pattern not found)" as a hard failure to fix, never as a reason to loosen the guard. After any probe, confirm the printed `diff -u` shows the mutant and the probe reports the mutant was killed; a probe that reports a diff of zero lines did not test anything.
+
+(Found while adding release-notes generation to `scripts/release.sh`: the first probe used double quotes, the `$` in the Node template was expanded away, and the mutant was a no-op.)

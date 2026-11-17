@@ -33,7 +33,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `pre-commit.sh` | Git pre-commit hook enforcing staged-secret scan, blanket-add guard and test suite | Git pre-commit hook | `pre-commit-selftest.sh` |
 | `pre-commit-selftest.sh` | Hermetic selftest for the staged secret scan in `pre-commit.sh` (clean commit allowed, each blocked pattern refused) | Pre-commit / verification | Self |
 | `provenance-gate.sh` | Build artifact provenance and digest verification gate | Release workflows / CI | None |
-| `release.sh` | 8-step end-to-end automated release pipeline | Release Engineer / CI | `release-selftest.sh` |
+| `release.sh` | 9-step end-to-end automated release pipeline | Release Engineer / CI | `release-selftest.sh` |
 | `release-check.sh` | Full release verification and smoke test gate | Pre-release sanity gate | None |
 | `release-selftest.sh` | Hermetic selftest for automated release pipeline | Pre-commit / verification | Self |
 | `smoke-packaged.sh` | Packaged application launch verification in isolated state | CI / release smoke gate | None |
@@ -185,7 +185,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Release pipeline.
 
 ### `release.sh`
-- **Purpose**: 8-step automated release pipeline (disk space guard, bump PR, pr-gate merge, tag push, artifact download, smoke check, DMG plist verification, and optional install).
+- **Purpose**: 9-step automated release pipeline (disk space guard, bump PR, pr-gate merge, tag push, artifact download, release notes from merged PR titles, smoke check, DMG plist verification, and optional install).
 - **Usage**: `scripts/release.sh [--dry-run] [--install] <version>`
 - **Env**: `RELEASE_DOWNLOAD_TIMEOUT_SECONDS` (default `600`) and `RELEASE_DOWNLOAD_POLL_SECONDS` (default `15`) bound the Step 5 retry that waits for `release.yml` to publish the assets.
 - **Exit Codes**: `0` on success, `1` on general failure, `2` on smoke test failure, `3` on pending bump PR CI.
