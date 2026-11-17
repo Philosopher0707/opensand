@@ -43,7 +43,9 @@ fi
 # --- Staged secret scan -----------------------------------------------
 # Same scan `scripts/worktree.sh save` runs: added lines only, file and line
 # named, matched value never printed. See scripts/lib/worktree-safety.sh.
-source "$ROOT/scripts/lib/worktree-safety.sh"
+# Load it beside this script: the hook may run with ROOT set to another tree.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/worktree-safety.sh"
 if FINDINGS=$(staged_secret_findings "$ROOT"); then
   echo "x pre-commit: refusing a commit whose staged changes look like secrets (values are not printed):" >&2
   printf '%s\n' "$FINDINGS" | sed 's/^/  /' >&2
