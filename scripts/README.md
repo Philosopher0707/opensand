@@ -30,7 +30,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `proof-selftest.sh` | Hermetic selftest suite for proof-red-green, mutate, and proof-report scripts | Pre-commit / verification | Self |
 | `pr-gate.sh` | 5-step automated pre-merge verification and checkpoint gate | Pre-merge review workflow | `pr-gate-selftest.sh` |
 | `pr-gate-selftest.sh` | Hermetic selftest for PR gate script | Pre-commit / verification | Self |
-| `pre-commit.sh` | Git pre-commit hook enforcing blanket-add guard and test suite | Git pre-commit hook | None (tested by verify) |
+| `pre-commit.sh` | Git pre-commit hook enforcing staged-secret scan, blanket-add guard and test suite | Git pre-commit hook | `pre-commit-selftest.sh` |
+| `pre-commit-selftest.sh` | Hermetic selftest for the staged secret scan in `pre-commit.sh` (clean commit allowed, each blocked pattern refused) | Pre-commit / verification | Self |
 | `provenance-gate.sh` | Build artifact provenance and digest verification gate | Release workflows / CI | None |
 | `release.sh` | 9-step end-to-end automated release pipeline | Release Engineer / CI | `release-selftest.sh` |
 | `release-check.sh` | Full release verification and smoke test gate | Pre-release sanity gate | None |
@@ -163,11 +164,18 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Pre-commit hook, test verification.
 
 ### `pre-commit.sh`
-- **Purpose**: Git pre-commit guard blocking blanket additions, unsetting git environment variables, executing builds/tests, and verifying git config tripwires.
+- **Purpose**: Git pre-commit guard that scans staged added lines for secrets (via `scripts/lib/worktree-safety.sh`, naming file and line but never the value), blocks blanket additions, unsets git environment variables, executes builds/tests, and verifies git config tripwires.
 - **Usage**: Executed by `.githooks/pre-commit` or manually via `scripts/pre-commit.sh`.
 - **Exit Codes**: `0` on success, `1` on violation or failure.
-- **Selftest**: None.
+- **Selftest**: `scripts/pre-commit-selftest.sh`.
 - **Trigger**: Git pre-commit hook.
+
+### `pre-commit-selftest.sh`
+- **Purpose**: Hermetic selftest of the staged secret scan: a clean staged change is allowed, and each blocked pattern (`sk-`, `sk-or-`, `ghp_`, `AKIA` + 16, PEM private key block) refuses the commit with the file and line named and the value withheld. Fake keys are built at runtime by concatenation, so no literal key is committed.
+- **Usage**: `scripts/pre-commit-selftest.sh`
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, test verification.
 
 ### `provenance-gate.sh`
 - **Purpose**: Verify artifact commit provenance against git metadata.
