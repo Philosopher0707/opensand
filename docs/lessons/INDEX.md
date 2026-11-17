@@ -10,4 +10,6 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-16 · [One lesson, one file: lessons no longer conflict](2026-11-16-one-lesson-one-file.md)
 - 2026-11-16 · [A selftest's fake workspace must follow verify.sh, and worktrees need a stable base clone](2026-11-16-selftest-fake-workspace-and-base-clone.md)
 - 2026-11-17 · [A mutation probe must target a tracked source file, and a stale build artifact survives every rebuild](2026-11-17-mutation-probe-must-target-tracked-source.md)
+- 2026-11-17 · [A mutation probe must single-quote its perl expression, or the shell eats the pattern](2026-11-17-perl-probe-expression-must-be-single-quoted.md)
+- 2026-11-17 · [Push to the branch the PR actually has, not the branch the job is named after](2026-11-17-push-target-from-pr-headref.md)
 - 2026-11-17 · [Release pipeline download race against release build workflow](2026-11-17-release-tag-asset-download-race.md)

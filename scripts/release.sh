@@ -9,9 +9,12 @@
 #   3. Merge bump PR via scripts/pr-gate.sh (on exit 3, prints re-run instructions and exits 3)
 #   4. Create and push tag v<version>
 #   5. Download release artifacts (*.zip and *.dmg) from GitHub Release
-#   6. Run smoke verification (smoke-packaged.sh / release-check.sh), failing if exit code is 2 or non-zero
-#   7. Mount DMG, verify Info.plist CFBundleShortVersionString matches target version, unmount
-#   8. (With --install only): archive old /Applications/OpenSand.app to ~/dev/_archive/<date>-OpenSand-<old>/,
+#   6. Generate release notes from PR titles merged since the previous tag, grouped by
+#      conventional prefix (feat / fix / docs / other) with each PR number, and set them
+#      as the GitHub release body
+#   7. Run smoke verification (smoke-packaged.sh / release-check.sh), failing if exit code is 2 or non-zero
+#   8. Mount DMG, verify Info.plist CFBundleShortVersionString matches target version, unmount
+#   9. (With --install only): archive old /Applications/OpenSand.app to ~/dev/_archive/<date>-OpenSand-<old>/,
 #      install new app, xattr -cr, launch and confirm installed version
 set -euo pipefail
 
@@ -65,7 +68,7 @@ VERSION="${RAW_VERSION#v}"
 TAG="v$VERSION"
 
 # --- Step 1: Disk Space Guard (< 8 GB) ---
-echo "==> [Step 1/8] Checking free disk space..."
+echo "==> [Step 1/9] Checking free disk space..."
 AVAIL_GB=$(df -k / 2>/dev/null | awk 'NR==2 {print int($4 / 1024 / 1024)}' || echo "10")
 if [[ "$AVAIL_GB" -lt 8 ]]; then
   echo "Disk space is under 8 GB (${AVAIL_GB} GB available)."
@@ -84,7 +87,7 @@ else
 fi
 
 # --- Step 2: Version Bump & PR ---
-echo "==> [Step 2/8] Checking package version and bump PR..."
+echo "==> [Step 2/9] Checking package version and bump PR..."
 CURRENT_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "")
 BUMP_BRANCH="chore/bump-v${VERSION}"
 
@@ -126,7 +129,7 @@ else
 fi
 
 # --- Step 3: Gate & Merge Bump PR ---
-echo "==> [Step 3/8] Checking bump PR merge status via pr-gate..."
+echo "==> [Step 3/9] Checking bump PR merge status via pr-gate..."
 if [[ -n "$BUMP_PR_NUM" ]]; then
   IS_MERGED=0
   if PR_VIEW=$(gh pr view "$BUMP_PR_NUM" --json state -q '.state' 2>/dev/null); then
@@ -169,7 +172,7 @@ else
 fi
 
 # --- Step 4: Create and push release tag ---
-echo "==> [Step 4/8] Checking release tag $TAG..."
+echo "==> [Step 4/9] Checking release tag $TAG..."
 TAG_EXISTS=0
 if REMOTE_TAG=$(git ls-remote --tags origin "refs/tags/$TAG" 2>/dev/null); then
   if [[ -n "$REMOTE_TAG" ]]; then
@@ -190,7 +193,7 @@ if [[ "$TAG_EXISTS" -eq 0 ]]; then
 fi
 
 # --- Step 5: Download release artifacts ---
-echo "==> [Step 5/8] Downloading release artifacts for $TAG..."
+echo "==> [Step 5/9] Downloading release artifacts for $TAG..."
 DOWNLOAD_DIR="${RELEASE_DOWNLOAD_DIR:-$ROOT/dist/release-$VERSION}"
 mkdir -p "$DOWNLOAD_DIR"
 
@@ -252,8 +255,59 @@ else
   fi
 fi
 
-# --- Step 6: Smoke / release-check ---
-echo "==> [Step 6/8] Running packaged smoke test on $ZIP_PATH..."
+# Group PR titles merged since the previous tag under conventional-release headings, newest
+# first, one line per PR with its number. Prints markdown to stdout.
+generate_release_notes() {
+  local prev_tag="$1"
+  local pr_json cutoff
+  pr_json=$(gh pr list --state merged --base main --limit 200 --json number,title,mergedAt 2>/dev/null || echo "[]")
+  cutoff=""
+  if [[ -n "$prev_tag" ]]; then
+    cutoff=$(git log -1 --format=%cI "$prev_tag" 2>/dev/null || true)
+  fi
+  node -e '
+const titles = { feat: "Features", fix: "Fixes", docs: "Docs", other: "Other" };
+const sections = { feat: [], fix: [], docs: [], other: [] };
+let prs = [];
+try { prs = JSON.parse(process.argv[1] || "[]"); } catch { prs = []; }
+const cutoff = process.argv[2] || "";
+for (const pr of Array.isArray(prs) ? prs : []) {
+  if (!pr || typeof pr.title !== "string" || pr.number === undefined) continue;
+  if (cutoff && pr.mergedAt && String(pr.mergedAt) < cutoff) continue;
+  const m = /^(feat|fix|docs)(\([^)]*\))?!?:/.exec(pr.title);
+  sections[m ? m[1] : "other"].push("- " + pr.title + " (#" + pr.number + ")");
+}
+const lines = [];
+for (const group of ["feat", "fix", "docs", "other"]) {
+  if (sections[group].length === 0) continue;
+  lines.push("## " + titles[group], "", ...sections[group], "");
+}
+console.log(lines.join("\n").trim());
+' "$pr_json" "$cutoff"
+}
+
+# --- Step 6: Release notes from merged PR titles ---
+echo "==> [Step 6/9] Writing release notes for $TAG..."
+NOTES_FILE="$DOWNLOAD_DIR/RELEASE_NOTES-$VERSION.md"
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "DRY RUN: would group PRs merged since the previous tag into feat/fix/docs/other and set them as the $TAG release body"
+else
+  if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+    PREV_TAG=$(git describe --tags --abbrev=0 --match 'v*' "$TAG^" 2>/dev/null || true)
+  else
+    PREV_TAG=$(git describe --tags --abbrev=0 --match 'v*' HEAD 2>/dev/null || true)
+  fi
+  generate_release_notes "$PREV_TAG" > "$NOTES_FILE"
+  if [[ ! -s "$NOTES_FILE" ]]; then
+    printf 'No pull requests merged since %s.\n' "${PREV_TAG:-the previous release}" > "$NOTES_FILE"
+  fi
+  cat "$NOTES_FILE"
+  gh release edit "$TAG" --notes-file "$NOTES_FILE"
+  echo "PASS: release notes for $TAG set from PRs merged since ${PREV_TAG:-the previous release}."
+fi
+
+# --- Step 7: Smoke / release-check ---
+echo "==> [Step 7/9] Running packaged smoke test on $ZIP_PATH..."
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "DRY RUN: would run scripts/smoke-packaged.sh on $ZIP_PATH"
 else
@@ -267,7 +321,7 @@ else
 fi
 
 # --- Step 7: Check DMG Info.plist version ---
-echo "==> [Step 7/8] Verifying DMG Info.plist version..."
+echo "==> [Step 8/9] Verifying DMG Info.plist version..."
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "DRY RUN: would mount $DMG_PATH, read CFBundleShortVersionString from OpenSand.app/Contents/Info.plist, verify it equals $VERSION, and unmount"
 else
@@ -316,7 +370,7 @@ else
 fi
 
 # --- Step 8: With --install only ---
-echo "==> [Step 8/8] Install check..."
+echo "==> [Step 9/9] Install check..."
 if [[ "$INSTALL" -eq 1 ]]; then
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "DRY RUN: would check existing $APP_DEST, archive to ~/dev/_archive/<date>-OpenSand-<old>/, copy new app, run xattr -cr, and launch to confirm version"

@@ -10,6 +10,7 @@ set -euo pipefail
 #   6. DMG Info.plist version mismatch (exits 1)
 #   7. Resume behavior (skips merged PR, existing tag, existing artifacts)
 #   8. Install behavior (archives old app, unpacks new app, verifies installed version)
+#   9. Release notes grouped from merged PR titles, with each PR number
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RELEASE_SCRIPT="$ROOT/scripts/release.sh"
@@ -29,7 +30,13 @@ case "$1" in
   pr)
     case "$2" in
       list)
-        if [ -f "$TEST_CASE_DIR/pr_list.json" ]; then
+        if printf '%s\n' "$@" | grep -qx 'merged'; then
+          if [ -f "$TEST_CASE_DIR/merged_prs.json" ]; then
+            cat "$TEST_CASE_DIR/merged_prs.json"
+          else
+            echo "[]"
+          fi
+        elif [ -f "$TEST_CASE_DIR/pr_list.json" ]; then
           cat "$TEST_CASE_DIR/pr_list.json"
         else
           echo "[]"
@@ -52,6 +59,22 @@ case "$1" in
     ;;
   release)
     case "$2" in
+      edit)
+        tag="$3"
+        shift 3
+        notes_file=""
+        while [ $# -gt 0 ]; do
+          if [ "$1" = "--notes-file" ]; then
+            notes_file="$2"
+            shift 2
+          else
+            shift
+          fi
+        done
+        echo "gh release edit $tag" >> "$TEST_CASE_DIR/release_edit.log"
+        cp "$notes_file" "$TEST_CASE_DIR/release_notes_applied.md"
+        exit 0
+        ;;
       download)
         tag="$3"
         dest_dir=""
@@ -232,14 +255,14 @@ run_test() {
 dir="$WORK/case1-dry-run"
 mkdir -p "$dir"
 out=$(bash "$RELEASE_SCRIPT" --dry-run 0.1.11 2>&1)
-for step in 1 2 3 4 5 6 7 8; do
-  if ! grep -q "\[Step $step/8\]" <<< "$out"; then
+for step in 1 2 3 4 5 6 7 8 9; do
+  if ! grep -q "\[Step $step/9\]" <<< "$out"; then
     echo "FAIL case1-dry-run: missing Step $step"
     FAILED=1
   fi
 done
 if [ "$FAILED" -eq 0 ]; then
-  echo "PASS case1-dry-run: all 8 steps verified"
+  echo "PASS case1-dry-run: all 9 steps verified"
 fi
 
 # --- Case 2: Argument validation ---
@@ -353,6 +376,57 @@ elif ! grep -q "GH_TOKEN" "$dir/run.out" 2>/dev/null; then
   FAILED=1
 else
   echo "PASS case10-auth-failure: failed after 1 attempt without retrying"
+fi
+
+# --- Case 11: Release notes grouped from merged PR titles, each line with its PR number ---
+dir="$WORK/case11-release-notes"
+mkdir -p "$dir"
+touch "$dir/tag_exists"
+echo '[{"number": 42, "state": "MERGED"}]' > "$dir/pr_list.json"
+echo '{"state": "MERGED"}' > "$dir/pr_view.json"
+cat > "$dir/merged_prs.json" << 'EOS'
+[
+  {"number": 110, "title": "fix(release): retry asset download until dmg and zip are published", "mergedAt": "2099-01-04T00:00:00Z"},
+  {"number": 109, "title": "feat: generate release notes from merged PRs", "mergedAt": "2099-01-03T00:00:00Z"},
+  {"number": 108, "title": "docs: release timing lesson", "mergedAt": "2099-01-02T00:00:00Z"},
+  {"number": 107, "title": "chore: tidy scripts", "mergedAt": "2099-01-01T00:00:00Z"},
+  {"number": 5, "title": "feat: older than the previous tag", "mergedAt": "2000-01-01T00:00:00Z"}
+]
+EOS
+create_mock_app "$dir/mock_dmg_app/OpenSand.app" "0.1.11"
+run_test "case11-release-notes" 0 0.1.11
+applied="$dir/release_notes_applied.md"
+if [ ! -f "$applied" ]; then
+  echo "FAIL case11-release-notes: release body was never set"
+  FAILED=1
+else
+  expected=(
+    "## Features"
+    "## Fixes"
+    "## Docs"
+    "## Other"
+    "- feat: generate release notes from merged PRs (#109)"
+    "- fix(release): retry asset download until dmg and zip are published (#110)"
+    "- docs: release timing lesson (#108)"
+    "- chore: tidy scripts (#107)"
+  )
+  for needle in "${expected[@]}"; do
+    if ! grep -qF -- "$needle" "$applied"; then
+      echo "FAIL case11-release-notes: notes are missing '$needle'"
+      FAILED=1
+    fi
+  done
+  if grep -qF "(#5)" "$applied"; then
+    echo "FAIL case11-release-notes: notes include a PR merged before the previous tag"
+    FAILED=1
+  fi
+  if ! grep -q "gh release edit v0.1.11" "$dir/release_edit.log" 2>/dev/null; then
+    echo "FAIL case11-release-notes: release body was not applied to v0.1.11"
+    FAILED=1
+  fi
+  if [ "$FAILED" -eq 0 ]; then
+    echo "PASS case11-release-notes: grouped feat/fix/docs/other with PR numbers, previous-tag boundary respected"
+  fi
 fi
 
 if [ "$FAILED" -eq 0 ]; then
