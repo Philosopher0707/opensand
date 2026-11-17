@@ -1,0 +1,5 @@
+# A hook must load its own library beside itself, and its selftest must run it from outside the repo
+
+- **Trap:** `scripts/pre-commit.sh` sourced `scripts/lib/worktree-safety.sh` through `ROOT`, which is the repo being committed. The shared hook test (`packages/shared/test/pre-commit-hook-env.test.ts`) runs the real script against a temp git repo, so CI failed while the local selftest stayed green. The fix (`SCRIPT_DIR`, PR #112) reached `main` with no selftest case that runs the hook from outside the repo.
+- **Root Cause:** `pre-commit-selftest.sh` copied `scripts/lib/` into every fixture repo, so the fixture always had the library at `ROOT` and the bad path could never fail there.
+- **Rule:** The selftest has an outside-repo case (`expect_outside_clean`, `expect_outside_blocked`): this checkout's hook runs by absolute path from a git repo with no `scripts/` folder, so a library loaded from `ROOT` fails. `scripts/mutation-probe.sh` proves it: swapping the `SCRIPT_DIR` source back to `$ROOT` turns the selftest red.
