@@ -184,11 +184,18 @@ export async function* parseAnthropicSSEStream(
     content: string;
     thinking: string;
     toolCalls: Record<number, { id: string; name: string; arguments: string }>;
+    usage: { inputTokens: number | null; outputTokens: number | null };
   }) => void
 ): AsyncIterable<StreamDelta> {
   let fullContent = "";
   let fullThinking = "";
   const toolCallAccumulator: Record<number, { id: string; name: string; arguments: string }> = {};
+  const usage: { inputTokens: number | null; outputTokens: number | null } = {
+    inputTokens: null,
+    outputTokens: null,
+  };
+  const reported = (value: unknown): number | null =>
+    typeof value === "number" && Number.isFinite(value) ? value : null;
 
   for await (const rawPayload of parseSSEStream(rawStream)) {
     let eventObj: any;
@@ -199,6 +206,20 @@ export async function* parseAnthropicSSEStream(
     }
 
     const type = eventObj.type;
+
+    if (type === "message_start") {
+      // Input tokens are counted once, up front; output tokens arrive on message_delta.
+      const startUsage = eventObj.message?.usage;
+      if (startUsage) {
+        usage.inputTokens = reported(startUsage.input_tokens);
+        usage.outputTokens = reported(startUsage.output_tokens);
+      }
+    } else if (type === "message_delta") {
+      const deltaUsage = reported(eventObj.usage?.output_tokens);
+      if (deltaUsage !== null) {
+        usage.outputTokens = deltaUsage;
+      }
+    }
 
     if (type === "content_block_start") {
       const block = eventObj.content_block;
@@ -257,6 +278,7 @@ export async function* parseAnthropicSSEStream(
       content: fullContent,
       thinking: fullThinking,
       toolCalls: toolCallAccumulator,
+      usage,
     });
   }
 }

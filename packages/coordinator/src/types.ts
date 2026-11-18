@@ -3,7 +3,7 @@
  * This module is a thin re-export shim for backwards compatibility.
  */
 export type {
-  ToolCallFunction, ToolCall, ChatMessage, StreamDelta, LLMClientConfig,
+  ToolCallFunction, ToolCall, ChatMessage, StreamDelta, LLMClientConfig, ModelCallUsage,
   ApprovalRequest, ApprovalDecision, AttachmentRecord, AgentTemplate,
   ApprovalHandler, ApprovalDecisionHandler, TurnEventListener, TurnPhase, TurnEvent, SubagentInfo,
 } from "@opensand/shared";
