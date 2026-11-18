@@ -4,7 +4,9 @@
 #
 # --when-green  First wait for pending CI with `gh pr checks --watch` (bounded by
 #               --timeout minutes, default 40), then run the normal 5 checks and merge.
-#               Red CI exits 1 and names the failing job; a timeout exits 3.
+#               Red CI exits 1 and names the failing job; a timeout exits 3. "No checks
+#               reported" is pending for up to 5 min (or --timeout, if sooner), then
+#               exits 3 with "no CI checks appeared after <N>s".
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -73,40 +75,72 @@ if [[ "$WHEN_GREEN" -eq 1 ]]; then
   echo "==> [when-green] Watching CI for PR #$PR (timeout ${TIMEOUT_MIN} min)..."
   DEADLINE=$((SECONDS + TIMEOUT_MIN * TIMEOUT_UNIT_SECONDS))
   POLL_SECONDS="${PR_GATE_POLL_SECONDS:-5}"
+  # CI registers its checks a few seconds after a push or PR creation, and until then `gh pr checks`
+  # fails with "no checks reported": that is pending, not red. Wait for them, bounded by a 5-minute
+  # grace period (or the --timeout deadline, whichever is sooner).
+  NO_CHECKS_GRACE_SECONDS="${PR_GATE_NO_CHECKS_GRACE_SECONDS:-300}"
+  NO_CHECKS_DEADLINE=$((SECONDS + NO_CHECKS_GRACE_SECONDS))
+  if [[ "$NO_CHECKS_DEADLINE" -gt "$DEADLINE" ]]; then
+    NO_CHECKS_DEADLINE="$DEADLINE"
+  fi
+  NO_CHECKS_SINCE=$SECONDS
+  CHECKS_OUT="$(mktemp "${TMPDIR:-/tmp}/pr-gate-checks.XXXXXX")"
+  trap 'rm -f "$CHECKS_OUT"' EXIT
+  no_checks_fail() {
+    echo "FAIL: no CI checks appeared after $((SECONDS - NO_CHECKS_SINCE))s for PR #$PR" >&2
+    exit 3
+  }
 
-  # CI registers a few seconds after a push or PR creation, and `gh pr checks` fails with "no checks
-  # reported" until then: wait (inside the same deadline) for the first check to appear.
+  # First wait for the check list to register at all, so the watch has something to watch.
   while ROLLUP_JSON=$(gh pr view "$PR" --json statusCheckRollup 2>/dev/null); do
     ROLLUP_COUNT=$(node -e 'console.log(((JSON.parse(process.argv[1]).statusCheckRollup) || []).length)' "$ROLLUP_JSON" 2>/dev/null || echo 1)
     [[ "$ROLLUP_COUNT" =~ ^[0-9]+$ && "$ROLLUP_COUNT" -eq 0 ]] || break
-    if [[ "$SECONDS" -ge "$DEADLINE" ]]; then
-      echo "FAIL: --when-green timed out after ${TIMEOUT_MIN} min: no CI checks were reported for PR #$PR" >&2
-      exit 3
+    if [[ "$SECONDS" -ge "$NO_CHECKS_DEADLINE" ]]; then
+      no_checks_fail
     fi
     sleep "$POLL_SECONDS"
   done
 
-  gh pr checks "$PR" --watch &
-  WATCH_PID=$!
-  TIMED_OUT=0
-  # One bounded poll of our own child (no timeout binary on macOS); gh does the real CI polling.
-  while kill -0 "$WATCH_PID" 2>/dev/null; do
-    if [[ "$SECONDS" -ge "$DEADLINE" ]]; then
-      TIMED_OUT=1
-      kill "$WATCH_PID" 2>/dev/null || true
-      break
+  while :; do
+    : > "$CHECKS_OUT"
+    gh pr checks "$PR" --watch >"$CHECKS_OUT" 2>&1 &
+    WATCH_PID=$!
+    TIMED_OUT=0
+    PRINTED=0
+    # One bounded poll of our own child (no timeout binary on macOS); gh does the real CI polling.
+    while kill -0 "$WATCH_PID" 2>/dev/null; do
+      # Echo each new line gh printed, so a long watch still shows progress.
+      TOTAL_LINES=$(wc -l < "$CHECKS_OUT" 2>/dev/null || echo 0)
+      if [[ "$TOTAL_LINES" -gt "$PRINTED" ]]; then
+        tail -n +"$((PRINTED + 1))" "$CHECKS_OUT"
+        PRINTED="$TOTAL_LINES"
+      fi
+      if [[ "$SECONDS" -ge "$DEADLINE" ]]; then
+        TIMED_OUT=1
+        kill "$WATCH_PID" 2>/dev/null || true
+        break
+      fi
+      sleep 1
+    done
+    WATCH_STATUS=0
+    wait "$WATCH_PID" 2>/dev/null || WATCH_STATUS=$?
+
+    if [[ "$TIMED_OUT" -eq 1 ]]; then
+      echo "FAIL: --when-green timed out after ${TIMEOUT_MIN} min: CI for PR #$PR is still pending" >&2
+      exit 3
     fi
-    sleep 1
-  done
-  WATCH_STATUS=0
-  wait "$WATCH_PID" 2>/dev/null || WATCH_STATUS=$?
 
-  if [[ "$TIMED_OUT" -eq 1 ]]; then
-    echo "FAIL: --when-green timed out after ${TIMEOUT_MIN} min: CI for PR #$PR is still pending" >&2
-    exit 3
-  fi
+    [[ "$WATCH_STATUS" -eq 0 ]] && break
 
-  if [[ "$WATCH_STATUS" -ne 0 ]]; then
+    # A watch can still start before GitHub registered the check list: wait and retry.
+    if grep -qi "no checks reported" "$CHECKS_OUT"; then
+      if [[ "$SECONDS" -ge "$NO_CHECKS_DEADLINE" ]]; then
+        no_checks_fail
+      fi
+      sleep "$POLL_SECONDS"
+      continue
+    fi
+
     RED_JOBS=""
     if WATCH_JSON=$(gh pr view "$PR" --json statusCheckRollup 2>/dev/null); then
       RED_JOBS=$(node -e '
@@ -124,7 +158,7 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
       echo "FAIL: gh pr checks --watch exited $WATCH_STATUS for PR #$PR and no failing job could be identified" >&2
     fi
     exit 1
-  fi
+  done
   echo "PASS: [when-green] CI finished green for PR #$PR; continuing with the normal checks."
 fi
 
