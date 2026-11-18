@@ -1,0 +1,5 @@
+# "No CI checks appeared" can be a queued run, not a broken push
+
+- **Trap:** While merging the screen-kit PR through `pr-gate.sh --when-green`, the gate failed twice with `no CI checks appeared after ~500s`, yet `gh run list --branch <branch>` showed the run queued/pending both times. Each false failure restarted the watch loop and cost a full CI cycle.
+- **Root Cause:** After a force-push, GitHub takes minutes to register the checks on the PR — longer than the gate's bounded wait for the first check — while the workflow itself was already queued. The gate treated "no checks registered yet" as terminal.
+- **Rule:** Before treating "no checks appeared" as a failure, look at `gh run list --branch <branch>`: if a run is queued or in progress, re-run the gate against the existing run instead of re-pushing or restarting anything. (The gate since learns to treat a not-yet-registered run as pending; when this happens again, that retry should live inside the gate, not in the operator's hands.)
