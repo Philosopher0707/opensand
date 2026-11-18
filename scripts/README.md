@@ -16,6 +16,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `check-scripts-catalog-selftest.sh` | Hermetic selftest for scripts catalog checker | Pre-commit / verification | Self |
 | `clean-disk.sh` | Safe disk reclamation of merged/clean scratch worktrees and caches | Manual / low disk space in release | `clean-disk-selftest.sh` |
 | `clean-disk-selftest.sh` | Hermetic selftest for disk cleanup script | Pre-commit / verification | Self |
+| `install-health-check.sh` | Post-install health check: launch the installed app in isolation and prove it answers with the expected version | `release.sh` Step 9 after `--install` | `install-health-check-selftest.sh` |
+| `install-health-check-selftest.sh` | Hermetic selftest for the post-install health check using a stub app in a temp dir | Pre-commit / verification | Self |
 | `mutate.sh` | Thin wrapper kept for the older name; forwards every argument to `mutation-probe.sh` | Automated job proof / mutation testing | `proof-selftest.sh` |
 | `lessons-index.sh` | Generate `docs/lessons/INDEX.md` from the one-file-per-lesson entries; `--check` fails when the index is stale | `scripts/verify.sh` (`--check`), developer after adding a lesson | `lessons-index-selftest.sh` |
 | `lessons-index-selftest.sh` | Hermetic selftest for the lessons index generator and its staleness check | Pre-commit / verification | Self |
@@ -33,7 +35,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `pre-commit.sh` | Git pre-commit hook enforcing staged-secret scan, blanket-add guard and test suite | Git pre-commit hook | `pre-commit-selftest.sh` |
 | `pre-commit-selftest.sh` | Hermetic selftest for the staged secret scan in `pre-commit.sh` (clean commit allowed, each blocked pattern refused, hook run from outside the repo) | Pre-commit / verification | Self |
 | `provenance-gate.sh` | Build artifact provenance and digest verification gate | Release workflows / CI | None |
-| `release.sh` | 9-step end-to-end automated release pipeline | Release Engineer / CI | `release-selftest.sh` |
+| `release.sh` | 9-step end-to-end automated release pipeline; Step 9 runs the post-install health check | Release Engineer / CI | `release-selftest.sh` |
 | `release-check.sh` | Full release verification and smoke test gate | Pre-release sanity gate | None |
 | `release-selftest.sh` | Hermetic selftest for automated release pipeline | Pre-commit / verification | Self |
 | `smoke-packaged.sh` | Packaged application launch verification in isolated state | CI / release smoke gate | None |
@@ -90,6 +92,20 @@ All scripts in this directory are cataloged below. Automated verification is enf
 ### `clean-disk-selftest.sh`
 - **Purpose**: Hermetic selftest suite for `clean-disk.sh` using isolated git repos to ensure dirty and unmerged worktrees are never cleaned.
 - **Usage**: `scripts/clean-disk-selftest.sh`
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, test verification.
+
+### `install-health-check.sh`
+- **Purpose**: Prove an installed OpenSand app starts and answers after a release install. Launches the installed bundle's own binary with a fresh isolated `OPENSAND_STATE_DIR` and `OPENSAND_SMOKE=1`, waits for its local server port and token, queries `GET /api/diagnostics`, checks the reported version, then terminates exactly the launched PID and removes the temp state. Never uses `~/.opensand` as state and fails if that directory changes during the check.
+- **Usage**: `scripts/install-health-check.sh <path/to/OpenSand.app> <expected-version>` (`OPENSAND_HEALTH_TIMEOUT_SECONDS` bounds the startup wait, default 30).
+- **Exit Codes**: `0` when the app starts and answers with the expected version, `1` on missing bundle, no answer, non-200 response, version mismatch, or state-isolation breach.
+- **Selftest**: `scripts/install-health-check-selftest.sh`.
+- **Trigger**: `scripts/release.sh` Step 9 when `--install` is passed.
+
+### `install-health-check-selftest.sh`
+- **Purpose**: Hermetic selftest suite for `install-health-check.sh` using a stub installed app in a throwaway dir (no real `OpenSand.app` and no `~/.opensand`): happy path, wrong version, no answer, early exit, and missing bundle.
+- **Usage**: `scripts/install-health-check-selftest.sh` (`OPENSAND_HEALTH_CHECK_SCRIPT` points at a mutant for a mutation proof).
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
 - **Trigger**: Pre-commit hook, test verification.
@@ -191,9 +207,9 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Release pipeline.
 
 ### `release.sh`
-- **Purpose**: 9-step automated release pipeline (disk space guard, bump PR, pr-gate merge, tag push, artifact download, release notes from merged PR titles, smoke check, DMG plist verification, and optional install).
+- **Purpose**: 9-step automated release pipeline (disk space guard, bump PR, pr-gate merge, tag push, artifact download, release notes from merged PR titles, smoke check, DMG plist verification, and optional install followed by a post-install health check).
 - **Usage**: `scripts/release.sh [--dry-run] [--install] <version>`
-- **Env**: `RELEASE_DOWNLOAD_TIMEOUT_SECONDS` (default `600`) and `RELEASE_DOWNLOAD_POLL_SECONDS` (default `15`) bound the Step 5 retry that waits for `release.yml` to publish the assets.
+- **Env**: `RELEASE_DOWNLOAD_TIMEOUT_SECONDS` (default `600`) and `RELEASE_DOWNLOAD_POLL_SECONDS` (default `15`) bound the Step 5 retry that waits for `release.yml` to publish the assets. `OPENSAND_HEALTH_CHECK_SCRIPT` overrides the Step 9 health check path for the selftest.
 - **Exit Codes**: `0` on success, `1` on general failure, `2` on smoke test failure, `3` on pending bump PR CI.
 - **Selftest**: `scripts/release-selftest.sh`.
 - **Trigger**: QA & Release Engineer or automated release routine.

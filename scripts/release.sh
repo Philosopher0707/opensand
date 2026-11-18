@@ -15,7 +15,8 @@
 #   7. Run smoke verification (smoke-packaged.sh / release-check.sh), failing if exit code is 2 or non-zero
 #   8. Mount DMG, verify Info.plist CFBundleShortVersionString matches target version, unmount
 #   9. (With --install only): archive old /Applications/OpenSand.app to ~/dev/_archive/<date>-OpenSand-<old>/,
-#      install new app, xattr -cr, launch and confirm installed version
+#      install new app, xattr -cr, then run a post-install health check proving the installed
+#      app starts and answers with the expected version (install-health-check.sh)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -24,6 +25,7 @@ cd "$ROOT"
 CLEAN_DISK_SCRIPT="${OPENSAND_CLEAN_DISK_SCRIPT:-$ROOT/scripts/clean-disk.sh}"
 PR_GATE_SCRIPT="${OPENSAND_PR_GATE_SCRIPT:-$ROOT/scripts/pr-gate.sh}"
 SMOKE_SCRIPT="${OPENSAND_SMOKE_SCRIPT:-$ROOT/scripts/smoke-packaged.sh}"
+HEALTH_CHECK_SCRIPT="${OPENSAND_HEALTH_CHECK_SCRIPT:-$ROOT/scripts/install-health-check.sh}"
 APP_DEST="${OPENSAND_INSTALL_APP_DEST:-/Applications/OpenSand.app}"
 ARCHIVE_BASE="${OPENSAND_ARCHIVE_DIR_BASE:-$HOME/dev/_archive}"
 
@@ -373,7 +375,7 @@ fi
 echo "==> [Step 9/9] Install check..."
 if [[ "$INSTALL" -eq 1 ]]; then
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "DRY RUN: would check existing $APP_DEST, archive to ~/dev/_archive/<date>-OpenSand-<old>/, copy new app, run xattr -cr, and launch to confirm version"
+    echo "DRY RUN: would check existing $APP_DEST, archive to ~/dev/_archive/<date>-OpenSand-<old>/, copy new app, run xattr -cr, and run install-health-check.sh to prove it starts and answers"
   else
     if [[ -d "$APP_DEST" ]]; then
       PLIST="$APP_DEST/Contents/Info.plist"
@@ -424,11 +426,14 @@ if [[ "$INSTALL" -eq 1 ]]; then
       exit 1
     fi
 
-    echo "Launching and confirming version..."
-    if [[ -f "$APP_DEST/Contents/MacOS/OpenSand" ]]; then
-      OPENSAND_SMOKE=1 OPENSAND_STATE_DIR="$(mktemp -d)" "$APP_DEST/Contents/MacOS/OpenSand" --version >/dev/null 2>&1 || true
+    echo "Running post-install health check on $APP_DEST..."
+    HEALTH_STATUS=0
+    bash "$HEALTH_CHECK_SCRIPT" "$APP_DEST" "$VERSION" || HEALTH_STATUS=$?
+    if [[ "$HEALTH_STATUS" -ne 0 ]]; then
+      echo "FAIL: post-install health check failed for $APP_DEST (exit code: $HEALTH_STATUS)" >&2
+      exit 2
     fi
-    echo "PASS: Successfully installed and verified OpenSand $VERSION at $APP_DEST"
+    echo "PASS: Successfully installed OpenSand $VERSION at $APP_DEST; health check proved it starts and answers"
   fi
 else
   echo "PASS: --install not passed; skipping local /Applications installation."
