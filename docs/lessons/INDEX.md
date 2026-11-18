@@ -28,6 +28,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-18 · [An element that exists can still be hidden at the minimum window size](2026-11-18-topbar-button-hidden-by-legacy-css-at-minimum-size.md)
 - 2026-11-19 · [Adjacent JSX roots in a generated mount fail the vite build with a parser error](2026-11-19-adjacent-jsx-roots-in-generated-mount.md)
 - 2026-11-19 · [baseRefOid follows the live base, so stale PRs report DIRTY/CONFLICTING](2026-11-19-baserefoid-tracks-live-base.md)
+- 2026-11-19 · [The brief lint missed "Report back with:" and mis-coded unreadable files](2026-11-19-brief-lint-label-and-exit-code.md)
 - 2026-11-19 · [CI speed-up: skip the heavy suite for docs-only PRs, and the gate bans `.github/` changes](2026-11-19-ci-speedup-docs-only-skip-and-gate-github-ban.md)
 - 2026-11-19 · [A full test run rewrites tracked screenshots, and `save` stages them](2026-11-19-full-test-run-rewrites-tracked-screenshots.md)
 - 2026-11-19 · ["No CI checks appeared" can be a queued run, not a broken push](2026-11-19-gate-no-checks-appeared-vs-queued-run.md)

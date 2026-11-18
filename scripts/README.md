@@ -12,6 +12,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | :--- | :--- | :--- | :--- |
 | `bench-cold-start.ts` | Benchmark daemon startup latency | Manual performance testing | None |
 | `bench-first-token.ts` | Benchmark engine model time-to-first-token | Manual performance testing | None |
+| `check-doc-links.sh` | Check that local markdown links under `docs/` resolve to real files | `scripts/verify.sh`, CI | `check-doc-links-selftest.sh` |
+| `check-doc-links-selftest.sh` | Hermetic selftest for the docs link checker | Pre-commit / verification | Self |
 | `check-scripts-catalog.sh` | Validate completeness of `scripts/README.md` and selftests | `scripts/verify.sh`, CI | `check-scripts-catalog-selftest.sh` |
 | `check-scripts-catalog-selftest.sh` | Hermetic selftest for scripts catalog checker | Pre-commit / verification | Self |
 | `clean-disk.sh` | Safe disk reclamation of merged/clean scratch worktrees and caches | Manual / low disk space in release | `clean-disk-selftest.sh` |
@@ -22,6 +24,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `lessons-index.sh` | Generate `docs/lessons/INDEX.md` from the one-file-per-lesson entries; `--check` fails when the index is stale | `scripts/verify.sh` (`--check`), developer after adding a lesson | `lessons-index-selftest.sh` |
 | `lessons-index-selftest.sh` | Hermetic selftest for the lessons index generator and its staleness check | Pre-commit / verification | Self |
 | `mutation-probe.sh` | The one mutation probe: break a tracked file on purpose, prove the test goes red, restore it byte-identically, prove green again | Selftest authors, QA / Release Engineer | `proof-selftest.sh` |
+| `lint-brief.sh` | Shape lint for bot briefs: Goal, Done when, Scope, Report back | `scripts/verify.sh`, bot handoff | `lint-brief-selftest.sh` |
+| `lint-brief-selftest.sh` | Hermetic selftest for the brief linter | Pre-commit / verification | Self |
 
 | `opensand-completion.bash` | Bash tab completion definitions | User shell environment | None |
 | `opensand-completion.zsh` | Zsh tab completion definitions | User shell environment | None |
@@ -68,6 +72,20 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Selftest**: None.
 - **Trigger**: Manual benchmarking.
 
+### `check-doc-links.sh`
+- **Purpose**: Check that local markdown links under `docs/` resolve to real files, naming file and line for each broken link. External URLs, `mailto:`, pure `#anchors` and fenced code are ignored; image links are checked like any other link. The doc lint for process-map node 4.
+- **Usage**: `scripts/check-doc-links.sh` (`CHECK_DOC_LINKS_DIR` overrides the docs directory for the selftest).
+- **Exit Codes**: `0` all local links resolve, `1` a broken link, `2` bad usage or missing `python3`.
+- **Selftest**: `scripts/check-doc-links-selftest.sh`.
+- **Trigger**: `scripts/verify.sh`, CI.
+
+### `check-doc-links-selftest.sh`
+- **Purpose**: Hermetic selftest with a temp docs tree: valid relative/anchored/external/image/subdir links, fenced-code links ignored, broken link named with file and line, missing docs dir refused. Point `CHECK_DOC_LINKS_SCRIPT` at a mutant copy to prove a case sees the breakage.
+- **Usage**: `scripts/check-doc-links-selftest.sh`
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, test verification.
+
 ### `check-scripts-catalog.sh`
 - **Purpose**: Ensure all scripts in `scripts/` are documented in `README.md`, no nonexistent scripts are cataloged, and all gate/release scripts have selftests.
 - **Usage**: `scripts/check-scripts-catalog.sh`
@@ -106,6 +124,20 @@ All scripts in this directory are cataloged below. Automated verification is enf
 ### `install-health-check-selftest.sh`
 - **Purpose**: Hermetic selftest suite for `install-health-check.sh` using a stub installed app in a throwaway dir (no real `OpenSand.app` and no `~/.opensand`): happy path, wrong version, no answer, early exit, and missing bundle.
 - **Usage**: `scripts/install-health-check-selftest.sh` (`OPENSAND_HEALTH_CHECK_SCRIPT` points at a mutant for a mutation proof).
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, test verification.
+
+### `lint-brief.sh`
+- **Purpose**: Shape lint for bot briefs: each brief must name Goal, Done when, Scope and Report back. Accepts `Goal:` / `**Goal:**` / `## Goal` forms and multiple files; `-` reads stdin. Checks presence, not the quality of the prose. The brief lint for process-map node 5.
+- **Usage**: `scripts/lint-brief.sh <brief.md> [...]  ('-' reads stdin)`
+- **Exit Codes**: `0` all briefs well-shaped, `1` a section missing, `2` bad usage or unreadable file.
+- **Selftest**: `scripts/lint-brief-selftest.sh`.
+- **Trigger**: `scripts/verify.sh` (checks `docs/brief-template.md`), bot handoff before work starts.
+
+### `lint-brief-selftest.sh`
+- **Purpose**: Hermetic selftest of the brief linter: colon and markdown-heading styles pass, each of the four missing sections is caught, empty file names all four, bad batch/usage/stdin cases behave. Point `LINT_BRIEF_SCRIPT` at a mutant copy to prove a case sees the breakage.
+- **Usage**: `scripts/lint-brief-selftest.sh`
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
 - **Trigger**: Pre-commit hook, test verification.

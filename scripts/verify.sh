@@ -33,6 +33,12 @@ node scripts/sync-versions.js --check
 echo "verify: checking scripts catalog completeness..."
 bash scripts/check-scripts-catalog.sh
 
+echo "verify: checking bot brief template shape..."
+bash scripts/lint-brief.sh docs/brief-template.md
+
+echo "verify: checking docs links..."
+bash scripts/check-doc-links.sh
+
 echo "verify: checking lessons index is up to date..."
 bash scripts/lessons-index.sh --check
 
