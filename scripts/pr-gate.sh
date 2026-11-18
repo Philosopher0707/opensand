@@ -241,16 +241,42 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
         echo "FAIL: could not create a temporary worktree to rebase PR #$PR (nothing pushed)" >&2
         exit 1
       fi
+      # docs/lessons/INDEX.md is generated: a conflict in it alone is self-healing, any other
+      # conflict aborts as before. PR_GATE_LESSONS_INDEX_SCRIPT is the selftest seam for the generator.
+      LESSONS_INDEX_SCRIPT="${PR_GATE_LESSONS_INDEX_SCRIPT:-$ROOT/scripts/lessons-index.sh}"
       if ! git -C "$REBASE_WT" rebase "$FETCHED_MAIN"; then
         CONFLICTS=$(git -C "$REBASE_WT" diff --name-only --diff-filter=U || true)
-        git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
-        echo "FAIL: rebasing PR #$PR onto origin/main conflicts; nothing pushed. Resolve these files by hand:" >&2
-        if [[ -n "$CONFLICTS" ]]; then
-          printf '  %s\n' $CONFLICTS >&2
+        CONFLICT_LIST=$(printf '%s\n' "$CONFLICTS" | grep -v '^$' || true)
+        CONFLICT_COUNT=$(printf '%s\n' "$CONFLICT_LIST" | wc -l | tr -d ' ')
+        if [[ "$CONFLICT_COUNT" -eq 1 && "$CONFLICT_LIST" == "docs/lessons/INDEX.md" ]]; then
+          echo "==> [when-green] Only docs/lessons/INDEX.md conflicts; regenerating it..."
+          # Fail closed: a generator error, a stale index, or a failed continue aborts the rebase.
+          if OPENSAND_LESSONS_DIR="$REBASE_WT/docs/lessons" bash "$LESSONS_INDEX_SCRIPT" >/dev/null 2>&1 \
+             && OPENSAND_LESSONS_DIR="$REBASE_WT/docs/lessons" bash "$LESSONS_INDEX_SCRIPT" --check >/dev/null 2>&1; then
+            git -C "$REBASE_WT" add -- docs/lessons/INDEX.md
+            if git -C "$REBASE_WT" rebase --continue >/dev/null 2>&1; then
+              echo "PASS: regenerated docs/lessons/INDEX.md and continued the rebase for PR #$PR."
+            else
+              git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+              echo "FAIL: regenerating docs/lessons/INDEX.md did not let the rebase continue for PR #$PR; nothing pushed." >&2
+              exit 1
+            fi
+          else
+            git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+            echo "FAIL: regenerated docs/lessons/INDEX.md is stale or could not be written for PR #$PR; nothing pushed." >&2
+            echo "       Run 'bash scripts/lessons-index.sh' locally and resolve the rebase by hand." >&2
+            exit 1
+          fi
         else
-          echo "  (git reported no unmerged files; see the rebase output above)" >&2
+          git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+          echo "FAIL: rebasing PR #$PR onto origin/main conflicts; nothing pushed. Resolve these files by hand:" >&2
+          if [[ -n "$CONFLICTS" ]]; then
+            printf '  %s\n' $CONFLICTS >&2
+          else
+            echo "  (git reported no unmerged files; see the rebase output above)" >&2
+          fi
+          exit 1
         fi
-        exit 1
       fi
       NEW_HEAD=$(git -C "$REBASE_WT" rev-parse HEAD)
       if ! git -C "$REBASE_WT" push --force-with-lease="refs/heads/$PR_HEAD_BRANCH:$PR_HEAD_OID" origin "HEAD:refs/heads/$PR_HEAD_BRANCH"; then
