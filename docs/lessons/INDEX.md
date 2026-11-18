@@ -21,4 +21,5 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-18 · [A turn that waits for an approval the shell cannot answer looks like a hang](2026-11-18-quick-capture-hung-on-unanswerable-approval.md)
 - 2026-11-18 · [A real-window run that ends in an error still passes "finished"](2026-11-18-real-window-accepted-error-as-finished.md)
 - 2026-11-18 · [A regression test under a profile that cannot show the widening survives its mutant](2026-11-18-regression-test-must-use-profile-that-shows-widening.md)
+- 2026-11-18 · [A lesson saved through worktree.sh could reach main with a stale index](2026-11-18-save-committed-a-stale-lessons-index.md)
 - 2026-11-18 · [An element that exists can still be hidden at the minimum window size](2026-11-18-topbar-button-hidden-by-legacy-css-at-minimum-size.md)
