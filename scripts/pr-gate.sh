@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pre-merge gate for OpenSand PRs: runs checks 1-5 and merges only when all pass.
-# Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] [--when-green [--timeout <min>]] <PR-number>
+# Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] [--when-green [--timeout <min>]] [--no-post-merge-check] <PR-number>
 #
 # --when-green  First wait for pending CI with `gh pr checks --watch` (bounded by
 #               --timeout minutes, default 40), then run the normal 5 checks and merge.
@@ -10,6 +10,12 @@
 #               A PR whose base is behind origin/main is rebased onto it and pushed with
 #               --force-with-lease before the wait, then its new CI is awaited. A
 #               conflicting rebase stops with the conflicting files named, nothing pushed.
+#
+# After a merge the gate waits for the CI run on main for the merge commit with the same
+# bounded deadline (--timeout, default 40 min; a not-yet-registered run is pending, not
+# red). Green prints "main CI green for <sha>" and exits 0; red names the failing jobs and
+# the `gh run view <id> --log-failed` hint and exits 4; a pending/no-run timeout exits 3.
+# --no-post-merge-check skips that wait.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -19,11 +25,12 @@ DRY_RUN=0
 ALLOW_LOCKFILE=0
 ALLOW_BINARY=0
 WHEN_GREEN=0
+POST_MERGE_CHECK=1
 TIMEOUT_MIN=40
 # Seconds per --timeout unit (60 = minutes); only the selftest overrides it.
 TIMEOUT_UNIT_SECONDS="${PR_GATE_TIMEOUT_UNIT_SECONDS:-60}"
 PR=""
-USAGE="Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] [--when-green [--timeout <min>]] <PR-number>"
+USAGE="Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] [--when-green [--timeout <min>]] [--no-post-merge-check] <PR-number>"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -41,6 +48,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --when-green)
       WHEN_GREEN=1
+      shift
+      ;;
+    --no-post-merge-check)
+      POST_MERGE_CHECK=0
       shift
       ;;
     --timeout)
@@ -73,6 +84,70 @@ if [[ -z "$PR" ]]; then
   echo "$USAGE" >&2
   exit 1
 fi
+
+post_merge_check() {
+  local merge_sha="$1"
+  local pm_start=$SECONDS
+  local pm_deadline=$((SECONDS + TIMEOUT_MIN * TIMEOUT_UNIT_SECONDS))
+  local pm_poll="${PR_GATE_POLL_SECONDS:-5}"
+  # GitHub registers a workflow run a few seconds after the push: pending, not red.
+  local pm_grace="${PR_GATE_NO_CHECKS_GRACE_SECONDS:-300}"
+  local pm_no_run_deadline=$((pm_start + pm_grace))
+  if [[ "$pm_no_run_deadline" -gt "$pm_deadline" ]]; then pm_no_run_deadline="$pm_deadline"; fi
+  local runs_json run_json run_id pm_status pm_conclusion red_jobs
+
+  echo "==> [post-merge] Waiting for main CI run for $merge_sha (timeout ${TIMEOUT_MIN} min)..."
+
+  while :; do
+    run_id=""
+    if runs_json=$(gh run list --commit "$merge_sha" --json databaseId,name,event,headBranch 2>/dev/null); then
+      run_id=$(node -e '
+const runs = JSON.parse(process.argv[1] || "[]") || [];
+const onMain = runs.filter(r => (r.headBranch === "main" || r.headBranch === "refs/heads/main") && (r.event === "push" || !r.event));
+const pick = onMain.find(r => (r.name || "").toLowerCase() === "ci") || onMain[0];
+console.log(pick ? pick.databaseId : "");
+' "$runs_json" 2>/dev/null || true)
+    fi
+    [[ -n "$run_id" ]] && break
+    if [[ "$SECONDS" -ge "$pm_no_run_deadline" ]]; then
+      echo "FAIL: main CI run never appeared after $((SECONDS - pm_start))s for $merge_sha" >&2
+      exit 3
+    fi
+    sleep "$pm_poll"
+  done
+
+  echo "==> [post-merge] Found main CI run $run_id; waiting for it to finish..."
+
+  while :; do
+    if run_json=$(gh run view "$run_id" --json status,conclusion,jobs 2>/dev/null); then
+      pm_status=$(node -e 'const d=JSON.parse(process.argv[1]||"{}");console.log((d.status||"").toUpperCase())' "$run_json" 2>/dev/null || true)
+      pm_conclusion=$(node -e 'const d=JSON.parse(process.argv[1]||"{}");console.log((d.conclusion||"").toUpperCase())' "$run_json" 2>/dev/null || true)
+      if [[ "$pm_status" == "COMPLETED" ]]; then
+        if [[ "$pm_conclusion" == "SUCCESS" ]]; then
+          echo "main CI green for $merge_sha"
+          return 0
+        fi
+        red_jobs=$(node -e '
+const d = JSON.parse(process.argv[1] || "{}");
+const bad = (d.jobs || []).filter(j => {
+  const c = (j.conclusion || "").toUpperCase();
+  return c && !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(c);
+});
+console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")").join(", "));
+' "$run_json" 2>/dev/null || true)
+        [[ -z "$red_jobs" ]] && red_jobs="$pm_conclusion"
+        echo "FAIL: main CI red for $merge_sha: $red_jobs" >&2
+        echo "Inspect with: gh run view $run_id --log-failed" >&2
+        exit 4
+      fi
+    fi
+    if [[ "$SECONDS" -ge "$pm_deadline" ]]; then
+      echo "FAIL: main CI still pending after ${TIMEOUT_MIN} min for $merge_sha (run $run_id)" >&2
+      exit 3
+    fi
+    sleep "$pm_poll"
+  done
+}
 
 if [[ "$WHEN_GREEN" -eq 1 ]]; then
   echo "==> [when-green] Watching CI for PR #$PR (timeout ${TIMEOUT_MIN} min)..."
@@ -254,7 +329,8 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
           if OPENSAND_LESSONS_DIR="$REBASE_WT/docs/lessons" bash "$LESSONS_INDEX_SCRIPT" >/dev/null 2>&1 \
              && OPENSAND_LESSONS_DIR="$REBASE_WT/docs/lessons" bash "$LESSONS_INDEX_SCRIPT" --check >/dev/null 2>&1; then
             git -C "$REBASE_WT" add -- docs/lessons/INDEX.md
-            if git -C "$REBASE_WT" rebase --continue >/dev/null 2>&1; then
+            # Non-interactive: a plain rebase --continue opens the editor and hangs when there is no tty.
+            if GIT_EDITOR=true git -C "$REBASE_WT" rebase --continue >/dev/null 2>&1; then
               echo "PASS: regenerated docs/lessons/INDEX.md and continued the rebase for PR #$PR."
             else
               git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
@@ -518,3 +594,7 @@ PR_STATE=$(node -e 'const d = JSON.parse(process.argv[1]); console.log(d.state |
 echo "PASS: PR #$PR merged successfully."
 echo "Merge commit: $MERGE_COMMIT"
 echo "State: $PR_STATE"
+
+if [[ "$POST_MERGE_CHECK" -eq 1 ]]; then
+  post_merge_check "$MERGE_COMMIT"
+fi

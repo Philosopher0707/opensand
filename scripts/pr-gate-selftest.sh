@@ -23,6 +23,10 @@
 # 25. --when-green: only docs/lessons/INDEX.md conflicts -> regenerate, stage, continue, merge
 # 26. --when-green: INDEX.md plus another file conflict -> abort, name both, no push
 # 27. --when-green: regenerated index still stale -> fail closed, no push
+# 28. post-merge: main CI run for the merge commit green -> exit 0, "main CI green for <sha>"
+# 29. post-merge: main CI red -> exit 4, failing job names + --log-failed hint (merge already done)
+# 30. post-merge: run never appears -> bounded exit 3, not a hang
+# 31. --no-post-merge-check skips the wait entirely
 # Usage: scripts/pr-gate-selftest.sh (PR_GATE_SCRIPT=<path> to test another copy)
 set -uo pipefail
 
@@ -148,6 +152,32 @@ case "$1" in
         ;;
     esac
     ;;
+  run)
+    case "${2:-}" in
+      list)
+        echo "gh $*" >> "$TEST_CASE_DIR/run_list_calls.log"
+        if [ -f "$TEST_CASE_DIR/run_list_json" ]; then
+          cat "$TEST_CASE_DIR/run_list_json"
+        else
+          echo '[{"databaseId":555,"name":"CI","event":"push","headBranch":"main"}]'
+        fi
+        exit 0
+        ;;
+      view)
+        echo "gh $*" >> "$TEST_CASE_DIR/run_view_calls.log"
+        if [ -f "$TEST_CASE_DIR/run_view_json" ]; then
+          cat "$TEST_CASE_DIR/run_view_json"
+        else
+          echo '{"status":"COMPLETED","conclusion":"SUCCESS","jobs":[{"name":"Build & test (Node 22)","conclusion":"SUCCESS"},{"name":"Build & test (macOS, Node 22)","conclusion":"SUCCESS"}]}'
+        fi
+        exit 0
+        ;;
+      *)
+        echo "gh stub: unhandled run subcmd ${2:-}" >&2
+        exit 1
+        ;;
+    esac
+    ;;
   *)
     echo "gh stub: unhandled command $1" >&2
     exit 1
@@ -174,6 +204,7 @@ case "${1:-}" in
           exit 0
         fi
         if [ "${2:-}" = "--continue" ]; then
+          echo "rebase --continue GIT_EDITOR=${GIT_EDITOR:-unset}" >> "$TEST_CASE_DIR/rebase_calls.log"
           # Only the INDEX-only conflict case is expected to continue cleanly.
           if [ -f "$TEST_CASE_DIR/index_only_conflict" ]; then
             exit 0
@@ -852,6 +883,7 @@ run_test_case "case25-index-only-conflict" --when-green 42
 grep -qF -- "lessons-index --check" "$dir/index_calls.log" 2>/dev/null || { echo "FAIL case25: regenerated index was not checked for staleness"; FAILED=1; }
 grep -qF -- "docs/lessons/INDEX.md" "$dir/index_add.log" 2>/dev/null || { echo "FAIL case25: regenerated index was not staged"; FAILED=1; }
 grep -qF -- "rebase --continue" "$dir/rebase_calls.log" 2>/dev/null || { echo "FAIL case25: rebase was not continued after regenerating the index"; FAILED=1; }
+grep -qF -- "rebase --continue GIT_EDITOR=true" "$dir/rebase_calls.log" 2>/dev/null || { echo "FAIL case25: rebase --continue was not non-interactive (would hang with no tty)"; FAILED=1; }
 if [[ ! -f "$dir/force_push.log" ]]; then
   echo "FAIL case25: no force push after the auto-resolved rebase"
   FAILED=1
@@ -902,5 +934,58 @@ if grep -qF -- "rebase --continue" "$dir/rebase_calls.log" 2>/dev/null; then
   FAILED=1
 fi
 grep -qF -- "lessons-index --check" "$dir/index_calls.log" 2>/dev/null || { echo "FAIL case27: stale index was not detected by the check"; FAILED=1; }
+
+# --- Case 28: post-merge, main CI run for the merge commit is green -> exit 0 ---
+dir="$WORK/case28-post-merge-green"
+setup_defaults "$dir"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("main CI green for f8cb8862e31cc85ca91373b99bc58aa5b6a176e6" "PASS: PR #42 merged successfully.")
+run_test_case "case28-post-merge-green" 42
+grep -qF -- "gh run list --commit f8cb8862e31cc85ca91373b99bc58aa5b6a176e6" "$dir/run_list_calls.log" 2>/dev/null || { echo "FAIL case28: run list was not queried by merge sha"; FAILED=1; }
+grep -qF -- "gh run view 555" "$dir/run_view_calls.log" 2>/dev/null || { echo "FAIL case28: the discovered run was not watched"; FAILED=1; }
+
+# --- Case 29: post-merge, main CI red -> exit 4, names jobs and --log-failed hint ---
+dir="$WORK/case29-post-merge-red"
+setup_defaults "$dir"
+cat << 'JSON' > "$dir/run_view_json"
+{"status":"COMPLETED","conclusion":"FAILURE","jobs":[{"name":"Build & test (Node 22)","conclusion":"SUCCESS"},{"name":"Build & test (macOS, Node 22)","conclusion":"FAILURE"}]}
+JSON
+EXPECT_EXIT=4
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("FAIL: main CI red for f8cb8862e31cc85ca91373b99bc58aa5b6a176e6" "Build & test (macOS, Node 22) (FAILURE)" "gh run view 555 --log-failed")
+PR_GATE_TIMEOUT_UNIT_SECONDS=2 run_test_case "case29-post-merge-red" --timeout 1 42
+
+# --- Case 30: post-merge, no run ever appears -> bounded exit 3, no hang, merge already done ---
+dir="$WORK/case30-post-merge-no-run"
+setup_defaults "$dir"
+echo '[]' > "$dir/run_list_json"
+EXPECT_EXIT=3
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("main CI run never appeared after" "for f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+start=$SECONDS
+PR_GATE_TIMEOUT_UNIT_SECONDS=2 PR_GATE_POLL_SECONDS=1 run_test_case "case30-post-merge-no-run" --timeout 1 42
+elapsed=$((SECONDS - start))
+if [[ "$elapsed" -gt 10 ]]; then
+  echo "FAIL case30: gave up after ${elapsed}s, expected about 2s (not bounded)"
+  FAILED=1
+fi
+
+# --- Case 31: --no-post-merge-check skips the wait entirely ---
+dir="$WORK/case31-post-merge-opt-out"
+setup_defaults "$dir"
+echo '[]' > "$dir/run_list_json"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("PASS: PR #42 merged successfully.")
+run_test_case "case31-post-merge-opt-out" --no-post-merge-check 42
+if [[ -f "$dir/run_list_calls.log" || -f "$dir/run_view_calls.log" ]]; then
+  echo "FAIL case31: post-merge check ran despite --no-post-merge-check"
+  FAILED=1
+fi
 
 exit "$FAILED"
