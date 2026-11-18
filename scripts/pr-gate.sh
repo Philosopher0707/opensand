@@ -193,7 +193,7 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
     fi
     ATTEMPT=$((ATTEMPT + 1))
 
-    if ! PR_META=$(gh pr view "$PR" --json baseRefOid,headRefOid,headRefName,isCrossRepository,mergeStateStatus 2>/dev/null); then
+    if ! PR_META=$(gh pr view "$PR" --json baseRefOid,headRefOid,headRefName,isCrossRepository,mergeStateStatus,mergeable 2>/dev/null); then
       echo "FAIL: could not read PR #$PR metadata (base, head, branch) before waiting for CI" >&2
       exit 1
     fi
@@ -202,6 +202,8 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
     PR_HEAD_BRANCH=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.headRefName||"")' "$PR_META")
     PR_IS_FORK=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.isCrossRepository===true?"true":"false")' "$PR_META")
     PR_MERGE_STATE=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.mergeStateStatus||"")' "$PR_META")
+    # baseRefOid tracks the live base tip on GitHub, so BEHIND is normally reported as DIRTY/CONFLICTING.
+    PR_MERGEABLE=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.mergeable||"")' "$PR_META")
 
     if ! MAIN_LINE=$(git ls-remote origin refs/heads/main 2>&1); then
       echo "FAIL: git ls-remote failed for origin refs/heads/main: $MAIN_LINE" >&2
@@ -209,7 +211,7 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
     fi
     MAIN_SHA=$(echo "$MAIN_LINE" | awk '{print $1}')
 
-    if [[ -n "$MAIN_SHA" && ( "$PR_BASE_OID" != "$MAIN_SHA" || "$PR_MERGE_STATE" == "BEHIND" ) ]]; then
+    if [[ -n "$MAIN_SHA" && ( "$PR_BASE_OID" != "$MAIN_SHA" || "$PR_MERGE_STATE" == "BEHIND" || "$PR_MERGE_STATE" == "DIRTY" || "$PR_MERGEABLE" == "CONFLICTING" ) ]]; then
       echo "==> [when-green] PR #$PR base is behind origin/main (${MAIN_SHA:0:7}); rebase attempt $ATTEMPT/$REBASE_MAX..."
       if [[ "$PR_IS_FORK" == "true" ]]; then
         echo "FAIL: PR #$PR comes from a fork; rebase it on the contributor's branch instead (nothing pushed)" >&2
@@ -270,18 +272,20 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
     wait_for_green
 
     # Main can move during the wait; leave only once the PR is no longer behind.
-    if ! PR_META=$(gh pr view "$PR" --json baseRefOid,headRefOid,headRefName,isCrossRepository,mergeStateStatus 2>/dev/null); then
+    if ! PR_META=$(gh pr view "$PR" --json baseRefOid,headRefOid,headRefName,isCrossRepository,mergeStateStatus,mergeable 2>/dev/null); then
       echo "FAIL: could not re-read PR #$PR metadata after waiting for CI" >&2
       exit 1
     fi
     PR_BASE_OID=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.baseRefOid||"")' "$PR_META")
     PR_MERGE_STATE=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.mergeStateStatus||"")' "$PR_META")
+    # baseRefOid tracks the live base tip on GitHub, so BEHIND is normally reported as DIRTY/CONFLICTING.
+    PR_MERGEABLE=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.mergeable||"")' "$PR_META")
     if ! MAIN_LINE=$(git ls-remote origin refs/heads/main 2>&1); then
       echo "FAIL: git ls-remote failed for origin refs/heads/main: $MAIN_LINE" >&2
       exit 1
     fi
     MAIN_SHA=$(echo "$MAIN_LINE" | awk '{print $1}')
-    if [[ -n "$MAIN_SHA" && ( "$PR_BASE_OID" != "$MAIN_SHA" || "$PR_MERGE_STATE" == "BEHIND" ) ]]; then
+    if [[ -n "$MAIN_SHA" && ( "$PR_BASE_OID" != "$MAIN_SHA" || "$PR_MERGE_STATE" == "BEHIND" || "$PR_MERGE_STATE" == "DIRTY" || "$PR_MERGEABLE" == "CONFLICTING" ) ]]; then
       continue
     fi
     break

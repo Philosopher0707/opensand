@@ -784,4 +784,23 @@ if [[ "$(grep -c 'fetch origin main' "$dir/git_fetch.log" 2>/dev/null || echo 0)
   echo "FAIL case23: expected exactly 3 rebase attempts, got $(grep -c 'fetch origin main' "$dir/git_fetch.log" 2>/dev/null || echo 0)"
   FAILED=1
 fi
+
+# --- Case 24: GitHub reports a real stale merge as DIRTY/CONFLICTING with baseRefOid at main ---
+dir="$WORK/case24-dirty-conflicting"
+setup_defaults "$dir"
+echo 2 > "$dir/behind_times"
+touch "$dir/base_becomes_current"
+cat << 'JSON' > "$dir/pr_rebase_meta_behind.json"
+{"baseRefOid":"1111111111111111111111111111111111111111","headRefOid":"2222222222222222222222222222222222222222","headRefName":"job/test","isCrossRepository":false,"mergeStateStatus":"DIRTY","mergeable":"CONFLICTING"}
+JSON
+/usr/bin/perl -pi -e 's/"baseRefOid":\s*"[^"]+"/"baseRefOid": "9999999999999999999999999999999999999999"/' "$dir/pr_view.json"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("base is behind origin/main" "rebase attempt 1/3" "force-pushed job/test" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+run_test_case "case24-dirty-conflicting" --when-green 42
+if [[ ! -f "$dir/force_push.log" ]]; then
+  echo "FAIL case24: DIRTY/CONFLICTING must trigger a rebase push"
+  FAILED=1
+fi
 exit "$FAILED"
