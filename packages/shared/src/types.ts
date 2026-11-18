@@ -198,6 +198,18 @@ export interface SubagentTurnEvent {
 
 /* ── LLM client config ───────────────────────────────────────── */
 
+/**
+ * Usage for one model call, taken from what the provider reported on the wire.
+ * A number the provider did not report is null, never 0: a missing usage block
+ * must never look like a free call in the routing stats.
+ */
+export interface ModelCallUsage {
+  model: string;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costUsd: number | null;
+}
+
 export interface LLMClientConfig {
   baseUrl: string;
   apiKey?: string;

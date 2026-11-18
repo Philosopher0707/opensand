@@ -258,7 +258,7 @@ export class AgentCoordinator {
 
       const toolDefs = this.getActiveToolDefinitions(userQuery);
 
-      const { stream, getConsolidated } = await this.llmClient.streamCompletion(
+      const { stream, getConsolidated, getUsage } = await this.llmClient.streamCompletion(
         this.messages,
         toolDefs,
         signal
@@ -283,7 +283,10 @@ export class AgentCoordinator {
 
       const assistantMsg = getConsolidated();
       this.messages.push(assistantMsg);
-      await this.transcript.recordEvent(EVENT.modelCompletion, { message: assistantMsg });
+      await this.transcript.recordEvent(EVENT.modelCompletion, {
+        message: assistantMsg,
+        usage: getUsage(),
+      });
 
       // If no tool calls, the model concluded its response
       if (!assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {

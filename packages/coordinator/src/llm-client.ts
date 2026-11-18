@@ -1,4 +1,4 @@
-import { ChatMessage, LLMClientConfig, StreamDelta, ToolCall } from "./types.js";
+import { ChatMessage, LLMClientConfig, ModelCallUsage, StreamDelta, ToolCall } from "./types.js";
 import { ToolDefinition } from "@opensand/local-exec-daemon";
 import { parseSSEStream } from "./sse-parser.js";
 import {
@@ -327,6 +327,7 @@ export class UniversalLLMClient {
   ): Promise<{
     stream: AsyncIterable<StreamDelta>;
     getConsolidated: () => ConsolidatedAssistantResponse;
+    getUsage: () => ModelCallUsage;
   }> {
     const isAnthropic = isAnthropicProvider(this.config);
     const endpoint = this.resolveEndpoint();
@@ -488,6 +489,10 @@ export class UniversalLLMClient {
         content: "",
         thinking: "",
         toolCalls: {} as Record<number, { id: string; name: string; arguments: string }>,
+        usage: { inputTokens: null, outputTokens: null } as {
+          inputTokens: number | null;
+          outputTokens: number | null;
+        },
       };
 
       const anthropicStream = parseAnthropicSSEStream(rawStream, (s) => {
@@ -525,7 +530,15 @@ export class UniversalLLMClient {
         };
       };
 
-      return { stream: anthropicGenerator(), getConsolidated };
+      const getUsage = (): ModelCallUsage => ({
+        model: this.config.model,
+        inputTokens: state.usage.inputTokens,
+        outputTokens: state.usage.outputTokens,
+        // Anthropic reports no price on the stream; cost stays unknown, not 0.
+        costUsd: null,
+      });
+
+      return { stream: anthropicGenerator(), getConsolidated, getUsage };
     }
 
     // OpenAI-compatible streaming
@@ -535,6 +548,8 @@ export class UniversalLLMClient {
       number,
       { id: string; name: string; arguments: string }
     > = {};
+    // The final usage chunk arrives with an empty choices array (or not at all).
+    let rawUsage: any = null;
 
     async function* generator(): AsyncIterable<StreamDelta> {
       try {
@@ -551,6 +566,10 @@ export class UniversalLLMClient {
             chunk = JSON.parse(rawPayload);
           } catch {
             continue;
+          }
+
+          if (chunk.usage && typeof chunk.usage === "object") {
+            rawUsage = chunk.usage;
           }
 
           const choice = chunk.choices?.[0];
@@ -628,9 +647,21 @@ export class UniversalLLMClient {
       };
     };
 
+    const reported = (value: unknown): number | null =>
+      typeof value === "number" && Number.isFinite(value) ? value : null;
+
+    const getUsage = (): ModelCallUsage => ({
+      model: this.config.model,
+      inputTokens: reported(rawUsage?.prompt_tokens ?? rawUsage?.input_tokens),
+      outputTokens: reported(rawUsage?.completion_tokens ?? rawUsage?.output_tokens),
+      // OpenRouter and some gateways report the call's price; others report none.
+      costUsd: reported(rawUsage?.cost ?? rawUsage?.total_cost),
+    });
+
     return {
       stream: generator(),
       getConsolidated,
+      getUsage,
     };
   }
 
@@ -639,6 +670,9 @@ export class UniversalLLMClient {
       model: this.config.model,
       messages,
       stream: true,
+      // OpenAI only reports token usage on a stream when asked to; other
+      // OpenAI-compatible servers ignore the field.
+      stream_options: { include_usage: true },
     };
 
     if (this.config.temperature !== undefined) {

@@ -15,11 +15,13 @@ Phase 7 sits on three earlier phases. Their status at the time of writing:
 | Phase 3 missions | Mission graph, harness-run `check`, receipt, budget events | `packages/engine/src/missions/{runner,check,receipt}.ts` exist. Treat as the integration points, confirm the Phase 3 done-when before S4 |
 | Phase 4 containment | Sandbox profile per command, grants with epoch, inbox | `packages/local-exec-daemon/src/sandbox/{macos-profile,linux-bwrap}.ts` exist. The grant epoch and folder trust are Phase 4 work |
 
-**Gap found while writing this doc.** Nothing records token usage or cost today:
-`grep` over `packages/coordinator/src` and `packages/engine/src` finds no
-`usage`, `inputTokens` or `costUsd` in any provider client or in the coordinator
-loop. Per-attempt cost, the budget (§3.5) and the cost tie-break (§5) all need
-it. This is precondition P1 (§9), owned by Phase 3.
+**Gap found while writing this doc (P1, now done).** At the time of writing,
+nothing recorded token usage or cost: `grep` over `packages/coordinator/src` and
+`packages/engine/src` found no `usage`, `inputTokens` or `costUsd`. P1 (§9) now
+records a `ModelCallUsage` (`model`, `inputTokens`, `outputTokens`, `costUsd`,
+each null when the provider did not report it) on every `model.completion` event
+the turn loop writes. Per-attempt cost, the budget (§3.5) and the cost tie-break
+(§5) read it from there.
 
 ---
 
@@ -549,9 +551,10 @@ registered. The owner merges (`gh pr merge` is not run by workers).
 
 ## 11. Preconditions and what is still open
 
-- **P1 (blocks S4):** `model.completed` records carry `usage` (input and output
-  tokens) and each catalog model has a price. Owner: Phase 3. Nothing in the
-  current tree records usage (the gap note above §1).
+- **P1 (blocks S4): done.** `model.completion` records carry `usage` (input and
+  output tokens, model id, cost when reported) and the OpenRouter catalog already
+  carries per-model prices. S4 still has to refuse a start when a chosen model
+  has no price.
 - **P2 (blocks S4):** the Phase 4 sandbox profile can be applied to a single
   command with a configurable write root. The macOS and Linux profiles exist; the
   per-write-root variant is Phase 4 work.
