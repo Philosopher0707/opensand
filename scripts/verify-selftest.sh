@@ -157,6 +157,46 @@ expect_parallel_runs() {
   fi
 }
 
+# expect_docs_only <label> <code-change 0|1> <want-skip 0|1>: a fake pull_request event drives
+# the docs-only detection; the code-change variant must still run the full build/test suite.
+expect_docs_only() {
+  local label="$1" code_change="$2" want_skip="$3"
+  local dir="$WORK/$label" base out status ok=1
+  make_workspace "$dir" ok
+  (
+    cd "$dir"
+    git init -q
+    git config user.email test@example.com
+    git config user.name test
+    git add -A && git commit -qm base
+    base=$(git rev-parse HEAD)
+    mkdir -p docs
+    echo "docs note" > docs/note.md
+    [[ "$code_change" -eq 1 ]] && echo 'export const c = 1;' > packages/good/src/c.ts
+    git add -A && git commit -qm change
+    printf '{"pull_request":{"base":{"sha":"%s"}}}' "$base" > event.json
+    GITHUB_EVENT_NAME=pull_request GITHUB_EVENT_PATH="$dir/event.json" SKIP_INSTALL=1 TMPDIR="$dir/tmp" bash scripts/verify.sh > out.txt 2>&1
+    echo $? > status.txt
+  )
+  status=$(cat "$dir/status.txt")
+  out=$(cat "$dir/out.txt")
+  [[ "$status" -eq 0 ]] || ok=0
+  if [[ "$want_skip" -eq 1 ]]; then
+    grep -qF "skipping build and tests" <<<"$out" || ok=0
+    grep -qF "verify: ok" <<<"$out" && ok=0
+  else
+    grep -qF "verify: ok" <<<"$out" || ok=0
+    grep -qF "skipping build and tests" <<<"$out" && ok=0
+  fi
+  if [[ "$ok" -eq 1 ]]; then
+    echo "PASS $label (exit $status, skip=$want_skip)"
+  else
+    echo "FAIL $label: skip=$want_skip exit=$status"
+    sed 's/^/    | /' "$dir/out.txt"
+    FAILED=1
+  fi
+}
+
 mkdir -p "$WORK"
 expect healthy ok 0 "verify: ok"
 expect failing-test failing 1 "verify error: Package @fake/target failed its tests" "✖ deliberately failing test" "verify error: Log directory:" "opensand-verify." "/@fake__target.log"
@@ -164,7 +204,8 @@ expect single-run second-run-fails 0 "verify: ok"
 expect zero-tests zero 1 "Package @fake/target has TypeScript sources in src/ but reported 0 tests!"
 expect lessons-stale lessons-stale 1 "FAIL: docs/lessons/INDEX.md is stale"
 expect_parallel_runs
-
+expect_docs_only docs-only-skip 0 1
+expect_docs_only docs-and-code-runs-full 1 0
 
 if [[ -f "$ROOT/scripts/proof-selftest.sh" ]]; then
   echo "==> Running proof-selftest.sh..."
