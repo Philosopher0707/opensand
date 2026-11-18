@@ -414,12 +414,24 @@ export function clampSandboxProfile(
  * turn context; the rest come from no model-reachable source. Model input can only narrow
  * the sandbox (see clampSandboxProfile), so these are dropped before the call reaches the runner.
  */
-const CONTAINMENT_INPUT_FIELDS = ["workspaceRoot", "homeDir", "tempDir", "allowNetwork", "customProfileString"] as const;
+const CONTAINMENT_INPUT_FIELDS = ["workspaceRoot", "allowOutsideWorkspace", "homeDir", "tempDir", "allowNetwork", "customProfileString"] as const;
 
 function withoutContainmentInput<T extends object>(input: T): T {
   const rest = { ...input } as Record<string, unknown>;
   for (const field of CONTAINMENT_INPUT_FIELDS) delete rest[field];
   return rest as T;
+}
+
+/**
+ * File tools resolve paths inside the turn workspace. The root and the escape flag come only from
+ * the turn context: a model that could set either could read or write outside the workspace.
+ */
+function withTurnFileScope<T extends object>(input: T, context?: ToolExecutionContext) {
+  return {
+    ...withoutContainmentInput(input),
+    workspaceRoot: context?.workspaceRoot,
+    allowOutsideWorkspace: context?.allowOutsideWorkspace,
+  };
 }
 
 /**
@@ -563,9 +575,7 @@ export class ToolRegistry {
           };
         }
 
-        const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
-        const allowOutsideWorkspace = input.allowOutsideWorkspace ?? context?.allowOutsideWorkspace;
-        const output = await readFileOperation({ ...input, workspaceRoot, allowOutsideWorkspace });
+        const output = await readFileOperation(withTurnFileScope(input, context));
         return {
           status: "ok",
           output,
@@ -585,9 +595,7 @@ export class ToolRegistry {
           };
         }
 
-        const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
-        const allowOutsideWorkspace = input.allowOutsideWorkspace ?? context?.allowOutsideWorkspace;
-        const output = await writeFileOperation({ ...input, workspaceRoot, allowOutsideWorkspace });
+        const output = await writeFileOperation(withTurnFileScope(input, context));
         return {
           status: "ok",
           output,
@@ -612,9 +620,7 @@ export class ToolRegistry {
           };
         }
 
-        const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
-        const allowOutsideWorkspace = input.allowOutsideWorkspace ?? context?.allowOutsideWorkspace;
-        const output = await editFileOperation({ ...input, workspaceRoot, allowOutsideWorkspace });
+        const output = await editFileOperation(withTurnFileScope(input, context));
         return {
           status: "ok",
           output,
@@ -634,9 +640,7 @@ export class ToolRegistry {
           };
         }
 
-        const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
-        const allowOutsideWorkspace = input.allowOutsideWorkspace ?? context?.allowOutsideWorkspace;
-        const output = await grepOperation({ ...input, workspaceRoot, allowOutsideWorkspace });
+        const output = await grepOperation(withTurnFileScope(input, context));
         return {
           status: "ok",
           output,
@@ -656,9 +660,7 @@ export class ToolRegistry {
           };
         }
 
-        const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
-        const allowOutsideWorkspace = input.allowOutsideWorkspace ?? context?.allowOutsideWorkspace;
-        const output = await globOperation({ ...input, workspaceRoot, allowOutsideWorkspace });
+        const output = await globOperation(withTurnFileScope(input, context));
         return {
           status: "ok",
           output,
@@ -678,9 +680,7 @@ export class ToolRegistry {
           };
         }
 
-        const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
-        const allowOutsideWorkspace = input.allowOutsideWorkspace ?? context?.allowOutsideWorkspace;
-        const output = await listDirectoryOperation({ ...input, workspaceRoot, allowOutsideWorkspace });
+        const output = await listDirectoryOperation(withTurnFileScope(input, context));
         return {
           status: "ok",
           output,
