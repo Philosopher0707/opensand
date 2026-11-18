@@ -1,0 +1,86 @@
+# Phase 5 view inventory: what `app.js` still serves
+
+Status of Phase 5 in `opensand-next.md` §6.2 ("New shell"): replace the legacy
+renderer `packages/desktop/renderer/app.js`, then delete it.
+
+- **Baseline:** `origin/main` at `55d1f1f`. `renderer/app.js` is **6,041 lines**.
+  Line ranges below are from that commit. Re-check them with `grep -n` before
+  moving code, because they shift when `app.js` changes.
+- **Shell:** the Preact renderer in `packages/desktop/renderer-next/src/`, served
+  only with `OPENSAND_RENDERER=preact` (`src/desktop-server.ts`
+  `resolveRendererDir`). Its entry is `Shell.tsx`; it renders the sidebar and
+  main panel only, and says "Views are not ported yet" for everything else.
+- **Migration order:** the numbered rows are the order the Phase 5 PRs follow.
+  Row 1 (quick tools) goes first, as the brief asks. Rows 2 to 29 follow the
+  order of the `app.js` sections, with the chat turn path (rows 2 to 7) before
+  the other views, because the quick window and the chat depend on it.
+- **Status values:** `none` = no shell equivalent; `partial` = the shell has a
+  component for part of the behaviour (what is missing is listed);
+  `done` = fully replaced and tested. Nothing is `done` yet except the
+  mission/timeline/receipt views, which never existed in `app.js`.
+
+## Already in the shell (not served by `app.js`)
+
+These are Phase 5 views that do not come from `app.js` and need no move:
+`MissionList`, `MissionTimeline`, `MissionDiff`, `MissionReceipt`,
+`ForkDialog`, `RestoreDialog`. They are covered by the real-window tests
+`fork-real-window.test.ts` and `restore-real-window.test.ts`.
+
+## Remaining in `app.js`
+
+| # | Feature | `app.js` lines | `index.html` | Shell component that replaces it | Status | What is missing |
+|---|---|---|---|---|---|---|
+| 1 | **Quick tools: Capture window** (`btnQuickWindow`) and Recognize screen text (`btnQuickOcr`) | element refs L1134–1137; handlers L5464–5475 | `btnQuickWindow` L161, `btnQuickOcr` L160 | none | none | Button in the topbar that sends a fixed prompt (`Call list_windows and show all open on-screen windows.`) through `submitQuery`. It needs a send path and turn events (row 2). OCR uses the same pattern with a different prompt. |
+| 2 | **Chat turn: composer, send, streaming, cancel, queue** | composer and submit L4801–4893, 4915–4978, `setTurnBusy`/turn helpers L1195–1240, event stream L4994–5375, `renderMarkdownCached` L3230–3237 | `viewChat` L181–314, composer | none | none | The whole chat view. Quick window (row 1) can reuse the bridge's `sendQuery` and `onEvent`, but it has no transcript. |
+| 3 | **Chat history and turn reconstruction** | L3942–4158 | `#messageFeed` | none | none | Rebuilds bubbles, thoughts and tool cards from stored turns. |
+| 4 | **Tool cards, thought accordion, subagent cards, markdown, code highlight** | L3238–3506, 3794–3941, 3506–3747 (delegated actions), `modules/chat/markdown.js`, `modules/chat/highlight.js` | n/a | none | none | Rendering for row 2 and 3. |
+| 5 | **Artifact canvas** (side-by-side split view) | elements L923–951; code in `modules/chat/canvas.js` (702 lines) and `modules/chat/file-model.js` | `canvas*` elements | none | none | Canvas tabs, open-in-canvas, unseen-edit tests (`canvas-*.test.ts`) run against the old renderer. |
+| 6 | **Detail inspector** (slide-out panel, session actions) | L1314–1480 | detail panel | none | none | |
+| 7 | **Composer extras**: staged attachments, file picker, drag and drop, voice dictation, `/ @ #` autocomplete popover, quick prompt chips | L4339–4550, 4551–4914, 4979–4993 | composer | none | none | Belongs with row 2. |
+| 8 | **Approvals**: approval queue and approve/reject | L952–959, 5376–5406; `modules/chat/approval-queue.js` | `approvalModal` L771 | `Inbox.tsx` + `Shell.tsx` approval detail | partial | `Inbox` lists pending approvals and shows the detail view, but has **no approve or reject control**. The legacy modal buttons still do the decision. |
+| 9 | **Sessions list and navigation** (search, active session, delete, unread badges, session switch) | sidebar L729–1250, refresh L1481–1803 | `#sessionList` | `ChatList.tsx` | partial | `ChatList` has search and delete. It does not switch the chat view (no chat view), show unread badges, or restore the last session. |
+| 10 | **Navigation footer and view switching** (`switchView`, subnav tabs, `?view=` / `#hash` deep links) | L743–873, L781 | footer nav, `.subnav-tab` | none | none | `Shell.tsx` has no view switch. The shell's brand button only clears the mission selection. |
+| 11 | **Account menu, theme, sidebar collapse, shortcuts** (Cmd+B, Cmd+I, Cmd+Shift+A, Esc) | L1241–1313, 4159–4338, 4888–4914 | account popup, theme toggle | none | none | |
+| 12 | **Auth modal and token exchange** (401 recovery, `sessionStorage` token) | L960–1027; client L25–738 (auth interceptor, SSE) | `authModal` L795 | none | none | `windowBridgeData` talks to `window.opensand` only; there is no HTTP/SSE path. |
+| 13 | **Rooms** (view, creation, convene discussion) | view L1804–1857, API L364–392, creation L3041–3076, L3077–3108 | `viewRooms` L315, `createRoomModal` L878, `conveneDiscussionModal` L907 | none | none | |
+| 14 | **Routines** (view, creation) | L1858–1927, API L393–426, creation L3109–3138 | `viewRoutines` L339, `createRoutineModal` L933 | none | none | |
+| 15 | **Skills** (view, creation) | L1928–1972, API L427–447, creation L3139–3162 | `viewSkills` L361, `createSkillModal` L971 | none | none | |
+| 16 | **Vault** (view, add secret, add credential) | L1973–2041, API L448–486, creation L3163–3207 | `viewVault` L385, `addSecretModal` L998, `addCredentialModal` L1025 | none | none | Secrets: the shell must never show a stored value. |
+| 17 | **Memories** (view, add memory) | L2042–2108, API L487–516, creation L3208–3227 | `viewMemories` L413, `addMemoryModal` L1056 | none | none | |
+| 18 | **Attachments** (view, stage modal) | L2109–2150, API L517–536, `stageAttachmentModal` L5723–5751 | `viewAttachments` L438, `stageAttachmentModal` L1244 | none | none | |
+| 19 | **Bots and templates** (view, export, import, create bot, create task) | L2151–2219, API L537–551, export/import L5752–5807, bot modal L5407–5431, task modal L5432–5448 | `viewTemplates` L464, `createBotModal` L819, `createTaskModal` L850, `exportTemplateModal` L1263, `importTemplateModal` L1287 | none | none | |
+| 20 | **Community gallery and template preview/publish** | L2220–2540, API L705–738 | `viewGallery` L499, `templatePreviewModal` L1445, `publishTemplateModal` L1486 | none | none | |
+| 21 | **Sentinel watchers** (view, create watcher) | L2541–2625, API L580–605, `createWatcherModal` L5808–5844 | `viewSentinel` L538, `createWatcherModal` L1306 | none | none | |
+| 22 | **Agent graphs** (view) | L2626–2731, API L656–670 | `viewGraphs` L561 | none | none | |
+| 23 | **Boundaries** (view, create rule) | L2732–2803, API L606–630, `createRuleModal` L5845–5894 | `viewBoundaries` L592, `createRuleModal` L1337 | none | none | |
+| 24 | **Webhooks** (view, create webhook) | L2804–2881, API L631–655, `createWebhookModal` L5895–5937 | `viewWebhooks` L623, `createWebhookModal` L1380 | none | none | |
+| 25 | **OAuth connectors** (view, configure) | L2882–3038, API L671–704, `configureConnectorModal` L5938–5979 | `viewConnectors` L654, `configureConnectorModal` L1419 | none | none | |
+| 26 | **Settings** (model suggestions, save, invalidate cache) | L5476–5599, 1138–1150 | `settingsModal` L1112 | none | none | |
+| 27 | **Learned rules** | L1126–1133, 5449–5463 | `learnedRulesModal` L1092 | none | none | |
+| 28 | **BTW side question, rollback, compact** | BTW L552–579 and L5600–5640; rollback L5641–5681; compact L5682–5722 | `btwModal` L1160, `rollbackModal` L1187, `compactModal` L1216 | none | none | |
+| 29 | **Boot sequence** (theme, probe, hydrate bots/tasks/sessions, restore session) | L5983–6041, validation L5997–6020, state L1151–1194 | n/a | none | none | Needed before any view can open. |
+
+## Files that go with `app.js` (delete in the final PR)
+
+- `packages/desktop/renderer/app.js` (6,041 lines).
+- `packages/desktop/renderer/modules/` (`chat/canvas.js`, `chat/markdown.js`,
+  `chat/highlight.js`, `chat/file-model.js`, `chat/approval-queue.js`). `app.js`
+  L5–8 imports four of them; `highlight.js` is imported by `canvas.js` and
+  `markdown.js`. Nothing in `renderer-next/` imports them. Confirm this again
+  before deleting. `modules/chat/README.md` describes how to wire them in and
+  must be updated or removed with them.
+- The `app.js` references in `renderer/index.html` (the `<script>` tag and the
+  panel markup) and `renderer/styles.css` (rules for the legacy views).
+- Not in scope: `renderer/welcome.html` and `welcome.js` (a separate page).
+
+## Deletion gate
+
+`app.js` is deleted only when every row above is `done` and the desktop test
+suite passes. Until then, `OPENSAND_RENDERER` unset (the default) keeps serving
+`app.js`, so no user loses a view while the shell catches up.
+
+## Test requirement
+
+Each moved view needs a real-window test (Electron, real `BrowserWindow`) at
+**960×740** and at **full screen** (`1920×1080` in the existing harness). A
+test that renders the component in jsdom or a fake window does not count.
