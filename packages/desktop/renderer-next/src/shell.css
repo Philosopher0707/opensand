@@ -141,3 +141,17 @@
 .restore-toast-bad { border-left-color: #dc2626; }
 .btn-restore-dismiss { background: none; border: none; color: inherit; cursor: pointer; font-size: 14px; padding: 0 4px; }
 @media (max-width: 600px) { .timeline-step { grid-template-columns: 1fr auto; } .timeline-step-actions { grid-column: 1 / -1; justify-self: start; flex-wrap: wrap; } .btn-restore-step, .btn-fork-step { grid-column: 1 / -1; justify-self: start; } .restore-toast { left: 16px; max-width: none; } }
+
+/* Quick window capture (views/QuickCapture.tsx). The panel stays mounted while idle, at zero height,
+   so its live status region is already in the page when the first capture starts. */
+.topbar-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+/* styles.css hides #btnQuickWindow at 1024px and below; the shell keeps it at the 960px minimum window. */
+.topbar-actions #btnQuickWindow { display: inline-flex; }
+.quick-capture { display: flex; flex-direction: column; gap: 8px; margin: 8px 12px 0; padding: 8px 10px; border: 1px solid var(--border, rgba(128,128,128,.35)); border-radius: 8px; font-size: 12px; min-width: 0; }
+.quick-capture[data-status="idle"] { height: 0; margin: 0; padding: 0; border: 0; overflow: hidden; }
+.quick-capture-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.quick-capture-label { color: var(--text-muted); overflow-wrap: anywhere; min-width: 0; }
+.quick-capture[data-status="error"] .quick-capture-label { color: #f87171; }
+.quick-capture-text { margin: 0; max-height: 40vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.45; }
+.quick-capture-text:focus-visible, .topbar-actions .btn:focus-visible { outline: 2px solid var(--accent, #d97706); outline-offset: 2px; }
+@media (max-width: 600px) { .quick-capture { margin: 8px 8px 0; } }

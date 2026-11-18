@@ -86,12 +86,14 @@ class FakeNode {
     delete this._listeners[type.toLowerCase()];
   }
 
-  dispatchEvent(event: { type: string; key?: string; defaultPrevented?: boolean; preventDefault?: () => void }): boolean {
+  dispatchEvent(event: { type: string; key?: string; defaultPrevented?: boolean; preventDefault?: () => void; stopPropagation?: () => void }): boolean {
     if (!event.preventDefault) {
       event.preventDefault = () => {
         event.defaultPrevented = true;
       };
     }
+    // This fake does not bubble, so stopping propagation is a no-op here.
+    if (!event.stopPropagation) event.stopPropagation = () => {};
     this._listeners[event.type.toLowerCase()]?.call(this, event);
     return !event.defaultPrevented;
   }
@@ -314,6 +316,67 @@ test("Inbox Component suite", async (t) => {
 
       await waitFor(() => Boolean(container.querySelectorAll(".inbox-item")[1]?.querySelector(".inbox-item-details")));
       assert.strictEqual((selectedReq as ToolApprovalRequest | null)?.approvalId, "appr-2");
+    });
+
+    await t.test("expanded row answers through approveTool with the request epoch, then reloads the list", async () => {
+      const container = new FakeNode(1, "DIV");
+      const calls: Array<{ id: string; decision: unknown }> = [];
+      let pending = [itemA, itemB];
+      const data: ShellDataWithApprovals = {
+        listPendingApprovals: async () => pending,
+        approveTool: async (id, decision) => {
+          calls.push({ id, decision });
+          pending = pending.filter((r) => r.approvalId !== id);
+          return { success: true };
+        },
+      };
+
+      render(h(Inbox, { data, now: () => 1700000000000 }), container as unknown as Element);
+      await waitFor(() => container.querySelectorAll(".inbox-item").length === 2);
+
+      container.querySelectorAll(".inbox-item")[0].click();
+      await waitFor(() => Boolean(container.querySelector(".inbox-decision-row")));
+
+      const labels = [...container.querySelector(".inbox-decision-row")!.querySelectorAll("button")].map((b) => b.textContent);
+      assert.deepStrictEqual(labels, ["Approve Once", "Always Allow", "Reject"]);
+
+      const approve = [...container.querySelector(".inbox-decision-row")!.querySelectorAll("button")].find((b) => b.textContent === "Approve Once");
+      assert.ok(approve);
+      approve.click();
+
+      await waitFor(() => container.querySelectorAll(".inbox-item").length === 1);
+      assert.deepStrictEqual(calls, [{ id: "appr-1", decision: { action: "approve_once", epoch: 1 } }]);
+      assert.strictEqual(container.querySelector(".inbox-item-asking")?.textContent, "write_file");
+    });
+
+    await t.test("a refused answer shows an alert and keeps the request listed", async () => {
+      const container = new FakeNode(1, "DIV");
+      const data: ShellDataWithApprovals = {
+        listPendingApprovals: async () => [itemA],
+        approveTool: async () => ({ success: false }),
+      };
+
+      render(h(Inbox, { data, now: () => 1700000000000 }), container as unknown as Element);
+      await waitFor(() => container.querySelectorAll(".inbox-item").length === 1);
+      container.querySelectorAll(".inbox-item")[0].click();
+      await waitFor(() => Boolean(container.querySelector(".inbox-decision-row")));
+
+      const reject = [...container.querySelector(".inbox-decision-row")!.querySelectorAll("button")].find((b) => b.textContent === "Reject");
+      assert.ok(reject);
+      reject.click();
+
+      await waitFor(() => Boolean(container.querySelector('[role="alert"]')));
+      assert.match(container.querySelector('[role="alert"]')!.textContent, /no longer pending/);
+      assert.strictEqual(container.querySelectorAll(".inbox-item").length, 1);
+    });
+
+    await t.test("without approveTool the expanded row has no decision buttons", async () => {
+      const container = new FakeNode(1, "DIV");
+      render(h(Inbox, { data: makeMockData(async () => [itemA]), now: () => 1700000000000 }), container as unknown as Element);
+      await waitFor(() => container.querySelectorAll(".inbox-item").length === 1);
+      container.querySelectorAll(".inbox-item")[0].click();
+      await waitFor(() => Boolean(container.querySelector(".inbox-item-details")));
+      assert.strictEqual(container.querySelector(".inbox-decision-row"), null);
     });
   } finally {
     (globalThis as any).document = prevDoc;
