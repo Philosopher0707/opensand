@@ -29,6 +29,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [baseRefOid follows the live base, so stale PRs report DIRTY/CONFLICTING](2026-11-19-baserefoid-tracks-live-base.md)
 - 2026-11-19 · [CI speed-up: skip the heavy suite for docs-only PRs, and the gate bans `.github/` changes](2026-11-19-ci-speedup-docs-only-skip-and-gate-github-ban.md)
 - 2026-11-19 · [A full test run rewrites tracked screenshots, and `save` stages them](2026-11-19-full-test-run-rewrites-tracked-screenshots.md)
+- 2026-11-19 · [PR #124's rebase always conflicted on the generated lessons index](2026-11-19-pr-gate-index-conflict-auto-resolve.md)
 - 2026-11-19 · ["No checks reported" is pending, not a red gate](2026-11-19-pr-gate-no-checks-is-pending.md)
 - 2026-11-19 · [A rebase selftest must assert the effect, not just the fixture plumbing](2026-11-19-rebase-selftest-needs-observable-effects.md)
 - 2026-11-19 · [A new shared type builds everywhere but the coordinator](2026-11-19-shared-types-need-explicit-coordinator-reexport.md)

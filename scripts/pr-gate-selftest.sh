@@ -19,6 +19,10 @@
 # 18. a draft PR is refused before any checkpoint tag or merge, naming `gh pr ready`
 # 19. --when-green: gh pr checks says "no checks reported" twice, then green -> merges
 # 20. --when-green: gh pr checks never reports any check -> bounded exit 3 naming "no CI checks appeared after Ns"
+# 21-24. auto-rebase: clean rebase, conflict abort, 3-attempt cap, DIRTY/CONFLICTING detection
+# 25. --when-green: only docs/lessons/INDEX.md conflicts -> regenerate, stage, continue, merge
+# 26. --when-green: INDEX.md plus another file conflict -> abort, name both, no push
+# 27. --when-green: regenerated index still stale -> fail closed, no push
 # Usage: scripts/pr-gate-selftest.sh (PR_GATE_SCRIPT=<path> to test another copy)
 set -uo pipefail
 
@@ -165,13 +169,26 @@ case "${1:-}" in
     shift 2
     case "${1:-}" in
       rebase)
+        echo "git -C <wt> rebase $*" >> "$TEST_CASE_DIR/rebase_calls.log"
         if [ "${2:-}" = "--abort" ]; then
           exit 0
+        fi
+        if [ "${2:-}" = "--continue" ]; then
+          # Only the INDEX-only conflict case is expected to continue cleanly.
+          if [ -f "$TEST_CASE_DIR/index_only_conflict" ]; then
+            exit 0
+          fi
+          echo "rebase --continue failed" >&2
+          exit 1
         fi
         if [ -f "$TEST_CASE_DIR/rebase_conflict" ]; then
           echo "CONFLICT (content): merge conflict" >&2
           exit 1
         fi
+        exit 0
+        ;;
+      add)
+        echo "git -C <wt> add $*" >> "$TEST_CASE_DIR/index_add.log"
         exit 0
         ;;
       rev-parse)
@@ -310,6 +327,20 @@ esac
 EOS
 chmod +x "$BIN_DIR/git"
 
+# Stubbed lessons index generator (no shebang, same reason); the gate only calls it on an
+# INDEX-only rebase conflict. index_stale makes its --check fail so the fail-closed path is exercised.
+cat << 'EOS' > "$BIN_DIR/lessons-index.sh"
+if [ -n "${TEST_CASE_DIR:-}" ]; then
+  echo "lessons-index $*" >> "$TEST_CASE_DIR/index_calls.log"
+fi
+if [ "${1:-}" = "--check" ] && [ -f "$TEST_CASE_DIR/index_stale" ]; then
+  echo "FAIL: docs/lessons/INDEX.md is stale" >&2
+  exit 1
+fi
+exit 0
+EOS
+chmod +x "$BIN_DIR/lessons-index.sh"
+
 setup_defaults() {
   local dir="$1"
   mkdir -p "$dir"
@@ -356,7 +387,7 @@ run_test_case() {
   local dir="$WORK/$label"
 
   local out status ok=1
-  out=$(PATH="$BIN_DIR:$PATH" TEST_CASE_DIR="$dir" bash "$PR_GATE" "$@" 2>&1 < /dev/null) || status=$?
+  out=$(PATH="$BIN_DIR:$PATH" TEST_CASE_DIR="$dir" PR_GATE_LESSONS_INDEX_SCRIPT="$BIN_DIR/lessons-index.sh" bash "$PR_GATE" "$@" 2>&1 < /dev/null) || status=$?
   status="${status:-0}"
 
   if [[ "$status" -ne "$EXPECT_EXIT" ]]; then
@@ -803,4 +834,73 @@ if [[ ! -f "$dir/force_push.log" ]]; then
   echo "FAIL case24: DIRTY/CONFLICTING must trigger a rebase push"
   FAILED=1
 fi
+
+# --- Case 25: --when-green, only docs/lessons/INDEX.md conflicts -> regenerate, continue, merge ---
+dir="$WORK/case25-index-only-conflict"
+setup_defaults "$dir"
+echo 2 > "$dir/behind_times"
+touch "$dir/base_becomes_current"
+/usr/bin/perl -pi -e 's/"baseRefOid":\s*"[^"]+"/"baseRefOid": "9999999999999999999999999999999999999999"/' "$dir/pr_view.json"
+touch "$dir/rebase_conflict"
+printf 'docs/lessons/INDEX.md\n' > "$dir/conflict_files"
+touch "$dir/index_only_conflict"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("Only docs/lessons/INDEX.md conflicts" "regenerated docs/lessons/INDEX.md" "force-pushed job/test" "CI finished green" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+run_test_case "case25-index-only-conflict" --when-green 42
+grep -qF -- "lessons-index --check" "$dir/index_calls.log" 2>/dev/null || { echo "FAIL case25: regenerated index was not checked for staleness"; FAILED=1; }
+grep -qF -- "docs/lessons/INDEX.md" "$dir/index_add.log" 2>/dev/null || { echo "FAIL case25: regenerated index was not staged"; FAILED=1; }
+grep -qF -- "rebase --continue" "$dir/rebase_calls.log" 2>/dev/null || { echo "FAIL case25: rebase was not continued after regenerating the index"; FAILED=1; }
+if [[ ! -f "$dir/force_push.log" ]]; then
+  echo "FAIL case25: no force push after the auto-resolved rebase"
+  FAILED=1
+fi
+
+# --- Case 26: --when-green, INDEX.md plus another file conflict -> abort, name both, no push ---
+dir="$WORK/case26-index-plus-other-conflict"
+setup_defaults "$dir"
+echo 1 > "$dir/behind_times"
+touch "$dir/rebase_conflict"
+printf 'docs/lessons/INDEX.md\nsrc/a.ts\n' > "$dir/conflict_files"
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("rebasing PR #42 onto origin/main conflicts" "nothing pushed" "docs/lessons/INDEX.md" "src/a.ts")
+run_test_case "case26-index-plus-other-conflict" --when-green 42
+if [[ -f "$dir/force_push.log" ]]; then
+  echo "FAIL case26: must not push on a mixed conflict"
+  FAILED=1
+fi
+if [[ -f "$dir/index_calls.log" ]]; then
+  echo "FAIL case26: must not regenerate the index when another file also conflicts"
+  FAILED=1
+fi
+if grep -qF -- "rebase --continue" "$dir/rebase_calls.log" 2>/dev/null; then
+  echo "FAIL case26: must not continue a mixed-conflict rebase"
+  FAILED=1
+fi
+
+# --- Case 27: --when-green, regenerated index comes out stale -> fail closed, no push ---
+dir="$WORK/case27-stale-index-fails-closed"
+setup_defaults "$dir"
+echo 1 > "$dir/behind_times"
+touch "$dir/rebase_conflict"
+printf 'docs/lessons/INDEX.md\n' > "$dir/conflict_files"
+touch "$dir/index_stale"
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("regenerated docs/lessons/INDEX.md is stale" "nothing pushed")
+run_test_case "case27-stale-index-fails-closed" --when-green 42
+if [[ -f "$dir/force_push.log" ]]; then
+  echo "FAIL case27: stale index must not be pushed"
+  FAILED=1
+fi
+if grep -qF -- "rebase --continue" "$dir/rebase_calls.log" 2>/dev/null; then
+  echo "FAIL case27: stale index must not continue the rebase"
+  FAILED=1
+fi
+grep -qF -- "lessons-index --check" "$dir/index_calls.log" 2>/dev/null || { echo "FAIL case27: stale index was not detected by the check"; FAILED=1; }
+
 exit "$FAILED"
