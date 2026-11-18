@@ -6,6 +6,24 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Docs-only PRs skip the build and test suites below; the CI job still runs and reports success,
+# so the required check names stay green. The cheap repo checks in this script always run.
+# Fail-closed: if the base commit cannot be resolved, DOCS_ONLY stays 0 and the full suite runs.
+DOCS_ONLY=0
+if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" && -n "${GITHUB_EVENT_PATH:-}" && -f "${GITHUB_EVENT_PATH}" ]]; then
+  BASE_SHA=$(node -e 'const e=require(process.argv[1]);process.stdout.write((e.pull_request&&e.pull_request.base&&e.pull_request.base.sha)||"")' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+  if [[ -n "$BASE_SHA" ]]; then
+    git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null || git fetch -q --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+    CHANGED=$(git diff --name-only "$BASE_SHA" HEAD 2>/dev/null || true)
+    if [[ -n "$CHANGED" ]]; then
+      DOCS_ONLY=1
+      while IFS= read -r path; do
+        [[ "$path" == docs/* || "$path" == *.md || "$path" == LICENSE* || "$path" == NOTICE* ]] || DOCS_ONLY=0
+      done <<< "$CHANGED"
+    fi
+  fi
+fi
+
 command -v node >/dev/null 2>&1 || { echo "verify: node 22+ is required" >&2; exit 1; }
 command -v pnpm >/dev/null 2>&1 || { echo "verify: pnpm 10 is required" >&2; exit 1; }
 
@@ -63,6 +81,11 @@ fi
 
 if [[ "${SKIP_INSTALL:-}" != "1" ]]; then
   pnpm install --frozen-lockfile
+fi
+
+if [[ "$DOCS_ONLY" -eq 1 ]]; then
+  echo "verify: docs-only change; skipping build and tests (repo checks above still ran)"
+  exit 0
 fi
 
 pnpm -r run build
