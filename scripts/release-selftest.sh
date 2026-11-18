@@ -11,6 +11,8 @@ set -euo pipefail
 #   7. Resume behavior (skips merged PR, existing tag, existing artifacts)
 #   8. Install behavior (archives old app, unpacks new app, verifies installed version)
 #   9. Release notes grouped from merged PR titles, with each PR number
+#  12. Post-install health check failure halts the release with exit 2
+#  13. Post-install health check is invoked on the installed app at --install time
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RELEASE_SCRIPT="$ROOT/scripts/release.sh"
@@ -194,6 +196,16 @@ fi
 exit 0
 EOS
 
+# Hermetic mock post-install health check
+cat << 'EOS' > "$WORK/mock-health.sh"
+printf '%s %s\n' "$1" "$2" > "$TEST_CASE_DIR/health_check_args.log"
+if [ -f "$TEST_CASE_DIR/health_exit" ]; then
+  code=$(cat "$TEST_CASE_DIR/health_exit")
+  exit "$code"
+fi
+exit 0
+EOS
+
 create_mock_app() {
   local target_dir="$1"
   local ver="$2"
@@ -232,6 +244,7 @@ run_test() {
     TEST_CASE_DIR="$dir" \
     OPENSAND_PR_GATE_SCRIPT="$WORK/mock-pr-gate.sh" \
     OPENSAND_SMOKE_SCRIPT="$WORK/mock-smoke.sh" \
+    OPENSAND_HEALTH_CHECK_SCRIPT="$WORK/mock-health.sh" \
     OPENSAND_INSTALL_APP_DEST="$dir/Applications/OpenSand.app" \
     OPENSAND_ARCHIVE_DIR_BASE="$dir/archive" \
     RELEASE_DOWNLOAD_DIR="$dir/download" \
@@ -340,6 +353,10 @@ if [ "$new_ver" != "0.1.11" ]; then
   echo "FAIL case8-install: installed version is $new_ver, wanted 0.1.11"
   FAILED=1
 fi
+if ! grep -qF "$dir/Applications/OpenSand.app 0.1.11" "$dir/health_check_args.log" 2>/dev/null; then
+  echo "FAIL case8-install: post-install health check was not called with the installed app and version"
+  FAILED=1
+fi
 
 # --- Case 9: Release assets published late (release.yml still building) -> retry, then succeed ---
 dir="$WORK/case9-late-assets"
@@ -428,6 +445,20 @@ else
     echo "PASS case11-release-notes: grouped feat/fix/docs/other with PR numbers, previous-tag boundary respected"
   fi
 fi
+
+# --- Case 12: post-install health check failure -> exit 2 ---
+dir="$WORK/case12-health-failure"
+mkdir -p "$dir/download" "$dir/Applications"
+touch "$dir/tag_exists"
+echo '[{"number": 42, "state": "MERGED"}]' > "$dir/pr_list.json"
+echo '{"state": "MERGED"}' > "$dir/pr_view.json"
+echo "1" > "$dir/health_exit"
+zip_app_dir="$dir/pack/OpenSand.app"
+create_mock_app "$zip_app_dir" "0.1.11"
+(cd "$dir/pack" && zip -q -r "$dir/download/OpenSand-0.1.11-arm64-mac.zip" OpenSand.app)
+echo "mock dmg" > "$dir/download/OpenSand-0.1.11-arm64.dmg"
+create_mock_app "$dir/mock_dmg_app/OpenSand.app" "0.1.11"
+run_test "case12-health-failure" 2 --install 0.1.11
 
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL RELEASE SELFTESTS PASSED."
