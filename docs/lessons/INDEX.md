@@ -36,4 +36,5 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [Red main after a merge was silent](2026-11-19-red-main-after-merge-was-silent.md)
 - 2026-11-19 · [A repo script run from an extracted copy fails: it cds to its own SCRIPT_ROOT](2026-11-19-repo-scripts-need-a-repo-root.md)
 - 2026-11-19 · [A new shared type builds everywhere but the coordinator](2026-11-19-shared-types-need-explicit-coordinator-reexport.md)
+- 2026-11-19 · [A read-only status report still needs a hermetic gh stub and token-free output](2026-11-19-status-report-behind-main-and-token-free-gh.md)
 - 2026-11-19 · [worktree.sh cannot adopt an existing remote branch](2026-11-19-worktree-adopt-existing-branch.md)
