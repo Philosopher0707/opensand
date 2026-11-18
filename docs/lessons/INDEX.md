@@ -14,3 +14,6 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-17 · [A mutation probe must single-quote its perl expression, or the shell eats the pattern](2026-11-17-perl-probe-expression-must-be-single-quoted.md)
 - 2026-11-17 · [Push to the branch the PR actually has, not the branch the job is named after](2026-11-17-push-target-from-pr-headref.md)
 - 2026-11-17 · [Release pipeline download race against release build workflow](2026-11-17-release-tag-asset-download-race.md)
+- 2026-11-18 · [Model tool input must not be spread into a privileged call](2026-11-18-model-input-must-not-reach-privileged-call.md)
+- 2026-11-18 · [Mutation probe restore kept a stale build, so later probes read the previous mutant](2026-11-18-probe-restore-keeps-stale-build.md)
+- 2026-11-18 · [A regression test under a profile that cannot show the widening survives its mutant](2026-11-18-regression-test-must-use-profile-that-shows-widening.md)

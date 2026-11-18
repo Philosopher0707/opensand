@@ -122,6 +122,7 @@ restore() {
   RESTORED=1
   if [[ -f "$BACKUP" ]]; then
     cp -p "$BACKUP" "$FILE"
+    touch "$FILE"
     if ! diff -q "$BACKUP" "$FILE" >/dev/null 2>&1; then
       echo "CRITICAL: restore check failed: $FILE is not byte-identical to saved copy!" >&2
       rm -rf "$TMP_DIR" 2>/dev/null || true
@@ -207,6 +208,9 @@ echo "RED with mutant (exit $MUTANT_STATUS): mutant killed. First failures:"
 grep -E "^FAIL" "$TEST_LOG" | head -5 | sed 's/^/    | /'
 
 cp -p "$BACKUP" "$FILE"
+# cp -p keeps the backup's old mtime, so an incremental build (tsc -b) would skip the
+# restored source and keep the mutant's output: touch it so the rebuild sees the restore.
+touch "$FILE"
 echo "==> [probe] restored $FILE; running again..."
 run_cmd "$RESTORED_LOG" "${TEST_CMD[@]}"
 RESTORE_STATUS="$LAST_STATUS"
