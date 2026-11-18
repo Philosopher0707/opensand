@@ -8,6 +8,8 @@ import { MissionList } from "./views/MissionList";
 import { MissionTimeline } from "./views/MissionTimeline";
 import { MissionReceipt } from "./views/MissionReceipt";
 import { Inbox } from "./views/Inbox";
+import { ApprovalDecisionButtons } from "../../src/shell/inbox-component";
+import { QuickCaptureButton, QuickCaptureOutput, useQuickCapture } from "./views/QuickCapture";
 
 export interface ShellProps {
   data: ShellData;
@@ -16,6 +18,8 @@ export interface ShellProps {
 export function Shell({ data }: ShellProps) {
   const [missionId, setMissionId] = useState<string | null>(null);
   const [selectedApproval, setSelectedApproval] = useState<ToolApprovalRequest | null>(null);
+  const [approvalsRev, setApprovalsRev] = useState(0);
+  const capture = useQuickCapture(data);
 
   const handleSelectMission = (id: string) => {
     setSelectedApproval(null);
@@ -53,7 +57,15 @@ export function Shell({ data }: ShellProps) {
           </div>
         </div>
         <div id="inboxSection" class="inbox-section">
-          <Inbox data={data} onSelectApproval={handleSelectApproval} />
+          <Inbox
+            data={data}
+            onSelectApproval={handleSelectApproval}
+            refreshKey={approvalsRev}
+            onDecided={() => {
+              setSelectedApproval(null);
+              setApprovalsRev((n) => n + 1);
+            }}
+          />
         </div>
         <div id="missionList" class="mission-list-section">
           <MissionList data={data} onSelect={handleSelectMission} />
@@ -71,7 +83,11 @@ export function Shell({ data }: ShellProps) {
             <h1 class="view-header-title" id="viewHeaderTitle">Home</h1>
             <span class="active-session-title" id="activeSessionTitle">New Session</span>
           </div>
+          <div class="topbar-actions">
+            <QuickCaptureButton capture={capture} />
+          </div>
         </header>
+        <QuickCaptureOutput capture={capture} />
         <section class="shell-body" aria-live="polite">
           {selectedApproval ? (
             <div class="approval-detail-view" aria-label="Approval Details">
@@ -99,6 +115,14 @@ export function Shell({ data }: ShellProps) {
                     <span>Epoch: {selectedApproval.epoch}</span>
                     <span>ID: {selectedApproval.approvalId}</span>
                   </div>
+                  <ApprovalDecisionButtons
+                    data={data}
+                    req={selectedApproval}
+                    onDecided={() => {
+                      setSelectedApproval(null);
+                      setApprovalsRev((n) => n + 1);
+                    }}
+                  />
                 </div>
               </div>
             </div>

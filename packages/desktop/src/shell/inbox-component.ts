@@ -11,15 +11,80 @@ import {
   type InboxItemRow,
 } from "./inbox-model.js";
 
+export type ApprovalAction = "approve_once" | "always_allow" | "reject";
+
 export interface ShellDataWithApprovals {
   listPendingApprovals(): Promise<ToolApprovalRequest[]>;
   onApprovalChange?(callback: () => void): () => void;
+  /** Answers one approval, as the legacy approval modal does. Optional: without it the list is read-only. */
+  approveTool?(approvalId: string, decision: { action: ApprovalAction; epoch: number }): Promise<unknown>;
 }
 
 export interface InboxProps {
   data: ShellDataWithApprovals;
   now?: () => number;
   onSelectApproval?: (approval: ToolApprovalRequest) => void;
+  /** Bump to reload the list, e.g. after an answer given outside the Inbox. */
+  refreshKey?: number;
+  /** Called after an answer given in the Inbox, so the caller can close any detail it shows for it. */
+  onDecided?: () => void;
+}
+
+const DECISIONS: Array<{ action: ApprovalAction; label: string; class: string }> = [
+  { action: "approve_once", label: "Approve Once", class: "btn-primary" },
+  { action: "always_allow", label: "Always Allow", class: "btn-secondary" },
+  { action: "reject", label: "Reject", class: "btn-ghost" },
+];
+
+export interface ApprovalDecisionButtonsProps {
+  data: ShellDataWithApprovals;
+  req: ToolApprovalRequest;
+  onDecided?: () => void;
+}
+
+/** Approve Once / Always Allow / Reject for one request. Renders nothing when the data has no approveTool. */
+export function ApprovalDecisionButtons({ data, req, onDecided }: ApprovalDecisionButtonsProps) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!data.approveTool) return null;
+
+  const decide = (action: ApprovalAction) => (e: Event) => {
+    // The buttons sit inside a selectable row: a click here must not also toggle the row.
+    e.stopPropagation();
+    if (pending || !data.approveTool) return;
+    setPending(true);
+    setError(null);
+    data
+      .approveTool(req.approvalId, { action, epoch: req.epoch })
+      .then((res) => {
+        if (res && (res as { success?: boolean }).success === false) throw new Error("not pending");
+        onDecided?.();
+      })
+      .catch(() => setError("This approval is no longer pending, or the answer did not reach the app."))
+      .finally(() => setPending(false));
+  };
+
+  return h(
+    "div",
+    { class: "approval-decision" },
+    h(
+      "div",
+      { class: "inbox-decision-row", role: "group", "aria-label": "Answer this approval" },
+      ...DECISIONS.map((d) =>
+        h(
+          "button",
+          {
+            type: "button",
+            class: `btn btn-sm ${d.class}`,
+            disabled: pending,
+            onClick: decide(d.action),
+          },
+          d.label
+        )
+      )
+    ),
+    error ? h("div", { class: "inbox-error", role: "alert" }, h("span", null, error)) : null
+  );
 }
 
 export interface InboxBadgeProps {
@@ -61,7 +126,7 @@ type Load =
   | { state: "error" }
   | { state: "ready"; approvals: ToolApprovalRequest[] };
 
-export function Inbox({ data, now, onSelectApproval }: InboxProps) {
+export function Inbox({ data, now, onSelectApproval, refreshKey = 0, onDecided }: InboxProps) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -97,7 +162,7 @@ export function Inbox({ data, now, onSelectApproval }: InboxProps) {
       mounted = false;
       cleanup?.();
     };
-  }, [data, attempt]);
+  }, [data, attempt, refreshKey]);
 
   const currentTime = now ? now() : Date.now();
   const approvals = load.state === "ready" ? sortApprovals(load.approvals) : [];
@@ -132,6 +197,8 @@ export function Inbox({ data, now, onSelectApproval }: InboxProps) {
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
+    // Enter or Space on a decision button activates the button, not the row.
+    if ((e.target as HTMLElement | null)?.tagName === "BUTTON") return;
     if (e.key === "Enter" || e.key === " ") {
       const row = rows[focusIdx];
       if (row) {
@@ -231,7 +298,17 @@ export function Inbox({ data, now, onSelectApproval }: InboxProps) {
               { class: "inbox-detail-meta" },
               h("span", null, `Epoch: ${row.raw.epoch}`),
               h("span", null, `ID: ${row.id}`)
-            )
+            ),
+            h(ApprovalDecisionButtons, {
+              data,
+              req: row.raw,
+              onDecided: () => {
+                setExpandedId(null);
+                setActiveId(null);
+                setAttempt((n) => n + 1);
+                onDecided?.();
+              },
+            })
           );
 
           itemChildren.push(
