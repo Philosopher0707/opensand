@@ -37,6 +37,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `release-check.sh` | Full release verification and smoke test gate | Pre-release sanity gate | None |
 | `release-selftest.sh` | Hermetic selftest for automated release pipeline | Pre-commit / verification | Self |
 | `smoke-packaged.sh` | Packaged application launch verification in isolated state | CI / release smoke gate | None |
+| `status-report.sh` | Read-only owner summary: recent merges, open PRs + CI/behind, main CI, latest release, disk; `--json` for the same data | Manual / owner status report | `status-report-selftest.sh` |
+| `status-report-selftest.sh` | Hermetic selftest for status-report.sh with a stubbed `gh` (no network) | Pre-commit / verification | Self |
 | `sync-versions.js` | Synchronize and check version strings across workspace packages | `verify.sh`, release.sh | None (checked by verify) |
 | `v1-dry-run.sh` | Validate v1 packaging and DMG generation pipeline | Manual release validation | None |
 | `verify-linux.sh` | Run verification suite inside isolated Linux container | Local pre-CI cross-platform test | None |
@@ -214,6 +216,20 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: `0` on clean smoke pass, `2` on smoke failure or missing artifact.
 - **Selftest**: None.
 - **Trigger**: `scripts/release.sh`, `scripts/release-check.sh`, CI.
+
+### `status-report.sh`
+- **Purpose**: Print a short, read-only markdown summary for the owner: PRs merged in the last N hours (number, title, merge sha), open PRs with CI state and whether each is behind main, the latest main CI run result, the latest release tag, and free space on the data volume. `--json` emits the same data as JSON. Never pushes, merges, comments or edits, and never prints a token.
+- **Usage**: `scripts/status-report.sh [--hours N] [--json]`
+- **Exit Codes**: `0` on success, `1` on bad arguments or a failed/unauthenticated `gh` call (clear error).
+- **Selftest**: `scripts/status-report-selftest.sh`.
+- **Trigger**: Manual owner status report / debugging.
+
+### `status-report-selftest.sh`
+- **Purpose**: Hermetic selftest for `status-report.sh` using a stub `gh` with recorded JSON (no network): normal day with N-hours filtering, no merges, red main CI, `gh` not signed in, and `--json` that parses with `python3 -m json.tool`.
+- **Usage**: `scripts/status-report-selftest.sh`
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, test verification.
 
 ### `sync-versions.js`
 - **Purpose**: Synchronize package versions across root `package.json` and all `packages/*/package.json`, or verify consistency with `--check`.

@@ -1,0 +1,5 @@
+# A read-only status report still needs a hermetic gh stub and token-free output
+
+- **Trap:** Adding a `status-report.sh` that shells out to `gh`: a "behind main" check built on `mergeable` would call every CONFLICTING PR "behind", and echoing `gh`'s stderr on an auth failure risked printing credential context into the owner's report.
+- **Root Cause:** `mergeable` only reports MERGEABLE / CONFLICTING / UNKNOWN, not whether the base has commits the branch lacks; `mergeStateStatus == "BEHIND"` is the field that encodes that. CI state has no single field either — it is derived from the `conclusion` / `state` values in `statusCheckRollup`. A report that is read-only about GitHub is still a place tokens can leak if the script parrots tool errors.
+- **Rule:** Preflight `gh auth status`, redirect `gh` stderr and print a fixed "not signed in" error; derive behind-main from `mergeStateStatus` and CI state from the rollup, never from `mergeable`; assert both with a stub `gh` serving recorded JSON (no network) in `scripts/status-report-selftest.sh`, and never call `gh auth token`.
