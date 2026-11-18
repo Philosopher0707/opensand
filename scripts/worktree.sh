@@ -239,6 +239,17 @@ case "$cmd" in
       done < <(git -C "$WT" status --porcelain -z --untracked-files=all)
     fi
 
+    # 1b. Regenerate docs/lessons/INDEX.md from the lesson files and stage it, so a lesson added here
+    #     cannot reach the branch with a stale index (CI rejected exactly that twice). A failing script
+    #     stops the save before anything is committed. Skipped when the worktree has no lessons directory.
+    if [[ -f "$WT/scripts/lessons-index.sh" && -d "$WT/docs/lessons" ]]; then
+      if ! (cd "$WT" && bash scripts/lessons-index.sh) >/dev/null; then
+        echo "FAIL: scripts/lessons-index.sh failed; nothing was committed or pushed." >&2
+        exit 1
+      fi
+      git -C "$WT" add -- docs/lessons/INDEX.md
+    fi
+
     # 2. Secret scan of what is staged. Nothing is committed or pushed when it finds something.
     if FINDINGS=$(staged_secret_findings "$WT"); then
       echo "FAIL: refusing to save: the staged diff looks like it contains secrets (nothing committed, nothing pushed):" >&2

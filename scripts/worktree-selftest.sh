@@ -642,7 +642,27 @@ if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "could not check for an existi
   echo "FAIL test-11f: gh failure did not fail save honestly (status $status): $out"; FAILED=1
 fi
 [ "$(remote_sha job/save-job)" = "$(git -C "$SAVE_WT" rev-parse HEAD)" ] || { echo "FAIL test-11f: work was not pushed before the PR step failed"; FAILED=1; }
-echo "PASS test-11: save commits with hooks on, refuses secrets, pushes verified, drafts one PR; done refuses unpushed work"
+# 11h. save regenerates docs/lessons/INDEX.md before the commit, so a new lesson never lands with a stale index;
+#      a failing lessons script stops save with nothing committed or pushed. Runs last: it leaves untracked files.
+mkdir -p "$SAVE_WT/scripts" "$SAVE_WT/docs/lessons"
+cp "$ROOT/scripts/lessons-index.sh" "$SAVE_WT/scripts/lessons-index.sh"
+printf '# Selftest lesson\n\n- **Trap:** t\n- **Root Cause:** c\n- **Rule:** r\n' > "$SAVE_WT/docs/lessons/2026-11-18-selftest-lesson.md"
+status=0; out=$(run_wt "$SAVE_WT" save "selftest: lesson with index" -- docs/lessons/2026-11-18-selftest-lesson.md) || status=$?
+if [ "$status" -ne 0 ]; then echo "FAIL test-11h: save with a lesson exit $status: $out"; FAILED=1; fi
+if ! git -C "$SAVE_WT" show HEAD:docs/lessons/INDEX.md 2>/dev/null | grep -qF "Selftest lesson"; then
+  echo "FAIL test-11h: the commit does not carry an index that lists the new lesson"; FAILED=1
+fi
+printf '# Second lesson\n\n- **Trap:** t\n- **Root Cause:** c\n- **Rule:** r\n' > "$SAVE_WT/docs/lessons/2026-11-18-second-lesson.md"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$SAVE_WT/scripts/lessons-index.sh"
+BEFORE_SHA=$(git -C "$SAVE_WT" rev-parse HEAD); REMOTE_BEFORE=$(remote_sha job/save-job)
+status=0; out=$(run_wt "$SAVE_WT" save "selftest: index script fails" -- docs/lessons/2026-11-18-second-lesson.md) || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "scripts/lessons-index.sh failed"; then
+  echo "FAIL test-11h: a failing lessons script did not stop save (status $status): $out"; FAILED=1
+fi
+if [ "$(git -C "$SAVE_WT" rev-parse HEAD)" != "$BEFORE_SHA" ] || [ "$(remote_sha job/save-job)" != "$REMOTE_BEFORE" ]; then
+  echo "FAIL test-11h: a failing lessons script still committed or pushed"; FAILED=1
+fi
+echo "PASS test-11: save commits with hooks on, refuses secrets, pushes verified, drafts one PR; done refuses unpushed work; save regenerates the lessons index"
 
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL WORKTREE SELFTESTS PASSED."
