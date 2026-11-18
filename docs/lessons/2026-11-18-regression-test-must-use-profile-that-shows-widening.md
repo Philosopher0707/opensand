@@ -1,0 +1,5 @@
+# A regression test under a profile that cannot show the widening survives its mutant
+
+- **Trap:** The first homeDir/tempDir test for `exec_command` ran under a `read-only` turn and tried to write into a temp dir. The mutant (restoring the old `homeDir: input.homeDir, tempDir: input.tempDir` lines) stayed GREEN, so the test was blind to the regression it was written for.
+- **Root Cause:** Under `read-only` the generated macOS profile allows no write to the temp dir, so the write fails with or without the fix. The test asserted a denial that was already happening for a different reason.
+- **Rule:** Before trusting a containment test, confirm the widening is observable under that profile: the control must succeed when the field is legitimately allowed. For a temp-dir or home-dir write, test under `workspace-write`, with the target outside the workspace and outside the temp dir (the default profile keeps `TMPDIR` writable, so a target under it proves nothing). Mutation-probe every such test; a surviving mutant means the test is not yet a regression test.
