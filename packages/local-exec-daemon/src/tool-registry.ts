@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { isStandingExecAllowed } from "@opensand/shared";
 import { ToolDenialError } from "./denial-errors.js";
 import { SandboxInitializationError } from "./sandbox/errors.js";
@@ -323,26 +324,6 @@ export const PTY_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
             enum: ["read-only", "workspace-write", "full"],
             description: "Optional sandbox containment profile for the PTY session.",
           },
-          workspaceRoot: {
-            type: "string",
-            description: "Optional workspace root used for sandbox containment.",
-          },
-          homeDir: {
-            type: "string",
-            description: "Optional home directory used for sandbox containment.",
-          },
-          tempDir: {
-            type: "string",
-            description: "Optional temp directory used for sandbox containment.",
-          },
-          allowNetwork: {
-            type: "boolean",
-            description: "Optional network access for the sandboxed PTY session.",
-          },
-          customProfileString: {
-            type: "string",
-            description: "Optional macOS-only custom sandbox profile string.",
-          },
         },
         required: ["command"],
       },
@@ -426,6 +407,30 @@ export function clampSandboxProfile(
   if (contextProfile === undefined) return requested;
   if (requested === undefined) return contextProfile;
   return PROFILE_RANK[requested] < PROFILE_RANK[contextProfile] ? requested : contextProfile;
+}
+
+/**
+ * Sandbox containment fields a model call must never set. The workspace root comes from the
+ * turn context; the rest come from no model-reachable source. Model input can only narrow
+ * the sandbox (see clampSandboxProfile), so these are dropped before the call reaches the runner.
+ */
+const CONTAINMENT_INPUT_FIELDS = ["workspaceRoot", "homeDir", "tempDir", "allowNetwork", "customProfileString"] as const;
+
+function withoutContainmentInput<T extends object>(input: T): T {
+  const rest = { ...input } as Record<string, unknown>;
+  for (const field of CONTAINMENT_INPUT_FIELDS) delete rest[field];
+  return rest as T;
+}
+
+/**
+ * A call's cwd must stay inside the turn's workspace root. A cwd outside it falls back to the
+ * root. The check is lexical: the sandbox still confines what the command can write.
+ */
+function containCwd(requested: string | undefined, workspaceRoot: string | undefined): string | undefined {
+  if (requested === undefined || workspaceRoot === undefined) return requested;
+  const root = path.resolve(workspaceRoot);
+  const target = path.resolve(root, requested);
+  return target === root || target.startsWith(root + path.sep) ? target : root;
 }
 
 export interface ToolRegistryOptions {
@@ -532,9 +537,9 @@ export class ToolRegistry {
 
         const output = await runCommandOperation(
           {
-            ...input,
-            cwd: input.cwd ?? context?.workspaceRoot,
-            workspaceRoot: input.workspaceRoot ?? context?.workspaceRoot,
+            ...withoutContainmentInput(input),
+            cwd: containCwd(input.cwd, context?.workspaceRoot) ?? context?.workspaceRoot,
+            workspaceRoot: context?.workspaceRoot,
             sandboxProfile: clampSandboxProfile(input.sandboxProfile, context?.sandboxProfile),
           },
           { signal: context?.signal }
@@ -711,9 +716,10 @@ export class ToolRegistry {
           };
         }
 
-        const workspaceRoot = input.workspaceRoot ?? context?.workspaceRoot;
+        const workspaceRoot = context?.workspaceRoot;
         const session = await this.ptyManager.createSession({
-          ...input,
+          ...withoutContainmentInput(input),
+          cwd: containCwd(input.cwd, workspaceRoot),
           workspaceRoot,
           sandboxProfile: clampSandboxProfile(input.sandboxProfile, context?.sandboxProfile),
         });
