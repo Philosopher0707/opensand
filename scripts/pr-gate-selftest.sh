@@ -17,6 +17,8 @@
 # 16. --when-green: CI has not registered any check yet -> waits for it, then watches and merges
 # 17. --when-green: no check ever appears -> exit 3 naming "no CI checks", no merge
 # 18. a draft PR is refused before any checkpoint tag or merge, naming `gh pr ready`
+# 19. --when-green: gh pr checks says "no checks reported" twice, then green -> merges
+# 20. --when-green: gh pr checks never reports any check -> bounded exit 3 naming "no CI checks appeared after Ns"
 # Usage: scripts/pr-gate-selftest.sh (PR_GATE_SCRIPT=<path> to test another copy)
 set -uo pipefail
 
@@ -90,6 +92,15 @@ case "$1" in
         ;;
       checks)
         echo "gh pr checks $*" >> "$TEST_CASE_DIR/checks_calls.log"
+        # checks_no_reported_times=N: the first N calls report "no checks reported" (CI not
+        # registered yet) and exit 1, as the real gh does; later calls behave normally.
+        if [ -f "$TEST_CASE_DIR/checks_no_reported_times" ]; then
+          seen_calls=$(wc -l < "$TEST_CASE_DIR/checks_calls.log" | tr -d ' ')
+          if [ "$seen_calls" -le "$(cat "$TEST_CASE_DIR/checks_no_reported_times")" ]; then
+            echo "no checks reported on the 'job/x' branch" >&2
+            exit 1
+          fi
+        fi
         if [ -f "$TEST_CASE_DIR/checks_hang" ]; then
           exec sleep 30
         fi
@@ -524,7 +535,7 @@ JSON
 EXPECT_EXIT=3
 EXPECT_MERGE=0
 EXPECT_TAG=0
-NEED_SUBSTRINGS=("no CI checks were reported for PR #42")
+NEED_SUBSTRINGS=("FAIL: no CI checks appeared after" "for PR #42")
 start=$SECONDS
 PR_GATE_POLL_SECONDS=1 PR_GATE_TIMEOUT_UNIT_SECONDS=2 run_test_case "case17-when-green-no-checks" --when-green --timeout 1 42
 elapsed=$((SECONDS - start))
@@ -534,6 +545,36 @@ if [[ "$elapsed" -gt 10 ]]; then
 fi
 if [[ -f "$dir/checks_calls.log" ]]; then
   echo "FAIL case17: gh pr checks was called although no check ever appeared"
+  FAILED=1
+fi
+
+# --- Case 19: --when-green, gh pr checks reports "no checks reported" twice, then green -> merges ---
+dir="$WORK/case19-when-green-no-checks-reported-then-green"
+setup_defaults "$dir"
+echo 2 > "$dir/checks_no_reported_times"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("[when-green] Watching CI for PR #42" "CI finished green" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+PR_GATE_POLL_SECONDS=1 run_test_case "case19-when-green-no-checks-reported-then-green" --when-green 42
+if [[ "$(wc -l < "$dir/checks_calls.log" 2>/dev/null || echo 0)" -lt 3 ]]; then
+  echo "FAIL case19: expected at least 3 gh pr checks calls (2 pending + 1 green), got $(wc -l < "$dir/checks_calls.log" 2>/dev/null || echo 0)"
+  FAILED=1
+fi
+
+# --- Case 20: --when-green, gh pr checks never reports a check -> bounded exit 3, no merge ---
+dir="$WORK/case20-when-green-no-checks-ever-reported"
+setup_defaults "$dir"
+echo 9999 > "$dir/checks_no_reported_times"
+EXPECT_EXIT=3
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("FAIL: no CI checks appeared after" "for PR #42")
+start=$SECONDS
+PR_GATE_POLL_SECONDS=1 PR_GATE_NO_CHECKS_GRACE_SECONDS=2 run_test_case "case20-when-green-no-checks-ever-reported" --when-green --timeout 1 42
+elapsed=$((SECONDS - start))
+if [[ "$elapsed" -gt 10 ]]; then
+  echo "FAIL case20: gave up after ${elapsed}s, expected about 2s"
   FAILED=1
 fi
 

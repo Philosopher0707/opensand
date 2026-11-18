@@ -26,3 +26,4 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-18 · [A lesson saved through worktree.sh could reach main with a stale index](2026-11-18-save-committed-a-stale-lessons-index.md)
 - 2026-11-18 · [A fetch that failed silently made origin/main look unfixed](2026-11-18-stale-fetch-hid-merged-fix.md)
 - 2026-11-18 · [An element that exists can still be hidden at the minimum window size](2026-11-18-topbar-button-hidden-by-legacy-css-at-minimum-size.md)
+- 2026-11-19 · ["No checks reported" is pending, not a red gate](2026-11-19-pr-gate-no-checks-is-pending.md)
