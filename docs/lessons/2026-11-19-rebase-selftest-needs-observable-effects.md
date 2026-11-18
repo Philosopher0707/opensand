@@ -1,0 +1,5 @@
+# A rebase selftest must assert the effect, not just the fixture plumbing
+
+- **Trap:** The first pass of `pr-gate.sh --when-green` auto-rebase left a worktree with a stub `git`/`gh` that could simulate conflicts and rebased SHAs, but with no test case that called the rebase path and no cap on retries. The diff looked like coverage; it proved nothing.
+- **Root Cause:** Fixture support and assertions are different things. A mutation that deleted only the `git rebase` line would still let the gate push and report success, because the selftest never checked that the PR base became current or that a merge followed.
+- **Rule:** For a new gate behaviour, add a case that asserts observable effects end to end (base became current, force-with-lease push happened, merge called), an adversarial case (conflict aborts with the file list, nothing pushed), and a bound case (3 attempts then a named failure). Prove the tests with a mutation that removes the whole decision-and-push block, not just one command. When a session is interrupted, check whether the handed-off worktree has cases or only fixtures before trusting it.

@@ -7,6 +7,9 @@
 #               Red CI exits 1 and names the failing job; a timeout exits 3. "No checks
 #               reported" is pending for up to 5 min (or --timeout, if sooner), then
 #               exits 3 with "no CI checks appeared after <N>s".
+#               A PR whose base is behind origin/main is rebased onto it and pushed with
+#               --force-with-lease before the wait, then its new CI is awaited. A
+#               conflicting rebase stops with the conflicting files named, nothing pushed.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -85,65 +88,84 @@ if [[ "$WHEN_GREEN" -eq 1 ]]; then
   fi
   NO_CHECKS_SINCE=$SECONDS
   CHECKS_OUT="$(mktemp "${TMPDIR:-/tmp}/pr-gate-checks.XXXXXX")"
-  trap 'rm -f "$CHECKS_OUT"' EXIT
+  REBASE_DIR=""
+  REBASE_WT=""
+  REBASE_REF=""
+  cleanup_rebase() {
+    rm -f "$CHECKS_OUT"
+    if [[ -n "$REBASE_WT" ]]; then
+      git worktree remove --force "$REBASE_WT" >/dev/null 2>&1 || rm -rf "$REBASE_WT"
+    fi
+    if [[ -n "$REBASE_REF" ]]; then
+      git update-ref -d "$REBASE_REF" >/dev/null 2>&1 || true
+    fi
+    if [[ -n "$REBASE_DIR" ]]; then
+      rm -rf "$REBASE_DIR"
+    fi
+  }
+  trap cleanup_rebase EXIT
   no_checks_fail() {
     echo "FAIL: no CI checks appeared after $((SECONDS - NO_CHECKS_SINCE))s for PR #$PR" >&2
     exit 3
   }
 
-  # First wait for the check list to register at all, so the watch has something to watch.
-  while ROLLUP_JSON=$(gh pr view "$PR" --json statusCheckRollup 2>/dev/null); do
-    ROLLUP_COUNT=$(node -e 'console.log(((JSON.parse(process.argv[1]).statusCheckRollup) || []).length)' "$ROLLUP_JSON" 2>/dev/null || echo 1)
-    [[ "$ROLLUP_COUNT" =~ ^[0-9]+$ && "$ROLLUP_COUNT" -eq 0 ]] || break
-    if [[ "$SECONDS" -ge "$NO_CHECKS_DEADLINE" ]]; then
-      no_checks_fail
-    fi
-    sleep "$POLL_SECONDS"
-  done
-
-  while :; do
-    : > "$CHECKS_OUT"
-    gh pr checks "$PR" --watch >"$CHECKS_OUT" 2>&1 &
-    WATCH_PID=$!
-    TIMED_OUT=0
-    PRINTED=0
-    # One bounded poll of our own child (no timeout binary on macOS); gh does the real CI polling.
-    while kill -0 "$WATCH_PID" 2>/dev/null; do
-      # Echo each new line gh printed, so a long watch still shows progress.
-      TOTAL_LINES=$(wc -l < "$CHECKS_OUT" 2>/dev/null || echo 0)
-      if [[ "$TOTAL_LINES" -gt "$PRINTED" ]]; then
-        tail -n +"$((PRINTED + 1))" "$CHECKS_OUT"
-        PRINTED="$TOTAL_LINES"
-      fi
-      if [[ "$SECONDS" -ge "$DEADLINE" ]]; then
-        TIMED_OUT=1
-        kill "$WATCH_PID" 2>/dev/null || true
-        break
-      fi
-      sleep 1
-    done
-    WATCH_STATUS=0
-    wait "$WATCH_PID" 2>/dev/null || WATCH_STATUS=$?
-
-    if [[ "$TIMED_OUT" -eq 1 ]]; then
-      echo "FAIL: --when-green timed out after ${TIMEOUT_MIN} min: CI for PR #$PR is still pending" >&2
-      exit 3
-    fi
-
-    [[ "$WATCH_STATUS" -eq 0 ]] && break
-
-    # A watch can still start before GitHub registered the check list: wait and retry.
-    if grep -qi "no checks reported" "$CHECKS_OUT"; then
+  # Rebase a PR that fell behind origin/main onto it. Main can move again while CI runs, so the
+  # rebase + wait cycle is bounded at 3 attempts. A conflicting rebase is aborted with the
+  # conflicting files named and nothing pushed.
+  wait_for_green() {
+    # First wait for the check list to register at all, so the watch has something to watch.
+    while ROLLUP_JSON=$(gh pr view "$PR" --json statusCheckRollup 2>/dev/null); do
+      ROLLUP_COUNT=$(node -e 'console.log(((JSON.parse(process.argv[1]).statusCheckRollup) || []).length)' "$ROLLUP_JSON" 2>/dev/null || echo 1)
+      [[ "$ROLLUP_COUNT" =~ ^[0-9]+$ && "$ROLLUP_COUNT" -eq 0 ]] || break
       if [[ "$SECONDS" -ge "$NO_CHECKS_DEADLINE" ]]; then
         no_checks_fail
       fi
       sleep "$POLL_SECONDS"
-      continue
-    fi
+    done
 
-    RED_JOBS=""
-    if WATCH_JSON=$(gh pr view "$PR" --json statusCheckRollup 2>/dev/null); then
-      RED_JOBS=$(node -e '
+    while :; do
+      : > "$CHECKS_OUT"
+      gh pr checks "$PR" --watch >"$CHECKS_OUT" 2>&1 &
+      WATCH_PID=$!
+      TIMED_OUT=0
+      PRINTED=0
+      # One bounded poll of our own child (no timeout binary on macOS); gh does the real CI polling.
+      while kill -0 "$WATCH_PID" 2>/dev/null; do
+        # Echo each new line gh printed, so a long watch still shows progress.
+        TOTAL_LINES=$(wc -l < "$CHECKS_OUT" 2>/dev/null || echo 0)
+        if [[ "$TOTAL_LINES" -gt "$PRINTED" ]]; then
+          tail -n +"$((PRINTED + 1))" "$CHECKS_OUT"
+          PRINTED="$TOTAL_LINES"
+        fi
+        if [[ "$SECONDS" -ge "$DEADLINE" ]]; then
+          TIMED_OUT=1
+          kill "$WATCH_PID" 2>/dev/null || true
+          break
+        fi
+        sleep 1
+      done
+      WATCH_STATUS=0
+      wait "$WATCH_PID" 2>/dev/null || WATCH_STATUS=$?
+
+      if [[ "$TIMED_OUT" -eq 1 ]]; then
+        echo "FAIL: --when-green timed out after ${TIMEOUT_MIN} min: CI for PR #$PR is still pending" >&2
+        exit 3
+      fi
+
+      [[ "$WATCH_STATUS" -eq 0 ]] && break
+
+      # A watch can still start before GitHub registered the check list: wait and retry.
+      if grep -qi "no checks reported" "$CHECKS_OUT"; then
+        if [[ "$SECONDS" -ge "$NO_CHECKS_DEADLINE" ]]; then
+          no_checks_fail
+        fi
+        sleep "$POLL_SECONDS"
+        continue
+      fi
+
+      RED_JOBS=""
+      if WATCH_JSON=$(gh pr view "$PR" --json statusCheckRollup 2>/dev/null); then
+        RED_JOBS=$(node -e '
 const rollup = (JSON.parse(process.argv[1]).statusCheckRollup) || [];
 const bad = rollup.filter(j => {
   const c = (j.conclusion || "").toUpperCase();
@@ -151,15 +173,123 @@ const bad = rollup.filter(j => {
 });
 console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")").join(", "));
 ' "$WATCH_JSON" 2>/dev/null || true)
+      fi
+      if [[ -n "$RED_JOBS" ]]; then
+        echo "FAIL: CI is red for PR #$PR: $RED_JOBS" >&2
+      else
+        echo "FAIL: gh pr checks --watch exited $WATCH_STATUS for PR #$PR and no failing job could be identified" >&2
+      fi
+      exit 1
+    done
+    echo "PASS: [when-green] CI finished green for PR #$PR; continuing with the normal checks."
+  }
+
+  REBASE_MAX="${PR_GATE_REBASE_ATTEMPTS:-3}"
+  ATTEMPT=0
+  while :; do
+    if [[ "$ATTEMPT" -ge "$REBASE_MAX" ]]; then
+      echo "FAIL: PR #$PR is still behind origin/main after $REBASE_MAX rebase attempts" >&2
+      exit 1
     fi
-    if [[ -n "$RED_JOBS" ]]; then
-      echo "FAIL: CI is red for PR #$PR: $RED_JOBS" >&2
-    else
-      echo "FAIL: gh pr checks --watch exited $WATCH_STATUS for PR #$PR and no failing job could be identified" >&2
+    ATTEMPT=$((ATTEMPT + 1))
+
+    if ! PR_META=$(gh pr view "$PR" --json baseRefOid,headRefOid,headRefName,isCrossRepository,mergeStateStatus,mergeable 2>/dev/null); then
+      echo "FAIL: could not read PR #$PR metadata (base, head, branch) before waiting for CI" >&2
+      exit 1
     fi
-    exit 1
+    PR_BASE_OID=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.baseRefOid||"")' "$PR_META")
+    PR_HEAD_OID=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.headRefOid||"")' "$PR_META")
+    PR_HEAD_BRANCH=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.headRefName||"")' "$PR_META")
+    PR_IS_FORK=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.isCrossRepository===true?"true":"false")' "$PR_META")
+    PR_MERGE_STATE=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.mergeStateStatus||"")' "$PR_META")
+    # baseRefOid tracks the live base tip on GitHub, so BEHIND is normally reported as DIRTY/CONFLICTING.
+    PR_MERGEABLE=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.mergeable||"")' "$PR_META")
+
+    if ! MAIN_LINE=$(git ls-remote origin refs/heads/main 2>&1); then
+      echo "FAIL: git ls-remote failed for origin refs/heads/main: $MAIN_LINE" >&2
+      exit 1
+    fi
+    MAIN_SHA=$(echo "$MAIN_LINE" | awk '{print $1}')
+
+    if [[ -n "$MAIN_SHA" && ( "$PR_BASE_OID" != "$MAIN_SHA" || "$PR_MERGE_STATE" == "BEHIND" || "$PR_MERGE_STATE" == "DIRTY" || "$PR_MERGEABLE" == "CONFLICTING" ) ]]; then
+      echo "==> [when-green] PR #$PR base is behind origin/main (${MAIN_SHA:0:7}); rebase attempt $ATTEMPT/$REBASE_MAX..."
+      if [[ "$PR_IS_FORK" == "true" ]]; then
+        echo "FAIL: PR #$PR comes from a fork; rebase it on the contributor's branch instead (nothing pushed)" >&2
+        exit 1
+      fi
+      if [[ -z "$PR_HEAD_BRANCH" || -z "$PR_HEAD_OID" ]]; then
+        echo "FAIL: PR #$PR has no readable head branch/commit; cannot rebase it (nothing pushed)" >&2
+        exit 1
+      fi
+      if ! git fetch origin main; then
+        echo "FAIL: git fetch origin main failed; cannot rebase PR #$PR (nothing pushed)" >&2
+        exit 1
+      fi
+      FETCHED_MAIN=$(git rev-parse FETCH_HEAD)
+      # Keep only one temporary rebase workspace across retries.
+      if [[ -n "$REBASE_WT" ]]; then git worktree remove --force "$REBASE_WT" >/dev/null 2>&1 || true; fi
+      if [[ -n "$REBASE_REF" ]]; then git update-ref -d "$REBASE_REF" >/dev/null 2>&1 || true; fi
+      if [[ -n "$REBASE_DIR" ]]; then rm -rf "$REBASE_DIR"; fi
+      REBASE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pr-gate-rebase.XXXXXX")"
+      REBASE_WT="$REBASE_DIR/wt"
+      REBASE_REF="refs/pr-gate/rebase-$PR"
+      if ! git fetch origin "+refs/heads/$PR_HEAD_BRANCH:$REBASE_REF"; then
+        echo "FAIL: git fetch of $PR_HEAD_BRANCH failed; cannot rebase PR #$PR (nothing pushed)" >&2
+        exit 1
+      fi
+      if ! git worktree add --detach "$REBASE_WT" "$REBASE_REF" >/dev/null; then
+        echo "FAIL: could not create a temporary worktree to rebase PR #$PR (nothing pushed)" >&2
+        exit 1
+      fi
+      if ! git -C "$REBASE_WT" rebase "$FETCHED_MAIN"; then
+        CONFLICTS=$(git -C "$REBASE_WT" diff --name-only --diff-filter=U || true)
+        git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+        echo "FAIL: rebasing PR #$PR onto origin/main conflicts; nothing pushed. Resolve these files by hand:" >&2
+        if [[ -n "$CONFLICTS" ]]; then
+          printf '  %s\n' $CONFLICTS >&2
+        else
+          echo "  (git reported no unmerged files; see the rebase output above)" >&2
+        fi
+        exit 1
+      fi
+      NEW_HEAD=$(git -C "$REBASE_WT" rev-parse HEAD)
+      if ! git -C "$REBASE_WT" push --force-with-lease="refs/heads/$PR_HEAD_BRANCH:$PR_HEAD_OID" origin "HEAD:refs/heads/$PR_HEAD_BRANCH"; then
+        echo "FAIL: force-with-lease push of $PR_HEAD_BRANCH failed (has someone else pushed?); nothing merged" >&2
+        exit 1
+      fi
+      if ! PUSHED_LINE=$(git ls-remote origin "refs/heads/$PR_HEAD_BRANCH" 2>&1); then
+        echo "FAIL: could not verify the rebased $PR_HEAD_BRANCH on origin: $PUSHED_LINE" >&2
+        exit 1
+      fi
+      PUSHED_SHA=$(echo "$PUSHED_LINE" | awk '{print $1}')
+      if [[ "$PUSHED_SHA" != "$NEW_HEAD" ]]; then
+        echo "FAIL: after the rebase push, origin/$PR_HEAD_BRANCH is ${PUSHED_SHA:-missing}, expected $NEW_HEAD" >&2
+        exit 1
+      fi
+      echo "PASS: rebased PR #$PR onto origin/main ($FETCHED_MAIN) and force-pushed $PR_HEAD_BRANCH (${PR_HEAD_OID:0:7} -> ${NEW_HEAD:0:7}); waiting for its new CI."
+    fi
+
+    wait_for_green
+
+    # Main can move during the wait; leave only once the PR is no longer behind.
+    if ! PR_META=$(gh pr view "$PR" --json baseRefOid,headRefOid,headRefName,isCrossRepository,mergeStateStatus,mergeable 2>/dev/null); then
+      echo "FAIL: could not re-read PR #$PR metadata after waiting for CI" >&2
+      exit 1
+    fi
+    PR_BASE_OID=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.baseRefOid||"")' "$PR_META")
+    PR_MERGE_STATE=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.mergeStateStatus||"")' "$PR_META")
+    # baseRefOid tracks the live base tip on GitHub, so BEHIND is normally reported as DIRTY/CONFLICTING.
+    PR_MERGEABLE=$(node -e 'const d=JSON.parse(process.argv[1]);console.log(d.mergeable||"")' "$PR_META")
+    if ! MAIN_LINE=$(git ls-remote origin refs/heads/main 2>&1); then
+      echo "FAIL: git ls-remote failed for origin refs/heads/main: $MAIN_LINE" >&2
+      exit 1
+    fi
+    MAIN_SHA=$(echo "$MAIN_LINE" | awk '{print $1}')
+    if [[ -n "$MAIN_SHA" && ( "$PR_BASE_OID" != "$MAIN_SHA" || "$PR_MERGE_STATE" == "BEHIND" || "$PR_MERGE_STATE" == "DIRTY" || "$PR_MERGEABLE" == "CONFLICTING" ) ]]; then
+      continue
+    fi
+    break
   done
-  echo "PASS: [when-green] CI finished green for PR #$PR; continuing with the normal checks."
 fi
 
 echo "==> [Check 1/5] Checking PR #$PR status and CI rollups..."

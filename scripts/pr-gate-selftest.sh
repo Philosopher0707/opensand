@@ -48,6 +48,24 @@ case "$1" in
             is_merge_view=1
           fi
         done
+        is_rebase_meta=0
+        for arg in "$@"; do
+          case "$arg" in
+            *mergeStateStatus*) is_rebase_meta=1 ;;
+          esac
+        done
+        if [ "$is_rebase_meta" -eq 1 ]; then
+          if [ -f "$TEST_CASE_DIR/behind_times" ]; then
+            n=$(cat "$TEST_CASE_DIR/behind_times")
+            if [ "$n" -gt 0 ]; then
+              echo $((n - 1)) > "$TEST_CASE_DIR/behind_times"
+              cat "$TEST_CASE_DIR/pr_rebase_meta_behind.json" 2>/dev/null || echo '{"baseRefOid":"9999999999999999999999999999999999999999","headRefOid":"2222222222222222222222222222222222222222","headRefName":"job/test","isCrossRepository":false,"mergeStateStatus":"BEHIND"}'
+              exit 0
+            fi
+          fi
+          cat "$TEST_CASE_DIR/pr_rebase_meta_clean.json" 2>/dev/null || echo '{"baseRefOid":"1111111111111111111111111111111111111111","headRefOid":"3333333333333333333333333333333333333333","headRefName":"job/test","isCrossRepository":false,"mergeStateStatus":"CLEAN"}'
+          exit 0
+        fi
         if [ "$is_merge_view" -eq 1 ]; then
           if [ -f "$TEST_CASE_DIR/pr_merge_view.json" ]; then
             cat "$TEST_CASE_DIR/pr_merge_view.json"
@@ -141,7 +159,81 @@ if [ -z "${TEST_CASE_DIR:-}" ]; then
   exit 1
 fi
 
-case "$1" in
+case "${1:-}" in
+  -C)
+    # git -C <path> ...: the gate only uses this inside its temporary rebase worktree.
+    shift 2
+    case "${1:-}" in
+      rebase)
+        if [ "${2:-}" = "--abort" ]; then
+          exit 0
+        fi
+        if [ -f "$TEST_CASE_DIR/rebase_conflict" ]; then
+          echo "CONFLICT (content): merge conflict" >&2
+          exit 1
+        fi
+        exit 0
+        ;;
+      rev-parse)
+        if [ -f "$TEST_CASE_DIR/rebased_head_sha" ]; then
+          cat "$TEST_CASE_DIR/rebased_head_sha"
+        else
+          echo "3333333333333333333333333333333333333333"
+        fi
+        exit 0
+        ;;
+      diff)
+        # unmerged files after a conflicting rebase
+        if [ -f "$TEST_CASE_DIR/rebase_conflict" ] && [ -f "$TEST_CASE_DIR/conflict_files" ]; then
+          cat "$TEST_CASE_DIR/conflict_files"
+        fi
+        exit 0
+        ;;
+      push)
+        echo "git -C <wt> push $*" >> "$TEST_CASE_DIR/force_push.log"
+        if [ -f "$TEST_CASE_DIR/fail_force_push" ]; then
+          echo " ! [rejected] (stale info)" >&2
+          exit 1
+        fi
+        if [ -f "$TEST_CASE_DIR/base_becomes_current" ]; then
+          /usr/bin/perl -pi -e 's/"baseRefOid":\s*"[^"]+"/"baseRefOid": "1111111111111111111111111111111111111111"/' "$TEST_CASE_DIR/pr_view.json"
+        fi
+        exit 0
+        ;;
+      *)
+        echo "git stub: unhandled -C subcmd ${1:-}" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  fetch)
+    echo "git fetch $*" >> "$TEST_CASE_DIR/git_fetch.log"
+    exit 0
+    ;;
+  worktree)
+    case "${2:-}" in
+      add)
+        # worktree add --detach <path> <ref>
+        shift 3
+        mkdir -p "$1"
+        printf '%s\n' "${2:-}" > "$TEST_CASE_DIR/worktree_ref"
+        exit 0
+        ;;
+      remove)
+        # worktree remove --force <path>
+        for wt_arg in "$@"; do wt_path="$wt_arg"; done
+        rm -rf "$wt_path"
+        exit 0
+        ;;
+      *)
+        echo "git stub: unhandled worktree subcmd ${2:-}" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  update-ref)
+    exit 0
+    ;;
   ls-remote)
     for arg in "$@"; do
       if [ "$arg" = "refs/heads/main" ]; then
@@ -152,6 +244,20 @@ case "$1" in
         printf "%s\trefs/heads/main\n" "$sha"
         exit 0
       fi
+    done
+
+    # A job branch (post-rebase push verification)
+    for arg in "$@"; do
+      case "$arg" in
+        refs/heads/*)
+          sha="3333333333333333333333333333333333333333"
+          if [ -f "$TEST_CASE_DIR/rebased_head_sha" ]; then
+            sha=$(cat "$TEST_CASE_DIR/rebased_head_sha")
+          fi
+          printf "%s\t%s\n" "$sha" "$arg"
+          exit 0
+          ;;
+      esac
     done
 
     # Tag ls-remote check
@@ -186,6 +292,14 @@ case "$1" in
     exit 0
     ;;
   rev-parse)
+    if [ "${2:-}" = "FETCH_HEAD" ]; then
+      if [ -f "$TEST_CASE_DIR/remote_main_sha" ]; then
+        cat "$TEST_CASE_DIR/remote_main_sha"
+      else
+        echo "1111111111111111111111111111111111111111"
+      fi
+      exit 0
+    fi
     echo "$TEST_CASE_DIR"
     exit 0
     ;;
@@ -617,4 +731,76 @@ EXPECT_TAG=0
 NEED_SUBSTRINGS=("FAIL: --timeout needs a positive whole number of minutes")
 run_test_case "case15-bad-timeout" --when-green --timeout abc 42
 
+
+# --- Case 21: --when-green, PR behind main -> clean rebase, force-push, wait for new CI, merge ---
+dir="$WORK/case21-behind-rebase-merge"
+setup_defaults "$dir"
+echo 2 > "$dir/behind_times"
+touch "$dir/base_becomes_current"
+/usr/bin/perl -pi -e 's/"baseRefOid":\s*"[^"]+"/"baseRefOid": "9999999999999999999999999999999999999999"/' "$dir/pr_view.json"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("base is behind origin/main" "rebase attempt 1/3" "rebased PR #42" "force-pushed job/test" "CI finished green" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+run_test_case "case21-behind-rebase-merge" --when-green 42
+if [[ ! -f "$dir/force_push.log" ]]; then
+  echo "FAIL case21: no force-with-lease push happened"
+  FAILED=1
+elif ! grep -q -- "--force-with-lease=refs/heads/job/test:2222222222222222222222222222222222222222" "$dir/force_push.log"; then
+  echo "FAIL case21: push did not use a force-with-lease on the PR branch only"
+  FAILED=1
+fi
+if [[ "$(grep -c 'fetch origin main' "$dir/git_fetch.log" 2>/dev/null || echo 0)" -ne 1 ]]; then
+  echo "FAIL case21: expected exactly one rebase onto origin/main"
+  FAILED=1
+fi
+
+# --- Case 22: --when-green, rebase conflict -> abort, name files, no push and no merge ---
+dir="$WORK/case22-rebase-conflict"
+setup_defaults "$dir"
+echo 1 > "$dir/behind_times"
+touch "$dir/rebase_conflict"
+printf 'src/a.ts\nsrc/b.ts\n' > "$dir/conflict_files"
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("rebasing PR #42 onto origin/main conflicts" "nothing pushed" "src/a.ts" "src/b.ts")
+run_test_case "case22-rebase-conflict" --when-green 42
+if [[ -f "$dir/force_push.log" ]]; then
+  echo "FAIL case22: a conflicting rebase must not push anything"
+  FAILED=1
+fi
+
+# --- Case 23: --when-green, main keeps moving -> rebase retried at most 3 times ---
+dir="$WORK/case23-retry-cap"
+setup_defaults "$dir"
+echo 99 > "$dir/behind_times"
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("rebase attempt 1/3" "rebase attempt 2/3" "rebase attempt 3/3" "still behind origin/main after 3 rebase attempts")
+run_test_case "case23-retry-cap" --when-green 42
+if [[ "$(grep -c 'fetch origin main' "$dir/git_fetch.log" 2>/dev/null || echo 0)" -ne 3 ]]; then
+  echo "FAIL case23: expected exactly 3 rebase attempts, got $(grep -c 'fetch origin main' "$dir/git_fetch.log" 2>/dev/null || echo 0)"
+  FAILED=1
+fi
+
+# --- Case 24: GitHub reports a real stale merge as DIRTY/CONFLICTING with baseRefOid at main ---
+dir="$WORK/case24-dirty-conflicting"
+setup_defaults "$dir"
+echo 2 > "$dir/behind_times"
+touch "$dir/base_becomes_current"
+cat << 'JSON' > "$dir/pr_rebase_meta_behind.json"
+{"baseRefOid":"1111111111111111111111111111111111111111","headRefOid":"2222222222222222222222222222222222222222","headRefName":"job/test","isCrossRepository":false,"mergeStateStatus":"DIRTY","mergeable":"CONFLICTING"}
+JSON
+/usr/bin/perl -pi -e 's/"baseRefOid":\s*"[^"]+"/"baseRefOid": "9999999999999999999999999999999999999999"/' "$dir/pr_view.json"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("base is behind origin/main" "rebase attempt 1/3" "force-pushed job/test" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+run_test_case "case24-dirty-conflicting" --when-green 42
+if [[ ! -f "$dir/force_push.log" ]]; then
+  echo "FAIL case24: DIRTY/CONFLICTING must trigger a rebase push"
+  FAILED=1
+fi
 exit "$FAILED"

@@ -28,7 +28,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `proof-red-green.sh` | Prove test fails on base ref and passes on HEAD | Automated job proof / CI / pre-PR | `proof-selftest.sh` |
 | `proof-report.sh` | Generate markdown proof report with PR metadata, diff hunks, CI IDs, red-green, and mutation logs | Automated job proof / PR review | `proof-selftest.sh` |
 | `proof-selftest.sh` | Hermetic selftest suite for proof-red-green, mutate, and proof-report scripts | Pre-commit / verification | Self |
-| `pr-gate.sh` | 5-step automated pre-merge verification and checkpoint gate | Pre-merge review workflow | `pr-gate-selftest.sh` |
+| `pr-gate.sh` | 5-step pre-merge verification and checkpoint gate; `--when-green` rebases a PR that fell behind main (max 3 attempts) before waiting for CI | Pre-merge review workflow | `pr-gate-selftest.sh` |
 | `pr-gate-selftest.sh` | Hermetic selftest for PR gate script | Pre-commit / verification | Self |
 | `pre-commit.sh` | Git pre-commit hook enforcing staged-secret scan, blanket-add guard and test suite | Git pre-commit hook | `pre-commit-selftest.sh` |
 | `pre-commit-selftest.sh` | Hermetic selftest for the staged secret scan in `pre-commit.sh` (clean commit allowed, each blocked pattern refused, hook run from outside the repo) | Pre-commit / verification | Self |
@@ -148,16 +148,17 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Pre-commit hook, test verification (`verify-selftest.sh`).
 
 ### `pr-gate.sh`
-- **Purpose**: 5-step automated pre-merge verification gate: CI rollup check, base freshness, diff hygiene, checkpoint tag creation/remote verification, and merge.
+- **Purpose**: 5-step automated pre-merge verification gate: CI rollup check, base freshness, diff hygiene, checkpoint tag creation/remote verification, and merge. With `--when-green`, a PR behind origin/main is rebased and pushed first so bots no longer babysit merges.
 - **Usage**: `scripts/pr-gate.sh [--allow-lockfile] [--allow-binary] [--dry-run] [--when-green [--timeout <min>]] <PR-number>`
 - **`--when-green`**: first watches pending CI with `gh pr checks --watch`, bounded by `--timeout` minutes (default 40), then runs the normal 5 checks and merges. If CI has not registered any check yet (right after the PR is opened) it waits for the first one inside the same deadline. Red CI exits `1` and names the failing job; a timeout exits `3`.
+- **Auto-rebase**: if the PR is behind origin/main, or GitHub reports `mergeStateStatus` `BEHIND`/`DIRTY` or `mergeable` `CONFLICTING` (baseRefOid tracks the live base tip, so it alone cannot detect staleness), the gate rebases the head branch onto origin/main in a temporary worktree, pushes it back with `--force-with-lease` to that PR branch only, waits for its new CI, and re-checks. Main can move again, so the cycle repeats at most 3 times (`PR_GATE_REBASE_ATTEMPTS`, default `3`) and then exits `1`. A conflicting rebase runs `git rebase --abort`, prints the conflicting files and exits `1` without pushing. Fork PRs, force-pushing main, and conflicts resolved by the gate are all refused.
 - **Drafts**: a PR that is still a draft (as opened by `worktree.sh save`) is refused in check 1, before the checkpoint tag is pushed, with the hint `gh pr ready <N>`.
-- **Exit Codes**: `0` on success, `1` on validation failure or red CI, `3` on pending CI (or `--when-green` timeout).
+- **Exit Codes**: `0` on success, `1` on validation failure, red CI, rebase conflict/exhaustion, or a refused fork; `3` on pending CI (or `--when-green` timeout).
 - **Selftest**: `scripts/pr-gate-selftest.sh`.
 - **Trigger**: Pre-merge workflow.
 
 ### `pr-gate-selftest.sh`
-- **Purpose**: Hermetic selftest suite for `pr-gate.sh` stubbing `gh` and `git` commands.
+- **Purpose**: Hermetic selftest suite for `pr-gate.sh` stubbing `gh` and `git` commands. Covers the auto-rebase paths too: behind → clean rebase → force-push → wait → merge, rebase conflict → abort with the file list and no push, and the 3-attempt cap when main keeps moving. Point `PR_GATE_SCRIPT` at a mutant to prove these cases fail when the rebase step is removed.
 - **Usage**: `scripts/pr-gate-selftest.sh`
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
