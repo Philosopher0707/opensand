@@ -70,7 +70,8 @@ OPEN="$(printf '%s' "$OPEN_RAW" | jq \
 
 RUN_RAW="$(gh_data run list --branch main --limit 1 --json status,conclusion,displayTitle,url)"
 MAIN_CI="$(printf '%s' "$RUN_RAW" | jq \
-  '.[0] // {} | {status: (.status // "none"), conclusion: (.conclusion // "none"),
+  '.[0] // {} | {status: (.status // "none"),
+                 conclusion: (if (.conclusion // "") == "" then "pending" else .conclusion end),
                  display_title: (.displayTitle // ""), url: (.url // "")}')"
 
 LATEST_RELEASE="$(gh release view --json tagName --jq .tagName 2>/dev/null || true)"

@@ -97,6 +97,15 @@ cat > "$RED/run.json" <<'EOF'
 EOF
 cp "$NORMAL/release.txt" "$RED/release.txt"
 
+PENDING="$TMP_DIR/pending"
+mkdir -p "$PENDING"
+cp "$NORMAL/merged.json" "$PENDING/merged.json"
+cp "$NORMAL/open.json" "$PENDING/open.json"
+cat > "$PENDING/run.json" <<'EOF'
+[{"status":"in_progress","conclusion":"","displayTitle":"CI","url":"https://example.invalid/run/3"}]
+EOF
+cp "$NORMAL/release.txt" "$PENDING/release.txt"
+
 OUT="$TMP_DIR/out"
 ERR="$TMP_DIR/err"
 run_case() { # <fixture-dir> [args...]
@@ -125,19 +134,24 @@ assert_eq "no-merges: exit 0" "$RCN" "0"
 assert_has "no-merges: heading" "$(cat "$OUT")" "## Merged PRs (0)"
 assert_has "no-merges: none line" "$(cat "$OUT")" "- none"
 
-echo "==> [3/5] red main CI"
+echo "==> [3/6] red main CI"
 RCR="$(run_case "$RED")"
 assert_eq "red-CI: exit 0 (report, not error)" "$RCR" "0"
 assert_has "red-CI: conclusion shown" "$(cat "$OUT")" "failure / completed"
 
-echo "==> [4/5] gh not signed in"
+echo "==> [4/6] main CI still in progress (gh sends an empty conclusion)"
+RCP="$(run_case "$PENDING")"
+assert_eq "pending-CI: exit 0" "$RCP" "0"
+assert_has "pending-CI: conclusion shown" "$(cat "$OUT")" "pending / in_progress"
+
+echo "==> [5/6] gh not signed in"
 touch "$NORMAL/signed_out"
 RCS="$(run_case "$NORMAL")"
 assert_eq "not-signed-in: non-zero exit" "$([ "$RCS" -ne 0 ] && echo nonzero)" "nonzero"
 assert_has "not-signed-in: clear error" "$(cat "$ERR")" "gh is not signed in"
 rm -f "$NORMAL/signed_out"
 
-echo "==> [5/5] --json output"
+echo "==> [6/6] --json output"
 RCJ="$(run_case "$NORMAL" --json)"
 assert_eq "json: exit 0" "$RCJ" "0"
 python3 -m json.tool "$OUT" >/dev/null 2>&1 && pass "json: parses with python3 -m json.tool" || fail "json: python3 -m json.tool rejected output"
