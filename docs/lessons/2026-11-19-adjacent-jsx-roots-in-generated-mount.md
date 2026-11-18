@@ -1,0 +1,5 @@
+# Adjacent JSX roots in a generated mount fail the vite build with a parser error
+
+- **Trap:** The screen-kit scaffold test kept failing before Electron ever launched, with esbuild reporting `Expected ")" but found "id"` on the mount file's `render(...)` line. A dev-server variant of the same page instead returned the raw untransformed source, sending the debugging down the wrong path (ports, IPv6, `/@fs` paths).
+- **Root Cause:** The mount template passed two sibling JSX elements to `render(<div/><div/>, body)` — adjacent JSX roots are a syntax error even with `jsx: automatic`, and esbuild's message points at the second element's first attribute, not at the missing fragment. Because the page was served over a dev server, the parse failure surfaced as odd HTTP behaviour instead of a clear build error.
+- **Rule:** Generated code that emits more than one JSX root wraps them in a fragment (`<>…</>`). A script that generates JSX gets exercised by a real bundle step (the kit's sample run) before merge — a shell-only selftest that never builds the template cannot catch a parse error.
