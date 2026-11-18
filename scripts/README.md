@@ -39,6 +39,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `smoke-packaged.sh` | Packaged application launch verification in isolated state | CI / release smoke gate | None |
 | `status-report.sh` | Read-only owner summary: recent merges, open PRs + CI/behind, main CI, latest release, disk; `--json` for the same data | Manual / owner status report | `status-report-selftest.sh` |
 | `status-report-selftest.sh` | Hermetic selftest for status-report.sh with a stubbed `gh` (no network) | Pre-commit / verification | Self |
+| `screen-kit.sh` | Phase 5 screen starter kit: scaffolds a new shell screen's component, its real-window test (960x740 + full screen, screenshots into the gitignored .opensand-snapshots folder) and its scripts/README.md rows | Phase 5 row work | `screen-kit` `--selftest` flag |
 | `sync-versions.js` | Synchronize and check version strings across workspace packages | `verify.sh`, release.sh | None (checked by verify) |
 | `v1-dry-run.sh` | Validate v1 packaging and DMG generation pipeline | Manual release validation | None |
 | `verify-linux.sh` | Run verification suite inside isolated Linux container | Local pre-CI cross-platform test | None |
@@ -303,3 +304,10 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
 - **Trigger**: Pre-commit hook, test verification.
+
+### `screen-kit.sh`
+- **Purpose**: Phase 5 screen starter kit. Scaffolds one new screen for the Preact app shell so every remaining Phase 5 row starts from the same shape: the component `packages/desktop/renderer-next/src/views/<Name>.tsx` (loading / empty / ready / error+Retry states, keyboard-focusable rows, no fixed widths), its real-window test `packages/desktop/test/<kebab>-real-window.test.ts` (a real Electron window at 960x740 and 1920x1080, page pre-bundled with a throwaway vite build, screenshots captured into the gitignored `.opensand-snapshots/screen-kit/<kebab>/` folder -- screenshots are never committed), and the catalog rows in this README. Wiring the screen into `Shell.tsx` and giving it real data stays the row author's job.
+- **Usage**: `scripts/screen-kit.sh <ScreenName>` (PascalCase); `scripts/screen-kit.sh --selftest` runs a hermetic selftest (temp-dir scaffold, catalog-row and refusal checks; no Electron).
+- **Exit Codes**: `0` on success, `1` on refusal or selftest failure.
+- **Selftest**: the `--selftest` flag (hermetic; the generated real-window test is exercised by the kit's sample run, not by CI).
+- **Trigger**: Phase 5 row work.
