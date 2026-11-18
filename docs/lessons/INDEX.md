@@ -33,3 +33,4 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · ["No checks reported" is pending, not a red gate](2026-11-19-pr-gate-no-checks-is-pending.md)
 - 2026-11-19 · [A rebase selftest must assert the effect, not just the fixture plumbing](2026-11-19-rebase-selftest-needs-observable-effects.md)
 - 2026-11-19 · [A new shared type builds everywhere but the coordinator](2026-11-19-shared-types-need-explicit-coordinator-reexport.md)
+- 2026-11-19 · [worktree.sh cannot adopt an existing remote branch](2026-11-19-worktree-adopt-existing-branch.md)
