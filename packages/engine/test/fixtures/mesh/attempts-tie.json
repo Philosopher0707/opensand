@@ -1,0 +1,5 @@
+[
+  {"n": 1, "result": {"role": "coder", "model": "provider-a:model-1", "family": "fam-a", "outcome": "passed", "checkExit": 0, "diffLines": 40, "costUsd": 0.002, "wallMs": 60000}, "diff": "--- a/src/x.ts\n+++ b/src/x.ts\n@@ -1,2 +1,3 @@\n x\n+y\n", "checkOutput": "ok 1 - x passes"},
+  {"n": 2, "result": {"role": "coder", "model": "provider-b:model-2", "family": "fam-b", "outcome": "passed", "checkExit": 0, "diffLines": 42, "costUsd": 0.0021, "wallMs": 61000}, "diff": "--- a/src/y.ts\n+++ b/src/y.ts\n@@ -1,2 +1,3 @@\n y\n+x\n", "checkOutput": "ok 1 - y passes"},
+  {"n": 3, "result": {"role": "coder", "model": "provider-a:model-3", "family": "fam-a", "outcome": "passed", "checkExit": 0, "diffLines": 400, "costUsd": 0.002, "wallMs": 62000}, "diff": "large diff", "checkOutput": "ok 1 - large"}
+]

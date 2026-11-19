@@ -1,0 +1,7 @@
+[
+  {"n": 1, "result": {"role": "coder", "model": "provider-a:model-1", "family": "fam-a", "outcome": "check_failed", "checkExit": 1, "diffLines": 40, "costUsd": 0.002, "wallMs": 60000}},
+  {"n": 2, "result": {"role": "coder", "model": "provider-b:model-2", "family": "fam-b", "outcome": "passed", "checkExit": 0, "diffLines": 40, "costUsd": 0.002, "wallMs": 60000, "containmentEvents": 1}},
+  {"n": 3, "result": {"role": "coder", "model": "provider-a:model-3", "family": "fam-a", "outcome": "passed", "checkExit": 0, "diffLines": 40, "costUsd": 0.002, "wallMs": 60000, "scopeViolations": 2}},
+  {"n": 4, "result": {"role": "coder", "model": "provider-b:model-4", "family": "fam-b", "outcome": "passed", "checkExit": 0, "diffLines": 1200, "costUsd": 0.002, "wallMs": 60000}},
+  {"n": 5, "result": {"role": "coder", "model": "provider-a:model-5", "family": "fam-a", "outcome": "interrupted", "checkExit": 0, "diffLines": 40, "costUsd": 0.002, "wallMs": 60000}}
+]
