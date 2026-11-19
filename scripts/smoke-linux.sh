@@ -119,19 +119,21 @@ APP_BIN="$EXTRACT_DIR/${EXEC_VALUE#/}"
 echo "smoke-linux: package $DEB_PATH, version $BUNDLE_VERSION, executable ${EXEC_VALUE}"
 
 # --- Launch only the packaged binary under xvfb with isolated state ---
+# --no-sandbox: dpkg-deb -x does not install chrome-sandbox as root:setuid, so
+# Electron's setuid sandbox cannot start from an extracted test package.
 launch_app() {
   if [[ -n "$SETSID_BIN" ]]; then
     exec env -u ELECTRON_RUN_AS_NODE \
       HOME="$HOME_DIR" OPENSAND_HOME="$OPENSAND_HOME_DIR" \
       XDG_CONFIG_HOME="$HOME_DIR/.config" XDG_DATA_HOME="$HOME_DIR/.local/share" \
       OPENSAND_STATE_DIR="$STATE_DIR" OPENSAND_SMOKE=1 \
-      "$SETSID_BIN" "$XVFB_RUN" -a "$APP_BIN"
+      "$SETSID_BIN" "$XVFB_RUN" -a "$APP_BIN" --no-sandbox
   fi
   exec env -u ELECTRON_RUN_AS_NODE \
     HOME="$HOME_DIR" OPENSAND_HOME="$OPENSAND_HOME_DIR" \
     XDG_CONFIG_HOME="$HOME_DIR/.config" XDG_DATA_HOME="$HOME_DIR/.local/share" \
     OPENSAND_STATE_DIR="$STATE_DIR" OPENSAND_SMOKE=1 \
-    "$XVFB_RUN" -a "$APP_BIN"
+    "$XVFB_RUN" -a "$APP_BIN" --no-sandbox
 }
 launch_app >"$LOG_FILE" 2>&1 &
 APP_PID=$!

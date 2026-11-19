@@ -79,6 +79,7 @@ case "$1" in
         exit 0
         ;;
       download)
+        printf '%s\n' "$*" >> "$TEST_CASE_DIR/download_args.log"
         tag="$3"
         dest_dir=""
         shift 3
@@ -111,6 +112,8 @@ case "$1" in
         mkdir -p "$dest_dir"
         echo "mock zip content" > "$dest_dir/OpenSand-0.1.11-arm64-mac.zip"
         echo "mock dmg content" > "$dest_dir/OpenSand-0.1.11-arm64.dmg"
+        echo "mock AppImage content" > "$dest_dir/OpenSand-0.1.11-x86_64.AppImage"
+        echo "mock deb content" > "$dest_dir/OpenSand_0.1.11_amd64.deb"
         exit 0
         ;;
     esac
@@ -122,6 +125,7 @@ chmod +x "$BIN_DIR/gh"
 
 # Hermetic hdiutil mock
 cat << 'EOS' > "$BIN_DIR/hdiutil"
+printf '%s\n' "$*" >> "$TEST_CASE_DIR/hdiutil_calls.log"
 case "$1" in
   attach)
     mountpoint=""
@@ -197,6 +201,17 @@ fi
 exit 0
 EOS
 
+# Hermetic mock Linux smoke script
+cat << 'EOS' > "$WORK/mock-smoke-linux.sh"
+printf '%s\n' "$*" > "$TEST_CASE_DIR/linux_smoke_args.log"
+if [ -f "$TEST_CASE_DIR/linux_smoke_exit" ]; then
+  code=$(cat "$TEST_CASE_DIR/linux_smoke_exit")
+  exit "$code"
+fi
+exit 0
+EOS
+chmod +x "$WORK/mock-smoke-linux.sh"
+
 # Hermetic mock post-install health check
 cat << 'EOS' > "$WORK/mock-health.sh"
 printf '%s %s\n' "$1" "$2" > "$TEST_CASE_DIR/health_check_args.log"
@@ -245,6 +260,8 @@ run_test() {
     TEST_CASE_DIR="$dir" \
     OPENSAND_PR_GATE_SCRIPT="$WORK/mock-pr-gate.sh" \
     OPENSAND_SMOKE_SCRIPT="$WORK/mock-smoke.sh" \
+    OPENSAND_LINUX_SMOKE_SCRIPT="$WORK/mock-smoke-linux.sh" \
+    OPENSAND_RELEASE_OS="${CASE_OS:-$(uname -s)}" \
     OPENSAND_HEALTH_CHECK_SCRIPT="$WORK/mock-health.sh" \
     OPENSAND_INSTALL_APP_DEST="$dir/Applications/OpenSand.app" \
     OPENSAND_ARCHIVE_DIR_BASE="$dir/archive" \
@@ -500,6 +517,76 @@ create_mock_app "$zip_app_dir" "0.1.11"
 echo "mock dmg" > "$dir/download/OpenSand-0.1.11-arm64.dmg"
 create_mock_app "$dir/mock_dmg_app/OpenSand.app" "0.1.11"
 run_test "case12-health-failure" 2 --install 0.1.11
+
+# --- Case 13: Linux branch smokes the .deb and skips macOS-only hdiutil ---
+dir="$WORK/case13-linux-success"; mkdir -p "$dir"
+touch "$dir/tag_exists"
+echo '[{"number": 42, "state": "MERGED"}]' > "$dir/pr_list.json"
+echo '{"state": "MERGED"}' > "$dir/pr_view.json"
+CASE_OS=Linux
+run_test "case13-linux-success" 0 0.1.11
+CASE_OS=""
+if ! grep -qF "OpenSand_0.1.11_amd64.deb" "$dir/linux_smoke_args.log" 2>/dev/null; then
+  echo "FAIL case13-linux-success: smoke-linux.sh was not called with the .deb"
+  FAILED=1
+fi
+if [ -f "$dir/hdiutil_calls.log" ]; then
+  echo "FAIL case13-linux-success: hdiutil was called on Linux"
+  FAILED=1
+fi
+
+# --- Case 14: Linux smoke failure halts with exit 2 ---
+dir="$WORK/case14-linux-smoke-failure"; mkdir -p "$dir"
+touch "$dir/tag_exists"
+echo '[{"number": 42, "state": "MERGED"}]' > "$dir/pr_list.json"
+echo '{"state": "MERGED"}' > "$dir/pr_view.json"
+echo "1" > "$dir/linux_smoke_exit"
+CASE_OS=Linux
+run_test "case14-linux-smoke-failure" 2 0.1.11
+CASE_OS=""
+if ! grep -q "FAIL: Linux smoke test failed" "$dir/run.out" 2>/dev/null; then
+  echo "FAIL case14-linux-smoke-failure: no Linux smoke failure message"
+  FAILED=1
+fi
+
+# --- Case 15: all four artifact patterns requested from gh (macOS branch) ---
+dir="$WORK/case15-download-patterns"; mkdir -p "$dir"
+touch "$dir/tag_exists"
+echo '[{"number": 42, "state": "MERGED"}]' > "$dir/pr_list.json"
+echo '{"state": "MERGED"}' > "$dir/pr_view.json"
+run_test "case15-download-patterns" 0 0.1.11
+for pattern in '*.zip' '*.dmg' '*.AppImage' '*.deb'; do
+  if ! grep -qF -- "$pattern" "$dir/download_args.log" 2>/dev/null; then
+    echo "FAIL case15-download-patterns: missing download pattern $pattern"
+    FAILED=1
+  fi
+done
+
+# --- Case 16: dry run advertises all four artifact patterns ---
+out=$(bash "$RELEASE_SCRIPT" --dry-run 0.1.11 2>&1)
+for pattern in '*.zip' '*.dmg' '*.AppImage' '*.deb'; do
+  if ! grep -qF -- "$pattern" <<< "$out"; then
+    echo "FAIL case16-dry-run-patterns: dry run is missing $pattern"
+    FAILED=1
+  fi
+done
+if [ "$FAILED" -eq 0 ]; then
+  echo "PASS case16-dry-run-patterns: dry run names all four artifact patterns"
+fi
+
+# --- Case 17: Linux resume reuses an already downloaded .deb ---
+dir="$WORK/case17-linux-resume"; mkdir -p "$dir/download"
+touch "$dir/tag_exists"
+echo '[{"number": 42, "state": "MERGED"}]' > "$dir/pr_list.json"
+echo '{"state": "MERGED"}' > "$dir/pr_view.json"
+echo "existing deb" > "$dir/download/OpenSand_0.1.11_amd64.deb"
+CASE_OS=Linux
+run_test "case17-linux-resume" 0 0.1.11
+CASE_OS=""
+if [ -f "$dir/download_args.log" ]; then
+  echo "FAIL case17-linux-resume: re-downloaded assets on resume"
+  FAILED=1
+fi
 
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL RELEASE SELFTESTS PASSED."
