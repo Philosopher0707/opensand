@@ -1,7 +1,8 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { type TargetClient } from "./client.js";
+import { type TargetClient, type TargetSpawnFn, staticTargetSpawn } from "./client.js";
+import { shq } from "./manifest.js";
 import { TargetErrorCodes, TargetLinkError, TargetLostError, type TargetHelloResult } from "./types.js";
 
 /**
@@ -268,7 +269,10 @@ export class SshTargetLauncher {
     return sshPreflight(this.spec);
   }
 
-  /** Deploy the bundle by content hash (§4.3); idempotent, before any push. */
+  /**
+   * Deploy the bundle by content hash (§4.3); idempotent, before any push.
+   * Also the prerequisite for `makeSpawnFn`.
+   */
   async deploy(): Promise<string> {
     const { deployBundle } = await import("./sync.js");
     this.deployedHash = await deployBundle(this.spec.bundleDir, this.spec.root, { host: this.spec.host, sshArgs: this.spec.sshArgs });
@@ -276,21 +280,31 @@ export class SshTargetLauncher {
   }
 
   /**
-   * Start the one persistent `ssh ... node ... --stdio` child and return the
-   * handshaken client. The mission dir is created remotely first (a failed
-   * push leaves it behind by design; start is idempotent over it). Each
-   * attempt gets a fresh client, as with the container launcher.
+   * The spawn fn for the one persistent `ssh ... node --stdio` child (§4.4):
+   * argument arrays only, the user's config/agent, `BatchMode=yes`, and the
+   * child environment limited to PATH/HOME/SSH_AUTH_SOCK.
+   */
+  makeSpawnFn(): TargetSpawnFn {
+    if (!this.deployedHash) throw new Error("deploy() the bundle before starting the link");
+    const missionRoot = path.posix.join(this.spec.root, "missions", this.spec.missionId);
+    const bin = path.posix.join(this.spec.root, ".opensand", "target", this.deployedHash, "dist", "src", "target", "bin.js");
+    const remoteCommand = `node ${shq(bin)} --stdio --root ${shq(missionRoot)} --sandbox ${this.spec.sandbox} --target-id ${shq(this.spec.targetId)}`;
+    return staticTargetSpawn("ssh", sshCommandArgs(this.spec, remoteCommand), sshChildEnv());
+  }
+
+  /**
+   * Start the link and return the handshaken client. The mission dir is
+   * created remotely first (a failed push leaves it behind by design; start is
+   * idempotent over it). Each attempt gets a fresh client, as with the
+   * container launcher.
    */
   async start(makeClient: () => TargetClient): Promise<{ client: TargetClient; hello: TargetHelloResult }> {
     const hash = this.deployedHash ?? (await this.deploy());
     const { remoteExec } = await import("./sync.js");
+    const { shq } = await import("./manifest.js");
     const missionRoot = path.posix.join(this.spec.root, "missions", this.spec.missionId);
     const bin = path.posix.join(this.spec.root, ".opensand", "target", hash, "dist", "src", "target", "bin.js");
-    // shq lives with the sync layer; a root with quotes must not break the remote command.
-    const { shq } = await import("./manifest.js");
     await remoteExec(`mkdir -p ${shq(missionRoot)}`, { host: this.spec.host, sshArgs: this.spec.sshArgs });
-    const remoteCommand = `node ${shq(bin)} --stdio --root ${shq(missionRoot)} --sandbox ${this.spec.sandbox} --target-id ${shq(this.spec.targetId)}`;
-    const args = sshCommandArgs(this.spec, remoteCommand);
     let lastError: Error | null = null;
     for (let attempt = 0; attempt < 5; attempt++) {
       const client = makeClient();

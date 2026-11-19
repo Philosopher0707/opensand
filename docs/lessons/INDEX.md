@@ -39,6 +39,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [A full test run rewrites tracked screenshots, and `save` stages them](2026-11-19-full-test-run-rewrites-tracked-screenshots.md)
 - 2026-11-19 · ["No CI checks appeared" can be a queued run, not a broken push](2026-11-19-gate-no-checks-appeared-vs-queued-run.md)
 - 2026-11-19 · [Re-running the gate on a merged PR rebased and force-pushed the merged branch](2026-11-19-gate-rerun-rebased-a-merged-pr.md)
+- 2026-11-19 · [An interim gate watch is pending, not done](2026-11-19-interim-gate-watch-is-not-done.md)
 - 2026-11-19 · [The judge's tie band fires without a reviewer — separate the costs or expect fallback-deterministic](2026-11-19-judge-tie-band-fires-without-a-reviewer.md)
 - 2026-11-19 · [A lease file inside the attempt worktree would dirty every snapshot](2026-11-19-lease-file-inside-worktree.md)
 - 2026-11-19 · [The main checkout can be years behind and is never updated](2026-11-19-main-checkout-stale-lacks-scripts.md)
