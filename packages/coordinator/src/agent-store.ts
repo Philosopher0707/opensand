@@ -62,6 +62,14 @@ export interface AgentRecord {
   reportsTo?: string;
   /** Who may see this agent: "everyone" | "admins" | { people: string[] }. */
   visibility?: "everyone" | "admins" | { people: string[] };
+  /** This agent's own voice id. */
+  voice?: string;
+  /** Speak this agent's replies aloud as they settle. */
+  speakReplies?: boolean;
+  /** Whether this agent may send voice notes. */
+  voiceNotes?: boolean;
+  /** How replies are shaped. Absent = "default". */
+  replyStyle?: "default" | "concise" | "detailed";
 }
 
 export interface CreateAgentInput {
@@ -83,7 +91,6 @@ export interface CreateAgentInput {
   avatarUrl?: string | null;
   approvalMode?: "ask" | "custom" | "allow";
   autoApprove?: boolean;
-  autoApprove?: boolean;
   alwaysAllow?: string[];
   section?: string;
   chiefOfStaff?: boolean;
@@ -91,6 +98,10 @@ export interface CreateAgentInput {
   createdBy?: string;
   reportsTo?: string;
   visibility?: "everyone" | "admins" | { people: string[] };
+  voice?: string;
+  speakReplies?: boolean;
+  voiceNotes?: boolean;
+  replyStyle?: "default" | "concise" | "detailed";
 }
 
 /** Fields allowed to be patched on an existing agent's profile. */
@@ -300,6 +311,25 @@ export class AgentStore {
 
   /** Patch section/team fields on an existing agent. */
   async updateAgentSection(idOrName: string, updates: { section?: string; chiefOfStaff?: boolean; managedSections?: string[]; createdBy?: string; reportsTo?: string; visibility?: "everyone" | "admins" | { people: string[] } }): Promise<AgentRecord> {
+    const existing = await this.getAgent(idOrName);
+    if (!existing) {
+      throw new Error(`Agent [${idOrName}] not found in store`);
+    }
+
+    const updated: AgentRecord = {
+      ...existing,
+      ...updates,
+      id: existing.id,
+      createdAt: existing.createdAt,
+      updatedAt: Date.now(),
+    };
+
+    await this.saveRecordAtomic(updated);
+    return updated;
+  }
+
+  /** Patch voice fields on an existing agent. */
+  async updateAgentVoice(idOrName: string, updates: { voice?: string; speakReplies?: boolean; voiceNotes?: boolean; replyStyle?: "default" | "concise" | "detailed" }): Promise<AgentRecord> {
     const existing = await this.getAgent(idOrName);
     if (!existing) {
       throw new Error(`Agent [${idOrName}] not found in store`);

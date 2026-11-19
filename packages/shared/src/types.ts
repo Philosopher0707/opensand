@@ -148,6 +148,14 @@ export interface AgentRecord {
   reportsTo?: string;
   /** Who may see this agent: "everyone" | "admins" | { people: string[] }. */
   visibility?: "everyone" | "admins" | { people: string[] };
+  /** This agent's own voice id. */
+  voice?: string;
+  /** Speak this agent's replies aloud as they settle. */
+  speakReplies?: boolean;
+  /** Whether this agent may send voice notes. */
+  voiceNotes?: boolean;
+  /** How replies are shaped. Absent = "default". */
+  replyStyle?: "default" | "concise" | "detailed";
 }
 
 export interface CreateAgentInput {
@@ -176,6 +184,10 @@ export interface CreateAgentInput {
   createdBy?: string;
   reportsTo?: string;
   visibility?: "everyone" | "admins" | { people: string[] };
+  voice?: string;
+  speakReplies?: boolean;
+  voiceNotes?: boolean;
+  replyStyle?: "default" | "concise" | "detailed";
 }
 
 /** One declarative field in an agent's settings schema. */
