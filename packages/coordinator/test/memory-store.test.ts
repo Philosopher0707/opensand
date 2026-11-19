@@ -220,4 +220,137 @@ describe("MemoryStore - Grok Bot Memory Layers Parity", () => {
     assert.equal(parsedImport.status, "success");
     assert.equal(parsedImport.savedCount, 1);
   });
+
+  it("addMemoryWithOutcome records predicted vs observed outcome (SIM)", async () => {
+    const f = await store.addMemoryWithOutcome({
+      text: "SIM test: prefers TypeScript with strict types",
+      scope: "agent",
+      agentId: "sim-agent-1",
+      tier: "profile",
+      predictedOutcome: "positive",
+      observedOutcome: "negative",
+    });
+
+    assert.equal(f.predictedOutcome, "positive");
+    assert.equal(f.observedOutcome, "negative");
+    assert.equal(f.outcomeMatch, false);
+
+    const listed = await store.listMemories({
+      scope: "agent",
+      agentId: "sim-agent-1",
+      query: "strict types",
+    });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].outcomeMatch, false);
+  });
+
+  it("deriveOutcomeMatch returns undefined when outcomes are uncertain", async () => {
+    const f = await store.addMemoryWithOutcome({
+      text: "SIM test: tracks mutual funds quarterly",
+      scope: "agent",
+      agentId: "sim-agent-2",
+      tier: "log",
+      predictedOutcome: "uncertain",
+      observedOutcome: "positive",
+    });
+
+    assert.equal(f.outcomeMatch, undefined);
+
+    const f2 = await store.addMemoryWithOutcome({
+      text: "SIM test: uses pnpm instead of npm",
+      scope: "agent",
+      agentId: "sim-agent-2",
+      tier: "log",
+      observedOutcome: "negative",
+    });
+    assert.equal(f2.outcomeMatch, undefined);
+  });
+
+  it("deriveOutcomeMatch returns true when predicted matches observed", async () => {
+    const f = await store.addMemoryWithOutcome({
+      text: "SIM test: prefer local LLM execution",
+      scope: "agent",
+      agentId: "sim-agent-3",
+      tier: "profile",
+      predictedOutcome: "positive",
+      observedOutcome: "positive",
+    });
+
+    assert.equal(f.outcomeMatch, true);
+  });
+
+  it("listMemories filters failed attempts by observedOutcome (SIM don't-repeat)", async () => {
+    await store.addMemoryWithOutcome({
+      text: "SIM test: always run tests before committing",
+      scope: "agent",
+      agentId: "sim-agent-4",
+      tier: "log",
+      observedOutcome: "negative",
+    });
+    await store.addMemoryWithOutcome({
+      text: "SIM test: verify changes with automated tests",
+      scope: "agent",
+      agentId: "sim-agent-4",
+      tier: "log",
+      observedOutcome: "positive",
+    });
+    await store.addMemoryWithOutcome({
+      text: "SIM test: stage files by explicit path only",
+      scope: "agent",
+      agentId: "sim-agent-4",
+      tier: "log",
+      observedOutcome: "negative",
+    });
+
+    const failures = await store.listMemories({
+      scope: "agent",
+      agentId: "sim-agent-4",
+      observedOutcome: "negative",
+    });
+    assert.equal(failures.length, 2);
+    assert.ok(failures.every((f) => f.observedOutcome === "negative"));
+
+    const successes = await store.listMemories({
+      scope: "agent",
+      agentId: "sim-agent-4",
+      observedOutcome: "positive",
+    });
+    assert.equal(successes.length, 1);
+    assert.equal(successes[0].text, "SIM test: verify changes with automated tests");
+  });
+
+  it("listMemories filters mismatched predictions via outcomeMatch (SIM)", async () => {
+    await store.addMemoryWithOutcome({
+      text: "SIM test: use GitHub Issues for planning",
+      scope: "agent",
+      agentId: "sim-agent-5",
+      tier: "log",
+      predictedOutcome: "positive",
+      observedOutcome: "negative",
+    });
+    await store.addMemoryWithOutcome({
+      text: "SIM test: use Linear for planning",
+      scope: "agent",
+      agentId: "sim-agent-5",
+      tier: "log",
+      predictedOutcome: "positive",
+      observedOutcome: "positive",
+    });
+
+    const mismatches = await store.listMemories({
+      scope: "agent",
+      agentId: "sim-agent-5",
+      outcomeMatch: false,
+    });
+    assert.equal(mismatches.length, 1);
+    assert.equal(mismatches[0].text, "SIM test: use GitHub Issues for planning");
+
+    const matches = await store.listMemories({
+      scope: "agent",
+      agentId: "sim-agent-5",
+      outcomeMatch: true,
+    });
+    assert.equal(matches.length, 1);
+    assert.equal(matches[0].text, "SIM test: use Linear for planning");
+  });
 });

@@ -8,6 +8,8 @@ export type MemoryTier = "profile" | "log";
 export type ReviewItemStatus = "pending" | "approved" | "rejected";
 export type ReviewAction = "write" | "forget";
 
+export type MemoryOutcome = "positive" | "negative" | "uncertain" | "pending";
+
 export interface MemoryFact {
   factId: string;
   text: string;
@@ -15,6 +17,12 @@ export interface MemoryFact {
   scope: MemoryScope;
   tier: MemoryTier;
   agentId?: string;
+  // SIM outcome tracking (self-improvement memory): what was expected vs what
+  // happened when this fact was applied, and whether they matched. Optional for
+  // backward compatibility with facts written before outcome tracking existed.
+  predictedOutcome?: MemoryOutcome;
+  observedOutcome?: MemoryOutcome;
+  outcomeMatch?: boolean;
 }
 
 export interface TeamReviewChange {
@@ -125,6 +133,66 @@ export class MemoryStore {
   }
 
   /**
+   * Add a new discrete memory fact with SIM outcome tracking (self-improvement
+   * memory). Records what was expected vs what happened so future rounds can
+   * avoid repeating failed attempts.
+   *
+   * outcomeMatch is derived as (predictedOutcome === observedOutcome) when both
+   * are known and neither is "uncertain"; otherwise it is undefined.
+   */
+  async addMemoryWithOutcome(fact: {
+    text: string;
+    scope?: MemoryScope;
+    tier?: MemoryTier;
+    agentId?: string;
+    predictedOutcome?: MemoryOutcome;
+    observedOutcome?: MemoryOutcome;
+    outcomeMatch?: boolean;
+  }): Promise<MemoryFact> {
+    const scope = fact.scope ?? "user";
+    const tier = fact.tier ?? "log";
+    const filePath = this.getFilePath(scope, fact.agentId);
+
+    const data = await this.readJsonSafe<{ memories: MemoryFact[] }>(filePath, {
+      memories: [],
+    });
+    const factId = `fact_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+
+    const derivedMatch =
+      fact.outcomeMatch ?? this.deriveOutcomeMatch(fact.predictedOutcome, fact.observedOutcome);
+
+    const newFact: MemoryFact = {
+      factId,
+      text: fact.text.trim(),
+      learnedAtMs: Date.now(),
+      scope,
+      tier,
+      agentId: fact.agentId,
+      predictedOutcome: fact.predictedOutcome,
+      observedOutcome: fact.observedOutcome,
+      outcomeMatch: derivedMatch,
+    };
+
+    data.memories.push(newFact);
+    await this.writeJsonAtomic(filePath, data);
+
+    return newFact;
+  }
+
+  /**
+   * Derive outcomeMatch from predicted vs observed outcome (SIM semantics).
+   * Returns undefined when either is missing or "uncertain".
+   */
+  private deriveOutcomeMatch(
+    predictedOutcome?: MemoryOutcome,
+    observedOutcome?: MemoryOutcome
+  ): boolean | undefined {
+    if (!predictedOutcome || !observedOutcome) return undefined;
+    if (predictedOutcome === "uncertain" || observedOutcome === "uncertain") return undefined;
+    return predictedOutcome === observedOutcome;
+  }
+
+  /**
    * List memory facts matching scope, tier, agent, and search query.
    */
   async listMemories(filter: {
@@ -132,6 +200,8 @@ export class MemoryStore {
     tier?: MemoryTier | "all";
     agentId?: string;
     query?: string;
+    observedOutcome?: MemoryOutcome;
+    outcomeMatch?: boolean;
   } = {}): Promise<MemoryFact[]> {
     await this.ensureDir();
     const scopesToRead: Array<{ scope: MemoryScope; agentId?: string }> = [];
@@ -165,6 +235,16 @@ export class MemoryStore {
     if (filter.query && filter.query.trim()) {
       const q = filter.query.toLowerCase().trim();
       all = all.filter((m) => m.text.toLowerCase().includes(q));
+    }
+
+    // SIM: filter by observed outcome (e.g. find all failed attempts = negative)
+    if (filter.observedOutcome) {
+      all = all.filter((m) => m.observedOutcome === filter.observedOutcome);
+    }
+
+    // SIM: filter by whether predicted matched observed
+    if (filter.outcomeMatch !== undefined) {
+      all = all.filter((m) => m.outcomeMatch === filter.outcomeMatch);
     }
 
     // Sort by learnedAtMs ascending (oldest first, Grok Bot parity)
