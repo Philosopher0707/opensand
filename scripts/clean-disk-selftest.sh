@@ -231,6 +231,41 @@ if [ ! -d "$CLEAN_MERGED/node_modules" ]; then
 fi
 echo "PASS: live rule preserved open-PR, recently-changed and unverifiable worktrees"
 
+# --- Test 5: df stub — free space is reported for the writable data volume, not the system snapshot ---
+echo "==> Testing volume reporting (df stub)..."
+# Stub df only answers for the path the script should measure (/System/Volumes/Data on macOS,
+# $HOME on Linux CI) and defers everything else to the real df, so a script that still runs
+# `df -h /` or `df -k /` produces real output and fails the /dev/disk99 assertion.
+cat << 'EOS' > "$STUB_BIN/df"
+if [ "$2" = "/System/Volumes/Data" ] || { [ -n "${DF_STUB_HOME:-}" ] && [ "$2" = "$DF_STUB_HOME" ]; }; then
+  echo "Filesystem     1024-blocks      Used Available Capacity  Mounted on"
+  echo "/dev/disk99    1000000    900000    100000    90%    $2"
+  exit 0
+fi
+exec /bin/df "$@"
+EOS
+chmod +x "$STUB_BIN/df"
+export DF_STUB_HOME="$HOME"
+
+EXPECT_VOL="/System/Volumes/Data"
+if [ ! -d "$EXPECT_VOL" ]; then EXPECT_VOL="$HOME"; fi
+
+vol_out=$(OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" bash "$CLEAN_DISK_SCRIPT" 2>&1)
+echo "$vol_out" | grep -q "/dev/disk99" || {
+  echo "FAIL: script did not report df output from the stubbed df (expected /dev/disk99)"
+  echo "$vol_out" | head -5
+  FAILED=1
+}
+echo "$vol_out" | grep -qF "$EXPECT_VOL" || {
+  echo "FAIL: script did not measure volume $EXPECT_VOL"
+  FAILED=1
+}
+echo "$vol_out" | grep -q "100000 KB available" || {
+  echo "FAIL: parsed free-space line missing (expected '100000 KB available')"
+  FAILED=1
+}
+echo "PASS: volume reporting uses $EXPECT_VOL"
+
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL CLEAN-DISK SELFTESTS PASSED."
 fi

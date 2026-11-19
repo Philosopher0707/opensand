@@ -17,7 +17,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `check-doc-links-selftest.sh` | Hermetic selftest for the docs link checker | Pre-commit / verification | Self |
 | `check-scripts-catalog.sh` | Validate completeness of `scripts/README.md` and selftests | `scripts/verify.sh`, CI | `check-scripts-catalog-selftest.sh` |
 | `check-scripts-catalog-selftest.sh` | Hermetic selftest for scripts catalog checker | Pre-commit / verification | Self |
-| `clean-disk.sh` | Safe disk reclamation of merged/clean scratch worktrees and caches | Manual / low disk space in release | `clean-disk-selftest.sh` |
+| `clean-disk.sh` | Safe disk reclamation of merged/clean scratch worktrees and caches; reports the Data volume (`/System/Volumes/Data`) with per-target estimates | Manual / low disk space in release | `clean-disk-selftest.sh` |
 | `clean-disk-selftest.sh` | Hermetic selftest for disk cleanup script | Pre-commit / verification | Self |
 | `install-health-check.sh` | Post-install health check: launch the installed app in isolation and prove it answers with the expected version | `release.sh` Step 9 after `--install` | `install-health-check-selftest.sh` |
 | `install-health-check-selftest.sh` | Hermetic selftest for the post-install health check using a stub app in a temp dir | Pre-commit / verification | Self |
@@ -105,12 +105,14 @@ All scripts in this directory are cataloged below. Automated verification is enf
 ### `clean-disk.sh`
 - **Purpose**: Safely reclaim disk space by removing `node_modules` and `dist` from clean, merged scratch worktrees and user caches.
 - **Usage**: `scripts/clean-disk.sh [--yes]`
-- **Exit Codes**: `0` on success, `1` on invalid arguments.
+- **Exit Codes**: `0` on success, `1` on invalid arguments, `124` when a long command (du, rm, pnpm, npm) exceeds the hard 300s timeout.
+- **Reporting**: Free space is measured with `df -k` on the writable data volume — `/System/Volumes/Data` on macOS, `$HOME` on Linux CI — never the read-only system snapshot (`/dev/disk3s1s1`). Prints the volume, before/after numbers, and a per-target `du -sk` estimate of what would be freed.
+- **Timeouts**: du, rm, pnpm and npm run under a hard 300s timeout (Python `signal.alarm` kills the child).
 - **Selftest**: `scripts/clean-disk-selftest.sh`.
 - **Trigger**: Manual invocation or automated via `scripts/release.sh` when free disk space is under 8 GB.
 
 ### `clean-disk-selftest.sh`
-- **Purpose**: Hermetic selftest suite for `clean-disk.sh` using isolated git repos to ensure dirty and unmerged worktrees are never cleaned.
+- **Purpose**: Hermetic selftest suite for `clean-disk.sh` using isolated git repos to ensure dirty and unmerged worktrees are never cleaned, and that free space is reported for the data volume (df stub case).
 - **Usage**: `scripts/clean-disk-selftest.sh`
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
