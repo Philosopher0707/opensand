@@ -18,6 +18,9 @@ set -euo pipefail
 #  11. 'save' stages by explicit path, refuses secrets (nothing committed or pushed), commits with the
 #      hooks on (a failing hook stops the push), verifies the push, opens a draft PR once on the first
 #      push, and refuses outside a job worktree; 'done' refuses unpushed work
+#  12. no command acts on the owner's main checkout (cwd, symlink, source repo, target path; test
+#      override); 'save' restores regenerated packages/desktop/artifacts/*.png to HEAD unless named
+#      explicitly after '--'
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKTREE_SCRIPT="$ROOT/scripts/worktree.sh"
@@ -713,6 +716,84 @@ if [ "$(git -C "$SAVE_WT" rev-parse HEAD)" != "$BEFORE_SHA" ] || [ "$(remote_sha
   echo "FAIL test-11h: a failing lessons script still committed or pushed"; FAILED=1
 fi
 echo "PASS test-11: save commits with hooks on, refuses secrets, pushes verified, drafts one PR; done refuses unpushed work; save regenerates the lessons index"
+
+# --- Test 12: never act on the owner's main checkout; save skips regenerated screenshots ---
+echo "==> Testing main-checkout guard and artifact-screenshot skip..."
+MOCK_MAIN="$WORK/mock_main"
+git clone --quiet "$MOCK_ORIGIN" "$MOCK_MAIN" >/dev/null 2>&1
+mkdir -p "$MOCK_MAIN/scripts/lib"
+cp "$WORKTREE_SCRIPT" "$MOCK_MAIN/scripts/worktree.sh"
+cp "$ROOT/scripts/lib/worktree-safety.sh" "$ROOT/scripts/lib/free-space.sh" "$MOCK_MAIN/scripts/lib/"
+age_files "$MOCK_MAIN"
+export OPENSAND_MAIN_CHECKOUT="$MOCK_MAIN"
+
+main_guard_out() { # main_guard_out <dir> <args...>: run worktree.sh in <dir>, expect the guard message
+  local d="$1"; shift
+  (cd "$d" && OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" bash "$WORKTREE_SCRIPT" "$@" 2>&1)
+}
+
+# 12a. cwd inside the main checkout is refused, including through a symlink; the guard runs before
+#      any argument check, so `new` with no name proves the refusal without creating anything.
+status=0; out=$(main_guard_out "$MOCK_MAIN" new) || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "main checkout $MOCK_MAIN"; then
+  echo "FAIL test-12a: no main-checkout refusal from the main checkout (status $status): $out"; FAILED=1
+fi
+ln -s "$MOCK_MAIN" "$WORK/main-link"
+status=0; out=$(main_guard_out "$WORK/main-link" new) || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "main checkout $MOCK_MAIN"; then
+  echo "FAIL test-12a: a symlink into the main checkout was not refused (status $status): $out"; FAILED=1
+fi
+# the script invoked from elsewhere with ROOT inside the main checkout is refused too
+status=0; out=$(cd "$WORK" && OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" bash "$MOCK_MAIN/scripts/worktree.sh" new 2>&1) || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "source repository"; then
+  echo "FAIL test-12a: no source-repository refusal for the main checkout (status $status): $out"; FAILED=1
+fi
+# done with the main checkout as its target path is refused
+status=0; out=$(main_guard_out "$MOCK_LOCAL" done "$MOCK_MAIN") || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "main checkout $MOCK_MAIN"; then
+  echo "FAIL test-12a: 'done' accepted the main checkout as a target (status $status): $out"; FAILED=1
+fi
+# OPENSAND_ALLOW_MAIN_CHECKOUT=1 passes the guard (the override is for tests; `new` without a name
+# then stops at its usage check, so nothing is created)
+status=0; out=$(cd "$MOCK_MAIN" && OPENSAND_ALLOW_MAIN_CHECKOUT=1 OPENSAND_SCRATCH_DIR="$FAKE_SCRATCH" bash "$WORKTREE_SCRIPT" new 2>&1) || status=$?
+if echo "$out" | grep -q "main checkout"; then
+  echo "FAIL test-12a: OPENSAND_ALLOW_MAIN_CHECKOUT=1 did not override the guard: $out"; FAILED=1
+fi
+echo "PASS test-12a: main checkout refused by cwd, symlink, source repo and target path; test override works"
+
+# 12b. 'save' puts regenerated artifact screenshots back to HEAD and says so; naming one after --
+#      commits it. A fresh worktree keeps the lessons-index fixture from test 11h out of the way.
+run_wt "$MOCK_LOCAL" new art-job >/dev/null
+ART_WT="$FAKE_SCRATCH/opensand-art-job"
+age_files "$ART_WT"
+SHOT="$ART_WT/packages/desktop/artifacts/shot.png"
+mkdir -p "$(dirname "$SHOT")"
+printf 'png-v1\n' > "$SHOT"
+git -C "$ART_WT" add -- packages/desktop/artifacts/shot.png
+git -C "$ART_WT" commit -q -m "selftest: artifact fixture"
+printf 'png-v2-regenerated\n' > "$SHOT"
+status=0; out=$(run_wt "$ART_WT" save "selftest: skip regenerated screenshot") || status=$?
+if [ "$status" -ne 0 ]; then echo "FAIL test-12b: save with a regenerated screenshot exit $status: $out"; FAILED=1; fi
+if ! echo "$out" | grep -q "Skipped 1 regenerated screenshot" || ! echo "$out" | grep -q "packages/desktop/artifacts/shot.png"; then
+  echo "FAIL test-12b: save did not report the skipped screenshot: $out"; FAILED=1
+fi
+if git -C "$ART_WT" show HEAD:packages/desktop/artifacts/shot.png | grep -q "png-v2"; then
+  echo "FAIL test-12b: the regenerated screenshot was committed"; FAILED=1
+fi
+if ! grep -qx "png-v1" "$SHOT"; then
+  echo "FAIL test-12b: the screenshot file was not restored to HEAD"; FAILED=1
+fi
+printf 'png-v3-real-change\n' > "$SHOT"
+status=0; out=$(run_wt "$ART_WT" save "selftest: explicit screenshot" -- packages/desktop/artifacts/shot.png) || status=$?
+if [ "$status" -ne 0 ]; then echo "FAIL test-12b: explicit screenshot save exit $status: $out"; FAILED=1; fi
+if ! git -C "$ART_WT" show HEAD:packages/desktop/artifacts/shot.png | grep -q "png-v3"; then
+  echo "FAIL test-12b: an explicitly named screenshot was not committed"; FAILED=1
+fi
+if echo "$out" | grep -q "Skipped"; then
+  echo "FAIL test-12b: an explicitly named screenshot was still reported as skipped: $out"; FAILED=1
+fi
+unset OPENSAND_MAIN_CHECKOUT
+echo "PASS test-12b: save restores regenerated screenshots to HEAD unless named after --"
 
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL WORKTREE SELFTESTS PASSED."

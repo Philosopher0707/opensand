@@ -26,11 +26,10 @@ source "$SCRIPT_DIR/lib/free-space.sh"
 SCRATCH_DIR="${OPENSAND_SCRATCH_DIR:-$HOME/dev/_scratch}"
 CLEAN_DISK_SCRIPT="${OPENSAND_CLEAN_DISK_SCRIPT:-$SCRIPT_DIR/clean-disk.sh}"
 
-# Guard: Refuse to run if current working directory is inside ~/dev/opensand itself
+# Guard: never act on the owner's main checkout, from any directory and under any command
+# (`new|review|save|done` all pass through here before touching a repository or a target path).
 REAL_CWD="$(pwd -P)"
-FORBIDDEN_MAIN="$(cd "$HOME/dev/opensand" 2>/dev/null && pwd -P || echo "$HOME/dev/opensand")"
-if [[ "$REAL_CWD" == "$FORBIDDEN_MAIN" || "$REAL_CWD" == "$FORBIDDEN_MAIN"/* ]]; then
-  echo "FAIL: Refusing to run worktree commands inside main repo $FORBIDDEN_MAIN." >&2
+if ! assert_not_main_checkout "$REAL_CWD" "current directory"; then
   echo "      Work must be conducted in isolated scratch worktrees under $SCRATCH_DIR." >&2
   exit 1
 fi
@@ -45,6 +44,13 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   fi
 else
   GIT_EXEC=(git)
+fi
+
+# Guard: the repository a command would act on is never the main checkout, even when the script is
+# invoked from elsewhere as ~/dev/opensand/scripts/worktree.sh.
+SOURCE_TOP=$("${GIT_EXEC[@]}" rev-parse --show-toplevel 2>/dev/null || true)
+if [[ -n "$SOURCE_TOP" ]] && ! assert_not_main_checkout "$SOURCE_TOP" "source repository"; then
+  exit 1
 fi
 
 BASE_DIR="$(base_clone_dir)"
@@ -132,6 +138,8 @@ case "$cmd" in
     TARGET_PATH="$SCRATCH_DIR/opensand-$JOB_NAME"
     TARGET_BRANCH="${CUSTOM_BRANCH:-job/$JOB_NAME}"
 
+    assert_not_main_checkout "$TARGET_PATH" "target path" || exit 1
+
     # 1. Refuse if path already exists
     if [[ -e "$TARGET_PATH" ]]; then
       echo "FAIL: worktree path already exists: $TARGET_PATH" >&2
@@ -207,6 +215,9 @@ case "$cmd" in
       exit 1
     fi
     WT="$(cd "$WT" && pwd -P)"
+    if ! assert_not_main_checkout "$WT" "worktree"; then
+      exit 1
+    fi
     if is_forbidden_worktree_path "$WT"; then
       echo "FAIL: $WT is a protected repository or application path (the base clone or ~/dev/opensand); save only works in a job worktree." >&2
       exit 1
@@ -239,6 +250,41 @@ case "$cmd" in
         fi
         git -C "$WT" add -- "$entry_path"
       done < <(git -C "$WT" status --porcelain -z --untracked-files=all)
+    fi
+
+    # 1a. Never stage regenerated screenshots: a full verify.sh rewrites packages/desktop/artifacts/*.png
+    #     as a side effect, and pr-gate refuses a binary in the diff. They go back to HEAD and are
+    #     reported; naming one after `--` is the way to commit a real screenshot change.
+    STAGED_PATHS=()
+    while IFS= read -r -d '' staged_path; do
+      STAGED_PATHS+=("$staged_path")
+    done < <(git -C "$WT" diff --cached --name-only -z --diff-filter=ACMR)
+    SKIPPED_ARTIFACTS=()
+    if [[ ${#STAGED_PATHS[@]} -gt 0 ]]; then
+      for staged_path in "${STAGED_PATHS[@]}"; do
+        is_artifact_png "$staged_path" || continue
+        explicit=1
+        if [[ ${#SAVE_PATHS[@]} -gt 0 ]]; then
+          for named_path in "${SAVE_PATHS[@]}"; do
+            named_path="${named_path#./}"
+            if [[ "$staged_path" == "$named_path" || "$staged_path" == "$named_path"/* ]]; then
+              explicit=0
+              break
+            fi
+          done
+        fi
+        [[ "$explicit" -eq 1 ]] || continue
+        if git -C "$WT" cat-file -e "HEAD:$staged_path" 2>/dev/null; then
+          git -C "$WT" restore --source=HEAD --staged --worktree -- "$staged_path"
+        else
+          git -C "$WT" restore --staged -- "$staged_path"
+        fi
+        SKIPPED_ARTIFACTS+=("$staged_path")
+      done
+    fi
+    if [[ ${#SKIPPED_ARTIFACTS[@]} -gt 0 ]]; then
+      echo "Skipped ${#SKIPPED_ARTIFACTS[@]} regenerated screenshot(s), restored to HEAD (name one after -- to commit it):"
+      printf '  %s\n' "${SKIPPED_ARTIFACTS[@]}"
     fi
 
     # 1b. Regenerate docs/lessons/INDEX.md from the lesson files and stage it, so a lesson added here
@@ -318,6 +364,8 @@ case "$cmd" in
     PR_NUM="${PR_ARG#\#}"
     TARGET_PATH="$SCRATCH_DIR/opensand-review-pr$PR_NUM"
 
+    assert_not_main_checkout "$TARGET_PATH" "target path" || exit 1
+
     echo "==> Preparing review worktree for PR #$PR_NUM..."
 
     # Fetch the PR head commit ref
@@ -377,6 +425,7 @@ case "$cmd" in
     fi
 
     echo "==> Verifying safety for worktree removal: $TARGET_PATH..."
+    assert_not_main_checkout "$TARGET_PATH" "target path" || exit 1
     if ! check_worktree_safe_to_remove "$TARGET_PATH" "$ROOT"; then
       exit 1
     fi

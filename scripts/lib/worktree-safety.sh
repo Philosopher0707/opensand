@@ -20,6 +20,53 @@ base_clone_dir() {
   echo "${OPENSAND_BASE_DIR:-${OPENSAND_SCRATCH_DIR:-$HOME/dev/_scratch}/opensand-base}"
 }
 
+# main_checkout_dir: the owner's main checkout, which no worktree command may act on.
+# OPENSAND_MAIN_CHECKOUT moves it for the selftest only; nothing else should set it.
+main_checkout_dir() {
+  echo "${OPENSAND_MAIN_CHECKOUT:-$HOME/dev/opensand}"
+}
+
+# is_main_checkout <path>: 0 when <path> is the main checkout or below it, after resolving symlinks.
+is_main_checkout() {
+  local target_dir="$1" real_target real_main
+  real_target="$(cd "$target_dir" 2>/dev/null && pwd -P || echo "$target_dir")"
+  real_main="$(cd "$(main_checkout_dir)" 2>/dev/null && pwd -P || echo "$(main_checkout_dir)")"
+  if [[ "$real_target" == "$real_main" || "$real_target" == "$real_main"/* ]]; then
+    return 0
+  fi
+  return 1
+}
+
+# assert_not_main_checkout <path> [what]
+# Refuses (returns 1, message on stderr) when <path> is the owner's main checkout, whether reached
+# directly or through a symlink. Work belongs in a scratch worktree. OPENSAND_ALLOW_MAIN_CHECKOUT=1
+# is the override the selftest uses; it is not for normal work.
+assert_not_main_checkout() {
+  local target_dir="$1" what="${2:-path}"
+  if [[ "${OPENSAND_ALLOW_MAIN_CHECKOUT:-0}" == "1" ]]; then
+    return 0
+  fi
+  if is_main_checkout "$target_dir"; then
+    echo "FAIL: refusing to run worktree commands on the main checkout $(main_checkout_dir) ($what: $target_dir)." >&2
+    echo "      Work in a scratch worktree: scripts/worktree.sh new <job-name> (OPENSAND_ALLOW_MAIN_CHECKOUT=1 is for tests only)." >&2
+    return 1
+  fi
+  return 0
+}
+
+# Artifact screenshots are rewritten by every full verify.sh (a window-harness side effect), so `save`
+# never stages them unless the path was named explicitly after `--`.
+# See docs/lessons/2026-11-19-full-test-run-rewrites-tracked-screenshots.md.
+ARTIFACT_PNG_GLOB="packages/desktop/artifacts/*.png"
+
+# is_artifact_png <repo-relative path>
+is_artifact_png() {
+  case "$1" in
+    $ARTIFACT_PNG_GLOB) return 0 ;;
+  esac
+  return 1
+}
+
 # is_fixed_protected_path <path>: ~/dev/opensand, ~/.opensand, /Applications/OpenSand.app and below
 is_fixed_protected_path() {
   local target_dir="$1" forbidden
