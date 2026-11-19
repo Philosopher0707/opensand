@@ -124,6 +124,10 @@ export interface AgentRecord {
   predictedOutcome?: "positive" | "negative" | "uncertain" | "pending";
   /** Observed session outcome (set after turn completes). */
   observedOutcome?: "positive" | "negative" | "uncertain" | "pending";
+  /** Standing instructions — the persona body (the "soul"). */
+  soul?: string;
+  /** sha256 of soul, for spotting a SOUL.md edited outside the app. */
+  soulHash?: string;
 }
 
 export interface CreateAgentInput {
@@ -204,6 +208,35 @@ export interface AgentKeyReference {
   keyId: string;
   provider: string;
   lastValidatedAt?: number;
+}
+
+/** A snapshot of an agent's profile fields at a point in time. */
+export interface AgentProfileSnapshot {
+  name: string;
+  role: string;
+  systemPrompt: string;
+  soul?: string;
+  soulHash?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/** One recorded profile change (audit log entry). */
+export interface AgentProfileChange {
+  id: string;
+  agentId: string;
+  changedBy: "user" | "system" | "import";
+  source: string; // "api" | "import" | "external"
+  before: AgentProfileSnapshot;
+  after: AgentProfileSnapshot;
+  at: number;
+}
+
+/** Body for patching an agent's profile fields. */
+export interface UpdateAgentProfileInput {
+  name?: string;
+  role?: string;
+  systemPrompt?: string;
+  soul?: string;
 }
 
 export interface AgentTemplate {

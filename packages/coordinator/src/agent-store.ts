@@ -38,6 +38,10 @@ export interface AgentRecord {
   predictedOutcome?: "positive" | "negative" | "uncertain" | "pending";
   /** Observed session outcome (set after turn completes). */
   observedOutcome?: "positive" | "negative" | "uncertain" | "pending";
+  /** Standing instructions — the persona body (the "soul"). */
+  soul?: string;
+  /** sha256 of soul, for spotting a SOUL.md edited outside the app. */
+  soulHash?: string;
 }
 
 export interface CreateAgentInput {
@@ -55,6 +59,35 @@ export interface CreateAgentInput {
   topP?: number;
   logoSvg?: string;
   logoColor?: string;
+  soul?: string;
+}
+
+/** Fields allowed to be patched on an existing agent's profile. */
+export interface UpdateAgentProfileInput {
+  name?: string;
+  role?: string;
+  systemPrompt?: string;
+  soul?: string;
+}
+
+/** A snapshot of an agent's profile fields at a point in time. */
+export interface AgentProfileSnapshot {
+  name: string;
+  role: string;
+  systemPrompt: string;
+  soul?: string;
+  soulHash?: string;
+}
+
+/** One recorded profile change (audit log entry). */
+export interface AgentProfileChange {
+  id: string;
+  agentId: string;
+  changedBy: "user" | "system" | "import";
+  source: string;
+  before: AgentProfileSnapshot;
+  after: AgentProfileSnapshot;
+  at: number;
 }
 
 /** Fields allowed to be patched on an existing agent's settings. */
@@ -109,6 +142,7 @@ export class AgentStore {
       model: input.model,
       endpoint: input.endpoint,
       allowedTools: input.allowedTools,
+      soul: input.soul,
       createdAt: now,
       updatedAt: now,
       metadata: input.metadata,
@@ -210,6 +244,73 @@ export class AgentStore {
 
     await this.saveRecordAtomic(updated);
     return updated;
+  }
+
+  /** Patch profile fields (name/role/systemPrompt/soul) and compute soulHash. */
+  async updateAgentProfile(idOrName: string, updates: UpdateAgentProfileInput): Promise<AgentRecord> {
+    const existing = await this.getAgent(idOrName);
+    if (!existing) {
+      throw new Error(`Agent [${idOrName}] not found in store`);
+    }
+
+    const updated: AgentRecord = {
+      ...existing,
+      ...updates,
+      id: existing.id,
+      createdAt: existing.createdAt,
+      updatedAt: Date.now(),
+      soulHash: updates.soul !== undefined ? crypto.createHash("sha256").update(updates.soul).digest("hex") : existing.soulHash,
+    };
+
+    await this.saveRecordAtomic(updated);
+    return updated;
+  }
+
+  /** Record a profile change audit entry. */
+  async recordProfileChange(
+    agentId: string,
+    changedBy: AgentProfileChange["changedBy"],
+    source: string,
+    before: AgentProfileSnapshot,
+    after: AgentProfileSnapshot
+  ): Promise<AgentProfileChange> {
+    const change: AgentProfileChange = {
+      id: `profile_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`,
+      agentId,
+      changedBy,
+      source,
+      before,
+      after,
+      at: Date.now(),
+    };
+
+    const changeDir = path.join(this.baseDir, "profile-changes");
+    await fs.mkdir(changeDir, { recursive: true, mode: 0o700 });
+    const changePath = path.join(changeDir, `${change.id}.json`);
+    await fs.writeFile(changePath, JSON.stringify(change, null, 2), { mode: 0o600 });
+    return change;
+  }
+
+  /** List profile change audit entries for an agent. */
+  async listProfileChanges(agentId: string): Promise<AgentProfileChange[]> {
+    const changeDir = path.join(this.baseDir, "profile-changes");
+    try {
+      const files = await fs.readdir(changeDir);
+      const changes: AgentProfileChange[] = [];
+      for (const file of files) {
+        if (!file.endsWith(".json") || file.startsWith(".")) continue;
+        try {
+          const raw = await fs.readFile(path.join(changeDir, file), "utf-8");
+          const change = JSON.parse(raw) as AgentProfileChange;
+          if (change && change.agentId === agentId) changes.push(change);
+        } catch {
+          // Skip corrupted
+        }
+      }
+      return changes.sort((a, b) => b.at - a.at);
+    } catch {
+      return [];
+    }
   }
 
   /**
