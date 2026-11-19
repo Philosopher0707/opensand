@@ -224,6 +224,14 @@ export class DesktopApp {
       return this.bridge.updateAgentSettings(id, updates);
     });
 
+    ipcMain.handle('opensand:updateAgentProfile', async (_: any, { id, updates }: { id: string; updates: any }) => {
+      return this.bridge.updateAgentProfile(id, updates);
+    });
+
+    ipcMain.handle('opensand:listProfileChanges', async (_: any, { agentId }: { agentId: string }) => {
+      return this.bridge.listProfileChanges(agentId);
+    });
+
     ipcMain.handle('opensand:getSettings', async () => {
       return this.bridge.getSettings();
     });

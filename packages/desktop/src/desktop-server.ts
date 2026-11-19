@@ -668,6 +668,35 @@ export class DesktopServer {
       return;
     }
 
+    // API: PATCH /api/agents/:id/profile (update agent profile incl. soul)
+    if (pathname.startsWith('/api/agents/') && pathname.endsWith('/profile') && req.method === 'PATCH') {
+      const agentId = pathname.replace('/api/agents/', '').replace('/profile', '');
+      if (!isValidId(agentId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid agentId format' }));
+        return;
+      }
+      const body = await this.readJsonBody(req);
+      const updated = await this.bridge.updateAgentProfile(agentId, body);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(updated));
+      return;
+    }
+
+    // API: GET /api/agents/:id/profile-changes (profile audit history)
+    if (pathname.startsWith('/api/agents/') && pathname.endsWith('/profile-changes') && req.method === 'GET') {
+      const agentId = pathname.replace('/api/agents/', '').replace('/profile-changes', '');
+      if (!isValidId(agentId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid agentId format' }));
+        return;
+      }
+      const changes = await this.bridge.listProfileChanges(agentId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(changes));
+      return;
+    }
+
     // API: GET /api/tasks (List tasks)
     if (pathname === '/api/tasks' && req.method === 'GET') {
       const status = url.searchParams.get('status') as any || undefined;

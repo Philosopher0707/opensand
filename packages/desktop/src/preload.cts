@@ -46,6 +46,10 @@ try {
         ipcRenderer.invoke('opensand:getAgents'),
       updateAgentSettings: (id: string, updates: any) =>
         ipcRenderer.invoke('opensand:updateAgentSettings', { id, updates }),
+      updateAgentProfile: (id: string, updates: any) =>
+        ipcRenderer.invoke('opensand:updateAgentProfile', { id, updates }),
+      listProfileChanges: (agentId: string) =>
+        ipcRenderer.invoke('opensand:listProfileChanges', { agentId }),
       getSettings: () =>
         ipcRenderer.invoke('opensand:getSettings'),
       updateSettings: (settings: any) =>

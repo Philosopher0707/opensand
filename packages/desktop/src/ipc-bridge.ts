@@ -19,6 +19,9 @@ import {
   AgentRecord,
   CreateAgentInput,
   UpdateAgentSettingsInput,
+  UpdateAgentProfileInput,
+  AgentProfileSnapshot,
+  AgentProfileChange,
   TaskStore,
   AgentTask,
   CreateTaskInput,
@@ -797,6 +800,14 @@ export class DesktopIpcBridge extends EventEmitter {
 
   public async updateAgentSettings(id: string, updates: any): Promise<any> {
     return this.agentStore.updateAgentSettings(id, updates);
+  }
+
+  public async updateAgentProfile(id: string, updates: any): Promise<any> {
+    return this.agentStore.updateAgentProfile(id, updates);
+  }
+
+  public async listProfileChanges(agentId: string): Promise<any[]> {
+    return this.agentStore.listProfileChanges(agentId);
   }
 
   // Task Store API

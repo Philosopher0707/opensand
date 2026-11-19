@@ -10,6 +10,8 @@ export interface ShellData {
   listAgents(): Promise<AgentRecord[]>;
   updateAgentSettings(id: string, updates: Record<string, any>): Promise<any>;
   loadSession(sessionId: string): Promise<any>;
+  updateAgentProfile(id: string, updates: Record<string, any>): Promise<any>;
+  listProfileChanges(agentId: string): Promise<any[]>;
 }
 
 export function windowBridgeData(): ShellData {
@@ -47,6 +49,19 @@ export function windowBridgeData(): ShellData {
       if (bridge?.loadSession) {
         return bridge.loadSession(sessionId);
       }
+    },
+    async updateAgentProfile(id: string, updates: Record<string, any>): Promise<any> {
+      const bridge = (window as any).opensand;
+      if (bridge?.updateAgentProfile) {
+        return bridge.updateAgentProfile(id, updates);
+      }
+    },
+    async listProfileChanges(agentId: string): Promise<any[]> {
+      const bridge = (window as any).opensand;
+      if (bridge?.listProfileChanges) {
+        return bridge.listProfileChanges(agentId);
+      }
+      return [];
     },
   };
 }
