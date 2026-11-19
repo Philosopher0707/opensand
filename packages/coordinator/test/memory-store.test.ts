@@ -244,6 +244,55 @@ describe("MemoryStore - Grok Bot Memory Layers Parity", () => {
     assert.equal(listed[0].outcomeMatch, false);
   });
 
+  it("extract_user_habits persists extracted rules as memory facts with SIM outcomes", async () => {
+    const daemon = new LocalExecDaemon({ stateDir: path.join(tmpDir, "state") });
+    registerOrchestratorTools({
+      daemon,
+      memoryStore: store,
+      sessionsBaseDir: path.join(tmpDir, "sessions"),
+    });
+
+    // Create a mock session transcript with a user habit query
+    const sessionsDir = path.join(tmpDir, "sessions");
+    const sessionDir = path.join(sessionsDir, "sess_habit_test");
+    await fs.mkdir(sessionDir, { recursive: true });
+
+    const transcript = `
+user:
+<user_query>
+Please always use pnpm instead of npm or yarn for package management.
+</user_query>
+
+assistant:
+Understood, I will use pnpm.
+`;
+
+    await fs.writeFile(path.join(sessionDir, "transcript.txt"), transcript, "utf-8");
+
+    // Run extract_user_habits through the daemon
+    const res = await daemon.executeTool("extract_user_habits", {
+      max_chats: 10,
+    });
+    assert.equal(res.status, "ok");
+    const parsed = JSON.parse(res.output);
+    assert.equal(parsed.status, "success");
+    assert.ok(parsed.rulesLearned > 0);
+    assert.ok(parsed.rulesPersisted > 0);
+
+    // Verify the extracted rule was stored as a memory fact with SIM outcome tracking
+    const facts = await store.listMemories({
+      scope: "user",
+      query: "pnpm instead of npm",
+    });
+    assert.ok(facts.length > 0, "Extracted rule should be persisted as a memory fact");
+
+    const pnpmFact = facts.find((f) => f.text.includes("pnpm"));
+    assert.ok(pnpmFact, "Should find the pnpm rule fact");
+    assert.equal(pnpmFact.predictedOutcome, "positive");
+    assert.equal(pnpmFact.observedOutcome, undefined);
+    assert.equal(pnpmFact.outcomeMatch, undefined);
+  });
+
   it("deriveOutcomeMatch returns undefined when outcomes are uncertain", async () => {
     const f = await store.addMemoryWithOutcome({
       text: "SIM test: tracks mutual funds quarterly",

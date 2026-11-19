@@ -626,12 +626,34 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
     },
     handler: async (args) => {
       const report = await habitExtractor.analyzeTranscripts(args.max_chats ?? 50);
+
+      // SIM: persist each extracted rule as a MemoryFact with outcome tracking so
+      // future rounds can avoid repeating failed attempts (predictedOutcome = what
+      // we expect the rule to achieve; observedOutcome starts unknown/uncertain).
+      const persisted: Array<{ rule: string; factId?: string; error?: string }> = [];
+      for (const rule of report.rules) {
+        try {
+          const fact = await memoryStore.addMemoryWithOutcome({
+            text: rule.rule,
+            scope: "user",
+            tier: "log",
+            agentId: undefined,
+            predictedOutcome: "positive", // we expect the extracted rule to hold
+            observedOutcome: undefined,   // no evidence yet; becomes negative on correction
+          });
+          persisted.push({ rule: rule.rule, factId: fact.factId });
+        } catch (err: any) {
+          persisted.push({ rule: rule.rule, error: err.message });
+        }
+      }
+
       return JSON.stringify({
         status: "success",
         transcriptsAnalyzed: report.totalTranscriptsAnalyzed,
         queriesExtracted: report.extractedQueriesCount,
         correctionsFound: report.correctionsCount,
         rulesLearned: report.rules.length,
+        rulesPersisted: persisted.length,
         summary: report.markdownSummary,
       }, null, 2);
     },
