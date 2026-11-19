@@ -625,7 +625,9 @@ export class MissionRunner {
             state.failedReason = { code: 4003, message: "target-apply-failed", node: "receipt" };
             await this.emitTarget("failed", applied.detail ?? "apply did not write the workspace", { result: "failed" });
           } else {
-            await this.emitTarget("apply", applied.detail, { result: "applied" });
+            await this.emitTarget("apply", applied.detail, {
+              result: this.workspace.kind === "container" ? "bind" : "applied",
+            });
           }
         } catch (err: any) {
           const conflict = err?.name === "TargetApplyConflictError" || err?.constructor?.name === "TargetApplyConflictError";

@@ -5,10 +5,11 @@
 # --scripted-agent`) in a temp OPENSAND_HOME and a temp git workspace per
 # mission, and asserts the harness verdict — never the agent's claim.
 #
-#   scripts/mission-suite.sh [--target local]
+#   scripts/mission-suite.sh --target local|container|ssh
 #
 # Exit codes: 0 when every mission passes, 1 on a failed assertion, 2 on a bad
-# or unavailable target. `container` and `ssh` arrive with Phase 8 S2–S4.
+# or unavailable target. `--target ssh` needs OPENSAND_SSH_TARGET; a skip is not
+# a pass. Real ssh is the owner's host, not CI.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,7 +32,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "FAIL: unknown argument '$1'" >&2
-      echo "Usage: scripts/mission-suite.sh [--target local]" >&2
+      echo "Usage: scripts/mission-suite.sh --target local|container|ssh" >&2
       exit 2
       ;;
   esac
@@ -40,12 +41,15 @@ done
 case "$TARGET" in
   local) ;;
   container)
-    echo "FAIL: --target container needs the Phase 8 S2 target link; S1 supports --target local only." >&2
-    exit 2
+    command -v docker >/dev/null 2>&1 || { echo "FAIL: --target container needs docker on PATH." >&2; exit 2; }
+    docker info >/dev/null 2>&1 || { echo "FAIL: docker daemon is not running." >&2; exit 2; }
     ;;
   ssh)
-    echo "FAIL: --target ssh needs Phase 8 S3/S4 (and OPENSAND_SSH_TARGET); S1 supports --target local only." >&2
-    exit 2
+    if [[ -z "${OPENSAND_SSH_TARGET:-}" ]]; then
+      echo "FAIL: --target ssh requires OPENSAND_SSH_TARGET (the ssh host) to be set; skipped is not a pass." >&2
+      exit 2
+    fi
+    command -v rsync >/dev/null 2>&1 || { echo "FAIL: --target ssh needs rsync on PATH." >&2; exit 2; }
     ;;
   *)
     echo "FAIL: unknown target '$TARGET' (known: local, container, ssh)." >&2
@@ -64,9 +68,21 @@ done
 echo "==> building shared, protocol, daemon and engine"
 pnpm --filter "@opensand/engine..." build >/dev/null
 
+if [[ "$TARGET" != "local" ]]; then
+  echo "==> building the opensand-target bundle"
+  pnpm target:build >/dev/null
+fi
+
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/opensand-mission-suite.XXXXXX")"
 cleanup() { rm -rf "$STAGE"; }
 trap cleanup EXIT
+
+# The target link reads targets.json from $OPENSAND_HOME. The suite owns a temp
+# one so a target run never touches the person's real ~/.opensand/targets.json.
+mkdir -p "$STAGE/home"
+cat > "$STAGE/home/targets.json" <<EOF
+{"version":1,"targets":{"container":{"kind":"container","runtime":"docker","image":"node:22-bookworm","network":"none","memory":"4g","cpus":2},"ssh":{"kind":"ssh","host":"${OPENSAND_SSH_TARGET:-devbox}","root":"/tmp/opensand-missions","sshArgs":["-o","BatchMode=yes"],"sandbox":"bwrap"}}}
+EOF
 
 cat > "$STAGE/driver.mjs" <<'DRIVER'
 import assert from "node:assert/strict";
@@ -137,7 +153,15 @@ async function runMission(name) {
   const child = spawn(
     process.execPath,
     [ENGINE, "--stdio", "--state-dir", stateDir, "--scripted-agent", fixturePath],
-    { env: { ...cleanGitEnv(), HOME: path.join(dir, "user-home") }, stdio: ["pipe", "pipe", "pipe"] },
+    {
+      env: {
+        ...cleanGitEnv(),
+        HOME: path.join(dir, "user-home"),
+        OPENSAND_HOME: path.join(stage, "home"),
+        ...(target !== "local" ? { OPENSAND_TARGET_BUNDLE: path.join(root, "dist", "target") } : {}),
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+    },
   );
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
@@ -174,6 +198,7 @@ async function runMission(name) {
       checkCommand: fixture.checkCommand,
       maxRepairs: fixture.maxRepairs,
       wallClockMs: 120_000,
+      target,
     });
     if (started.error) throw new Error(`mission start refused: ${JSON.stringify(started.error)}`);
     const missionId = started.result.missionId;
@@ -198,8 +223,8 @@ async function runMission(name) {
   }
 }
 
-/** Target identity is asserted from the check's own output, and from the
- * receipt's target block once Phase 8 S4 adds it. */
+/** Target identity is proved by the check's own output, the mission.target
+ * event and the harness-written receipt block — never by the agent's claim. */
 function assertTargetIdentity(result) {
   const lastCheck = result.checks.at(-1);
   assert.ok(lastCheck, "the mission ran at least one check");
@@ -208,8 +233,25 @@ function assertTargetIdentity(result) {
     new RegExp(`target=${target}`),
     `the last check's output names target=${target}`,
   );
+
+  const targetEvents = result.events.filter((event) => event.kind === "mission.target");
   const block = result.receipt?.target;
-  assert.ok(!block || block.kind === "local", "the receipt's target block, when present, names the local kind");
+  if (target === "local") {
+    assert.equal(targetEvents.length, 0, "the local path records no target events");
+    assert.ok(!block || block.kind === "local", "the receipt's target block, when present, names the local kind");
+    return;
+  }
+
+  assert.ok(targetEvents.length > 0, "the mission recorded mission.target events");
+  assert.ok(block, "the receipt has a target block");
+  assert.equal(block.kind, target, "the receipt names the target kind");
+  assert.equal(block.name, target, "the receipt names the target");
+  assert.ok(targetEvents.some((event) => event.data?.phase === "connect"), "a connect phase was recorded");
+  if (target === "container") {
+    assert.equal(block.platform, "linux", "the container reports a linux platform");
+    assert.equal(block.result, "bind", "the bind-mounted container result is 'bind'");
+    assert.equal(block.root, "/workspace", "the receipt names the container root");
+  }
 }
 
 const cases = {
@@ -261,6 +303,7 @@ const cases = {
       "the receipt's changed lines equal an independent git diff parse",
     );
     assert.deepEqual(expected, [{ file: "src.txt", ranges: [[2, 2]] }], "exactly line 2 of src.txt changed");
+    assertTargetIdentity(result);
   },
 };
 

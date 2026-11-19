@@ -17,16 +17,15 @@ run bash "$SCRIPT" --help
 [[ $CODE -eq 0 ]] || fail "--help exited $CODE"
 grep -q -- "--target local" <<<"$OUT" || fail "--help does not mention --target local"
 
-echo "==> [2/4] unknown and unavailable targets exit 2 with a reason"
+echo "==> [2/4] unknown targets and ssh without its host exit 2 with a reason"
 run bash "$SCRIPT" --target bogus
 [[ $CODE -eq 2 ]] || fail "unknown target exited $CODE, want 2"
 grep -q "unknown target 'bogus'" <<<"$OUT" || fail "unknown target has no clear message"
 
-for target in container ssh; do
-  run bash "$SCRIPT" --target "$target"
-  [[ $CODE -eq 2 ]] || fail "--target $target exited $CODE, want 2"
-  grep -q "S1 supports --target local only" <<<"$OUT" || fail "--target $target has no S1 message"
-done
+unset OPENSAND_SSH_TARGET
+run bash "$SCRIPT" --target ssh
+[[ $CODE -eq 2 ]] || fail "--target ssh without OPENSAND_SSH_TARGET exited $CODE, want 2"
+grep -q "OPENSAND_SSH_TARGET" <<<"$OUT" || fail "the ssh refusal does not name OPENSAND_SSH_TARGET"
 
 echo "==> [3/4] every fixture is valid JSON with rounds and a target-prefixed check"
 for name in verified false-claim repair budget changed-lines; do
@@ -51,7 +50,7 @@ STUB
 chmod +x "$STUB_BIN/pnpm"
 PNPM_STUB_MARKER="$STUB_BIN/called"
 set +e
-OUT="$(PNPM_STUB_MARKER="$PNPM_STUB_MARKER" PATH="$STUB_BIN:$PATH" bash "$SCRIPT" --target ssh 2>&1)"
+OUT="$(env -u OPENSAND_SSH_TARGET PNPM_STUB_MARKER="$PNPM_STUB_MARKER" PATH="$STUB_BIN:$PATH" bash "$SCRIPT" --target ssh 2>&1)"
 CODE=$?
 set -e
 [[ $CODE -eq 2 ]] || fail "--target ssh exited $CODE, want 2"
