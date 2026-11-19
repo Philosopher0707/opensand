@@ -651,7 +651,6 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       // SIM correction loop: retroactively mark facts negative when user
       // corrections contradict them (don't repeat failed attempts).
       const corrections = await habitExtractor.getCorrectionQueries(maxChats);
-      const correctionKeywords = corrections.map((c) => c.text.toLowerCase());
       const negationWords = ["don't", "do not", "stop", "no,", "no ", "undo", "incorrect", "that's wrong", "not"];
 
       const negatedFacts: Array<{ factId: string; text: string; matchedBy: string }> = [];
