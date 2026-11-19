@@ -136,6 +136,18 @@ export interface AgentRecord {
   autoApprove?: boolean;
   /** Tools this agent may always use without asking (when approvalMode === "custom"). */
   alwaysAllow?: string[];
+  /** Optional labeled divider used to organize this agent in the sidebar. */
+  section?: string;
+  /** The coordinator for this agent's sidebar section. */
+  chiefOfStaff?: boolean;
+  /** Owner-selected additional sections this Chief may coordinate. */
+  managedSections?: string[];
+  /** Team member email who created this agent (Team Cloud only). */
+  createdBy?: string;
+  /** Member email this agent reports to (Team Cloud only). */
+  reportsTo?: string;
+  /** Who may see this agent: "everyone" | "admins" | { people: string[] }. */
+  visibility?: "everyone" | "admins" | { people: string[] };
 }
 
 export interface CreateAgentInput {
@@ -158,6 +170,12 @@ export interface CreateAgentInput {
   approvalMode?: "ask" | "custom" | "allow";
   autoApprove?: boolean;
   alwaysAllow?: string[];
+  section?: string;
+  chiefOfStaff?: boolean;
+  managedSections?: string[];
+  createdBy?: string;
+  reportsTo?: string;
+  visibility?: "everyone" | "admins" | { people: string[] };
 }
 
 /** One declarative field in an agent's settings schema. */

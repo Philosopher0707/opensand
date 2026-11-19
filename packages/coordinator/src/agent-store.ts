@@ -50,6 +50,18 @@ export interface AgentRecord {
   autoApprove?: boolean;
   /** Tools this agent may always use without asking (when approvalMode === "custom"). */
   alwaysAllow?: string[];
+  /** Optional labeled divider used to organize this agent in the sidebar. */
+  section?: string;
+  /** The coordinator for this agent's sidebar section. */
+  chiefOfStaff?: boolean;
+  /** Owner-selected additional sections this Chief may coordinate. */
+  managedSections?: string[];
+  /** Team member email who created this agent (Team Cloud only). */
+  createdBy?: string;
+  /** Member email this agent reports to (Team Cloud only). */
+  reportsTo?: string;
+  /** Who may see this agent: "everyone" | "admins" | { people: string[] }. */
+  visibility?: "everyone" | "admins" | { people: string[] };
 }
 
 export interface CreateAgentInput {
@@ -71,7 +83,14 @@ export interface CreateAgentInput {
   avatarUrl?: string | null;
   approvalMode?: "ask" | "custom" | "allow";
   autoApprove?: boolean;
+  autoApprove?: boolean;
   alwaysAllow?: string[];
+  section?: string;
+  chiefOfStaff?: boolean;
+  managedSections?: string[];
+  createdBy?: string;
+  reportsTo?: string;
+  visibility?: "everyone" | "admins" | { people: string[] };
 }
 
 /** Fields allowed to be patched on an existing agent's profile. */
@@ -262,6 +281,25 @@ export class AgentStore {
 
   /** Patch approval-mode fields on an existing agent. */
   async updateAgentApproval(idOrName: string, updates: { approvalMode?: "ask" | "custom" | "allow"; autoApprove?: boolean; alwaysAllow?: string[] }): Promise<AgentRecord> {
+    const existing = await this.getAgent(idOrName);
+    if (!existing) {
+      throw new Error(`Agent [${idOrName}] not found in store`);
+    }
+
+    const updated: AgentRecord = {
+      ...existing,
+      ...updates,
+      id: existing.id,
+      createdAt: existing.createdAt,
+      updatedAt: Date.now(),
+    };
+
+    await this.saveRecordAtomic(updated);
+    return updated;
+  }
+
+  /** Patch section/team fields on an existing agent. */
+  async updateAgentSection(idOrName: string, updates: { section?: string; chiefOfStaff?: boolean; managedSections?: string[]; createdBy?: string; reportsTo?: string; visibility?: "everyone" | "admins" | { people: string[] } }): Promise<AgentRecord> {
     const existing = await this.getAgent(idOrName);
     if (!existing) {
       throw new Error(`Agent [${idOrName}] not found in store`);
