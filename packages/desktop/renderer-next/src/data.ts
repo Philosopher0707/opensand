@@ -63,5 +63,11 @@ export function windowBridgeData(): ShellData {
       }
       return [];
     },
+    async setAgentAvatar(agentId: string, avatarUrl: string | null): Promise<any> {
+      const bridge = (window as any).opensand;
+      if (bridge?.setAgentAvatar) {
+        return bridge.setAgentAvatar(agentId, avatarUrl);
+      }
+    },
   };
 }

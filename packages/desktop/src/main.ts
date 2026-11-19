@@ -232,6 +232,10 @@ export class DesktopApp {
       return this.bridge.listProfileChanges(agentId);
     });
 
+    ipcMain.handle('opensand:setAgentAvatar', async (_: any, { agentId, avatarUrl }: { agentId: string; avatarUrl: string | null }) => {
+      return this.bridge.setAgentAvatar(agentId, avatarUrl);
+    });
+
     ipcMain.handle('opensand:getSettings', async () => {
       return this.bridge.getSettings();
     });

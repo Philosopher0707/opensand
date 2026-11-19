@@ -810,6 +810,10 @@ export class DesktopIpcBridge extends EventEmitter {
     return this.agentStore.listProfileChanges(agentId);
   }
 
+  public async setAgentAvatar(agentId: string, avatarUrl: string | null): Promise<any> {
+    return this.agentStore.updateAgentProfile(agentId, { avatarUrl });
+  }
+
   // Task Store API
   public async getTasks(filter?: { status?: TaskStatus; agentId?: string }): Promise<AgentTask[]> {
     return this.taskStore.listTasks(filter);

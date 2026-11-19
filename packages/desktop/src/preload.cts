@@ -50,6 +50,8 @@ try {
         ipcRenderer.invoke('opensand:updateAgentProfile', { id, updates }),
       listProfileChanges: (agentId: string) =>
         ipcRenderer.invoke('opensand:listProfileChanges', { agentId }),
+      setAgentAvatar: (agentId: string, avatarUrl: string | null) =>
+        ipcRenderer.invoke('opensand:setAgentAvatar', { agentId, avatarUrl }),
       getSettings: () =>
         ipcRenderer.invoke('opensand:getSettings'),
       updateSettings: (settings: any) =>
