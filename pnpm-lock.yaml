@@ -114,6 +114,9 @@ importers:
 
   packages/local-exec-daemon:
     dependencies:
+      '@opensand/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@opensand/shared':
         specifier: workspace:*
         version: link:../shared

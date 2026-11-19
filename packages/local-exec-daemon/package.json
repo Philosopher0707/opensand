@@ -13,13 +13,17 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "test": "node --test dist/test/**/*.test.js"
+    "test": "node run-tests.mjs"
+  },
+  "bin": {
+    "opensand-target": "dist/src/target/bin.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "typescript": "^5.7.0"
   },
   "dependencies": {
-    "@opensand/shared": "workspace:*"
+    "@opensand/shared": "workspace:*",
+    "@opensand/protocol": "workspace:*"
   }
 }
