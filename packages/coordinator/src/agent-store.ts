@@ -42,6 +42,8 @@ export interface AgentRecord {
   soul?: string;
   /** sha256 of soul, for spotting a SOUL.md edited outside the app. */
   soulHash?: string;
+  /** Stored avatar image URL (file:// or served); null when none. */
+  avatarUrl?: string | null;
 }
 
 export interface CreateAgentInput {
@@ -60,6 +62,7 @@ export interface CreateAgentInput {
   logoSvg?: string;
   logoColor?: string;
   soul?: string;
+  avatarUrl?: string | null;
 }
 
 /** Fields allowed to be patched on an existing agent's profile. */
@@ -68,6 +71,7 @@ export interface UpdateAgentProfileInput {
   role?: string;
   systemPrompt?: string;
   soul?: string;
+  avatarUrl?: string | null;
 }
 
 /** A snapshot of an agent's profile fields at a point in time. */
@@ -143,6 +147,7 @@ export class AgentStore {
       endpoint: input.endpoint,
       allowedTools: input.allowedTools,
       soul: input.soul,
+      avatarUrl: input.avatarUrl ?? null,
       createdAt: now,
       updatedAt: now,
       metadata: input.metadata,

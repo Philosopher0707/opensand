@@ -128,6 +128,8 @@ export interface AgentRecord {
   soul?: string;
   /** sha256 of soul, for spotting a SOUL.md edited outside the app. */
   soulHash?: string;
+  /** Stored avatar image URL (file:// or served); null when none. */
+  avatarUrl?: string | null;
 }
 
 export interface CreateAgentInput {
@@ -237,6 +239,7 @@ export interface UpdateAgentProfileInput {
   role?: string;
   systemPrompt?: string;
   soul?: string;
+  avatarUrl?: string | null;
 }
 
 export interface AgentTemplate {
