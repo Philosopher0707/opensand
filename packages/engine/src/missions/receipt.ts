@@ -2,6 +2,11 @@ import type { SessionEvent } from "@opensand/shared";
 import { nextMissionStatus } from "@opensand/shared";
 import type { MissionStatus } from "@opensand/shared";
 import type { ChangesResult, FileChanges } from "./workspace-diff.js";
+import {
+  buildTournamentSection,
+  renderTournamentSection,
+  type TournamentSection,
+} from "../mesh/receipt-section.js";
 
 export interface Receipt {
   status: "VERIFIED" | "FAILED";
@@ -17,6 +22,8 @@ export interface Receipt {
   };
   notDone?: string;
   note?: string;
+  /** The Tournament section (Phase 7 §3.4); undefined for a non-tournament mission. */
+  tournament?: TournamentSection;
 }
 
 export interface MissionProjection {
@@ -160,6 +167,7 @@ export function projectReceipt(events: SessionEvent[], changes?: ChangesResult):
     },
     notDone: lastClaim,
     note: reviewNote,
+    tournament: buildTournamentSection(events),
   };
 }
 
@@ -194,6 +202,10 @@ export function renderReceipt(receipt: Receipt): string {
 
   if (receipt.notDone) {
     lines.push(`Not done  ${receipt.notDone} (model note; unverified)`);
+  }
+
+  if (receipt.tournament) {
+    lines.push(...renderTournamentSection(receipt.tournament));
   }
 
   return lines.join("\n");

@@ -26,9 +26,11 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `lessons-index-selftest.sh` | Hermetic selftest for the lessons index generator and its staleness check | Pre-commit / verification | Self |
 | `mesh-judge-probe.sh` | Mutation probe for the Phase 7 mesh judge: flips the Stage 0 exit-code check in the judge source via `mutation-probe.sh`, requires the mesh-judge suite red, then green after restore | Phase 7 S3 verification | `mutation-probe.sh` (via) |
 | `mesh-tournament-probe.sh` | Mutation probe for the Phase 7 tournament runner: flips the attempt outcome's check verdict in the engine tournament source via `mutation-probe.sh`, requires the mesh-tournament suite red, then green after restore | Phase 7 S4 verification | `mutation-probe.sh` (via) |
+| `mesh-routing-probe.sh` | Mutation probe for the Phase 7 start-rung routing: loosens the §2.3 qualification check in the engine routing source via `mutation-probe.sh`, requires the mesh-routing suite red, then green after restore | Phase 7 S5 verification | `mutation-probe.sh` (via) |
 | `mutation-probe.sh` | The one mutation probe: break a tracked file on purpose, prove the test goes red, restore it byte-identically, prove green again | Selftest authors, QA / Release Engineer | `proof-selftest.sh` |
 | `lint-brief.sh` | Shape lint for bot briefs: Goal, Done when, Scope, Report back | `scripts/verify.sh`, bot handoff | `lint-brief-selftest.sh` |
 | `lint-brief-selftest.sh` | Hermetic selftest for the brief linter | Pre-commit / verification | Self |
+| `phase7-e2e.sh` | Phase 7 S5 end-to-end check: routes.json + stats fixture into a temp `OPENSAND_HOME`, a 3-attempt tournament against the local HTTP stub, worktree/attempts-root assertions, receipt rows vs log records one-to-one, a stats fixture that moves the ladder start with the `mesh.route.selected` record to prove it, and the CLI verbs (`mission reconcile`, `mission attempt restore`) | Phase 7 S5 verification | `mutation-probe.sh` (via) |
 
 | `opensand-completion.bash` | Bash tab completion definitions | User shell environment | None |
 | `opensand-completion.zsh` | Zsh tab completion definitions | User shell environment | None |
@@ -348,6 +350,20 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: whatever `mutation-probe.sh` returns (`0` on GREEN → RED → GREEN).
 - **Selftest**: via `scripts/proof-selftest.sh` (the underlying probe).
 - **Trigger**: Phase 7 verification, automated job proof.
+
+### `mesh-routing-probe.sh`
+- **Purpose**: Mutation probe for the Phase 7 start-rung routing (design §10 S5). Delegates to `mutation-probe.sh`: loosens the §2.3 qualification check (`>= minPassRate` becomes `> -1`, so an unqualified rung starts anyway) in packages/engine/src/mesh/routing.ts, requires the mesh-routing suite to go RED, restores the file byte-for-byte, and requires GREEN again. A hard 5-minute cap comes from `perl -e alarm`.
+- **Usage**: `scripts/mesh-routing-probe.sh` (no arguments).
+- **Exit Codes**: whatever `mutation-probe.sh` returns (`0` on GREEN → RED → GREEN).
+- **Selftest**: via `scripts/proof-selftest.sh` (the underlying probe).
+- **Trigger**: Phase 7 S5 verification, automated job proof.
+
+### `phase7-e2e.sh`
+- **Purpose**: The Phase 7 S5 end-to-end check (design §10 S5), written as one command. It builds the engine and CLI packages, writes a `mesh/routes.json` (ladder `stub:a` → `openrouter:deepseek/deepseek-v4.1-flash`) and mission state into a temp `OPENSAND_HOME`, and runs a node driver over the engine's compiled surface: a 3-attempt tournament against the local HTTP stub with a real check command; assertions that `git worktree list` has two entries and the attempts root is empty; that the receipt's Tournament rows match the `mesh.attempt.result` records one-to-one; then a stats fixture that makes the deepseek rung qualify, a new mission, and an assertion that its `mesh.route.selected` names the new start. It finishes with the CLI verbs: `opensand mission reconcile` (no-op on a clean finish) and `opensand mission attempt restore` of a loser snapshot and of the kept attempt. The driver's state stays until the script cleans it up in an EXIT trap.
+- **Usage**: `scripts/phase7-e2e.sh` (no arguments; builds the packages it needs).
+- **Exit Codes**: 0 when all five checks (plus the CLI verbs) pass; non-zero on the first failed assertion, naming it.
+- **Selftest**: the script is itself the check; the underlying runner behavior is covered by `packages/engine/test/mesh-tournament.test.ts` and the `mesh-routing-probe.sh` mutation probe.
+- **Trigger**: Phase 7 S5 verification, automated job proof.
 
 ### `mutation-probe.sh`
 - **Purpose**: The one mutation probe. Applies a mutation to a file git tracks, requires the given test command to go RED, restores the file byte-for-byte (also on interruption), and requires GREEN again. A target git does not track is refused: a build artifact is not a real mutation, cannot be restored from git, and survives every incremental build.

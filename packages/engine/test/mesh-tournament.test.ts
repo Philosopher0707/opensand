@@ -192,6 +192,18 @@ describe("mesh tournament runner (S4)", () => {
         const started = events.find((e) => e.kind === "mesh.tournament.started")!;
         assert.equal(started.data.base, s.baseCommit);
 
+        // mesh.route.selected (S5 §2.3): one record, with the chosen rung and
+        // the input hash, written before the tournament it feeds.
+        const routeIdx = events.findIndex((e) => e.kind === "mesh.route.selected");
+        assert.ok(routeIdx >= 0, "mesh.route.selected is in the log");
+        assert.ok(routeIdx < events.findIndex((e) => e.kind === "mesh.tournament.started"), "route choice comes first");
+        const route = events[routeIdx]!;
+        assert.equal(route.data.role, "coder");
+        assert.equal(route.data.rung, 0);
+        assert.equal(route.data.model, "stub:a");
+        assert.equal(route.data.reason, "no-qualifying-record");
+        assert.match(route.data.inputsHash, /^[0-9a-f]{64}$/);
+
         // One mesh.attempt.result per attempt, with the §3.1 shape.
         const results = meshResults(events);
         assert.deepEqual(results.map((r) => r.attempt), [1, 2, 3]);

@@ -22,8 +22,10 @@
  *    attempt tree. The full Phase 3 agentic loop is not re-implemented here.
  *  - Model calls are recorded as `model.call` records (usage, settled cost,
  *    response hash) — the P1 `model.*` shape this slice depends on.
- *  - `mesh.route.selected` writes are S5 scope; S4 only logs the start rung
- *    inside `mesh.tournament.started`.
+ *  - The routing thresholds come from the role's `mesh/routes.json` entry
+ *    (§2.2), not the defaults, so a role that tightens `minSamples` gets the
+ *    tighter gate. The defaults only cover a routes file without thresholds,
+ *    which the §2.2 schema already fills in.
  */
 
 import { execFile } from "node:child_process";
@@ -46,6 +48,7 @@ import { runCheck, type CheckSpec } from "../missions/check.js";
 import { cleanGitEnv, treeOf, changedLinesBetweenTrees } from "../missions/workspace-diff.js";
 import { judgeAttempts, type JudgeAttempt, type JudgeOptions, type MeshDecision } from "./judge.js";
 import { selectStartRung } from "./routing.js";
+import { statsKey } from "./stats.js";
 import type { RoutesConfig } from "./routes-schema.js";
 import type { MeshStats, StatsKey } from "./stats.js";
 import type { AttemptOutcome, MeshAttemptResultData } from "./types.js";
@@ -289,9 +292,41 @@ export async function startTournament(options: TournamentStartOptions): Promise<
 
   const baseCommit = (await git(["rev-parse", "HEAD"], options.repoRoot)).trim();
 
-  const start = selectStartRung(options.role, roleRouting.ladder, options.stats);
+  const start = selectStartRung(options.role, roleRouting.ladder, options.stats, Date.now(), {
+    minSamples: roleRouting.minSamples,
+    minPassRate: roleRouting.minPassRate,
+  });
 
   const writer = new EventLogWriter(missionDir, { sessionId: options.missionId });
+
+  // mesh.route.selected (§2.3): the routing decision with its input hash, so a
+  // route choice is replayed from the log, never recomputed (§8). Written
+  // before the tournament record it feeds.
+  const inputsHash = createHash("sha256")
+    .update(
+      JSON.stringify({
+        stats: roleRouting.ladder.map((model) => {
+          const s = options.stats.get(statsKey(options.role, model));
+          return s ? { model, counted: s.counted, passed: s.passed, rateWilsonLow: s.rateWilsonLow, timeouts: s.timeouts, window: s.window } : { model };
+        }),
+        ladder: roleRouting.ladder,
+        thresholds: { minSamples: roleRouting.minSamples, minPassRate: roleRouting.minPassRate },
+      }),
+    )
+    .digest("hex");
+  await writer.append({
+    sessionId: options.missionId,
+    node: "tournament",
+    kind: "mesh.route.selected",
+    data: {
+      role: options.role,
+      rung: start.rung,
+      model: start.model,
+      reason: start.reason,
+      inputsHash,
+    },
+  });
+
   await writer.append({
     sessionId: options.missionId,
     node: "tournament",
