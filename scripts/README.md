@@ -51,6 +51,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `release-check.sh` | Full release verification and smoke test gate | Pre-release sanity gate | None |
 | `release-selftest.sh` | Hermetic selftest for automated release pipeline | Pre-commit / verification | Self |
 | `smoke-packaged.sh` | Packaged application launch verification in isolated state | CI / release smoke gate | None |
+| `smoke-linux.sh` | Linux `.deb` smoke: extract, reject Mach-O, launch packaged app under xvfb with isolated state, require `/api/diagnostics` version | `release.sh` Step 7 on Linux / release CI | `smoke-linux-selftest.sh` |
+| `smoke-linux-selftest.sh` | Hermetic selftest for `smoke-linux.sh` with fake dpkg-deb/xvfb/app/diagnostics fixtures | Pre-commit / verification | Self |
 | `status-report.sh` | Read-only owner summary: recent merges, open PRs + CI/behind, main CI, latest release, disk; `--json` for the same data | Manual / owner status report | `status-report-selftest.sh` |
 | `status-report-selftest.sh` | Hermetic selftest for status-report.sh with a stubbed `gh` (no network) | Pre-commit / verification | Self |
 | `screen-kit.sh` | Phase 5 screen starter kit: scaffolds a new shell screen's component, its real-window test (960x740 + full screen, screenshots into the gitignored .opensand-snapshots folder) and its scripts/README.md rows | Phase 5 row work | `screen-kit` `--selftest` flag |
@@ -250,7 +252,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Release pipeline.
 
 ### `release.sh`
-- **Purpose**: 9-step automated release pipeline (disk space guard on the writable data volume, bump PR, pr-gate merge, tag push, artifact download, release notes from merged PR titles, smoke check, DMG plist verification, and optional install followed by a post-install health check).
+- **Purpose**: 9-step automated release pipeline (disk space guard on the writable data volume, bump PR, pr-gate merge, tag push, artifact download of `*.dmg`/`*.zip`/`*.AppImage`/`*.deb`, release notes from merged PR titles, smoke check, DMG plist verification, and optional install followed by a post-install health check). On Linux it downloads and smokes the `.deb` with `smoke-linux.sh` and skips the macOS-only `hdiutil`/install steps; macOS behavior is unchanged.
 - **Usage**: `scripts/release.sh [--dry-run] [--install] <version>`
 - **Env**: `RELEASE_DOWNLOAD_TIMEOUT_SECONDS` (default `600`) and `RELEASE_DOWNLOAD_POLL_SECONDS` (default `15`) bound the Step 5 retry that waits for `release.yml` to publish the assets. `OPENSAND_HEALTH_CHECK_SCRIPT` overrides the Step 9 health check path for the selftest.
 - **Exit Codes**: `0` on success, `1` on general failure, `2` on smoke test failure, `3` on pending bump PR CI.
@@ -265,7 +267,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Pre-release verification.
 
 ### `release-selftest.sh`
-- **Purpose**: Hermetic selftest suite for `release.sh` stubbing GitHub CLI, git, hdiutil, verify commands, and (for the disk guard) `df`.
+- **Purpose**: Hermetic selftest suite for `release.sh` stubbing GitHub CLI, git, hdiutil, verify commands, and (for the disk guard) `df`. Covers both OS branches via `OPENSAND_RELEASE_OS` and asserts all four download patterns (`*.dmg`, `*.zip`, `*.AppImage`, `*.deb`).
 - **Usage**: `scripts/release-selftest.sh`
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
@@ -277,6 +279,20 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: `0` on clean smoke pass, `2` on smoke failure or missing artifact.
 - **Selftest**: None.
 - **Trigger**: `scripts/release.sh`, `scripts/release-check.sh`, CI.
+
+### `smoke-linux.sh`
+- **Purpose**: Prove a Linux `.deb` really runs. Extracts it with `dpkg-deb -x` into a fresh temp dir, rejects any Mach-O magic in the extracted tree, derives the executable from the packaged `.desktop` `Exec=` entry (no `eval`), and launches that packaged binary with `xvfb-run -a`, `OPENSAND_SMOKE=1` and isolated `HOME`/`OPENSAND_HOME`/state. It reads `server.port`/`server.token` without printing the token, calls `/api/diagnostics` with the token and requires the reported version to equal the bundle version from `dpkg-deb -f <deb> Version`. Prints exactly `OpenSand <version> linux ok`. A Mach-O file, an early app exit, a missing port file, a wrong version or a non-200 response is a hard failure; there is no repo/runtime fallback. Only the launched PID/process group is terminated.
+- **Usage**: `scripts/smoke-linux.sh <path/to/OpenSand*.deb>` (`OPENSAND_SMOKE_STARTUP_TIMEOUT_SECONDS` bounds startup, default 60). Override points for hermetic testing: `OPENSAND_DPKG_DEB`, `OPENSAND_XVFB_RUN`, `OPENSAND_CURL`.
+- **Exit Codes**: `0` on success, `1` on any failure.
+- **Selftest**: `scripts/smoke-linux-selftest.sh`.
+- **Trigger**: `scripts/release.sh` Step 7 on Linux, `build-linux` release CI job.
+
+### `smoke-linux-selftest.sh`
+- **Purpose**: Hermetic selftest for `smoke-linux.sh` with fake `dpkg-deb`/`xvfb-run`/`curl` and a fixture packaged app (no real `.deb`, display, root or downloaded content): success with exact output and no secret leak, wrong diagnostics version, early app exit, port timeout with a tiny budget, Mach-O rejection, missing argument, and no secret on a failure path. Set `OPENSAND_SMOKE_LINUX_SCRIPT` to a mutant to prove a case sees the breakage.
+- **Usage**: `scripts/smoke-linux-selftest.sh`
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, test verification.
 
 ### `status-report.sh`
 - **Purpose**: Print a short, read-only markdown summary for the owner: PRs merged in the last N hours (number, title, merge sha), open PRs with CI state and whether each is behind main, the latest main CI run result, the latest release tag, and free space on the data volume. `--json` emits the same data as JSON. Never pushes, merges, comments or edits, and never prints a token.

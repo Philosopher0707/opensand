@@ -1,4 +1,4 @@
-# electron-builder configuration for the local macOS build.
+# electron-builder configuration for the local macOS and Linux builds.
 # Staging: `pnpm stage:desktop` produces dist/stage with real node_modules.
 appId: com.opensand.agent
 productName: OpenSand
@@ -31,7 +31,17 @@ mac:
   hardenedRuntime: false
   extendInfo:
     NSScreenCaptureUsageDescription: OpenSand captures the screen to read visible code windows and recognise text.
+  # macOS-only native helpers (Mach-O). Linux ships no extraResources.
+  extraResources:
+    - from: packages/native-bridge/bin
+      to: bin
 
-extraResources:
-  - from: packages/native-bridge/bin
-    to: bin
+linux:
+  category: Utility
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
