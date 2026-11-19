@@ -54,5 +54,6 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [A test stub that clears response timers on req "close" never answers at all](2026-11-19-stub-req-close-cancels-paced-response.md)
 - 2026-11-19 · [Option overrides merged with explicit undefined clobber the defaults](2026-11-19-undefined-overrides-clobber-defaults.md)
 - 2026-11-19 · [worktree.sh cannot adopt an existing remote branch](2026-11-19-worktree-adopt-existing-branch.md)
+- 2026-11-19 · [Two worktree traps became automatic checks: the main checkout, and regenerated screenshots](2026-11-19-worktree-guards-main-checkout-and-artifacts.md)
 - 2026-11-19 · [A worktree's node_modules can be symlinked from a merged sibling on a full disk](2026-11-19-worktree-node-modules-on-full-disk.md)
 - 2026-11-19 · [A worktree's node_modules symlink resolves workspace packages into the donor worktree](2026-11-19-worktree-node-modules-resolve-into-donor-worktree.md)

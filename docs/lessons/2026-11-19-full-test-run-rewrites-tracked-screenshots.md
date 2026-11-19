@@ -10,6 +10,7 @@
   `git checkout origin/main -- packages/desktop/artifacts` before `save`, or pass the exact paths
   after `--`. The screenshots belong to a window change, never to a side effect of running tests.
 - **Repeat (2026-11-19, phase 7 S3):** hit again from a local `verify.sh` during the judge PR;
-  caught by pr-gate Check 3 before push... it had already been pushed once. Upgrade path: a gate
-  in `worktree.sh save` that refuses to stage `packages/desktop/artifacts/*.png` unless the paths
-  were passed explicitly.
+  caught by pr-gate Check 3 before push... it had already been pushed once. Fixed (2026-11-19):
+  `worktree.sh save` now refuses to stage `packages/desktop/artifacts/*.png` unless the path is named
+  explicitly after `--`; it restores them to HEAD and prints what it skipped
+  (see 2026-11-19-worktree-guards-main-checkout-and-artifacts.md).
