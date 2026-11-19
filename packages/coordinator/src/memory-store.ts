@@ -253,6 +253,31 @@ export class MemoryStore {
   }
 
   /**
+   * Retroactively update a memory fact's observed outcome (SIM "don't repeat
+   * failed attempts"). Used when a user correction arrives after a rule was
+   * extracted — marks the matching fact observedOutcome="negative" so future
+   * rounds can filter it out.
+   */
+  async updateMemoryOutcome(factId: string, observedOutcome: MemoryOutcome, scope?: MemoryScope, agentId?: string): Promise<MemoryFact | null> {
+    const scopesToCheck: Array<{ scope: MemoryScope; agentId?: string }> = scope
+      ? [{ scope, agentId }]
+      : [{ scope: "user" }, { scope: "team" }, ...(agentId ? [{ scope: "agent" as MemoryScope, agentId }] : [])];
+
+    for (const item of scopesToCheck) {
+      const p = this.getFilePath(item.scope, item.agentId);
+      const data = await this.readJsonSafe<{ memories: MemoryFact[] }>(p, { memories: [] });
+      const fact = data.memories.find((m) => m.factId === factId);
+      if (!fact) continue;
+
+      fact.observedOutcome = observedOutcome;
+      fact.outcomeMatch = this.deriveOutcomeMatch(fact.predictedOutcome, observedOutcome);
+      await this.writeJsonAtomic(p, data);
+      return fact;
+    }
+    return null;
+  }
+
+  /**
    * Delete / forget a memory fact by ID.
    */
   async forgetMemory(factId: string, scope?: MemoryScope, agentId?: string): Promise<boolean> {

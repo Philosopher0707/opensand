@@ -402,4 +402,40 @@ Understood, I will use pnpm.
     assert.equal(matches.length, 1);
     assert.equal(matches[0].text, "SIM test: use Linear for planning");
   });
+
+  it("updateMemoryOutcome retroactively marks a fact negative (SIM correction)", async () => {
+    const f = await store.addMemoryWithOutcome({
+      text: "SIM test: always run npm install",
+      scope: "agent",
+      agentId: "sim-agent-6",
+      tier: "log",
+      predictedOutcome: "positive",
+    });
+    assert.equal(f.outcomeMatch, undefined);
+    assert.equal(f.observedOutcome, undefined);
+
+    // User corrects: "actually, use pnpm not npm" — mark the fact negative
+    const updated = await store.updateMemoryOutcome(f.factId, "negative", "agent", "sim-agent-6");
+    assert.ok(updated, "Fact should be found and updated");
+    assert.equal(updated.observedOutcome, "negative");
+    assert.equal(updated.outcomeMatch, false); // predicted positive, observed negative
+
+    // Verify filtering picks it up as a failed attempt
+    const failures = await store.listMemories({
+      scope: "agent",
+      agentId: "sim-agent-6",
+      observedOutcome: "negative",
+    });
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0].text, "SIM test: always run npm install");
+
+    // Reading it back should show the updated outcome
+    const recheck = await store.listMemories({ scope: "agent", agentId: "sim-agent-6", query: "npm install" });
+    assert.equal(recheck[0].outcomeMatch, false);
+  });
+
+  it("updateMemoryOutcome returns null when fact not found", async () => {
+    const result = await store.updateMemoryOutcome("fact_nonexistent", "negative");
+    assert.equal(result, null);
+  });
 });
