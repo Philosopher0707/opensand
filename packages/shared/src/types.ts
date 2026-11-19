@@ -130,6 +130,12 @@ export interface AgentRecord {
   soulHash?: string;
   /** Stored avatar image URL (file:// or served); null when none. */
   avatarUrl?: string | null;
+  /** Approval mode for tool calls: "ask" (prompt each time), "custom" (alwaysAllow list), "allow" (auto-approve). */
+  approvalMode?: "ask" | "custom" | "allow";
+  /** Auto-approve tool calls without prompting. */
+  autoApprove?: boolean;
+  /** Tools this agent may always use without asking (when approvalMode === "custom"). */
+  alwaysAllow?: string[];
 }
 
 export interface CreateAgentInput {
@@ -147,6 +153,11 @@ export interface CreateAgentInput {
   topP?: number;
   logoSvg?: string;
   logoColor?: string;
+  soul?: string;
+  avatarUrl?: string | null;
+  approvalMode?: "ask" | "custom" | "allow";
+  autoApprove?: boolean;
+  alwaysAllow?: string[];
 }
 
 /** One declarative field in an agent's settings schema. */

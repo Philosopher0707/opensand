@@ -44,6 +44,12 @@ export interface AgentRecord {
   soulHash?: string;
   /** Stored avatar image URL (file:// or served); null when none. */
   avatarUrl?: string | null;
+  /** Approval mode for tool calls: "ask" (prompt each time), "custom" (alwaysAllow list), "allow" (auto-approve). */
+  approvalMode?: "ask" | "custom" | "allow";
+  /** Auto-approve tool calls without prompting. */
+  autoApprove?: boolean;
+  /** Tools this agent may always use without asking (when approvalMode === "custom"). */
+  alwaysAllow?: string[];
 }
 
 export interface CreateAgentInput {
@@ -63,6 +69,9 @@ export interface CreateAgentInput {
   logoColor?: string;
   soul?: string;
   avatarUrl?: string | null;
+  approvalMode?: "ask" | "custom" | "allow";
+  autoApprove?: boolean;
+  alwaysAllow?: string[];
 }
 
 /** Fields allowed to be patched on an existing agent's profile. */
@@ -234,6 +243,25 @@ export class AgentStore {
 
   /** Patch settings fields on an existing agent. */
   async updateAgentSettings(idOrName: string, updates: UpdateAgentSettingsInput): Promise<AgentRecord> {
+    const existing = await this.getAgent(idOrName);
+    if (!existing) {
+      throw new Error(`Agent [${idOrName}] not found in store`);
+    }
+
+    const updated: AgentRecord = {
+      ...existing,
+      ...updates,
+      id: existing.id,
+      createdAt: existing.createdAt,
+      updatedAt: Date.now(),
+    };
+
+    await this.saveRecordAtomic(updated);
+    return updated;
+  }
+
+  /** Patch approval-mode fields on an existing agent. */
+  async updateAgentApproval(idOrName: string, updates: { approvalMode?: "ask" | "custom" | "allow"; autoApprove?: boolean; alwaysAllow?: string[] }): Promise<AgentRecord> {
     const existing = await this.getAgent(idOrName);
     if (!existing) {
       throw new Error(`Agent [${idOrName}] not found in store`);
