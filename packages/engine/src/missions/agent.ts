@@ -1,9 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { MissionWorkspace } from "./workspace.js";
 
 export interface MissionAgentContext {
   workspaceRoot: string;
   missionId: string;
+  /** The one file/command seam (Phase 8 S4): the agent never writes raw fs. */
+  workspace: MissionWorkspace;
   [key: string]: unknown;
 }
 
@@ -75,26 +78,28 @@ export class ScriptedMissionAgent implements MissionAgent {
     const round = this.rounds[Math.min(this.actIndex, this.rounds.length - 1)];
     this.actIndex += 1;
 
-    // Apply any file writes
+    // Apply any file writes through the workspace seam (target or local).
     if (round.writes) {
       for (const [relPath, fileContent] of Object.entries(round.writes)) {
-        const fullPath = path.join(ctx.workspaceRoot, relPath);
-        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-        fs.writeFileSync(fullPath, fileContent, "utf8");
+        await ctx.workspace.writeFile({
+          path: path.join(ctx.workspaceRoot, relPath),
+          content: fileContent,
+          overwrite: true,
+        });
       }
     }
 
-    // Apply any edits
+    // Apply any edits through the workspace seam.
     if (round.edits) {
       for (const edit of round.edits) {
         const fullPath = path.join(ctx.workspaceRoot, edit.path);
-        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
         if (edit.content !== undefined) {
-          fs.writeFileSync(fullPath, edit.content, "utf8");
+          await ctx.workspace.writeFile({ path: fullPath, content: edit.content, overwrite: true });
         } else if (edit.replaceLine) {
-          const lines = fs.readFileSync(fullPath, "utf8").split("\n");
+          const file = await ctx.workspace.readFile({ path: fullPath });
+          const lines = file.content.split("\n");
           lines[edit.replaceLine.line - 1] = edit.replaceLine.text;
-          fs.writeFileSync(fullPath, lines.join("\n"), "utf8");
+          await ctx.workspace.writeFile({ path: fullPath, content: lines.join("\n"), overwrite: true });
         }
       }
     }
