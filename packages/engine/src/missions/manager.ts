@@ -19,6 +19,8 @@ import { runCommandOperation } from "@opensand/local-exec-daemon";
 import { projectTimelineSteps } from "./timeline.js";
 import { logDirFor } from "../reconnect.js";
 import { MissionRunner, type MissionOptions } from "./runner.js";
+import { LocalWorkspace, type MissionWorkspace } from "./workspace.js";
+import { buildTargetWorkspace, resolveTargetForMission } from "./target-workspace.js";
 import { projectMission, type MissionProjection } from "./receipt.js";
 import type { MissionAgent } from "./agent.js";
 import { FolderTrustGate } from "./trust-gate.js";
@@ -63,7 +65,20 @@ export class MissionRunnerManager {
       throw new Error("engine is shutting down");
     }
 
-    const runner = new MissionRunner(options, {
+    // Resolve the target once, before the runner's folder-trust gate. Unknown
+    // names are InvalidParams (thrown by resolveTargetForMission) and never
+    // fall back to local.
+    const workspace: MissionWorkspace =
+      options.target && options.target !== "local"
+        ? buildTargetWorkspace({
+            missionId: options.missionId,
+            workspaceRoot: options.workspaceRoot,
+            name: options.target,
+            config: await resolveTargetForMission(options.target),
+          })
+        : new LocalWorkspace(options.workspaceRoot);
+
+    const runner = new MissionRunner({ ...options, workspace }, {
       stateDir: this.stateDir,
       agent: this.agent,
       gate: this.gate,

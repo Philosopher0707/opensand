@@ -24,6 +24,15 @@ export interface Receipt {
   note?: string;
   /** The Tournament section (Phase 7 §3.4); undefined for a non-tournament mission. */
   tournament?: TournamentSection;
+  /** The target the mission ran on (Phase 8 S4); undefined for the implicit local target. */
+  target?: {
+    name: string;
+    kind: string;
+    platform?: string;
+    root?: string;
+    result: string;
+    detail?: string;
+  };
 }
 
 export interface MissionProjection {
@@ -111,11 +120,36 @@ export function projectReceipt(events: SessionEvent[], changes?: ChangesResult):
     }
   }
 
+  // Phase 8 S4: the harness folds mission.target into the receipt. A conflict or
+  // a failed apply after the last accepted review can never end as verified,
+  // and an SSH target needs a successful apply on top of the check/review rule.
+  let target: Receipt["target"];
+  let targetFailed = false;
+  for (const ev of events) {
+    if (ev.kind !== "mission.target") continue;
+    const data = ev.data ?? {};
+    const result = typeof data.result === "string" ? data.result : undefined;
+    if (result === "conflict" || result === "failed") targetFailed = true;
+    if (typeof data.name === "string" && typeof data.kind === "string") {
+      target = {
+        name: data.name,
+        kind: data.kind,
+        ...(typeof data.platform === "string" ? { platform: data.platform } : {}),
+        ...(typeof data.root === "string" ? { root: data.root } : {}),
+        result: result ?? (data.kind === "container" ? "bind" : "pending"),
+        ...(typeof data.detail === "string" ? { detail: data.detail } : {}),
+      };
+    }
+  }
+
   const checkPassedAfterAct = lastCheckAfterAct?.data?.passed === true;
+  const targetOk = !target || (target.kind !== "ssh" || target.result === "applied");
   const isVerified = Boolean(
     lastActIdx >= 0 &&
     checkPassedAfterAct &&
-    reviewAcceptedAfterCheck
+    reviewAcceptedAfterCheck &&
+    !targetFailed &&
+    targetOk
   );
 
   const source = changes ?? changesFromTerminalRecord(events);
@@ -168,6 +202,7 @@ export function projectReceipt(events: SessionEvent[], changes?: ChangesResult):
     notDone: lastClaim,
     note: reviewNote,
     tournament: buildTournamentSection(events),
+    ...(target ? { target } : {}),
   };
 }
 
@@ -194,6 +229,13 @@ export function renderReceipt(receipt: Receipt): string {
       const suffix = rangesStr || (c.deletedAt ? "(deleted)" : "(renamed)");
       lines.push(`${prefix}${c.file.padEnd(35)} ${suffix}`);
     }
+  }
+
+  if (receipt.target) {
+    const t = receipt.target;
+    const where = [t.kind, t.platform, t.root].filter(Boolean).join(" ");
+    lines.push(`Target    ${t.name} (${where}) ${t.result}`);
+    if (t.detail) lines.push(`          ${t.detail}`);
   }
 
   lines.push(

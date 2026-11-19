@@ -9,6 +9,7 @@ export const MISSION_EVENT = {
   NODE_COMPLETED: "node.completed",
   CHECK_COMPLETED: "check.completed",
   REVIEW_COMPLETED: "review.completed",
+  TARGET: "mission.target",
   VERIFIED: "mission.verified",
   FAILED: "mission.failed",
   STOPPED: "mission.stopped",

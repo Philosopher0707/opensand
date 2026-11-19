@@ -5,6 +5,7 @@ import { MISSION_EVENT, FolderTrustStore, GrantsStore, resolveSandboxProfile } f
 import type { EventFrame } from "@opensand/protocol";
 import { logDirFor, eventNameForKind } from "../reconnect.js";
 import { runCheck, type CheckResult } from "./check.js";
+import { LocalWorkspace, type MissionWorkspace, type WorkspaceResult } from "./workspace.js";
 import { treeOf, changedLinesBetweenTrees, pinTrees, createStepSnapshot, type ChangesResult } from "./workspace-diff.js";
 import type { TournamentRun } from "../mesh/tournament.js";
 import { projectReceipt } from "./receipt.js";
@@ -38,6 +39,10 @@ export interface MissionOptions {
   title: string;
   initialQuery: string;
   checkCommand: string;
+  /** Named target from targets.json; "local" (default) keeps the Phase 3 path. */
+  target?: string;
+  /** Prebuilt workspace (manager resolves the target). Defaults to a local workspace. */
+  workspace?: MissionWorkspace;
   budget?: Partial<MissionBudget>;
   tournament?: TournamentNodeConfig;
   forkedFrom?: {
@@ -88,6 +93,9 @@ export class MissionRunner {
   private isFinished = false;
   private trustedFolder = "";
   private snapshotSeq = 0;
+  private readonly workspace: MissionWorkspace;
+  private prepared = false;
+  private preparedTree?: string;
 
   constructor(
     options: MissionOptions,
@@ -100,6 +108,7 @@ export class MissionRunner {
     }
   ) {
     this.options = options;
+    this.workspace = options.workspace ?? new LocalWorkspace(options.workspaceRoot);
     this.missionId = options.missionId;
     this.workspaceRoot = options.workspaceRoot;
     this.title = options.title;
@@ -164,15 +173,78 @@ export class MissionRunner {
     this.publishFrame(frame);
   }
 
+  /** One event per target phase; local is unnamed and records nothing. */
+  private async emitTarget(
+    phase: string,
+    detail?: string,
+    extra?: { result?: string; tree?: string }
+  ): Promise<void> {
+    const id = this.workspace.identity();
+    if (!id) return;
+    const result =
+      extra?.result ?? (phase === "apply" && this.workspace.kind === "container" ? "bind" : undefined);
+    await this.appendAndPublish(MISSION_EVENT.TARGET, {
+      missionId: this.missionId,
+      phase,
+      name: id.name,
+      kind: id.kind,
+      ...(id.platform ? { platform: id.platform } : {}),
+      ...(id.root ? { root: id.root } : {}),
+      ...(result ? { result } : {}),
+      ...(detail ? { detail } : {}),
+      ...(extra?.tree ? { tree: extra.tree } : {}),
+    });
+  }
+
+  /** Fetch the remote result into staging before review so the diff is real. */
+  private async prepareWorkspace(): Promise<void> {
+    if (this.prepared) return;
+    this.prepared = true;
+    const res: WorkspaceResult = await this.workspace.prepare();
+    this.preparedTree = res.tree;
+    await this.emitTarget("prepare", res.detail, { tree: res.tree });
+  }
+
+  /**
+   * Connect before the trust gate and always close, including cancel and
+   * shutdown (both abort this run). A preflight/push failure ends the mission
+   * before anything local is written.
+   */
+  private async run(): Promise<void> {
+    try {
+      await this.workspace.begin();
+      await this.emitTarget("connect");
+      if (this.workspace.kind === "ssh") await this.emitTarget("push");
+    } catch (err: any) {
+      await this.emitTarget("failed", err?.message ?? "target link failed", { result: "failed" });
+      await this.appendAndPublish(MISSION_EVENT.FAILED, {
+        missionId: this.missionId,
+        error: { code: 4003, message: `target setup failed: ${err?.message ?? "unknown"}` },
+        node: "runner",
+      });
+      await this.workspace.close().catch(() => undefined);
+      return;
+    }
+    try {
+      await this.runInner();
+    } finally {
+      await this.workspace.close().catch(() => undefined);
+    }
+  }
+
   /**
    * Tree of the workspace as it is now, plus the changed lines against the
-   * base tree. Never touches the user's index, branch or stash.
+   * base tree. For SSH, `overrideTree` is the prepared staging tree. Never
+   * touches the user's index, branch or stash.
    */
   private async snapshot(
-    baseTree: string | undefined
+    baseTree: string | undefined,
+    overrideTree?: string
   ): Promise<{ finalTree?: string; changes: ChangesResult }> {
     try {
-      const finalRes = await treeOf(this.workspaceRoot);
+      const finalRes = overrideTree
+        ? { available: true, tree: overrideTree }
+        : await treeOf(this.workspaceRoot);
       if (!finalRes.available || !finalRes.tree) {
         return {
           changes: { available: false, reason: finalRes.reason ?? "not a git repository" },
@@ -188,14 +260,16 @@ export class MissionRunner {
     }
   }
 
-  private async run(): Promise<void> {
+  private async runInner(): Promise<void> {
     // Log-only; no command runs before the folder-trust gate below.
     if (!this.options.forkedFrom) {
+      const target = this.workspace.identity();
       await this.appendAndPublish(MISSION_EVENT.STARTED, {
       missionId: this.missionId,
       title: this.title,
       workspaceRoot: this.workspaceRoot,
       budgetUsd: this.budget.budgetUsd ?? 0,
+      ...(target ? { target: { name: target.name, kind: target.kind } } : {}),
     });
     }
 
@@ -248,6 +322,7 @@ export class MissionRunner {
       const plan = await this.agent.plan(state.initialQuery, {
         workspaceRoot: state.workspaceRoot,
         missionId: state.missionId,
+        workspace: this.workspace,
       });
 
       await this.appendAndPublish(
@@ -304,6 +379,7 @@ export class MissionRunner {
         {
           workspaceRoot: state.workspaceRoot,
           missionId: state.missionId,
+          workspace: this.workspace,
         }
       );
 
@@ -384,7 +460,7 @@ export class MissionRunner {
       const checkResult = await runCheck(
         { command: state.checkCommand, sandbox },
         state.workspaceRoot,
-        { signal: this.abortController.signal }
+        { signal: this.abortController.signal, exec: (input, opts) => this.workspace.exec(input, opts) }
       );
 
       await this.appendAndPublish(
@@ -465,6 +541,9 @@ export class MissionRunner {
       const start = Date.now();
       const attempt = state.repairRounds + 1;
 
+      // The reviewer must see the target's result, not the untouched local tree.
+      await this.prepareWorkspace();
+
       await this.appendAndPublish(
         MISSION_EVENT.NODE_STARTED,
         { missionId: this.missionId, node: "review", attempt },
@@ -473,7 +552,9 @@ export class MissionRunner {
 
       let diffStr = "";
       try {
-        const curTree = await treeOf(state.workspaceRoot);
+        const curTree = this.preparedTree
+          ? { available: true, tree: this.preparedTree }
+          : await treeOf(state.workspaceRoot);
         if (curTree.available && curTree.tree && state.baseTree) {
           diffStr = `diff ${state.baseTree} -> ${curTree.tree}`;
         }
@@ -495,6 +576,7 @@ export class MissionRunner {
         {
           workspaceRoot: state.workspaceRoot,
           missionId: state.missionId,
+          workspace: this.workspace,
         }
       );
 
@@ -534,7 +616,28 @@ export class MissionRunner {
         "receipt"
       );
 
-      const { finalTree, changes } = await this.snapshot(state.baseTree);
+      // Only after acceptance: SSH writes the user's workspace here. A conflict
+      // or a failed fetch/apply leaves the local tree untouched and fails the mission.
+      if (this.workspace.kind !== "local") {
+        try {
+          const applied: WorkspaceResult = await this.workspace.apply();
+          if (this.workspace.kind === "ssh" && applied.applied !== true) {
+            state.failedReason = { code: 4003, message: "target-apply-failed", node: "receipt" };
+            await this.emitTarget("failed", applied.detail ?? "apply did not write the workspace", { result: "failed" });
+          } else {
+            await this.emitTarget("apply", applied.detail, {
+              result: this.workspace.kind === "container" ? "bind" : "applied",
+            });
+          }
+        } catch (err: any) {
+          const conflict = err?.name === "TargetApplyConflictError" || err?.constructor?.name === "TargetApplyConflictError";
+          const reason = conflict ? "target-apply-conflict" : "target-apply-failed";
+          state.failedReason = { code: 4003, message: reason, node: "receipt" };
+          await this.emitTarget(conflict ? "conflict" : "failed", err?.message, { result: conflict ? "conflict" : "failed" });
+        }
+      }
+
+      const { finalTree, changes } = await this.snapshot(state.baseTree, this.preparedTree);
 
       await this.appendAndPublish(
         MISSION_EVENT.NODE_COMPLETED,
@@ -634,11 +737,14 @@ export class MissionRunner {
       return;
     }
 
+    // A mission that ends before review (failed check, cancel) still owes the
+    // receipt the target's tree; prepare is idempotent and a no-op for local.
+    await this.prepareWorkspace().catch(() => undefined);
     const events = await new EventLogReader(this.writer.path).readAll();
     let changes = finalState.changes;
     let finalTree = finalState.finalTree;
     if (!changes) {
-      const snap = await this.snapshot(baseTree);
+      const snap = await this.snapshot(baseTree, this.preparedTree);
       changes = snap.changes;
       finalTree = snap.finalTree ?? finalTree;
     }
