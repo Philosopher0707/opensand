@@ -24,6 +24,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `mutate.sh` | Thin wrapper kept for the older name; forwards every argument to `mutation-probe.sh` | Automated job proof / mutation testing | `proof-selftest.sh` |
 | `lessons-index.sh` | Generate `docs/lessons/INDEX.md` from the one-file-per-lesson entries; `--check` fails when the index is stale | `scripts/verify.sh` (`--check`), developer after adding a lesson | `lessons-index-selftest.sh` |
 | `lessons-index-selftest.sh` | Hermetic selftest for the lessons index generator and its staleness check | Pre-commit / verification | Self |
+| `mesh-judge-probe.sh` | Mutation probe for the Phase 7 mesh judge: flips the Stage 0 exit-code check in the judge source via `mutation-probe.sh`, requires the mesh-judge suite red, then green after restore | Phase 7 S3 verification | `mutation-probe.sh` (via) |
 | `mutation-probe.sh` | The one mutation probe: break a tracked file on purpose, prove the test goes red, restore it byte-identically, prove green again | Selftest authors, QA / Release Engineer | `proof-selftest.sh` |
 | `lint-brief.sh` | Shape lint for bot briefs: Goal, Done when, Scope, Report back | `scripts/verify.sh`, bot handoff | `lint-brief-selftest.sh` |
 | `lint-brief-selftest.sh` | Hermetic selftest for the brief linter | Pre-commit / verification | Self |
@@ -330,6 +331,13 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
 - **Trigger**: Pre-commit hook, test verification.
+
+### `mesh-judge-probe.sh`
+- **Purpose**: Mutation probe for the Phase 7 mesh judge (design §10 S3). Delegates to `mutation-probe.sh`: flips the Stage 0 exit-code check (`return checkExit === 0;` → `!==`) in the engine's mesh judge source at packages/engine/src/mesh/judge.ts, requires the mesh-judge suite to go RED, restores the file byte-for-byte, and requires GREEN again. A hard 5-minute cap comes from `perl -e alarm`, whose timer survives the exec into the probe and its child test runs (macOS has no `timeout` binary).
+- **Usage**: `scripts/mesh-judge-probe.sh` (no arguments).
+- **Exit Codes**: whatever `mutation-probe.sh` returns (`0` on GREEN → RED → GREEN).
+- **Selftest**: via `scripts/proof-selftest.sh` (the underlying probe).
+- **Trigger**: Phase 7 verification, automated job proof.
 
 ### `mutation-probe.sh`
 - **Purpose**: The one mutation probe. Applies a mutation to a file git tracks, requires the given test command to go RED, restores the file byte-for-byte (also on interruption), and requires GREEN again. A target git does not track is refused: a build artifact is not a real mutation, cannot be restored from git, and survives every incremental build.
