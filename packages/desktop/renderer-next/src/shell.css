@@ -155,3 +155,22 @@
 .quick-capture-text { margin: 0; max-height: 40vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.45; }
 .quick-capture-text:focus-visible, .topbar-actions .btn:focus-visible { outline: 2px solid var(--accent, #d97706); outline-offset: 2px; }
 @media (max-width: 600px) { .quick-capture { margin: 8px 8px 0; } }
+
+/* Chat screen (views/Chat.tsx): transcript, status line and composer. The bubbles and
+   composer reuse renderer/styles.css; only the full-height layout and end states are new. */
+.chat-view { display: flex; flex-direction: column; align-self: stretch; width: 100%; height: 100%; min-width: 0; }
+.chat-heading { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.chat-view .chat-container { padding: 16px 24px 8px; gap: 0; }
+.chat-view .message-feed { gap: 16px; }
+.chat-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-thinking { color: var(--text-muted); font-size: 13px; }
+.chat-empty { margin: auto; max-width: 460px; text-align: center; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+/* Each state keeps its words; the status line is the one live region the chat announces. */
+.chat-status { flex: none; width: 100%; max-width: 900px; margin: 0 auto; padding: 4px 24px 0; font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
+.chat-view[data-state="error"] .chat-status, .chat-view[data-status="error"] .chat-status { color: #f87171; }
+.chat-retry { margin-left: 12px; }
+.chat-turn-note { margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+.chat-turn-error { margin-top: 8px; font-size: 12px; color: #f87171; overflow-wrap: anywhere; }
+.chat-view .input-panel { flex: none; padding: 0 24px 20px; }
+@media (max-width: 600px) { .chat-view .chat-container, .chat-view .input-panel { padding-left: 12px; padding-right: 12px; } .chat-status { padding-left: 12px; padding-right: 12px; } }
+

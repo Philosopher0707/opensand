@@ -28,6 +28,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-18 · [An element that exists can still be hidden at the minimum window size](2026-11-18-topbar-button-hidden-by-legacy-css-at-minimum-size.md)
 - 2026-11-19 · [baseRefOid follows the live base, so stale PRs report DIRTY/CONFLICTING](2026-11-19-baserefoid-tracks-live-base.md)
 - 2026-11-19 · [CI speed-up: skip the heavy suite for docs-only PRs, and the gate bans `.github/` changes](2026-11-19-ci-speedup-docs-only-skip-and-gate-github-ban.md)
+- 2026-11-19 · [Clean-disk wipes workspace dist; Electron's module import then hangs instead of failing](2026-11-19-clean-disk-wipes-workspace-dist-electron-import-hangs.md)
 - 2026-11-19 · [A full test run rewrites tracked screenshots, and `save` stages them](2026-11-19-full-test-run-rewrites-tracked-screenshots.md)
 - 2026-11-19 · [PR #124's rebase always conflicted on the generated lessons index](2026-11-19-pr-gate-index-conflict-auto-resolve.md)
 - 2026-11-19 · ["No checks reported" is pending, not a red gate](2026-11-19-pr-gate-no-checks-is-pending.md)
@@ -37,4 +38,5 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [A repo script run from an extracted copy fails: it cds to its own SCRIPT_ROOT](2026-11-19-repo-scripts-need-a-repo-root.md)
 - 2026-11-19 · [A new shared type builds everywhere but the coordinator](2026-11-19-shared-types-need-explicit-coordinator-reexport.md)
 - 2026-11-19 · [A read-only status report still needs a hermetic gh stub and token-free output](2026-11-19-status-report-behind-main-and-token-free-gh.md)
+- 2026-11-19 · [A test stub that clears response timers on req "close" never answers at all](2026-11-19-stub-req-close-cancels-paced-response.md)
 - 2026-11-19 · [worktree.sh cannot adopt an existing remote branch](2026-11-19-worktree-adopt-existing-branch.md)

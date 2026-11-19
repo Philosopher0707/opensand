@@ -10,6 +10,7 @@ import { MissionReceipt } from "./views/MissionReceipt";
 import { Inbox } from "./views/Inbox";
 import { ApprovalDecisionButtons } from "../../src/shell/inbox-component";
 import { QuickCaptureButton, QuickCaptureOutput, useQuickCapture } from "./views/QuickCapture";
+import { Chat, useChatTurn } from "./views/Chat";
 
 export interface ShellProps {
   data: ShellData;
@@ -20,6 +21,8 @@ export function Shell({ data }: ShellProps) {
   const [selectedApproval, setSelectedApproval] = useState<ToolApprovalRequest | null>(null);
   const [approvalsRev, setApprovalsRev] = useState(0);
   const capture = useQuickCapture(data);
+  // The chat turn lives at the shell level so opening an approval detail does not drop it.
+  const chat = useChatTurn(data);
 
   const handleSelectMission = (id: string) => {
     setSelectedApproval(null);
@@ -88,7 +91,7 @@ export function Shell({ data }: ShellProps) {
           </div>
         </header>
         <QuickCaptureOutput capture={capture} />
-        <section class="shell-body" aria-live="polite">
+        <section class="shell-body">
           {selectedApproval ? (
             <div class="approval-detail-view" aria-label="Approval Details">
               <div class="approval-detail-card">
@@ -132,9 +135,7 @@ export function Shell({ data }: ShellProps) {
               <MissionReceipt data={data} missionId={missionId} />
             </div>
           ) : (
-            <p class="shell-empty">
-              Views are not ported yet. Unset OPENSAND_RENDERER to use the default renderer.
-            </p>
+            <Chat chat={chat} />
           )}
         </section>
       </main>
