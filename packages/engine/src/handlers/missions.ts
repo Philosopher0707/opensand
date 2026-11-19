@@ -28,6 +28,8 @@ export function createMissionHandlers(manager: MissionRunnerManager): Record<str
         throw new OspError(ErrorCodes.InvalidRequest, "no mission agent configured");
       }
 
+      const target = typeof params.target === "string" && params.target ? params.target : "local";
+
       const budgetUsd = typeof params.budgetUsd === "number" ? params.budgetUsd : undefined;
       const maxRepairs = typeof params.maxRepairs === "number" ? params.maxRepairs : 3;
       const wallClockMs = typeof params.wallClockMs === "number" ? params.wallClockMs : undefined;
@@ -40,6 +42,7 @@ export function createMissionHandlers(manager: MissionRunnerManager): Record<str
         title,
         initialQuery,
         checkCommand,
+        target,
         budget: {
           budgetUsd,
           maxRepairs,

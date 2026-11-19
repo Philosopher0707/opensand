@@ -37,8 +37,10 @@ import {
   type GrepInput, type GrepOutput,
   type GlobInput, type GlobOutput,
   type ListDirectoryInput, type ListDirectoryOutput,
+  TargetApplyConflictError,
 } from "@opensand/local-exec-daemon";
-import { cleanGitEnv, type MissionWorkspace, type TargetIdentity, type WorkspaceResult } from "./workspace.js";
+import { cleanGitEnv } from "./workspace-diff.js";
+import type { MissionWorkspace, TargetIdentity, WorkspaceResult } from "./workspace.js";
 
 /**
  * Target workspaces for missions (docs/design/phase8-reach.md §5.2, §5.3, §7).
@@ -55,7 +57,7 @@ export function targetBundleDir(explicit?: string): string {
   if (explicit) return explicit;
   if (process.env.OPENSAND_TARGET_BUNDLE) return process.env.OPENSAND_TARGET_BUNDLE;
   // packages/engine/dist/src/missions/target-workspace.js -> <repo>/dist/target
-  return fileURLToPath(new URL("../../../../dist/target", import.meta.url));
+  return fileURLToPath(new URL("../../../../../dist/target", import.meta.url));
 }
 
 function bundleVersion(bundleDir: string): string {
@@ -313,6 +315,7 @@ class SshTargetWorkspace implements MissionWorkspace {
   async prepare(): Promise<WorkspaceResult> {
     await fetchToStaging(this.config.root, this.missionId, this.stagingDir!, this.remoteOpts);
     const tree = await pinStagingTree(this.root, this.stagingDir!);
+    if (tree) await pinTargetTree(this.root, this.missionId, tree);
     return { ...(tree ? { tree } : {}) };
   }
 
@@ -364,6 +367,22 @@ export async function pinStagingTree(workspaceRoot: string, stagingDir: string):
     return undefined;
   } finally {
     await fs.promises.rm(tmpIndex, { force: true }).catch(() => undefined);
+  }
+}
+
+/** Keep the fetched result reachable so a conflict or failure can be inspected. */
+async function pinTargetTree(workspaceRoot: string, missionId: string, tree: string): Promise<void> {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(missionId) || missionId.includes("..")) return;
+  if (!/^[0-9a-f]{40,64}$/.test(tree)) return;
+  try {
+    await runCommandOperation({
+      command: `git update-ref refs/opensand/missions/${missionId}/target-tree ${tree}`,
+      cwd: workspaceRoot,
+      workspaceRoot,
+      env: cleanGitEnv() as any,
+    });
+  } catch {
+    // best effort: the tree stays in the object database until gc
   }
 }
 
