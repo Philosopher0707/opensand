@@ -25,6 +25,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `lessons-index.sh` | Generate `docs/lessons/INDEX.md` from the one-file-per-lesson entries; `--check` fails when the index is stale | `scripts/verify.sh` (`--check`), developer after adding a lesson | `lessons-index-selftest.sh` |
 | `lessons-index-selftest.sh` | Hermetic selftest for the lessons index generator and its staleness check | Pre-commit / verification | Self |
 | `mesh-judge-probe.sh` | Mutation probe for the Phase 7 mesh judge: flips the Stage 0 exit-code check in the judge source via `mutation-probe.sh`, requires the mesh-judge suite red, then green after restore | Phase 7 S3 verification | `mutation-probe.sh` (via) |
+| `mesh-tournament-probe.sh` | Mutation probe for the Phase 7 tournament runner: flips the attempt outcome's check verdict in the engine tournament source via `mutation-probe.sh`, requires the mesh-tournament suite red, then green after restore | Phase 7 S4 verification | `mutation-probe.sh` (via) |
 | `mutation-probe.sh` | The one mutation probe: break a tracked file on purpose, prove the test goes red, restore it byte-identically, prove green again | Selftest authors, QA / Release Engineer | `proof-selftest.sh` |
 | `lint-brief.sh` | Shape lint for bot briefs: Goal, Done when, Scope, Report back | `scripts/verify.sh`, bot handoff | `lint-brief-selftest.sh` |
 | `lint-brief-selftest.sh` | Hermetic selftest for the brief linter | Pre-commit / verification | Self |
@@ -337,6 +338,13 @@ All scripts in this directory are cataloged below. Automated verification is enf
 ### `mesh-judge-probe.sh`
 - **Purpose**: Mutation probe for the Phase 7 mesh judge (design §10 S3). Delegates to `mutation-probe.sh`: flips the Stage 0 exit-code check (`return checkExit === 0;` → `!==`) in the engine's mesh judge source at packages/engine/src/mesh/judge.ts, requires the mesh-judge suite to go RED, restores the file byte-for-byte, and requires GREEN again. A hard 5-minute cap comes from `perl -e alarm`, whose timer survives the exec into the probe and its child test runs (macOS has no `timeout` binary).
 - **Usage**: `scripts/mesh-judge-probe.sh` (no arguments).
+- **Exit Codes**: whatever `mutation-probe.sh` returns (`0` on GREEN → RED → GREEN).
+- **Selftest**: via `scripts/proof-selftest.sh` (the underlying probe).
+- **Trigger**: Phase 7 verification, automated job proof.
+
+### `mesh-tournament-probe.sh`
+- **Purpose**: Mutation probe for the Phase 7 tournament runner (design §10 S4). Delegates to `mutation-probe.sh`: flips the attempt outcome's check verdict (removes the negation of the check verdict) in packages/engine/src/mesh/tournament.ts, requires the mesh-tournament suite to go RED, restores the file byte-for-byte, and requires GREEN again. A hard 5-minute cap comes from `perl -e alarm`, whose timer survives the exec into the probe and its child test runs (macOS has no `timeout` binary).
+- **Usage**: `scripts/mesh-tournament-probe.sh` (no arguments).
 - **Exit Codes**: whatever `mutation-probe.sh` returns (`0` on GREEN → RED → GREEN).
 - **Selftest**: via `scripts/proof-selftest.sh` (the underlying probe).
 - **Trigger**: Phase 7 verification, automated job proof.
