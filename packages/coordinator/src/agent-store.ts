@@ -70,6 +70,12 @@ export interface AgentRecord {
   voiceNotes?: boolean;
   /** How replies are shaped. Absent = "default". */
   replyStyle?: "default" | "concise" | "detailed";
+  /** Newest-first list of this agent's threads/tasks. Transient, reset on load. */
+  tasks?: AgentTask[];
+  /** Currently active thread id. */
+  threadId?: string;
+  /** Where a routine without its own thread reports. */
+  mainThreadId?: string;
 }
 
 export interface CreateAgentInput {
@@ -102,6 +108,29 @@ export interface CreateAgentInput {
   speakReplies?: boolean;
   voiceNotes?: boolean;
   replyStyle?: "default" | "concise" | "detailed";
+}
+
+/** One task (thread) belonging to an agent. */
+export interface AgentTask {
+  id: string;
+  threadId: string;
+  title: string;
+  status: "todo" | "in_progress" | "done" | "blocked";
+  agentId?: string;
+  pinned: boolean;
+  unread: boolean;
+  createdAt: number;
+  updatedAt: number;
+  metadata?: Record<string, unknown>;
+}
+
+/** Body for creating a new task/thread for an agent. */
+export interface CreateAgentTaskInput {
+  threadId: string;
+  title: string;
+  status?: "todo" | "in_progress" | "done" | "blocked";
+  pinned?: boolean;
+  metadata?: Record<string, unknown>;
 }
 
 /** Fields allowed to be patched on an existing agent's profile. */
@@ -345,6 +374,66 @@ export class AgentStore {
 
     await this.saveRecordAtomic(updated);
     return updated;
+  }
+
+  /** Create a new task/thread for an agent. */
+  async createAgentTask(agentIdOrName: string, input: CreateAgentTaskInput): Promise<AgentTask> {
+    const agent = await this.getAgent(agentIdOrName);
+    if (!agent) {
+      throw new Error(`Agent [${agentIdOrName}] not found in store`);
+    }
+
+    const task: AgentTask = {
+      id: `task_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`,
+      threadId: input.threadId,
+      title: input.title,
+      status: input.status ?? "todo",
+      agentId: agent.id,
+      pinned: input.pinned ?? false,
+      unread: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      metadata: input.metadata,
+    };
+
+    const updated: AgentRecord = {
+      ...agent,
+      tasks: [...(agent.tasks ?? []), task],
+      threadId: input.threadId,
+      updatedAt: Date.now(),
+    };
+
+    await this.saveRecordAtomic(updated);
+    return task;
+  }
+
+  /** Switch an agent's active thread. */
+  async switchAgentThread(agentIdOrName: string, threadId: string): Promise<AgentRecord> {
+    const agent = await this.getAgent(agentIdOrName);
+    if (!agent) {
+      throw new Error(`Agent [${agentIdOrName}] not found in store`);
+    }
+
+    const task = agent.tasks?.find((t) => t.threadId === threadId);
+    if (!task) {
+      throw new Error(`Thread [${threadId}] not found for agent [${agentIdOrName}]`);
+    }
+
+    const updated: AgentRecord = {
+      ...agent,
+      threadId,
+      updatedAt: Date.now(),
+    };
+
+    await this.saveRecordAtomic(updated);
+    return updated;
+  }
+
+  /** List tasks for an agent. */
+  async listAgentTasks(agentIdOrName: string): Promise<AgentTask[]> {
+    const agent = await this.getAgent(agentIdOrName);
+    if (!agent) return [];
+    return [...(agent.tasks ?? [])].sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   /** Patch profile fields (name/role/systemPrompt/soul) and compute soulHash. */
