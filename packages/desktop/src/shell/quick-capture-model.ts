@@ -41,7 +41,7 @@ export interface TurnEvent {
   token?: string;
   text?: string;
   message?: string;
-  data?: { token?: string; message?: string; sessionId?: string } | null;
+  data?: { token?: string; message?: string; sessionId?: string; response?: string } | null;
 }
 
 export function isBusy(status: QuickCaptureStatus): boolean {

@@ -10,6 +10,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 
 | Script | Purpose | Trigger / Caller | Selftest |
 | :--- | :--- | :--- | :--- |
+| `Chat.tsx` | Phase 5 screen component scaffolded by `screen-kit.sh` (wired into Shell.tsx by the row's PR) | Phase 5 row work | chat-real-window.test.ts |
 | `bench-cold-start.ts` | Benchmark daemon startup latency | Manual performance testing | None |
 | `bench-first-token.ts` | Benchmark engine model time-to-first-token | Manual performance testing | None |
 | `check-doc-links.sh` | Check that local markdown links under `docs/` resolve to real files | `scripts/verify.sh`, CI | `check-doc-links-selftest.sh` |
@@ -358,4 +359,11 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Usage**: `scripts/screen-kit.sh <ScreenName>` (PascalCase); `scripts/screen-kit.sh --selftest` runs a hermetic selftest (temp-dir scaffold, catalog-row and refusal checks; no Electron).
 - **Exit Codes**: `0` on success, `1` on refusal or selftest failure.
 - **Selftest**: the `--selftest` flag (hermetic; the generated real-window test is exercised by the kit's sample run, not by CI).
+- **Trigger**: Phase 5 row work.
+
+### `Chat.tsx`
+- **Purpose**: Phase 5 screen scaffolded by `screen-kit.sh`: component with loading / empty / ready / error(+Retry) states, keyboard-focusable rows, no small-screen overflow. Replace the demo `items`/`error` props with the row's real data source and wire it into `Shell.tsx`.
+- **Usage**: `scripts/screen-kit.sh Chat`.
+- **Exit Codes**: `0` on success, `1` on refusal (existing screen, non-PascalCase name, unknown flag).
+- **Selftest**: chat-real-window.test.ts (real Electron window at 960x740 and 1920x1080; screenshots land in the gitignored .opensand-snapshots/screen-kit/chat/ folder, never committed).
 - **Trigger**: Phase 5 row work.
