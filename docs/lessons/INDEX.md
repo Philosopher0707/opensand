@@ -38,6 +38,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [A `df -k /` free-space guard measures the read-only system snapshot](2026-11-19-df-root-reports-read-only-system-snapshot.md)
 - 2026-11-19 · [A full test run rewrites tracked screenshots, and `save` stages them](2026-11-19-full-test-run-rewrites-tracked-screenshots.md)
 - 2026-11-19 · ["No CI checks appeared" can be a queued run, not a broken push](2026-11-19-gate-no-checks-appeared-vs-queued-run.md)
+- 2026-11-19 · [Re-running the gate on a merged PR rebased and force-pushed the merged branch](2026-11-19-gate-rerun-rebased-a-merged-pr.md)
 - 2026-11-19 · [The judge's tie band fires without a reviewer — separate the costs or expect fallback-deterministic](2026-11-19-judge-tie-band-fires-without-a-reviewer.md)
 - 2026-11-19 · [A lease file inside the attempt worktree would dirty every snapshot](2026-11-19-lease-file-inside-worktree.md)
 - 2026-11-19 · [Wilson boundary numbers in a design doc must be checked against the formula before tests pin them](2026-11-19-mesh-wilson-fixture-numbers.md)
