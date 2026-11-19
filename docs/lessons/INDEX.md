@@ -31,6 +31,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [The brief lint missed "Report back with:" and mis-coded unreadable files](2026-11-19-brief-lint-label-and-exit-code.md)
 - 2026-11-19 · [The scripts-catalog check reads every backticked *.ts in README.md as a script](2026-11-19-catalog-check-reads-backticked-source-paths.md)
 - 2026-11-19 · [CI speed-up: skip the heavy suite for docs-only PRs, and the gate bans `.github/` changes](2026-11-19-ci-speedup-docs-only-skip-and-gate-github-ban.md)
+- 2026-11-19 · [clean-disk.sh measured the read-only system snapshot instead of the Data volume](2026-11-19-clean-disk-measured-readonly-system-snapshot.md)
 - 2026-11-19 · [Clean-disk wipes workspace dist; Electron's module import then hangs instead of failing](2026-11-19-clean-disk-wipes-workspace-dist-electron-import-hangs.md)
 - 2026-11-19 · [A full test run rewrites tracked screenshots, and `save` stages them](2026-11-19-full-test-run-rewrites-tracked-screenshots.md)
 - 2026-11-19 · ["No CI checks appeared" can be a queued run, not a broken push](2026-11-19-gate-no-checks-appeared-vs-queued-run.md)
