@@ -3,6 +3,7 @@ set -euo pipefail
 # Hermetic selftest for scripts/worktree.sh
 # Tests:
 #   1. 'new' bases on origin/main even when local main is stale
+#   1b. Free-space guard measures the writable data volume (df stub), not /
 #   2. 'new' refuses if path or branch already exists
 #   3. 'review' creates a detached HEAD worktree
 #   4. 'done' refuses dirty worktree
@@ -138,6 +139,55 @@ if [ "$WT_BASE_SHA" != "$ORIGIN_MAIN_SHA" ]; then
   FAILED=1
 fi
 echo "PASS test-1: new worktree properly based on latest origin/main"
+
+# --- Test 1b: free-space guard measures the writable data volume, not / ---
+echo "==> Testing free-space guard volume selection (df stub)..."
+DF_BIN="$WORK/df-bin"
+mkdir -p "$DF_BIN"
+# Stub df logs the path it was asked about and answers only for the writable data volume
+# (/System/Volumes/Data on macOS, $HOME on Linux CI); every other path reports 0 free, so a
+# guard that still measures / would fail the 3 GB check.
+cat << 'EOS' > "$DF_BIN/df"
+printf '%s\n' "$2" >> "$DF_STUB_LOG"
+echo "Filesystem     1024-blocks      Used Available Capacity  Mounted on"
+if [ "$2" = "/System/Volumes/Data" ] || { [ -n "${DF_STUB_HOME:-}" ] && [ "$2" = "$DF_STUB_HOME" ]; }; then
+  echo "/dev/disk99    1000000    900000   10000000    90%    $2"
+else
+  echo "/dev/disk98    1000000    900000          0   100%    $2"
+fi
+exit 0
+EOS
+chmod +x "$DF_BIN/df"
+export DF_STUB_HOME="$HOME"
+DF_STUB_LOG="$WORK/df_paths.log"
+: > "$DF_STUB_LOG"
+DF_SCRATCH="$WORK/df-scratch"
+status=0
+df_out=$(
+  cd "$MOCK_LOCAL" && \
+  PATH="$DF_BIN:$PATH" DF_STUB_LOG="$DF_STUB_LOG" \
+  OPENSAND_SCRATCH_DIR="$DF_SCRATCH" OPENSAND_BASE_DIR="$DF_SCRATCH/opensand-base" \
+  bash "$WORKTREE_SCRIPT" new df-guard-job 2>&1
+) || status=$?
+DF_EXPECT="/System/Volumes/Data"
+if [ ! -d "$DF_EXPECT" ]; then DF_EXPECT="$HOME"; fi
+if [ "$status" -ne 0 ]; then
+  echo "FAIL test-1b: 'new' failed although the data volume has space (status $status): $df_out"
+  FAILED=1
+fi
+if ! grep -qxF "$DF_EXPECT" "$DF_STUB_LOG"; then
+  echo "FAIL test-1b: free-space guard did not measure $DF_EXPECT (df saw: $(tr '\n' ' ' < "$DF_STUB_LOG"))"
+  FAILED=1
+fi
+if grep -qxF "/" "$DF_STUB_LOG"; then
+  echo "FAIL test-1b: free-space guard measured the read-only system snapshot /"
+  FAILED=1
+fi
+[ -d "$DF_SCRATCH/opensand-df-guard-job" ] || {
+  echo "FAIL test-1b: worktree was not created"
+  FAILED=1
+}
+echo "PASS test-1b: free-space guard measured $DF_EXPECT, not /"
 
 # --- Test 2: 'new' refuses if path or branch already exists ---
 echo "==> Testing 'worktree.sh new' duplicate refusal..."

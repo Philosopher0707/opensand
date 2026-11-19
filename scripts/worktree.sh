@@ -20,6 +20,8 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Source shared safety predicates
 source "$SCRIPT_DIR/lib/worktree-safety.sh"
+# Free-space guard measures the writable data volume (DISK_PATH), not the system snapshot
+source "$SCRIPT_DIR/lib/free-space.sh"
 
 SCRATCH_DIR="${OPENSAND_SCRATCH_DIR:-$HOME/dev/_scratch}"
 CLEAN_DISK_SCRIPT="${OPENSAND_CLEAN_DISK_SCRIPT:-$SCRIPT_DIR/clean-disk.sh}"
@@ -137,15 +139,15 @@ case "$cmd" in
     fi
 
     # 3. Check free disk space (< 3 GB check after attempting clean-disk.sh --yes)
-    AVAIL_GB=$(df -k / 2>/dev/null | awk 'NR==2 {print int($4 / 1024 / 1024)}' || echo "10")
+    AVAIL_GB=$(df -k "$DISK_PATH" 2>/dev/null | awk 'NR==2 {print int($4 / 1024 / 1024)}' || echo "10")
     if [[ "$AVAIL_GB" -lt 3 ]]; then
-      echo "Notice: free disk is under 3 GB (${AVAIL_GB} GB available). Attempting clean-disk.sh --yes..."
+      echo "Notice: free disk is under 3 GB (${AVAIL_GB} GB available on $DISK_PATH). Attempting clean-disk.sh --yes..."
       if [[ -f "$CLEAN_DISK_SCRIPT" ]]; then
         bash "$CLEAN_DISK_SCRIPT" --yes || true
       fi
-      AVAIL_GB=$(df -k / 2>/dev/null | awk 'NR==2 {print int($4 / 1024 / 1024)}' || echo "10")
+      AVAIL_GB=$(df -k "$DISK_PATH" 2>/dev/null | awk 'NR==2 {print int($4 / 1024 / 1024)}' || echo "10")
       if [[ "$AVAIL_GB" -lt 3 ]]; then
-        echo "FAIL: Insufficient disk space: ${AVAIL_GB} GB available (< 3 GB required)." >&2
+        echo "FAIL: Insufficient disk space: ${AVAIL_GB} GB available on $DISK_PATH (< 3 GB required)." >&2
         exit 1
       fi
     fi

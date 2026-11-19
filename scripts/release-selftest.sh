@@ -3,6 +3,7 @@ set -euo pipefail
 # Hermetic selftest for scripts/release.sh
 # Covers:
 #   1. Dry-run execution showing all 8 steps
+#   1b. Disk guard measures the writable data volume (df stub), not /
 #   2. Missing argument / invalid flag handling
 #   3. Pending CI on bump PR (exit 3 with re-run instructions)
 #   4. Failed bump PR gate (non-zero failure)
@@ -276,6 +277,46 @@ for step in 1 2 3 4 5 6 7 8 9; do
 done
 if [ "$FAILED" -eq 0 ]; then
   echo "PASS case1-dry-run: all 9 steps verified"
+fi
+
+# --- Case 1b: disk guard measures the writable data volume, not / ---
+dir="$WORK/case1b-disk-volume"
+mkdir -p "$dir/bin"
+# Stub df logs the path it was asked about and answers only for the writable data volume
+# (/System/Volumes/Data on macOS, $HOME on Linux CI); every other path reports 0 free.
+cat << 'EOS' > "$dir/bin/df"
+printf '%s\n' "$2" >> "$DF_STUB_LOG"
+echo "Filesystem     1024-blocks      Used Available Capacity  Mounted on"
+if [ "$2" = "/System/Volumes/Data" ] || { [ -n "${DF_STUB_HOME:-}" ] && [ "$2" = "$DF_STUB_HOME" ]; }; then
+  echo "/dev/disk99    1000000    900000   10000000    90%    $2"
+else
+  echo "/dev/disk98    1000000    900000          0   100%    $2"
+fi
+exit 0
+EOS
+chmod +x "$dir/bin/df"
+export DF_STUB_HOME="$HOME"
+DF_STUB_LOG="$dir/df_paths.log"
+: > "$DF_STUB_LOG"
+out=$(PATH="$dir/bin:$PATH" DF_STUB_LOG="$DF_STUB_LOG" bash "$RELEASE_SCRIPT" --dry-run 0.1.11 2>&1) || true
+printf '%s\n' "$out" > "$dir/run.out"
+expected_vol="/System/Volumes/Data"
+if [ ! -d "$expected_vol" ]; then expected_vol="$HOME"; fi
+if ! grep -q "PASS: disk space is sufficient (9 GB available)" <<< "$out"; then
+  echo "FAIL case1b-disk-volume: Step 1 did not read 9 GB from the data volume"
+  echo "$out" | sed -n '/Step 1\/9/,+3p' | sed 's/^/    | /'
+  FAILED=1
+fi
+if ! grep -qxF "$expected_vol" "$DF_STUB_LOG"; then
+  echo "FAIL case1b-disk-volume: disk guard did not measure $expected_vol (df saw: $(tr '\n' ' ' < "$DF_STUB_LOG"))"
+  FAILED=1
+fi
+if grep -qxF "/" "$DF_STUB_LOG"; then
+  echo "FAIL case1b-disk-volume: disk guard measured the read-only system snapshot /"
+  FAILED=1
+fi
+if [ "$FAILED" -eq 0 ]; then
+  echo "PASS case1b-disk-volume: disk guard measured $expected_vol, not /"
 fi
 
 # --- Case 2: Argument validation ---

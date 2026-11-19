@@ -41,7 +41,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `pre-commit.sh` | Git pre-commit hook enforcing staged-secret scan, blanket-add guard and test suite | Git pre-commit hook | `pre-commit-selftest.sh` |
 | `pre-commit-selftest.sh` | Hermetic selftest for the staged secret scan in `pre-commit.sh` (clean commit allowed, each blocked pattern refused, hook run from outside the repo) | Pre-commit / verification | Self |
 | `provenance-gate.sh` | Build artifact provenance and digest verification gate | Release workflows / CI | None |
-| `release.sh` | 9-step end-to-end automated release pipeline; Step 9 runs the post-install health check | Release Engineer / CI | `release-selftest.sh` |
+| `release.sh` | 9-step end-to-end automated release pipeline; Step 1 guards free space on the writable data volume; Step 9 runs the post-install health check | Release Engineer / CI | `release-selftest.sh` |
 | `release-check.sh` | Full release verification and smoke test gate | Pre-release sanity gate | None |
 | `release-selftest.sh` | Hermetic selftest for automated release pipeline | Pre-commit / verification | Self |
 | `smoke-packaged.sh` | Packaged application launch verification in isolated state | CI / release smoke gate | None |
@@ -53,7 +53,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `verify-linux.sh` | Run verification suite inside isolated Linux container | Local pre-CI cross-platform test | None |
 | `verify-selftest.sh` | Hermetic selftest for verify.sh guardrails | Verification test suite | Self |
 | `verify.sh` | Core repository verification gate (versions, build, tests, tripwires) | CI, pre-commit, manual | `verify-selftest.sh` |
-| `worktree.sh` | OpenSand automated worktree lifecycle manager (base, new, save, review, done, list, prune) | Developer, bots, release automation | `worktree-selftest.sh` |
+| `worktree.sh` | OpenSand automated worktree lifecycle manager (base, new, save, review, done, list, prune); `new` guards free space on the writable data volume | Developer, bots, release automation | `worktree-selftest.sh` |
 | `worktree-selftest.sh` | Hermetic selftest suite for worktree lifecycle manager | Pre-commit / verification | Self |
 
 ---
@@ -243,7 +243,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Release pipeline.
 
 ### `release.sh`
-- **Purpose**: 9-step automated release pipeline (disk space guard, bump PR, pr-gate merge, tag push, artifact download, release notes from merged PR titles, smoke check, DMG plist verification, and optional install followed by a post-install health check).
+- **Purpose**: 9-step automated release pipeline (disk space guard on the writable data volume, bump PR, pr-gate merge, tag push, artifact download, release notes from merged PR titles, smoke check, DMG plist verification, and optional install followed by a post-install health check).
 - **Usage**: `scripts/release.sh [--dry-run] [--install] <version>`
 - **Env**: `RELEASE_DOWNLOAD_TIMEOUT_SECONDS` (default `600`) and `RELEASE_DOWNLOAD_POLL_SECONDS` (default `15`) bound the Step 5 retry that waits for `release.yml` to publish the assets. `OPENSAND_HEALTH_CHECK_SCRIPT` overrides the Step 9 health check path for the selftest.
 - **Exit Codes**: `0` on success, `1` on general failure, `2` on smoke test failure, `3` on pending bump PR CI.
@@ -258,7 +258,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Pre-release verification.
 
 ### `release-selftest.sh`
-- **Purpose**: Hermetic selftest suite for `release.sh` stubbing GitHub CLI, git, hdiutil, and verify commands.
+- **Purpose**: Hermetic selftest suite for `release.sh` stubbing GitHub CLI, git, hdiutil, verify commands, and (for the disk guard) `df`.
 - **Usage**: `scripts/release-selftest.sh`
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
@@ -358,7 +358,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Developer CLI, Gump/Rigel bot tasks, automation routines.
 
 ### `worktree-selftest.sh`
-- **Purpose**: Hermetic selftest suite verifying the base clone, worktree creation, branch isolation, review worktree detachment, dirty/unmerged/unpushed refusal, pruning dry-run, and `save` (explicit-path staging, secret refusal per pattern with runtime-built fake tokens, hooks on, push verification, one draft PR).
+- **Purpose**: Hermetic selftest suite verifying the base clone, worktree creation (including the `df` stub proving the free-space guard measures the data volume), branch isolation, review worktree detachment, dirty/unmerged/unpushed refusal, pruning dry-run, and `save` (explicit-path staging, secret refusal per pattern with runtime-built fake tokens, hooks on, push verification, one draft PR).
 - **Usage**: `scripts/worktree-selftest.sh`
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.

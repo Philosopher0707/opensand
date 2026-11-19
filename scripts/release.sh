@@ -22,6 +22,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Disk guard measures the writable data volume (DISK_PATH), not the read-only system snapshot
+source "$ROOT/scripts/lib/free-space.sh"
+
 CLEAN_DISK_SCRIPT="${OPENSAND_CLEAN_DISK_SCRIPT:-$ROOT/scripts/clean-disk.sh}"
 PR_GATE_SCRIPT="${OPENSAND_PR_GATE_SCRIPT:-$ROOT/scripts/pr-gate.sh}"
 SMOKE_SCRIPT="${OPENSAND_SMOKE_SCRIPT:-$ROOT/scripts/smoke-packaged.sh}"
@@ -71,9 +74,9 @@ TAG="v$VERSION"
 
 # --- Step 1: Disk Space Guard (< 8 GB) ---
 echo "==> [Step 1/9] Checking free disk space..."
-AVAIL_GB=$(df -k / 2>/dev/null | awk 'NR==2 {print int($4 / 1024 / 1024)}' || echo "10")
+AVAIL_GB=$(df -k "$DISK_PATH" 2>/dev/null | awk 'NR==2 {print int($4 / 1024 / 1024)}' || echo "10")
 if [[ "$AVAIL_GB" -lt 8 ]]; then
-  echo "Disk space is under 8 GB (${AVAIL_GB} GB available)."
+  echo "Disk space is under 8 GB (${AVAIL_GB} GB available on $DISK_PATH)."
   if [[ -f "$CLEAN_DISK_SCRIPT" ]]; then
     if [[ "$DRY_RUN" -eq 1 ]]; then
       echo "DRY RUN: would run $CLEAN_DISK_SCRIPT --yes"
