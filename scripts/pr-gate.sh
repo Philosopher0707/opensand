@@ -5,8 +5,11 @@
 # --when-green  First wait for pending CI with `gh pr checks --watch` (bounded by
 #               --timeout minutes, default 40), then run the normal 5 checks and merge.
 #               Red CI exits 1 and names the failing job; a timeout exits 3. "No checks
-#               reported" is pending for up to 5 min (or --timeout, if sooner), then
-#               exits 3 with "no CI checks appeared after <N>s".
+#               reported" is pending for up to 5 min (or --timeout, if sooner); a queued or
+#               in-progress workflow run for the head commit (read from the per-run Jobs API,
+#               since `gh run list` status can lag) extends that wait, bounded by
+#               PR_GATE_QUEUED_RUN_MAX_SECONDS (default 600), then exits 3 with
+#               "no CI checks appeared after <N>s".
 #               A PR whose base is behind origin/main is rebased onto it and pushed with
 #               --force-with-lease before the wait, then its new CI is awaited. A
 #               conflicting rebase stops with the conflicting files named, nothing pushed.
@@ -155,13 +158,20 @@ if [[ "$WHEN_GREEN" -eq 1 ]]; then
   POLL_SECONDS="${PR_GATE_POLL_SECONDS:-5}"
   # CI registers its checks a few seconds after a push or PR creation, and until then `gh pr checks`
   # fails with "no checks reported": that is pending, not red. Wait for them, bounded by a 5-minute
-  # grace period (or the --timeout deadline, whichever is sooner).
+  # grace period (or the --timeout deadline, whichever is sooner). A workflow run can already be
+  # queued before GitHub registers any check on the PR, so a queued/in-progress run for the head
+  # commit extends the grace period, itself bounded by PR_GATE_QUEUED_RUN_MAX_SECONDS (default 600).
   NO_CHECKS_GRACE_SECONDS="${PR_GATE_NO_CHECKS_GRACE_SECONDS:-300}"
   NO_CHECKS_DEADLINE=$((SECONDS + NO_CHECKS_GRACE_SECONDS))
   if [[ "$NO_CHECKS_DEADLINE" -gt "$DEADLINE" ]]; then
     NO_CHECKS_DEADLINE="$DEADLINE"
   fi
   NO_CHECKS_SINCE=$SECONDS
+  QUEUED_RUN_MAX_SECONDS="${PR_GATE_QUEUED_RUN_MAX_SECONDS:-600}"
+  NO_CHECKS_HARD_DEADLINE=$((NO_CHECKS_SINCE + QUEUED_RUN_MAX_SECONDS))
+  if [[ "$NO_CHECKS_HARD_DEADLINE" -gt "$DEADLINE" ]]; then
+    NO_CHECKS_HARD_DEADLINE="$DEADLINE"
+  fi
   CHECKS_OUT="$(mktemp "${TMPDIR:-/tmp}/pr-gate-checks.XXXXXX")"
   REBASE_DIR=""
   REBASE_WT=""
@@ -179,8 +189,63 @@ if [[ "$WHEN_GREEN" -eq 1 ]]; then
     fi
   }
   trap cleanup_rebase EXIT
+  # A queued workflow run is pending CI, not a missing check. The per-run Jobs API is the source
+  # of truth because `gh run list` status can lag the real job state; fail closed if gh cannot
+  # be read. On success sets QUEUED_DESC to the still-running jobs, for progress and failure
+  # messages.
+  queued_run_for_head() {
+    QUEUED_DESC=""
+    local head_json head_sha runs_json run_id jobs_json names
+    head_json=$(gh pr view "$PR" --json headRefOid 2>/dev/null) || return 1
+    head_sha=$(node -e 'try{console.log((JSON.parse(process.argv[1]).headRefOid)||"")}catch{process.exit(1)}' "$head_json" 2>/dev/null || true)
+    [[ -n "$head_sha" ]] || return 1
+    # `gh run list --commit` only names the candidate runs; run state comes from the Jobs API,
+    # so a stale status there (e.g. COMPLETED while a job is still in progress) cannot hide a
+    # pending run.
+    runs_json=$(gh run list --commit "$head_sha" --json databaseId,headSha 2>/dev/null) || return 1
+    while IFS= read -r run_id; do
+      [[ -n "$run_id" ]] || continue
+      jobs_json=$(gh api "repos/{owner}/{repo}/actions/runs/$run_id/jobs" 2>/dev/null) || return 1
+      names=$(node -e '
+const data = JSON.parse(process.argv[1] || "{}");
+const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+const pending = ["queued", "in_progress", "pending", "waiting", "requested"];
+// A run whose jobs have not materialized yet has not started: still running.
+if (jobs.length === 0) {
+  console.log("no jobs reported yet");
+} else {
+  const still = jobs.filter((j) => pending.includes(String(j.status || "").toLowerCase()))
+    .map((j) => j.name + " (" + (j.status || "unknown") + ")");
+  if (still.length > 0) console.log(still.join(", "));
+}
+' "$jobs_json" 2>/dev/null) || return 1
+      if [[ -n "$names" ]]; then
+        QUEUED_DESC="${QUEUED_DESC:+$QUEUED_DESC; }run #$run_id: $names"
+      fi
+    done < <(node -e '
+const runs = JSON.parse(process.argv[1] || "[]");
+const sha = process.argv[2];
+for (const run of (Array.isArray(runs) ? runs : [])) {
+  if (!run.headSha || run.headSha === sha) console.log(run.databaseId);
+}
+' "$runs_json" "$head_sha" 2>/dev/null)
+    [[ -n "$QUEUED_DESC" ]]
+  }
+
   no_checks_fail() {
-    echo "FAIL: no CI checks appeared after $((SECONDS - NO_CHECKS_SINCE))s for PR #$PR" >&2
+    if queued_run_for_head && [[ "$SECONDS" -lt "$NO_CHECKS_HARD_DEADLINE" ]]; then
+      echo "==> [when-green] CI run for head commit is queued/in progress ($QUEUED_DESC); waiting for checks to register..."
+      NO_CHECKS_DEADLINE=$((SECONDS + NO_CHECKS_GRACE_SECONDS))
+      if [[ "$NO_CHECKS_DEADLINE" -gt "$NO_CHECKS_HARD_DEADLINE" ]]; then
+        NO_CHECKS_DEADLINE="$NO_CHECKS_HARD_DEADLINE"
+      fi
+      return 0
+    fi
+    if [[ -n "$QUEUED_DESC" ]]; then
+      echo "FAIL: no CI checks appeared after $((SECONDS - NO_CHECKS_SINCE))s for PR #$PR; CI still queued: $QUEUED_DESC" >&2
+    else
+      echo "FAIL: no CI checks appeared after $((SECONDS - NO_CHECKS_SINCE))s for PR #$PR" >&2
+    fi
     exit 3
   }
 
@@ -347,7 +412,10 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
           git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
           echo "FAIL: rebasing PR #$PR onto origin/main conflicts; nothing pushed. Resolve these files by hand:" >&2
           if [[ -n "$CONFLICTS" ]]; then
-            printf '  %s\n' $CONFLICTS >&2
+            while IFS= read -r conflict_file; do
+              [[ -n "$conflict_file" ]] || continue
+              printf '  %s\n' "$conflict_file" >&2
+            done <<< "$CONFLICTS"
           else
             echo "  (git reported no unmerged files; see the rebase output above)" >&2
           fi
@@ -459,7 +527,6 @@ fi
 echo "$CHECK1_OUT"
 
 BASE_REF_OID=$(node -e 'console.log(JSON.parse(process.argv[1]).baseRefOid || "")' "$PR_JSON")
-HEAD_REF_OID=$(node -e 'console.log(JSON.parse(process.argv[1]).headRefOid || "")' "$PR_JSON")
 
 echo "==> [Check 2/5] Checking that PR base is up to date with origin/main..."
 if ! REMOTE_MAIN_LINE=$(git ls-remote origin refs/heads/main 2>&1); then
@@ -572,7 +639,7 @@ if ! TAG_REMOTE_LINE=$(git ls-remote --tags origin "$TAG" 2>&1); then
 fi
 TAG_REMOTE_SHA=$(echo "$TAG_REMOTE_LINE" | awk '{print $1}' | head -n 1)
 if [[ -z "$TAG_REMOTE_SHA" || "$TAG_REMOTE_SHA" != "$REMOTE_MAIN_SHA" ]]; then
-  echo "FAIL: checkpoint tag verification failed: expected $REMOTE_MAIN_SHA, got '\''${TAG_REMOTE_SHA}'\''" >&2
+  printf "FAIL: checkpoint tag verification failed: expected %s, got '%s'\n" "$REMOTE_MAIN_SHA" "$TAG_REMOTE_SHA" >&2
   exit 1
 fi
 echo "PASS: checkpoint tag $TAG verified on origin pointing to $REMOTE_MAIN_SHA"
