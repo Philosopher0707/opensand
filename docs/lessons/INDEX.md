@@ -44,6 +44,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [Wilson boundary numbers in a design doc must be checked against the formula before tests pin them](2026-11-19-mesh-wilson-fixture-numbers.md)
 - 2026-11-19 · [The mission log is event-log.jsonl, not log.jsonl — hand-built log paths silently fork the records](2026-11-19-mission-log-is-event-log-jsonl.md)
 - 2026-11-19 · [scripts/mutation-probe.sh refuses untracked files — commit the slice before probing](2026-11-19-mutation-probe-needs-a-tracked-file.md)
+- 2026-11-19 · [A phase done-when named a suite that no phase had built](2026-11-19-phase8-done-when-named-a-missing-suite.md)
 - 2026-11-19 · [A release install is not done until the installed app answers](2026-11-19-post-install-health-check.md)
 - 2026-11-19 · [PR #124's rebase always conflicted on the generated lessons index](2026-11-19-pr-gate-index-conflict-auto-resolve.md)
 - 2026-11-19 · ["No checks reported" is pending, not a red gate](2026-11-19-pr-gate-no-checks-is-pending.md)
