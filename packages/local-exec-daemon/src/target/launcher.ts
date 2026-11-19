@@ -184,3 +184,132 @@ export async function reconcileContainers(
   }
   return removed;
 }
+
+// ---------------------------------------------------------------------------
+// The SSH launcher (docs/design/phase8-reach.md §4.3, §4.4, §6.2)
+// ---------------------------------------------------------------------------
+
+export interface SshTargetSpec {
+  host: string;
+  /** Absolute path on the host; mission dirs live under `<root>/missions/`. */
+  root: string;
+  /** Extra ssh arguments from targets.json (user's config; no passwords). */
+  sshArgs?: string[];
+  missionId: string;
+  /** OPENSAND_TARGET_ID inside every remote exec. */
+  targetId: string;
+  /** Local directory of the deployed target bundle (`pnpm target:build`). */
+  bundleDir: string;
+  /** Local mission workspace that push mirrors to `<root>/missions/<id>`. */
+  workspaceRoot: string;
+  sandbox: "bwrap" | "none";
+}
+
+/**
+ * The ssh argument array for one remote command: the user's sshArgs first, our
+ * `BatchMode=yes` last (it wins, so a target can never sit on a password
+ * prompt). Host-key checking stays whatever the user's SSH config says —
+ * Phase 8 never adds `StrictHostKeyChecking=no`. Agent auth is the user's own
+ * `SSH_AUTH_SOCK`, passed only to the `ssh` process, never to a remote command.
+ */
+export function sshCommandArgs(spec: Pick<SshTargetSpec, "host" | "sshArgs">, command: string): string[] {
+  return [...(spec.sshArgs ?? []), "-o", "BatchMode=yes", spec.host, command];
+}
+
+/** §6.2's bubblewrap probe for a mission-level SSH target. */
+export const BWRAP_PROBE = "bwrap --ro-bind / / --dev /dev --proc /proc --unshare-net true true";
+
+/** The environment the ssh child gets: PATH, HOME and the agent socket only. */
+export function sshChildEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  if (process.env.PATH) env.PATH = process.env.PATH;
+  if (process.env.HOME) env.HOME = process.env.HOME;
+  if (process.env.SSH_AUTH_SOCK) env.SSH_AUTH_SOCK = process.env.SSH_AUTH_SOCK;
+  return env;
+}
+
+/**
+ * Preflight the SSH host: node >= 22, rsync, and (for a bwrap sandbox) the
+ * §6.2 probe. Refusals are `target-toolchain-missing` / `target-bwrap-missing`;
+ * the local workspace is never touched by a failed preflight.
+ */
+export async function sshPreflight(spec: SshTargetSpec): Promise<string> {
+  const { remoteExec } = await import("./sync.js");
+  const opts = { host: spec.host, sshArgs: spec.sshArgs };
+  let node: string;
+  try {
+    node = (await remoteExec("node --version", opts)).stdout.trim();
+  } catch (err) {
+    throw new TargetLinkError(TargetErrorCodes.ToolchainMissing, `target-toolchain-missing: cannot run node on ${spec.host}: ${(err as Error).message}`);
+  }
+  const match = /v(\d+)\./.exec(node);
+  if (!match || Number(match[1]) < 22) {
+    throw new TargetLinkError(TargetErrorCodes.ToolchainMissing, `target-toolchain-missing: ${spec.host} provides ${node || "no node"}; node >= 22 is required`);
+  }
+  const rsync = await remoteExec("rsync --version", opts).catch(() => ({ exitCode: 1, stdout: "", stderr: "" }));
+  if (rsync.exitCode !== 0) {
+    throw new TargetLinkError(TargetErrorCodes.ToolchainMissing, `target-toolchain-missing: rsync is not available on ${spec.host}`);
+  }
+  if (spec.sandbox === "bwrap") {
+    const bwrap = await remoteExec(BWRAP_PROBE, opts).catch(() => ({ exitCode: 1, stdout: "", stderr: "" }));
+    if (bwrap.exitCode !== 0) {
+      throw new TargetLinkError(TargetErrorCodes.ToolchainMissing, `target-bwrap-missing: the bwrap probe failed on ${spec.host}: ${bwrap.stderr.trim() || bwrap.stdout.trim() || "unknown error"}`);
+    }
+  }
+  return node;
+}
+
+export class SshTargetLauncher {
+  private deployedHash: string | null = null;
+
+  constructor(private readonly spec: SshTargetSpec) {}
+
+  async preflight(): Promise<string> {
+    return sshPreflight(this.spec);
+  }
+
+  /** Deploy the bundle by content hash (§4.3); idempotent, before any push. */
+  async deploy(): Promise<string> {
+    const { deployBundle } = await import("./sync.js");
+    this.deployedHash = await deployBundle(this.spec.bundleDir, this.spec.root, { host: this.spec.host, sshArgs: this.spec.sshArgs });
+    return this.deployedHash;
+  }
+
+  /**
+   * Start the one persistent `ssh ... node ... --stdio` child and return the
+   * handshaken client. The mission dir is created remotely first (a failed
+   * push leaves it behind by design; start is idempotent over it). Each
+   * attempt gets a fresh client, as with the container launcher.
+   */
+  async start(makeClient: () => TargetClient): Promise<{ client: TargetClient; hello: TargetHelloResult }> {
+    const hash = this.deployedHash ?? (await this.deploy());
+    const { remoteExec } = await import("./sync.js");
+    const missionRoot = path.posix.join(this.spec.root, "missions", this.spec.missionId);
+    const bin = path.posix.join(this.spec.root, ".opensand", "target", hash, "dist", "src", "target", "bin.js");
+    // shq lives with the sync layer; a root with quotes must not break the remote command.
+    const { shq } = await import("./manifest.js");
+    await remoteExec(`mkdir -p ${shq(missionRoot)}`, { host: this.spec.host, sshArgs: this.spec.sshArgs });
+    const remoteCommand = `node ${shq(bin)} --stdio --root ${shq(missionRoot)} --sandbox ${this.spec.sandbox} --target-id ${shq(this.spec.targetId)}`;
+    const args = sshCommandArgs(this.spec, remoteCommand);
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const client = makeClient();
+      try {
+        client.start();
+        const hello = await client.hello();
+        return { client, hello };
+      } catch (err) {
+        lastError = err as Error;
+        await client.close().catch(() => undefined);
+        if (err instanceof TargetLinkError && err.code === TargetErrorCodes.VersionMismatch) throw err;
+        if (err instanceof TargetLinkError && err.code === TargetErrorCodes.ToolchainMissing) throw err;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+    throw lastError ?? new TargetLostError("target over ssh never became reachable");
+  }
+
+  args(command: string): string[] {
+    return sshCommandArgs(this.spec, command);
+  }
+}
