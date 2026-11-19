@@ -1,7 +1,13 @@
-# electron-builder configuration for the local macOS build.
+# electron-builder configuration for the local macOS and Linux builds.
 # Staging: `pnpm stage:desktop` produces dist/stage with real node_modules.
 appId: com.opensand.agent
 productName: OpenSand
+# fpm needs a project URL; the staged scoped package has no homepage/repository.
+extraMetadata:
+  homepage: https://github.com/Philosopher0707/opensand
+# The staged package.json carries the scoped name @opensand/desktop, which
+# electron-builder would turn into the unsafe executableName @opensanddesktop.
+executableName: OpenSand
 electronVersion: 45.2.3
 
 directories:
@@ -31,7 +37,28 @@ mac:
   hardenedRuntime: false
   extendInfo:
     NSScreenCaptureUsageDescription: OpenSand captures the screen to read visible code windows and recognise text.
+  # macOS-only native helpers (Mach-O). Linux ships no extraResources.
+  extraResources:
+    - from: packages/native-bridge/bin
+      to: bin
 
-extraResources:
-  - from: packages/native-bridge/bin
-    to: bin
+linux:
+  category: Utility
+  # macOS helper binaries are Mach-O; ship them only via mac.extraResources.
+  files:
+    - "!node_modules/@opensand/native-bridge/bin/**"
+    - "!**/node_modules/@opensand/native-bridge/bin/**"
+  # fpm requires a maintainer; the staged scoped package has neither author nor homepage.
+  maintainer: "OpenSand Maintainers <maintainers@opensand.local>"
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+
+# Keep the .deb directly in dist/release with a stable name; the default uses
+# the scoped package name (@opensand/desktop) and creates a nested directory.
+deb:
+  artifactName: "OpenSand_${version}_${arch}.deb"

@@ -1,0 +1,5 @@
+# electron-builder Linux targets need explicit metadata for a scoped workspace package
+
+- **Trap:** `pnpm package:linux` failed three times in a row: first `executableName contains characters that cannot be safely used in file paths: @opensanddesktop` (AppImage), then fpm demanded a maintainer and a homepage, and the default deb name was `dist/release/@opensand/desktop_0.1.11_amd64.deb` — a nested path the `dist/release/*.deb` glob in the done-when cannot match.
+- **Root Cause:** electron-builder derives executable name, deb package name and metadata from the staged `package.json`, whose `name` is the scoped `@opensand/desktop` with no `author`, `homepage` or `repository`. Top-level `homepage` is not a valid config key in electron-builder 26.
+- **Rule:** In `electron-builder.yml` set `executableName: OpenSand`, `extraMetadata.homepage` (the supported way to give fpm a project URL), `linux.maintainer`, and `deb.artifactName: "OpenSand_${version}_${arch}.deb"` so both artifacts land directly in `dist/release` with stable names. Verify the real package output; do not assume the default names.

@@ -28,9 +28,21 @@ source "$ROOT/scripts/lib/free-space.sh"
 CLEAN_DISK_SCRIPT="${OPENSAND_CLEAN_DISK_SCRIPT:-$ROOT/scripts/clean-disk.sh}"
 PR_GATE_SCRIPT="${OPENSAND_PR_GATE_SCRIPT:-$ROOT/scripts/pr-gate.sh}"
 SMOKE_SCRIPT="${OPENSAND_SMOKE_SCRIPT:-$ROOT/scripts/smoke-packaged.sh}"
+LINUX_SMOKE_SCRIPT="${OPENSAND_LINUX_SMOKE_SCRIPT:-$ROOT/scripts/smoke-linux.sh}"
 HEALTH_CHECK_SCRIPT="${OPENSAND_HEALTH_CHECK_SCRIPT:-$ROOT/scripts/install-health-check.sh}"
 APP_DEST="${OPENSAND_INSTALL_APP_DEST:-/Applications/OpenSand.app}"
 ARCHIVE_BASE="${OPENSAND_ARCHIVE_DIR_BASE:-$HOME/dev/_archive}"
+
+# The release pipeline runs on both macOS and Linux. Overridable for the
+# hermetic selftest; the host OS decides which smoke and DMG steps apply.
+OS_NAME="${OPENSAND_RELEASE_OS:-$(uname -s)}"
+IS_MACOS=0
+IS_LINUX=0
+case "$OS_NAME" in
+  Darwin) IS_MACOS=1 ;;
+  Linux) IS_LINUX=1 ;;
+  *) echo "FAIL: unsupported release OS: $OS_NAME" >&2; exit 1 ;;
+esac
 
 DRY_RUN=0
 INSTALL=0
@@ -202,25 +214,39 @@ echo "==> [Step 5/9] Downloading release artifacts for $TAG..."
 DOWNLOAD_DIR="${RELEASE_DOWNLOAD_DIR:-$ROOT/dist/release-$VERSION}"
 mkdir -p "$DOWNLOAD_DIR"
 
-ZIP_PATH=""
-DMG_PATH=""
+ZIP_PATH=""; DMG_PATH=""; APPIMAGE_PATH=""; DEB_PATH=""
 
-FOUND_ZIP=$(find "$DOWNLOAD_DIR" -name "*${VERSION}*.zip" -o -name "*.zip" 2>/dev/null | head -n 1 || true)
-FOUND_DMG=$(find "$DOWNLOAD_DIR" -name "*${VERSION}*.dmg" -o -name "*.dmg" 2>/dev/null | head -n 1 || true)
+find_versioned() { find "$DOWNLOAD_DIR" -type f -name "*${VERSION}*$1" -print 2>/dev/null | head -n 1 || true; }
+find_any() { find "$DOWNLOAD_DIR" -type f -name "$1" -print 2>/dev/null | head -n 1 || true; }
+pick() { local v="$1" a="$2"; [[ -n "$v" ]] && printf '%s' "$v" || printf '%s' "$a"; }
 
-if [[ -n "$FOUND_ZIP" && -n "$FOUND_DMG" && -f "$FOUND_ZIP" && -f "$FOUND_DMG" ]]; then
-  ZIP_PATH="$FOUND_ZIP"
-  DMG_PATH="$FOUND_DMG"
-  echo "PASS: artifacts already downloaded: $ZIP_PATH, $DMG_PATH"
+FOUND_ZIP=$(pick "$(find_versioned '.zip')" "$(find_any '*.zip')")
+FOUND_DMG=$(pick "$(find_versioned '.dmg')" "$(find_any '*.dmg')")
+FOUND_APPIMAGE=$(pick "$(find_versioned '.AppImage')" "$(find_any '*.AppImage')")
+FOUND_DEB=$(pick "$(find_versioned '.deb')" "$(find_any '*.deb')")
+
+ARTIFACTS_PRESENT=0
+if [[ "$IS_MACOS" -eq 1 ]]; then
+  if [[ -n "$FOUND_ZIP" && -n "$FOUND_DMG" ]]; then ARTIFACTS_PRESENT=1; fi
+else
+  if [[ -n "$FOUND_DEB" ]]; then ARTIFACTS_PRESENT=1; fi
+fi
+
+if [[ "$ARTIFACTS_PRESENT" -eq 1 ]]; then
+  ZIP_PATH="$FOUND_ZIP"; DMG_PATH="$FOUND_DMG"
+  APPIMAGE_PATH="$FOUND_APPIMAGE"; DEB_PATH="$FOUND_DEB"
+  echo "PASS: artifacts already downloaded: zip=$ZIP_PATH dmg=$DMG_PATH AppImage=$APPIMAGE_PATH deb=$DEB_PATH"
 else
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "DRY RUN: would download $TAG release artifacts (*.zip, *.dmg) into $DOWNLOAD_DIR"
+    echo "DRY RUN: would download $TAG release artifacts (*.zip, *.dmg, *.AppImage, *.deb) into $DOWNLOAD_DIR"
     ZIP_PATH="$DOWNLOAD_DIR/OpenSand-${VERSION}-arm64-mac.zip"
     DMG_PATH="$DOWNLOAD_DIR/OpenSand-${VERSION}-arm64.dmg"
+    APPIMAGE_PATH="$DOWNLOAD_DIR/OpenSand-${VERSION}-x86_64.AppImage"
+    DEB_PATH="$DOWNLOAD_DIR/OpenSand_${VERSION}_amd64.deb"
   else
-    # Pushing the tag starts the async release.yml build on macos-latest (~4-5 min); until
-    # softprops/action-gh-release runs there is no release to download. Retry until the assets
-    # exist instead of failing the first time (AGENTS_LEARNING: release asset download race).
+    # Pushing the tag starts the async release.yml builds (macOS and Linux, ~4-5 min);
+    # until softprops/action-gh-release runs there is no release to download. Retry
+    # until the assets exist (AGENTS_LEARNING: release asset download race).
     DOWNLOAD_TIMEOUT_SECONDS="${RELEASE_DOWNLOAD_TIMEOUT_SECONDS:-600}"
     DOWNLOAD_POLL_SECONDS="${RELEASE_DOWNLOAD_POLL_SECONDS:-15}"
     MAX_ATTEMPTS=$(( DOWNLOAD_TIMEOUT_SECONDS / DOWNLOAD_POLL_SECONDS + 1 ))
@@ -229,12 +255,19 @@ else
     while :; do
       ATTEMPT=$((ATTEMPT + 1))
       DOWNLOAD_ERR=""
-      DOWNLOAD_ERR=$(gh release download "$TAG" -D "$DOWNLOAD_DIR" --pattern "*.zip" --pattern "*.dmg" 2>&1) || true
+      DOWNLOAD_ERR=$(gh release download "$TAG" -D "$DOWNLOAD_DIR" \
+        --pattern "*.zip" --pattern "*.dmg" --pattern "*.AppImage" --pattern "*.deb" 2>&1) || true
 
-      ZIP_PATH=$(find "$DOWNLOAD_DIR" -name "*.zip" | head -n 1 || true)
-      DMG_PATH=$(find "$DOWNLOAD_DIR" -name "*.dmg" | head -n 1 || true)
-      if [[ -n "$ZIP_PATH" && -n "$DMG_PATH" ]]; then
-        echo "PASS: downloaded $ZIP_PATH and $DMG_PATH (attempt $ATTEMPT)"
+      ZIP_PATH=$(find_any '*.zip'); DMG_PATH=$(find_any '*.dmg')
+      APPIMAGE_PATH=$(find_any '*.AppImage'); DEB_PATH=$(find_any '*.deb')
+      READY=0
+      if [[ "$IS_MACOS" -eq 1 ]]; then
+        if [[ -n "$ZIP_PATH" && -n "$DMG_PATH" ]]; then READY=1; fi
+      else
+        if [[ -n "$DEB_PATH" ]]; then READY=1; fi
+      fi
+      if [[ "$READY" -eq 1 ]]; then
+        echo "PASS: downloaded zip=$ZIP_PATH dmg=$DMG_PATH AppImage=$APPIMAGE_PATH deb=$DEB_PATH (attempt $ATTEMPT)"
         break
       fi
 
@@ -312,22 +345,39 @@ else
 fi
 
 # --- Step 7: Smoke / release-check ---
-echo "==> [Step 7/9] Running packaged smoke test on $ZIP_PATH..."
-if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "DRY RUN: would run scripts/smoke-packaged.sh on $ZIP_PATH"
-else
-  SMOKE_STATUS=0
-  bash "$SMOKE_SCRIPT" "$ZIP_PATH" || SMOKE_STATUS=$?
-  if [[ "$SMOKE_STATUS" -ne 0 ]]; then
-    echo "FAIL: smoke test failed for package $ZIP_PATH (exit code: $SMOKE_STATUS)" >&2
-    exit 2
+if [[ "$IS_LINUX" -eq 1 ]]; then
+  echo "==> [Step 7/9] Running Linux packaged smoke test on $DEB_PATH..."
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "DRY RUN: would run scripts/smoke-linux.sh on $DEB_PATH"
+  else
+    SMOKE_STATUS=0
+    bash "$LINUX_SMOKE_SCRIPT" "$DEB_PATH" || SMOKE_STATUS=$?
+    if [[ "$SMOKE_STATUS" -ne 0 ]]; then
+      echo "FAIL: Linux smoke test failed for package $DEB_PATH (exit code: $SMOKE_STATUS)" >&2
+      exit 2
+    fi
+    echo "PASS: Linux smoke test passed for $DEB_PATH"
   fi
-  echo "PASS: smoke test passed for $ZIP_PATH"
+else
+  echo "==> [Step 7/9] Running packaged smoke test on $ZIP_PATH..."
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "DRY RUN: would run scripts/smoke-packaged.sh on $ZIP_PATH"
+  else
+    SMOKE_STATUS=0
+    bash "$SMOKE_SCRIPT" "$ZIP_PATH" || SMOKE_STATUS=$?
+    if [[ "$SMOKE_STATUS" -ne 0 ]]; then
+      echo "FAIL: smoke test failed for package $ZIP_PATH (exit code: $SMOKE_STATUS)" >&2
+      exit 2
+    fi
+    echo "PASS: smoke test passed for $ZIP_PATH"
+  fi
 fi
 
-# --- Step 7: Check DMG Info.plist version ---
+# --- Step 7: Check DMG Info.plist version (macOS only) ---
 echo "==> [Step 8/9] Verifying DMG Info.plist version..."
-if [[ "$DRY_RUN" -eq 1 ]]; then
+if [[ "$IS_LINUX" -eq 1 ]]; then
+  echo "PASS: DMG Info.plist check skipped on $OS_NAME (macOS-only)."
+elif [[ "$DRY_RUN" -eq 1 ]]; then
   echo "DRY RUN: would mount $DMG_PATH, read CFBundleShortVersionString from OpenSand.app/Contents/Info.plist, verify it equals $VERSION, and unmount"
 else
   MOUNT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/opensand-dmg-mount.XXXXXX")
@@ -374,9 +424,11 @@ else
   echo "PASS: DMG Info.plist version verified as '$DMG_VER'"
 fi
 
-# --- Step 8: With --install only ---
+# --- Step 8: With --install only (macOS only) ---
 echo "==> [Step 9/9] Install check..."
-if [[ "$INSTALL" -eq 1 ]]; then
+if [[ "$IS_LINUX" -eq 1 ]]; then
+  echo "PASS: local /Applications install skipped on $OS_NAME (macOS-only)."
+elif [[ "$INSTALL" -eq 1 ]]; then
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "DRY RUN: would check existing $APP_DEST, archive to ~/dev/_archive/<date>-OpenSand-<old>/, copy new app, run xattr -cr, and run install-health-check.sh to prove it starts and answers"
   else
