@@ -24,12 +24,8 @@ source "$ROOT/scripts/lib/worktree-safety.sh"
 SCRATCH_DIR="${OPENSAND_SCRATCH_DIR:-$HOME/dev/_scratch}"
 
 # Measure the writable data volume, not the read-only system snapshot (/dev/disk3s1s1).
-# Same mount as scripts/status-report.sh. Linux CI has no /System/Volumes/Data: fall back to $HOME.
-if [[ -d /System/Volumes/Data ]]; then
-  DISK_PATH="/System/Volumes/Data"
-else
-  DISK_PATH="$HOME"
-fi
+# Same mount as scripts/status-report.sh.
+source "$ROOT/scripts/lib/free-space.sh"
 
 # Hard 300s timeout for commands that can hang (du, rm, pnpm, npm):
 # SIGALRM kills the child and exits 124.
