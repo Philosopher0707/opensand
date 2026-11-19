@@ -56,6 +56,8 @@ try {
         ipcRenderer.invoke('opensand:updateAgentApproval', { id, updates }),
       updateAgentSection: (id: string, updates: { section?: string; chiefOfStaff?: boolean; managedSections?: string[]; createdBy?: string; reportsTo?: string; visibility?: string }) =>
         ipcRenderer.invoke('opensand:updateAgentSection', { id, updates }),
+      updateAgentVoice: (id: string, updates: { voice?: string; speakReplies?: boolean; voiceNotes?: boolean; replyStyle?: string }) =>
+        ipcRenderer.invoke('opensand:updateAgentVoice', { id, updates }),
       getSettings: () =>
         ipcRenderer.invoke('opensand:getSettings'),
       updateSettings: (settings: any) =>

@@ -81,5 +81,11 @@ export function windowBridgeData(): ShellData {
         return bridge.updateAgentSection(id, updates);
       }
     },
+    async updateAgentVoice(id: string, updates: { voice?: string; speakReplies?: boolean; voiceNotes?: boolean; replyStyle?: string }): Promise<any> {
+      const bridge = (window as any).opensand;
+      if (bridge?.updateAgentVoice) {
+        return bridge.updateAgentVoice(id, updates);
+      }
+    },
   };
 }

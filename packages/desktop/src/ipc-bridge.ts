@@ -822,6 +822,10 @@ export class DesktopIpcBridge extends EventEmitter {
     return this.agentStore.updateAgentSection(id, updates);
   }
 
+  public async updateAgentVoice(id: string, updates: { voice?: string; speakReplies?: boolean; voiceNotes?: boolean; replyStyle?: string }): Promise<any> {
+    return this.agentStore.updateAgentVoice(id, updates);
+  }
+
   // Task Store API
   public async getTasks(filter?: { status?: TaskStatus; agentId?: string }): Promise<AgentTask[]> {
     return this.taskStore.listTasks(filter);

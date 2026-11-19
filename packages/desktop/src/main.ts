@@ -244,6 +244,10 @@ export class DesktopApp {
       return this.bridge.updateAgentSection(id, updates);
     });
 
+    ipcMain.handle('opensand:updateAgentVoice', async (_: any, { id, updates }: { id: string; updates: { voice?: string; speakReplies?: boolean; voiceNotes?: boolean; replyStyle?: string } }) => {
+      return this.bridge.updateAgentVoice(id, updates);
+    });
+
     ipcMain.handle('opensand:getSettings', async () => {
       return this.bridge.getSettings();
     });

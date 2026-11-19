@@ -732,6 +732,21 @@ export class DesktopServer {
       return;
     }
 
+    // API: PATCH /api/agents/:id/voice (voice settings change)
+    if (pathname.startsWith('/api/agents/') && pathname.endsWith('/voice') && req.method === 'PATCH') {
+      const agentId = pathname.replace('/api/agents/', '').replace('/voice', '');
+      if (!isValidId(agentId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid agentId format' }));
+        return;
+      }
+      const body = await this.readJsonBody(req);
+      const updated = await this.bridge.updateAgentVoice(agentId, body);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(updated));
+      return;
+    }
+
     // API: GET /api/tasks (List tasks)
     if (pathname === '/api/tasks' && req.method === 'GET') {
       const status = url.searchParams.get('status') as any || undefined;
