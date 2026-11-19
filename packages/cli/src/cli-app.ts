@@ -27,6 +27,7 @@ import {
 import { sigIntAction, formatResumeHint } from "./interrupt.js";
 import { matchSession, validateResumeEnvironment } from "./sessions.js";
 import { parseCliArgs, CliConfig, probeLocalOllama, validateConfig } from "./config.js";
+import { runMissionCommand } from "./mission.js";
 import { TerminalUI } from "./terminal-ui.js";
 import { decideCliApproval } from "./approval-policy.js";
 import { runDoctorProbes } from "./doctor.js";
@@ -103,6 +104,13 @@ Examples:
 
   const config = parseCliArgs(argv);
   const ui = new TerminalUI();
+
+  // Mission verbs (Phase 7 S5): dispatched on the raw argv, before the REPL
+  // argument parser folds positionals into a query string.
+  if (argv[0] === "mission") {
+    await runMissionCommand(argv);
+    return;
+  }
 
   if (argv[0] === "retention" || argv[0] === "prune") {
     const { evaluateRetention, pruneSessions } = await import("@opensand/coordinator");
