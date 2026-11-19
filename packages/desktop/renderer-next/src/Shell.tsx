@@ -6,6 +6,7 @@ import type { ShellData } from "./data";
 import { ChatList } from "./views/ChatList";
 import { AgentRoster } from "./views/AgentRoster";
 import { AgentSettingsCard } from "./views/AgentSettingsCard";
+import { AgentSessionHistory } from "./views/AgentSessionHistory";
 import type { AgentRecord } from "@opensand/shared";
 
 export interface ShellProps {
@@ -14,6 +15,7 @@ export interface ShellProps {
 
 export function Shell({ data }: ShellProps) {
   const [activeAgent, setActiveAgent] = useState<AgentRecord | null>(null);
+  const [activeSession, setActiveSession] = useState<string | null>(null);
 
   return (
     <div class="app-layout">
@@ -48,7 +50,10 @@ export function Shell({ data }: ShellProps) {
         </header>
         <section class="shell-body" aria-live="polite">
           {activeAgent ? (
-            <AgentSettingsCard data={data} agent={activeAgent} />
+            <div class="agent-detail-view">
+              <AgentSettingsCard data={data} agent={activeAgent} />
+              <AgentSessionHistory data={data} agentId={activeAgent.id} onSelectSession={setActiveSession} />
+            </div>
           ) : (
             <p class="shell-empty">Select an agent from the sidebar to view its settings.</p>
           )}

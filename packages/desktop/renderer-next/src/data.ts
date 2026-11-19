@@ -9,6 +9,7 @@ export interface ShellData {
   deleteSession(id: string): Promise<void>;
   listAgents(): Promise<AgentRecord[]>;
   updateAgentSettings(id: string, updates: Record<string, any>): Promise<any>;
+  loadSession(sessionId: string): Promise<any>;
 }
 
 export function windowBridgeData(): ShellData {
@@ -39,6 +40,12 @@ export function windowBridgeData(): ShellData {
       const bridge = (window as any).opensand;
       if (bridge?.updateAgentSettings) {
         return bridge.updateAgentSettings(id, updates);
+      }
+    },
+    async loadSession(sessionId: string): Promise<any> {
+      const bridge = (window as any).opensand;
+      if (bridge?.loadSession) {
+        return bridge.loadSession(sessionId);
       }
     },
   };
