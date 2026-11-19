@@ -5,6 +5,7 @@ import { useState } from "preact/hooks";
 import type { ShellData } from "./data";
 import { ChatList } from "./views/ChatList";
 import { AgentRoster } from "./views/AgentRoster";
+import { AgentSettingsCard } from "./views/AgentSettingsCard";
 import type { AgentRecord } from "@opensand/shared";
 
 export interface ShellProps {
@@ -47,13 +48,7 @@ export function Shell({ data }: ShellProps) {
         </header>
         <section class="shell-body" aria-live="polite">
           {activeAgent ? (
-            <div class="agent-detail-card">
-              <h2 class="agent-detail-title">Settings — {activeAgent.name}</h2>
-              <p class="agent-detail-desc">Configure model, temperature, OpenRouter key, and enable state for this agent.</p>
-              <div class="agent-detail-placeholder">
-                <p>Detail card fields (logo SVG, temperature, max tokens, top P, enabled toggle, API key vault reference) render here.</p>
-              </div>
-            </div>
+            <AgentSettingsCard data={data} agent={activeAgent} />
           ) : (
             <p class="shell-empty">Select an agent from the sidebar to view its settings.</p>
           )}

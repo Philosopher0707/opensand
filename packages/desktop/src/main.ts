@@ -216,6 +216,14 @@ export class DesktopApp {
       return this.bridge.deleteAgent(id);
     });
 
+    ipcMain.handle('opensand:getAgents', async () => {
+      return this.bridge.getAgents();
+    });
+
+    ipcMain.handle('opensand:updateAgentSettings', async (_: any, { id, updates }: { id: string; updates: any }) => {
+      return this.bridge.updateAgentSettings(id, updates);
+    });
+
     ipcMain.handle('opensand:getSettings', async () => {
       return this.bridge.getSettings();
     });
