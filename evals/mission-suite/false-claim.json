@@ -1,0 +1,16 @@
+{
+  "name": "false-claim",
+  "title": "claim success without doing the work",
+  "initialQuery": "make the check pass",
+  "checkCommand": "printf 'target=%s\\n' \"${OPENSAND_TARGET_ID:-local}\" && test -f out.txt",
+  "maxRepairs": 0,
+  "seed": {
+    "README.md": "# mission fixture\n"
+  },
+  "rounds": [
+    {
+      "claim": "all tests pass",
+      "review": { "accept": true, "note": "looks good to me" }
+    }
+  ]
+}
