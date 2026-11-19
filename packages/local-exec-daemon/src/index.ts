@@ -8,6 +8,8 @@ export * from "./tool-registry.js";
 export * from "./policy-engine.js";
 export * from "./daemon.js";
 export * from "./pty-session.js";
+export * from "./attempt-lease.js";
+export * from "./attempt-worktrees.js";
 export * from "./pty-manager.js";
 export * from "./sandbox/index.js";
 export * from "./denial-errors.js";
