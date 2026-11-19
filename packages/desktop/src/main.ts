@@ -236,6 +236,10 @@ export class DesktopApp {
       return this.bridge.setAgentAvatar(agentId, avatarUrl);
     });
 
+    ipcMain.handle('opensand:updateAgentApproval', async (_: any, { id, updates }: { id: string; updates: { approvalMode?: string; autoApprove?: boolean; alwaysAllow?: string[] } }) => {
+      return this.bridge.updateAgentApproval(id, updates);
+    });
+
     ipcMain.handle('opensand:getSettings', async () => {
       return this.bridge.getSettings();
     });

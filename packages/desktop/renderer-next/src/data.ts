@@ -69,5 +69,11 @@ export function windowBridgeData(): ShellData {
         return bridge.setAgentAvatar(agentId, avatarUrl);
       }
     },
+    async updateAgentApproval(id: string, updates: { approvalMode?: string; autoApprove?: boolean; alwaysAllow?: string[] }): Promise<any> {
+      const bridge = (window as any).opensand;
+      if (bridge?.updateAgentApproval) {
+        return bridge.updateAgentApproval(id, updates);
+      }
+    },
   };
 }

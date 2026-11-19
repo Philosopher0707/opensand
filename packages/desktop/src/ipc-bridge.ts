@@ -814,6 +814,10 @@ export class DesktopIpcBridge extends EventEmitter {
     return this.agentStore.updateAgentProfile(agentId, { avatarUrl });
   }
 
+  public async updateAgentApproval(id: string, updates: { approvalMode?: string; autoApprove?: boolean; alwaysAllow?: string[] }): Promise<any> {
+    return this.agentStore.updateAgentApproval(id, updates);
+  }
+
   // Task Store API
   public async getTasks(filter?: { status?: TaskStatus; agentId?: string }): Promise<AgentTask[]> {
     return this.taskStore.listTasks(filter);

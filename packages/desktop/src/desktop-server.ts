@@ -697,6 +697,26 @@ export class DesktopServer {
       return;
     }
 
+    // API: PATCH /api/agents/:id/model (model + approval-mode change)
+    if (pathname.startsWith('/api/agents/') && pathname.endsWith('/model') && req.method === 'PATCH') {
+      const agentId = pathname.replace('/api/agents/', '').replace('/model', '');
+      if (!isValidId(agentId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid agentId format' }));
+        return;
+      }
+      const body = await this.readJsonBody(req);
+      const updates: Record<string, any> = {};
+      if (body.model !== undefined) updates.model = body.model;
+      if (body.approvalMode !== undefined) updates.approvalMode = body.approvalMode;
+      if (body.autoApprove !== undefined) updates.autoApprove = body.autoApprove;
+      if (body.alwaysAllow !== undefined) updates.alwaysAllow = body.alwaysAllow;
+      const updated = await this.bridge.updateAgentApproval(agentId, updates);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(updated));
+      return;
+    }
+
     // API: GET /api/tasks (List tasks)
     if (pathname === '/api/tasks' && req.method === 'GET') {
       const status = url.searchParams.get('status') as any || undefined;
