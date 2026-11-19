@@ -31,6 +31,8 @@
 # 33. --when-green: a queued run that never produces checks -> bounded exit 3 (max wait honoured)
 # 34. --when-green: a queued run extends the wait, then a check fails -> exit 1 naming the job
 # 35. --when-green: `gh run list` status lags (COMPLETED) but the Jobs API says in_progress -> still waits
+# 36. an already-merged PR -> report the merge sha, only the post-merge check runs, no rebase/tag/push, exit 0 green
+# 37. an already-merged PR with red main CI -> exit 4, still no rebase/tag/push
 # Usage: scripts/pr-gate-selftest.sh (PR_GATE_SCRIPT=<path> to test another copy)
 set -uo pipefail
 
@@ -60,6 +62,20 @@ case "$1" in
             is_merge_view=1
           fi
         done
+        is_merged_probe=0
+        for arg in "$@"; do
+          case "$arg" in
+            *mergeCommit*number*) is_merged_probe=1 ;;
+          esac
+        done
+        if [ "$is_merged_probe" -eq 1 ]; then
+          if [ -f "$TEST_CASE_DIR/pr_state.json" ]; then
+            cat "$TEST_CASE_DIR/pr_state.json"
+          else
+            echo '{"state":"OPEN","mergeCommit":null,"number":42}'
+          fi
+          exit 0
+        fi
         is_rebase_meta=0
         for arg in "$@"; do
           case "$arg" in
@@ -215,6 +231,9 @@ if [ -z "${TEST_CASE_DIR:-}" ]; then
   echo "git stub error: TEST_CASE_DIR not set" >&2
   exit 1
 fi
+
+# Every git invocation lands here, so a case can assert the gate touched no destructive command.
+printf '%s\n' "$*" >> "$TEST_CASE_DIR/git_calls.log"
 
 case "${1:-}" in
   -C)
@@ -484,6 +503,19 @@ run_test_case() {
     echo "PASS $label (exit $status)"
   else
     while IFS= read -r line; do printf '    | %s\n' "$line"; done <<< "$out"
+    FAILED=1
+  fi
+}
+
+# An already-merged PR must never be rebased, re-tagged or pushed again. Every stubbed git call is
+# logged in git_calls.log, so a destructive one is visible even if it failed.
+assert_no_branch_mutation() {
+  local label="$1" dir="$2" bad
+  [[ -f "$dir/git_calls.log" ]] || return 0
+  bad=$(grep -E '(^| )(push|fetch|tag|worktree) |rebase' "$dir/git_calls.log" || true)
+  if [[ -n "$bad" ]]; then
+    echo "FAIL $label: the gate changed git refs for an already-merged PR:"
+    while IFS= read -r line; do printf '    | %s\n' "$line"; done <<< "$bad"
     FAILED=1
   fi
 }
@@ -1160,5 +1192,36 @@ if ! grep -q -- "actions/runs/888/jobs" "$dir/api_calls.log" 2>/dev/null; then
   echo "FAIL case35: gate never queried the Jobs API for run 888"
   FAILED=1
 fi
+
+# --- Case 36: a PR that is already MERGED -> report it, run only the post-merge check, no rebase/tag/push
+dir="$WORK/case36-merged-pr-green"
+setup_defaults "$dir"
+echo 99 > "$dir/behind_times"
+cat << 'JSON' > "$dir/pr_state.json"
+{"state":"MERGED","mergeCommit":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"number":42}
+JSON
+EXPECT_EXIT=0
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("PR #42 already merged as aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "main CI green for aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+run_test_case "case36-merged-pr-green" --when-green 42
+assert_no_branch_mutation "case36" "$dir"
+
+# --- Case 37: a PR that is already MERGED and main CI is red -> exit 4, still no rebase/tag/push ---
+dir="$WORK/case37-merged-pr-red"
+setup_defaults "$dir"
+echo 99 > "$dir/behind_times"
+cat << 'JSON' > "$dir/pr_state.json"
+{"state":"MERGED","mergeCommit":{"oid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},"number":42}
+JSON
+cat << 'JSON' > "$dir/run_view_json"
+{"status":"COMPLETED","conclusion":"FAILURE","jobs":[{"name":"Build & test (Node 22)","conclusion":"SUCCESS"},{"name":"Build & test (macOS, Node 22)","conclusion":"FAILURE"}]}
+JSON
+EXPECT_EXIT=4
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("PR #42 already merged as bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" "FAIL: main CI red for bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" "Build & test (macOS, Node 22) (FAILURE)")
+run_test_case "case37-merged-pr-red" --when-green 42
+assert_no_branch_mutation "case37" "$dir"
 
 exit "$FAILED"

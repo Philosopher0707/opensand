@@ -19,6 +19,10 @@
 # red). Green prints "main CI green for <sha>" and exits 0; red names the failing jobs and
 # the `gh run view <id> --log-failed` hint and exits 4; a pending/no-run timeout exits 3.
 # --no-post-merge-check skips that wait.
+#
+# Re-running the gate on a PR that is already MERGED is safe: it prints "PR #<n> already merged as
+# <sha>" and only runs the post-merge main CI check for that merge commit (exit 0 green, 4 red, 3
+# pending). It never rebases, tags or pushes the merged branch.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -151,6 +155,22 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
     sleep "$pm_poll"
   done
 }
+
+# An already-merged PR is done: a re-run must never rebase, tag or push it again. Only the
+# post-merge main CI check for its merge commit runs, so re-running the gate is idempotent.
+if MERGED_JSON=$(gh pr view "$PR" --json state,mergeCommit,number 2>/dev/null); then
+  MERGED_STATE=$(node -e 'const d=JSON.parse(process.argv[1]||"{}");console.log((d.state||"").toUpperCase())' "$MERGED_JSON" 2>/dev/null || true)
+  if [[ "$MERGED_STATE" == "MERGED" ]]; then
+    MERGED_SHA=$(node -e 'const d=JSON.parse(process.argv[1]||"{}");const m=d.mergeCommit;console.log((m&&m.oid)||m||"unknown")' "$MERGED_JSON" 2>/dev/null || true)
+    MERGED_SHA="${MERGED_SHA:-unknown}"
+    echo "PR #$PR already merged as $MERGED_SHA"
+    if [[ "$POST_MERGE_CHECK" -eq 0 || "$DRY_RUN" -eq 1 ]]; then
+      exit 0
+    fi
+    post_merge_check "$MERGED_SHA"
+    exit 0
+  fi
+fi
 
 if [[ "$WHEN_GREEN" -eq 1 ]]; then
   echo "==> [when-green] Watching CI for PR #$PR (timeout ${TIMEOUT_MIN} min)..."
