@@ -6,6 +6,7 @@ import type { EventFrame } from "@opensand/protocol";
 import { logDirFor, eventNameForKind } from "../reconnect.js";
 import { runCheck, type CheckResult } from "./check.js";
 import { treeOf, changedLinesBetweenTrees, pinTrees, createStepSnapshot, type ChangesResult } from "./workspace-diff.js";
+import type { TournamentRun } from "../mesh/tournament.js";
 import { projectReceipt } from "./receipt.js";
 import type { MissionAgent } from "./agent.js";
 import type { FolderTrustGate } from "./trust-gate.js";
@@ -16,6 +17,21 @@ export interface MissionBudget {
   budgetUsd?: number;
 }
 
+/**
+ * The tournament node's injected runner (S4). The mission graph swaps its act
+ * node for this one when set; S5 wires the default implementation that loads
+ * routes.json, stats and the catalog.
+ */
+export interface TournamentNodeConfig {
+  run: (ctx: {
+    missionId: string;
+    workspaceRoot: string;
+    checkCommand: string;
+    budgetUsd?: number;
+    signal: AbortSignal;
+  }) => Promise<TournamentRun>;
+}
+
 export interface MissionOptions {
   missionId: string;
   workspaceRoot: string;
@@ -23,6 +39,7 @@ export interface MissionOptions {
   initialQuery: string;
   checkCommand: string;
   budget?: Partial<MissionBudget>;
+  tournament?: TournamentNodeConfig;
   forkedFrom?: {
     missionId: string;
     snapshot: string;
@@ -45,6 +62,7 @@ interface MissionState extends Record<string, unknown> {
   lastCheck?: CheckResult;
   lastFailure?: { exitCode: number; outputTail: string };
   lastReview?: { accept: boolean; note: string };
+  tournament?: { status: string; winner: number | null; keptBranch: string | null };
   changes?: ChangesResult;
   failedReason?: { code: number; message: string; node: string };
 }
@@ -303,6 +321,48 @@ export class MissionRunner {
       return { claim };
     });
 
+    // 2b. tournament node (S4): replaces the act node when a tournament is
+    // configured. The mission's per-attempt checks are the tournament's own;
+    // the mission-level check still runs afterwards over the workspace.
+    if (this.options.tournament) {
+      graph.addNode("tournament", async (state) => {
+        if (this.abortController.signal.aborted) return;
+        this.currentNode = "tournament";
+        const start = Date.now();
+        await this.appendAndPublish(
+          MISSION_EVENT.NODE_STARTED,
+          { missionId: this.missionId, node: "tournament", attempt: 1 },
+          "tournament"
+        );
+
+        const run = await this.options.tournament!.run({
+          missionId: this.missionId,
+          workspaceRoot: state.workspaceRoot,
+          checkCommand: state.checkCommand,
+          budgetUsd: this.budget.budgetUsd,
+          signal: this.abortController.signal,
+        });
+
+        await this.appendAndPublish(
+          MISSION_EVENT.NODE_COMPLETED,
+          {
+            missionId: this.missionId,
+            node: "tournament",
+            status: run.status,
+            winner: run.winner,
+            keptBranch: run.keptBranch,
+            attempts: run.attempts.length,
+            durationMs: Date.now() - start,
+          },
+          "tournament"
+        );
+
+        return {
+          tournament: { status: run.status, winner: run.winner, keptBranch: run.keptBranch },
+        };
+      });
+    }
+
     // 3. check node
     graph.addNode("check", async (state) => {
       if (this.abortController.signal.aborted) return;
@@ -487,8 +547,13 @@ export class MissionRunner {
 
     // Edges
     graph.addEdge(START, "plan");
-    graph.addEdge("plan", "act");
-    graph.addEdge("act", "check");
+    if (this.options.tournament) {
+      graph.addEdge("plan", "tournament");
+      graph.addEdge("tournament", "check");
+    } else {
+      graph.addEdge("plan", "act");
+      graph.addEdge("act", "check");
+    }
 
     graph.addConditionalEdges("check", (state) => {
       if (this.abortController.signal.aborted) return END;
