@@ -54,6 +54,8 @@ try {
         ipcRenderer.invoke('opensand:setAgentAvatar', { agentId, avatarUrl }),
       updateAgentApproval: (id: string, updates: { approvalMode?: string; autoApprove?: boolean; alwaysAllow?: string[] }) =>
         ipcRenderer.invoke('opensand:updateAgentApproval', { id, updates }),
+      updateAgentSection: (id: string, updates: { section?: string; chiefOfStaff?: boolean; managedSections?: string[]; createdBy?: string; reportsTo?: string; visibility?: string }) =>
+        ipcRenderer.invoke('opensand:updateAgentSection', { id, updates }),
       getSettings: () =>
         ipcRenderer.invoke('opensand:getSettings'),
       updateSettings: (settings: any) =>

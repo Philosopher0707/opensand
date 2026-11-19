@@ -240,6 +240,10 @@ export class DesktopApp {
       return this.bridge.updateAgentApproval(id, updates);
     });
 
+    ipcMain.handle('opensand:updateAgentSection', async (_: any, { id, updates }: { id: string; updates: { section?: string; chiefOfStaff?: boolean; managedSections?: string[]; createdBy?: string; reportsTo?: string; visibility?: string } }) => {
+      return this.bridge.updateAgentSection(id, updates);
+    });
+
     ipcMain.handle('opensand:getSettings', async () => {
       return this.bridge.getSettings();
     });

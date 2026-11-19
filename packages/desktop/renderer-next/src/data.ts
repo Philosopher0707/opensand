@@ -75,5 +75,11 @@ export function windowBridgeData(): ShellData {
         return bridge.updateAgentApproval(id, updates);
       }
     },
+    async updateAgentSection(id: string, updates: { section?: string; chiefOfStaff?: boolean; managedSections?: string[]; createdBy?: string; reportsTo?: string; visibility?: string }): Promise<any> {
+      const bridge = (window as any).opensand;
+      if (bridge?.updateAgentSection) {
+        return bridge.updateAgentSection(id, updates);
+      }
+    },
   };
 }
