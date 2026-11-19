@@ -18,6 +18,7 @@ import {
   AgentStore,
   AgentRecord,
   CreateAgentInput,
+  UpdateAgentSettingsInput,
   TaskStore,
   AgentTask,
   CreateTaskInput,
@@ -792,6 +793,10 @@ export class DesktopIpcBridge extends EventEmitter {
       return this.roomManager.deleteRoom(agent.metadata.roomId);
     }
     return this.agentStore.deleteAgent(id);
+  }
+
+  public async updateAgentSettings(id: string, updates: any): Promise<any> {
+    return this.agentStore.updateAgentSettings(id, updates);
   }
 
   // Task Store API
