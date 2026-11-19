@@ -9,3 +9,7 @@
 - **Rule:** After a full `verify.sh` in a worktree, run
   `git checkout origin/main -- packages/desktop/artifacts` before `save`, or pass the exact paths
   after `--`. The screenshots belong to a window change, never to a side effect of running tests.
+- **Repeat (2026-11-19, phase 7 S3):** hit again from a local `verify.sh` during the judge PR;
+  caught by pr-gate Check 3 before push... it had already been pushed once. Upgrade path: a gate
+  in `worktree.sh save` that refuses to stage `packages/desktop/artifacts/*.png` unless the paths
+  were passed explicitly.
