@@ -37,12 +37,19 @@ function spawnChild(root: string, env: Record<string, string> = {}) {
   });
 }
 
-/** A hello'd client over a real child. */
+/** A hello'd client over a real child. The child is closed even when hello fails. */
 async function connect(root: string, env: Record<string, string> = {}) {
   const client = new TargetClient({ spawn: spawnChild(root, env), version: DAEMON_VERSION });
   client.start();
-  const hello = await client.hello();
-  return { client, hello };
+  try {
+    const hello = await client.hello();
+    return { client, hello };
+  } catch (err) {
+    // A rejected handshake must not leave the child running: its open stdio
+    // pipes keep node --test's event loop alive and the run never finishes.
+    await client.close().catch(() => undefined);
+    throw err;
+  }
 }
 
 describe("target transport (real child over stdio)", () => {
@@ -196,8 +203,8 @@ describe("target transport (real child over stdio)", () => {
     roots.push(root);
     const client = new TargetClient({ spawn: spawnChild(root), version: DAEMON_VERSION, execTimeoutMs: 300 });
     client.start();
-    await client.hello();
     try {
+      await client.hello();
       await assert.rejects(
         () => client.exec({ command: "sleep 2 && echo late" }),
         (err: Error) => {
