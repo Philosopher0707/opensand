@@ -163,6 +163,53 @@ export class HabitExtractor {
     }
   }
 
+  /**
+   * Return raw user queries detected as corrections across recent transcripts.
+   * Used by the SIM loop to retroactively mark contradicted memory facts as
+   * observedOutcome="negative" (don't repeat failed attempts).
+   */
+  async getCorrectionQueries(maxChatsToRead = 50): Promise<Array<{ text: string; sessionId: string }>> {
+    const corrections: Array<{ text: string; sessionId: string }> = [];
+
+    try {
+      const sessionDirs = await fs.readdir(this.sessionsDir);
+      const candidates: Array<{ dir: string; mtime: number }> = [];
+
+      for (const dir of sessionDirs) {
+        if (dir.startsWith(".")) continue;
+        const transcriptPath = path.join(this.sessionsDir, dir, "transcript.txt");
+        try {
+          const stat = await fs.stat(transcriptPath);
+          candidates.push({ dir, mtime: stat.mtimeMs });
+        } catch {
+          // No transcript.txt in this folder
+        }
+      }
+
+      candidates.sort((a, b) => b.mtime - a.mtime);
+      const targetDirs = candidates.slice(0, maxChatsToRead);
+
+      for (const { dir } of targetDirs) {
+        const transcriptPath = path.join(this.sessionsDir, dir, "transcript.txt");
+        const content = await fs.readFile(transcriptPath, "utf-8");
+
+        const queryRegex = /<user_query>([\s\S]*?)<\/user_query>/g;
+        let match;
+        while ((match = queryRegex.exec(content)) !== null) {
+          const queryText = match[1].trim();
+          if (!queryText) continue;
+          if (this.isUserCorrection(queryText)) {
+            corrections.push({ text: queryText, sessionId: dir });
+          }
+        }
+      }
+    } catch {
+      // No transcripts available yet
+    }
+
+    return corrections;
+  }
+
   private isUserCorrection(query: string): boolean {
     const q = query.toLowerCase();
     const correctionTriggers = [

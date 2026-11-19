@@ -252,7 +252,7 @@ describe("MemoryStore - Grok Bot Memory Layers Parity", () => {
       sessionsBaseDir: path.join(tmpDir, "sessions"),
     });
 
-    // Create a mock session transcript with a user habit query
+    // Create a mock session transcript with a user habit query + correction
     const sessionsDir = path.join(tmpDir, "sessions");
     const sessionDir = path.join(sessionsDir, "sess_habit_test");
     await fs.mkdir(sessionDir, { recursive: true });
@@ -261,6 +261,11 @@ describe("MemoryStore - Grok Bot Memory Layers Parity", () => {
 user:
 <user_query>
 Please always use pnpm instead of npm or yarn for package management.
+</user_query>
+
+user:
+<user_query>
+Don't use pnpm. Use npm instead.
 </user_query>
 
 assistant:
@@ -278,6 +283,7 @@ Understood, I will use pnpm.
     assert.equal(parsed.status, "success");
     assert.ok(parsed.rulesLearned > 0);
     assert.ok(parsed.rulesPersisted > 0);
+    assert.ok(parsed.factsMarkedNegative > 0, "Correction should mark at least one fact negative");
 
     // Verify the extracted rule was stored as a memory fact with SIM outcome tracking
     const facts = await store.listMemories({
@@ -289,8 +295,8 @@ Understood, I will use pnpm.
     const pnpmFact = facts.find((f) => f.text.includes("pnpm"));
     assert.ok(pnpmFact, "Should find the pnpm rule fact");
     assert.equal(pnpmFact.predictedOutcome, "positive");
-    assert.equal(pnpmFact.observedOutcome, undefined);
-    assert.equal(pnpmFact.outcomeMatch, undefined);
+    assert.equal(pnpmFact.observedOutcome, "negative"); // correction flipped it
+    assert.equal(pnpmFact.outcomeMatch, false);
   });
 
   it("deriveOutcomeMatch returns undefined when outcomes are uncertain", async () => {
