@@ -4,6 +4,7 @@
 import { useState, useEffect } from "preact/hooks";
 import type { AgentRecord } from "@opensand/shared";
 import type { ShellData } from "../data";
+import { Avatar } from "./Avatar";
 
 export interface AgentRosterProps {
   data: ShellData;
@@ -69,11 +70,7 @@ export function AgentRoster({ data, onSelect }: AgentRosterProps) {
               tabIndex={0}
             >
               <div class="roster-avatar">
-                {agent.logoSvg ? (
-                  <span class="avatar-svg" dangerouslySetInnerHTML={{ __html: agent.logoSvg }} aria-hidden="true" />
-                ) : (
-                  <span class="avatar-default" aria-hidden="true">{agent.name[0]?.toUpperCase() || "?"}</span>
-                )}
+                <Avatar agent={agent} size={32} />
                 <span class={`status-badge ${STATUS_BADGE[agent.status ?? (agent.enabled ? "enabled" : "disabled")]}`} aria-hidden="true"></span>
               </div>
               <div class="roster-info">

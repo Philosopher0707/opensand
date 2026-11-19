@@ -5,6 +5,7 @@
 import { useState, useEffect } from "preact/hooks";
 import type { AgentRecord, UpdateAgentSettingsInput } from "@opensand/shared";
 import type { ShellData } from "../data";
+import { Avatar } from "./Avatar";
 
 export interface AgentSettingsCardProps {
   data: ShellData;
@@ -85,9 +86,14 @@ export function AgentSettingsCard({ data, agent, onSaved }: AgentSettingsCardPro
   return (
     <section class="agent-settings-card">
       <header class="card-header">
-        <h2 class="card-title">Settings — {agent.name}</h2>
-        <p class="card-subtitle">{agent.role}</p>
-        <span class={`agent-id-badge`} title={agent.id}>{agent.id}</span>
+        <div class="card-header-avatar">
+          <Avatar agent={agent} size={48} />
+        </div>
+        <div class="card-header-info">
+          <h2 class="card-title">Settings — {agent.name}</h2>
+          <p class="card-subtitle">{agent.role}</p>
+          <span class={`agent-id-badge`} title={agent.id}>{agent.id}</span>
+        </div>
       </header>
 
       {error ? <div class="card-error" role="alert">{error}</div> : null}
