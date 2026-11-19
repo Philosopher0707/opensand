@@ -13,3 +13,4 @@ export * from "./attempt-worktrees.js";
 export * from "./pty-manager.js";
 export * from "./sandbox/index.js";
 export * from "./denial-errors.js";
+export * from "./target/index.js";

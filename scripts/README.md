@@ -28,6 +28,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `mesh-tournament-probe.sh` | Mutation probe for the Phase 7 tournament runner: flips the attempt outcome's check verdict in the engine tournament source via `mutation-probe.sh`, requires the mesh-tournament suite red, then green after restore | Phase 7 S4 verification | `mutation-probe.sh` (via) |
 | `mesh-routing-probe.sh` | Mutation probe for the Phase 7 start-rung routing: loosens the §2.3 qualification check in the engine routing source via `mutation-probe.sh`, requires the mesh-routing suite red, then green after restore | Phase 7 S5 verification | `mutation-probe.sh` (via) |
 | `mission-suite.sh` | Phase 8 S1 acceptance suite: five fixed scripted missions (verify, false claim, repair, repair-budget, changed lines) over the real `opensand-engine --stdio`, asserting status, receipt, check output and target identity; `--target local` only until S2–S4 land | Phase 8 S1 verification; per-target phase gate | `mission-suite-selftest.sh` |
+| `target-probe.sh` | Phase 8 S2 target probe: builds the target bundle, loads a temp `targets.json` through the strict store, then proves the container target on `node:22-bookworm` — hello says linux, exec carries the `OPENSAND_TARGET_ID` marker, a write/read round-trips through the bind mount, an outside path is refused, and the container is removed on exit | Phase 8 S2 verification | None |
 | `mission-suite-selftest.sh` | Hermetic selftest for `mission-suite.sh`: argument and exit-code contract, no build before a target is refused, and every fixture is valid JSON whose check names its target first | Pre-commit / verification | Self |
 | `mutation-probe.sh` | The one mutation probe: break a tracked file on purpose, prove the test goes red, restore it byte-identically, prove green again | Selftest authors, QA / Release Engineer | `proof-selftest.sh` |
 | `lint-brief.sh` | Shape lint for bot briefs: Goal, Done when, Scope, Report back | `scripts/verify.sh`, bot handoff | `lint-brief-selftest.sh` |
@@ -367,6 +368,13 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: 0 when all five checks (plus the CLI verbs) pass; non-zero on the first failed assertion, naming it.
 - **Selftest**: the script is itself the check; the underlying runner behavior is covered by `packages/engine/test/mesh-tournament.test.ts` and the `mesh-routing-probe.sh` mutation probe.
 - **Trigger**: Phase 7 S5 verification, automated job proof.
+
+### `target-probe.sh`
+- **Purpose**: The Phase 8 S2 target probe (design §10 S2), written as one command. It builds the target bundle (`pnpm target:build`), writes a `targets.json` fixture with one `node:22-bookworm` container target into a temp home, and runs a node driver over the deployed bundle: the strict store loads the file and resolves the target, the launcher preflights node >= 22 in the image, starts the container with the workspace and read-only bundle mounted and network/privileges/pids capped, and over the stdio link asserts hello (platform linux, root /workspace, version match), an exec reporting Linux and `OPENSAND_TARGET_ID`, a write/read that round-trips through the bind mount to the host workspace, an outside-path refusal, and that the container is removed on exit.
+- **Usage**: `scripts/target-probe.sh container` (docker required; the image is pulled once, then cached).
+- **Exit Codes**: `0` when every check passes; `2` on usage error; `3` when docker is unavailable; non-zero on the first failed assertion, naming it.
+- **Selftest**: the script is itself the check; the underlying transport is covered by `packages/local-exec-daemon/test/target-transport.test.ts` (real child over stdio, no docker needed).
+- **Trigger**: Phase 8 S2 verification, automated job proof.
 
 ### `mutation-probe.sh`
 - **Purpose**: The one mutation probe. Applies a mutation to a file git tracks, requires the given test command to go RED, restores the file byte-for-byte (also on interruption), and requires GREEN again. A target git does not track is refused: a build artifact is not a real mutation, cannot be restored from git, and survives every incremental build.
