@@ -1,14 +1,19 @@
 // Shell frame for the Preact renderer: sidebar + main area only. Views are
 // ported in later slices. Class names and ids match renderer/index.html so the
 // shared styles.css (traffic-light clearance, drag regions) applies unchanged.
+import { useState } from "preact/hooks";
 import type { ShellData } from "./data";
 import { ChatList } from "./views/ChatList";
+import { AgentRoster } from "./views/AgentRoster";
+import type { AgentRecord } from "@opensand/shared";
 
 export interface ShellProps {
   data: ShellData;
 }
 
 export function Shell({ data }: ShellProps) {
+  const [activeAgent, setActiveAgent] = useState<AgentRecord | null>(null);
+
   return (
     <div class="app-layout">
       <aside class="sidebar">
@@ -26,6 +31,9 @@ export function Shell({ data }: ShellProps) {
         <div id="sessionList" class="session-list" role="list" aria-label="Sessions">
           <ChatList data={data} />
         </div>
+        <div class="agent-roster-panel" id="agentRosterPanel" role="region" aria-label="Agents">
+          <AgentRoster data={data} onSelect={setActiveAgent} />
+        </div>
         <div class="sidebar-footer">
           <span class="shell-note">Preact shell (preview)</span>
         </div>
@@ -33,12 +41,22 @@ export function Shell({ data }: ShellProps) {
       <main class="main-panel">
         <header class="topbar">
           <div class="topbar-left">
-            <h1 class="view-header-title" id="viewHeaderTitle">Home</h1>
-            <span class="active-session-title" id="activeSessionTitle">New Session</span>
+            <h1 class="view-header-title" id="viewHeaderTitle">{activeAgent ? activeAgent.name : "Home"}</h1>
+            <span class="active-session-title" id="activeSessionTitle">{activeAgent ? "Agent Settings" : "New Session"}</span>
           </div>
         </header>
         <section class="shell-body" aria-live="polite">
-          <p class="shell-empty">Views are not ported yet. Unset OPENSAND_RENDERER to use the default renderer.</p>
+          {activeAgent ? (
+            <div class="agent-detail-card">
+              <h2 class="agent-detail-title">Settings — {activeAgent.name}</h2>
+              <p class="agent-detail-desc">Configure model, temperature, OpenRouter key, and enable state for this agent.</p>
+              <div class="agent-detail-placeholder">
+                <p>Detail card fields (logo SVG, temperature, max tokens, top P, enabled toggle, API key vault reference) render here.</p>
+              </div>
+            </div>
+          ) : (
+            <p class="shell-empty">Select an agent from the sidebar to view its settings.</p>
+          )}
         </section>
       </main>
     </div>
