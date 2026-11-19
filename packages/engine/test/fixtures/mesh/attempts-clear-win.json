@@ -1,0 +1,4 @@
+[
+  {"n": 1, "result": {"role": "coder", "model": "provider-a:model-1", "family": "fam-a", "outcome": "passed", "checkExit": 0, "diffLines": 30, "costUsd": 0.001, "wallMs": 50000}, "diff": "small", "checkOutput": "ok"},
+  {"n": 2, "result": {"role": "coder", "model": "provider-b:model-2", "family": "fam-b", "outcome": "passed", "checkExit": 0, "diffLines": 500, "costUsd": 0.02, "wallMs": 80000}}
+]
