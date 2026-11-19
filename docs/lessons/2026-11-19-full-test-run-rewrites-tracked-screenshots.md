@@ -14,3 +14,8 @@
   `worktree.sh save` now refuses to stage `packages/desktop/artifacts/*.png` unless the path is named
   explicitly after `--`; it restores them to HEAD and prints what it skipped
   (see 2026-11-19-worktree-guards-main-checkout-and-artifacts.md).
+- **Repeat (2026-11-19, phase 7 S5):** hit a third time, from the S5 slice's local verify run
+  (the slice pushed the rewritten PNGs in its first commit and pr-gate Check 3 refused the PR);
+  the fix above landed from a parallel PR (#143) the same morning, so the lesson is: run
+  `git fetch origin main` and rebase before a save, because a parallel slice may already carry
+  the guard your worktree predates.
