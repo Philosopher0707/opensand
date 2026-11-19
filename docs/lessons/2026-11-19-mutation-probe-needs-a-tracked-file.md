@@ -1,11 +1,12 @@
-# A mutation probe refuses a brand-new file: it is not tracked until it is staged
+# scripts/mutation-probe.sh refuses untracked files — commit the slice before probing
 
-- **Trap:** Running `scripts/mesh-judge-probe.sh` on a freshly written `judge.ts`
-  failed with "refusing to mutate …: git does not track it", even though the file
-  existed and the suite was green.
-- **Root Cause:** `mutation-probe.sh` only mutates files `git ls-files` reports, because
-  the restore is a byte-copy of a saved backup and an untracked (or gitignored, e.g.
-  `dist/`) file cannot be proven restored and would poison incremental builds. A new
-  source file is untracked until it enters the index.
-- **Rule:** `git add` the new file before probing it. Staging is enough — `git ls-files`
-  reads the index, so a staged-but-uncommitted file is a valid probe target.
+- **Trap:** Phase 7 S4 ran its new mutation probe before the first commit. The
+  generic probe aborted with "refusing to mutate …: git does not track it",
+  before any mutation happened.
+- **Root Cause:** The probe restores the mutated file with git, which is only
+  verifiable for a tracked file; an untracked source file cannot be restored
+  byte-for-byte that way.
+- **Rule:** Run the mutation probe after the code is committed (a local commit
+  is enough; `worktree.sh save` can still push and open the PR afterwards).
+  Put the probe script itself in that commit so the probe's own file is
+  tracked too.
