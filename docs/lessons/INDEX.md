@@ -41,6 +41,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [Re-running the gate on a merged PR rebased and force-pushed the merged branch](2026-11-19-gate-rerun-rebased-a-merged-pr.md)
 - 2026-11-19 · [The judge's tie band fires without a reviewer — separate the costs or expect fallback-deterministic](2026-11-19-judge-tie-band-fires-without-a-reviewer.md)
 - 2026-11-19 · [A lease file inside the attempt worktree would dirty every snapshot](2026-11-19-lease-file-inside-worktree.md)
+- 2026-11-19 · [The main checkout can be years behind and is never updated](2026-11-19-main-checkout-stale-lacks-scripts.md)
 - 2026-11-19 · [Wilson boundary numbers in a design doc must be checked against the formula before tests pin them](2026-11-19-mesh-wilson-fixture-numbers.md)
 - 2026-11-19 · [The mission log is event-log.jsonl, not log.jsonl — hand-built log paths silently fork the records](2026-11-19-mission-log-is-event-log-jsonl.md)
 - 2026-11-19 · [scripts/mutation-probe.sh refuses untracked files — commit the slice before probing](2026-11-19-mutation-probe-needs-a-tracked-file.md)

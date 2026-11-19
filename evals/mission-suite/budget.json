@@ -1,0 +1,22 @@
+{
+  "name": "budget",
+  "title": "run out of repair budget",
+  "initialQuery": "make out.txt contain ok",
+  "checkCommand": "printf 'target=%s\\n' \"${OPENSAND_TARGET_ID:-local}\" && grep -qx ok out.txt",
+  "maxRepairs": 1,
+  "seed": {
+    "README.md": "# mission fixture\n"
+  },
+  "rounds": [
+    {
+      "plan": ["write out.txt"],
+      "writes": { "out.txt": "bad\n" },
+      "claim": "all tests pass"
+    },
+    {
+      "plan": ["try again"],
+      "writes": { "out.txt": "still bad\n" },
+      "claim": "all tests pass"
+    }
+  ]
+}

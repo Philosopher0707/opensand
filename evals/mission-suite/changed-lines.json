@@ -1,0 +1,20 @@
+{
+  "name": "changed-lines",
+  "title": "edit line 2 and report changed lines",
+  "initialQuery": "change the second line",
+  "checkCommand": "printf 'target=%s\\n' \"${OPENSAND_TARGET_ID:-local}\" && true",
+  "maxRepairs": 1,
+  "seed": {
+    "src.txt": "one\ntwo\nthree\n"
+  },
+  "rounds": [
+    {
+      "plan": ["edit line 2"],
+      "edits": [
+        { "path": "src.txt", "replaceLine": { "line": 2, "text": "TWO" } }
+      ],
+      "claim": "changed line 2",
+      "review": { "accept": true, "note": "one line changed" }
+    }
+  ]
+}
