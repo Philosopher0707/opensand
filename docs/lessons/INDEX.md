@@ -32,6 +32,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [CI speed-up: skip the heavy suite for docs-only PRs, and the gate bans `.github/` changes](2026-11-19-ci-speedup-docs-only-skip-and-gate-github-ban.md)
 - 2026-11-19 · [A full test run rewrites tracked screenshots, and `save` stages them](2026-11-19-full-test-run-rewrites-tracked-screenshots.md)
 - 2026-11-19 · ["No CI checks appeared" can be a queued run, not a broken push](2026-11-19-gate-no-checks-appeared-vs-queued-run.md)
+- 2026-11-19 · [A lease file inside the attempt worktree would dirty every snapshot](2026-11-19-lease-file-inside-worktree.md)
 - 2026-11-19 · [Wilson boundary numbers in a design doc must be checked against the formula before tests pin them](2026-11-19-mesh-wilson-fixture-numbers.md)
 - 2026-11-19 · [A release install is not done until the installed app answers](2026-11-19-post-install-health-check.md)
 - 2026-11-19 · [PR #124's rebase always conflicted on the generated lessons index](2026-11-19-pr-gate-index-conflict-auto-resolve.md)
@@ -43,3 +44,4 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [A new shared type builds everywhere but the coordinator](2026-11-19-shared-types-need-explicit-coordinator-reexport.md)
 - 2026-11-19 · [A read-only status report still needs a hermetic gh stub and token-free output](2026-11-19-status-report-behind-main-and-token-free-gh.md)
 - 2026-11-19 · [worktree.sh cannot adopt an existing remote branch](2026-11-19-worktree-adopt-existing-branch.md)
+- 2026-11-19 · [A worktree's node_modules can be symlinked from a merged sibling on a full disk](2026-11-19-worktree-node-modules-on-full-disk.md)
