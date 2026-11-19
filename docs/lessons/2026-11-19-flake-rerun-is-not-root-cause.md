@@ -1,0 +1,7 @@
+# A flaky test rerun is not a root-cause fix
+
+**Trap:** In Phase 8 S3 the `fork-real-window` test failed once. The failure was labelled a flake and the test was rerun until it was green; the run was reported as done without proving the failure could not still happen on the base commit. The log was not preserved and the base was not re-run, so "green after rerun" was the only evidence. That is the same shape as the older rule "fix flaky tests at the root; never just re-run them", and it was relearned the hard way.
+
+**Root Cause:** A rerun changes nothing in the system under test. Without the failing log, a reproduction on the untouched base commit and a named cause, there is no basis for calling the failure a flake rather than a real defect in the change (or a pre-existing defect the change merely exposed). A green rerun only proves one execution passed.
+
+**Rule:** When a test fails: preserve its log and exact command first; then either (a) reproduce it on the untouched base commit and report it as pre-existing with the cause, or (b) find the cause in the change, fix it at the root and add a check that fails on the unfixed code. If neither can be done in the time available, leave the item OPEN with the log path and the reproduction steps — never close it as "flake" and never rerun until green. A repeat of this rule becomes an automatic check: the verification record must name a base reproduction or a fixing commit for every initially failing test.

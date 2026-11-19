@@ -36,6 +36,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [Clean-disk wipes workspace dist; Electron's module import then hangs instead of failing](2026-11-19-clean-disk-wipes-workspace-dist-electron-import-hangs.md)
 - 2026-11-19 · [Copied pnpm node_modules: re-point broken symlinks at their realpath](2026-11-19-copied-node-modules-symlinks-resolve-in-donor.md)
 - 2026-11-19 · [A `df -k /` free-space guard measures the read-only system snapshot](2026-11-19-df-root-reports-read-only-system-snapshot.md)
+- 2026-11-19 · [A flaky test rerun is not a root-cause fix](2026-11-19-flake-rerun-is-not-root-cause.md)
 - 2026-11-19 · [A full test run rewrites tracked screenshots, and `save` stages them](2026-11-19-full-test-run-rewrites-tracked-screenshots.md)
 - 2026-11-19 · ["No CI checks appeared" can be a queued run, not a broken push](2026-11-19-gate-no-checks-appeared-vs-queued-run.md)
 - 2026-11-19 · [Re-running the gate on a merged PR rebased and force-pushed the merged branch](2026-11-19-gate-rerun-rebased-a-merged-pr.md)
