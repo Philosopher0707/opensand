@@ -826,6 +826,18 @@ export class DesktopIpcBridge extends EventEmitter {
     return this.agentStore.updateAgentVoice(id, updates);
   }
 
+  public async createAgentTask(agentId: string, input: { threadId: string; title: string; status?: string; pinned?: boolean; metadata?: Record<string, unknown> }): Promise<any> {
+    return this.agentStore.createAgentTask(agentId, input);
+  }
+
+  public async switchAgentThread(agentId: string, threadId: string): Promise<any> {
+    return this.agentStore.switchAgentThread(agentId, threadId);
+  }
+
+  public async listAgentTasks(agentId: string): Promise<any[]> {
+    return this.agentStore.listAgentTasks(agentId);
+  }
+
   // Task Store API
   public async getTasks(filter?: { status?: TaskStatus; agentId?: string }): Promise<AgentTask[]> {
     return this.taskStore.listTasks(filter);

@@ -58,6 +58,12 @@ try {
         ipcRenderer.invoke('opensand:updateAgentSection', { id, updates }),
       updateAgentVoice: (id: string, updates: { voice?: string; speakReplies?: boolean; voiceNotes?: boolean; replyStyle?: string }) =>
         ipcRenderer.invoke('opensand:updateAgentVoice', { id, updates }),
+      createAgentTask: (agentId: string, input: { threadId: string; title: string; status?: string; pinned?: boolean; metadata?: Record<string, unknown> }) =>
+        ipcRenderer.invoke('opensand:createAgentTask', { agentId, ...input }),
+      switchAgentThread: (agentId: string, threadId: string) =>
+        ipcRenderer.invoke('opensand:switchAgentThread', { agentId, threadId }),
+      listAgentTasks: (agentId: string) =>
+        ipcRenderer.invoke('opensand:listAgentTasks', { agentId }),
       getSettings: () =>
         ipcRenderer.invoke('opensand:getSettings'),
       updateSettings: (settings: any) =>

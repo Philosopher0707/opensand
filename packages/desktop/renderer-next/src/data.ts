@@ -87,5 +87,24 @@ export function windowBridgeData(): ShellData {
         return bridge.updateAgentVoice(id, updates);
       }
     },
+    async createAgentTask(agentId: string, input: { threadId: string; title: string; status?: string; pinned?: boolean; metadata?: Record<string, unknown> }): Promise<any> {
+      const bridge = (window as any).opensand;
+      if (bridge?.createAgentTask) {
+        return bridge.createAgentTask(agentId, input);
+      }
+    },
+    async switchAgentThread(agentId: string, threadId: string): Promise<any> {
+      const bridge = (window as any).opensand;
+      if (bridge?.switchAgentThread) {
+        return bridge.switchAgentThread(agentId, threadId);
+      }
+    },
+    async listAgentTasks(agentId: string): Promise<any[]> {
+      const bridge = (window as any).opensand;
+      if (bridge?.listAgentTasks) {
+        return bridge.listAgentTasks(agentId);
+      }
+      return [];
+    },
   };
 }

@@ -747,6 +747,50 @@ export class DesktopServer {
       return;
     }
 
+    // API: POST /api/agents/:id/tasks (create task/thread for agent)
+    if (pathname.startsWith('/api/agents/') && pathname.endsWith('/tasks') && req.method === 'POST') {
+      const agentId = pathname.replace('/api/agents/', '').replace('/tasks', '');
+      if (!isValidId(agentId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid agentId format' }));
+        return;
+      }
+      const body = await this.readJsonBody(req);
+      const updated = await this.bridge.createAgentTask(agentId, body);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(updated));
+      return;
+    }
+
+    // API: GET /api/agents/:id/tasks (list tasks for agent)
+    if (pathname.startsWith('/api/agents/') && pathname.endsWith('/tasks') && req.method === 'GET') {
+      const agentId = pathname.replace('/api/agents/', '').replace('/tasks', '');
+      if (!isValidId(agentId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid agentId format' }));
+        return;
+      }
+      const tasks = await this.bridge.listAgentTasks(agentId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(tasks));
+      return;
+    }
+
+    // API: PATCH /api/agents/:id/thread (switch active thread)
+    if (pathname.startsWith('/api/agents/') && pathname.endsWith('/thread') && req.method === 'PATCH') {
+      const agentId = pathname.replace('/api/agents/', '').replace('/thread', '');
+      if (!isValidId(agentId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid agentId format' }));
+        return;
+      }
+      const body = await this.readJsonBody(req);
+      const updated = await this.bridge.switchAgentThread(agentId, body.threadId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(updated));
+      return;
+    }
+
     // API: GET /api/tasks (List tasks)
     if (pathname === '/api/tasks' && req.method === 'GET') {
       const status = url.searchParams.get('status') as any || undefined;

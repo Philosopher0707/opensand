@@ -248,6 +248,18 @@ export class DesktopApp {
       return this.bridge.updateAgentVoice(id, updates);
     });
 
+    ipcMain.handle('opensand:createAgentTask', async (_: any, { agentId, threadId, title, status, pinned, metadata }: { agentId: string; threadId: string; title: string; status?: string; pinned?: boolean; metadata?: Record<string, unknown> }) => {
+      return this.bridge.createAgentTask(agentId, { threadId, title, status, pinned, metadata });
+    });
+
+    ipcMain.handle('opensand:switchAgentThread', async (_: any, { agentId, threadId }: { agentId: string; threadId: string }) => {
+      return this.bridge.switchAgentThread(agentId, threadId);
+    });
+
+    ipcMain.handle('opensand:listAgentTasks', async (_: any, { agentId }: { agentId: string }) => {
+      return this.bridge.listAgentTasks(agentId);
+    });
+
     ipcMain.handle('opensand:getSettings', async () => {
       return this.bridge.getSettings();
     });
