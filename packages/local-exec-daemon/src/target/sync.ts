@@ -144,6 +144,9 @@ export async function deployBundle(
   const entry = remoteJoin(dest, "dist", "src", "target", "bin.js");
   const check = await remoteExec(`test -f ${shq(entry)} && echo ok`, opts);
   if (check.exitCode !== 0 || check.stdout.trim() !== "ok") {
+    // rsync creates the destination's final component only; its parents must
+    // exist first (Linux rsync fails with ENOENT, unlike macOS's).
+    await remoteExec(`mkdir -p ${shq(dest)}`, opts);
     await new Promise<void>((resolve, reject) => {
       execFile(
         "rsync",
@@ -190,7 +193,11 @@ export async function pushWorkspace(
   const { host, sshArgs, manifestPath = defaultManifestPath(missionId) } = opts;
   const manifest = await buildManifest(workspaceRoot);
   await writeManifest(manifestPath, manifest);
-  const dest = remoteSpec(host, `${missionRemoteDir(remoteRoot, missionId)}/`);
+  const destDir = missionRemoteDir(remoteRoot, missionId);
+  // rsync creates the destination's final component only; its parents must
+  // exist first (Linux rsync fails with ENOENT, unlike macOS's).
+  await remoteExec(`mkdir -p ${shq(destDir)}`, { host, sshArgs });
+  const dest = remoteSpec(host, `${destDir}/`);
   await new Promise<void>((resolve, reject) => {
     execFile(
       "rsync",

@@ -58,6 +58,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [A rebase selftest must assert the effect, not just the fixture plumbing](2026-11-19-rebase-selftest-needs-observable-effects.md)
 - 2026-11-19 · [Red main after a merge was silent](2026-11-19-red-main-after-merge-was-silent.md)
 - 2026-11-19 · [A repo script run from an extracted copy fails: it cds to its own SCRIPT_ROOT](2026-11-19-repo-scripts-need-a-repo-root.md)
+- 2026-11-19 · [Linux rsync refuses a destination whose parent directories do not exist](2026-11-19-rsync-refuses-missing-parent-dirs-on-linux.md)
 - 2026-11-19 · [macOS sandbox-exec allowlists the per-user temp root, so a containment probe under /var/folders proves nothing](2026-11-19-sandbox-temp-root-is-allowlisted.md)
 - 2026-11-19 · [A new shared type builds everywhere but the coordinator](2026-11-19-shared-types-need-explicit-coordinator-reexport.md)
 - 2026-11-19 · [A read-only status report still needs a hermetic gh stub and token-free output](2026-11-19-status-report-behind-main-and-token-free-gh.md)
