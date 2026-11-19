@@ -27,6 +27,10 @@
 # 29. post-merge: main CI red -> exit 4, failing job names + --log-failed hint (merge already done)
 # 30. post-merge: run never appears -> bounded exit 3, not a hang
 # 31. --no-post-merge-check skips the wait entirely
+# 32. --when-green: no checks registered yet but the head commit's run is queued -> keep waiting, then green
+# 33. --when-green: a queued run that never produces checks -> bounded exit 3 (max wait honoured)
+# 34. --when-green: a queued run extends the wait, then a check fails -> exit 1 naming the job
+# 35. --when-green: `gh run list` status lags (COMPLETED) but the Jobs API says in_progress -> still waits
 # Usage: scripts/pr-gate-selftest.sh (PR_GATE_SCRIPT=<path> to test another copy)
 set -uo pipefail
 
@@ -159,7 +163,7 @@ case "$1" in
         if [ -f "$TEST_CASE_DIR/run_list_json" ]; then
           cat "$TEST_CASE_DIR/run_list_json"
         else
-          echo '[{"databaseId":555,"name":"CI","event":"push","headBranch":"main"}]'
+          echo '[{"databaseId":555,"name":"CI","status":"COMPLETED","headSha":"9999999999999999999999999999999999999999","headBranch":"main","event":"push"}]'
         fi
         exit 0
         ;;
@@ -174,6 +178,25 @@ case "$1" in
         ;;
       *)
         echo "gh stub: unhandled run subcmd ${2:-}" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  api)
+    echo "gh $*" >> "$TEST_CASE_DIR/api_calls.log"
+    case "$2" in
+      repos/*/actions/runs/*/jobs)
+        # The Jobs API is the gate's source of truth for run state; run_jobs_json overrides
+        # the default "job still in progress" answer.
+        if [ -f "$TEST_CASE_DIR/run_jobs_json" ]; then
+          cat "$TEST_CASE_DIR/run_jobs_json"
+        else
+          echo '{"total_count":1,"jobs":[{"id":1,"name":"Build & test (macOS, Node 22)","status":"in_progress","conclusion":null}]}'
+        fi
+        exit 0
+        ;;
+      *)
+        echo "gh stub: unhandled api path $2" >&2
         exit 1
         ;;
     esac
@@ -460,7 +483,7 @@ run_test_case() {
   if [[ "$ok" -eq 1 ]]; then
     echo "PASS $label (exit $status)"
   else
-    echo "$out" | sed 's/^/    | /'
+    while IFS= read -r line; do printf '    | %s\n' "$line"; done <<< "$out"
     FAILED=1
   fi
 }
@@ -985,6 +1008,156 @@ NEED_SUBSTRINGS=("PASS: PR #42 merged successfully.")
 run_test_case "case31-post-merge-opt-out" --no-post-merge-check 42
 if [[ -f "$dir/run_list_calls.log" || -f "$dir/run_view_calls.log" ]]; then
   echo "FAIL case31: post-merge check ran despite --no-post-merge-check"
+  FAILED=1
+fi
+
+# --- Case 32: --when-green, no checks registered but the head commit's run is queued -> wait, then merge ---
+dir="$WORK/case32-queued-run-no-checks"
+setup_defaults "$dir"
+cat << 'JSON' > "$dir/pr_view.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": []
+}
+JSON
+cat << 'JSON' > "$dir/pr_view_late.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": [
+    {"name": "Build & test (Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"},
+    {"name": "Build & test (macOS, Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"}
+  ]
+}
+JSON
+echo 3 > "$dir/late_after"
+cat << 'JSON' > "$dir/run_list_json"
+[
+  {"databaseId":777,"name":"Build & test (macOS, Node 22)","status":"QUEUED","headSha":"2222222222222222222222222222222222222222","headBranch":"job/test","event":"pull_request"},
+  {"databaseId":555,"name":"CI","status":"COMPLETED","headBranch":"main","event":"push"}
+]
+JSON
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("CI run for head commit is queued/in progress" "CI finished green" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+PR_GATE_POLL_SECONDS=1 PR_GATE_NO_CHECKS_GRACE_SECONDS=2 run_test_case "case32-queued-run-no-checks" --when-green 42
+if ! grep -q -- "--commit 2222222222222222222222222222222222222222" "$dir/run_list_calls.log" 2>/dev/null; then
+  echo "FAIL case32: gate never checked gh run list for the head commit SHA"
+  FAILED=1
+fi
+if ! grep -q -- "actions/runs/777/jobs" "$dir/api_calls.log" 2>/dev/null; then
+  echo "FAIL case32: gate never queried the Jobs API for run 777"
+  FAILED=1
+fi
+
+# --- Case 33: --when-green, a queued run that never registers checks -> bounded exit 3 ---
+dir="$WORK/case33-queued-run-forever"
+setup_defaults "$dir"
+cat << 'JSON' > "$dir/pr_view.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": []
+}
+JSON
+cat << 'JSON' > "$dir/run_list_json"
+[{"databaseId":777,"name":"Build & test (macOS, Node 22)","status":"QUEUED","headSha":"2222222222222222222222222222222222222222","headBranch":"job/test","event":"pull_request"}]
+JSON
+EXPECT_EXIT=3
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("CI run for head commit is queued/in progress" "FAIL: no CI checks appeared after" "for PR #42")
+start=$SECONDS
+PR_GATE_POLL_SECONDS=1 PR_GATE_NO_CHECKS_GRACE_SECONDS=1 PR_GATE_QUEUED_RUN_MAX_SECONDS=3 run_test_case "case33-queued-run-forever" --when-green --timeout 1 42
+elapsed=$((SECONDS - start))
+if [[ "$elapsed" -gt 10 ]]; then
+  echo "FAIL case33: queued-run wait was not bounded (took ${elapsed}s)"
+  FAILED=1
+fi
+
+# --- Case 34: --when-green, a queued run extends the wait, then a check fails -> exit 1 ---
+dir="$WORK/case34-queued-run-then-failure"
+setup_defaults "$dir"
+cat << 'JSON' > "$dir/pr_view.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": []
+}
+JSON
+cat << 'JSON' > "$dir/pr_view_late.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": [
+    {"name": "Build & test (Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"},
+    {"name": "Build & test (macOS, Node 22)", "status": "COMPLETED", "conclusion": "FAILURE"}
+  ]
+}
+JSON
+echo 3 > "$dir/late_after"
+echo 1 > "$dir/checks_exit"
+cat << 'JSON' > "$dir/run_list_json"
+[{"databaseId":777,"name":"Build & test (macOS, Node 22)","status":"QUEUED","headSha":"2222222222222222222222222222222222222222","headBranch":"job/test","event":"pull_request"}]
+JSON
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("CI run for head commit is queued/in progress" "FAIL: CI is red for PR #42" "Build & test (macOS, Node 22) (FAILURE)")
+PR_GATE_POLL_SECONDS=1 PR_GATE_NO_CHECKS_GRACE_SECONDS=1 run_test_case "case34-queued-run-then-failure" --when-green 42
+
+# --- Case 35: --when-green, gh run list status lags (COMPLETED) but the Jobs API says a job is
+# still in progress -> the gate keeps waiting (the Jobs API is the source of truth) ---
+dir="$WORK/case35-run-list-lag-jobs-api"
+setup_defaults "$dir"
+cat << 'JSON' > "$dir/pr_view.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": []
+}
+JSON
+cat << 'JSON' > "$dir/pr_view_late.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": [
+    {"name": "Build & test (Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"},
+    {"name": "Build & test (macOS, Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"}
+  ]
+}
+JSON
+echo 3 > "$dir/late_after"
+cat << 'JSON' > "$dir/run_list_json"
+[{"databaseId":888,"name":"Build & test (macOS, Node 22)","status":"COMPLETED","headSha":"2222222222222222222222222222222222222222","headBranch":"job/test","event":"pull_request"},
+ {"databaseId":555,"name":"CI","status":"COMPLETED","headSha":"5555555555555555555555555555555555555555","headBranch":"main","event":"push"}]
+JSON
+cat << 'JSON' > "$dir/run_jobs_json"
+{"total_count":1,"jobs":[{"id":1,"name":"Build & test (macOS, Node 22)","status":"in_progress","conclusion":null}]}
+JSON
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("CI run for head commit is queued/in progress" "CI finished green" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+PR_GATE_POLL_SECONDS=1 PR_GATE_NO_CHECKS_GRACE_SECONDS=1 run_test_case "case35-run-list-lag-jobs-api" --when-green 42
+if ! grep -q -- "actions/runs/888/jobs" "$dir/api_calls.log" 2>/dev/null; then
+  echo "FAIL case35: gate never queried the Jobs API for run 888"
   FAILED=1
 fi
 

@@ -40,6 +40,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [A release install is not done until the installed app answers](2026-11-19-post-install-health-check.md)
 - 2026-11-19 · [PR #124's rebase always conflicted on the generated lessons index](2026-11-19-pr-gate-index-conflict-auto-resolve.md)
 - 2026-11-19 · ["No checks reported" is pending, not a red gate](2026-11-19-pr-gate-no-checks-is-pending.md)
+- 2026-11-19 · [pr-gate --when-green gave up while CI was still queued](2026-11-19-pr-gate-queued-ci-was-treated-as-missing.md)
 - 2026-11-19 · [A rebase --continue opened an editor and hung the merge gate](2026-11-19-rebase-continue-needs-noninteractive-editor.md)
 - 2026-11-19 · [A rebase selftest must assert the effect, not just the fixture plumbing](2026-11-19-rebase-selftest-needs-observable-effects.md)
 - 2026-11-19 · [Red main after a merge was silent](2026-11-19-red-main-after-merge-was-silent.md)
