@@ -102,6 +102,28 @@ export interface AgentRecord {
   createdAt: number;
   updatedAt: number;
   metadata?: Record<string, unknown>;
+  /** Whether this agent may run turns. New agents start disabled until enabled. */
+  enabled?: boolean;
+  /** Inline SVG avatar for the sidebar/details logo; absent = default avatar. */
+  logoSvg?: string;
+  /** Hex accent color tinting the logo paths. */
+  logoColor?: string;
+  /** Sampling temperature (0-2). Absent = model default. */
+  temperature?: number;
+  /** Maximum output tokens per turn. Absent = model default. */
+  maxTokens?: number;
+  /** Nucleus sampling probability (0-1). Absent = model default. */
+  topP?: number;
+  /** Vault reference id for the provider API key; raw key never travels on wire. */
+  openRouterApiKeyId?: string;
+  /** Epoch ms when the key was last validated. */
+  lastValidatedAt?: number;
+  /** Last validation error message, if any. */
+  validationError?: string | null;
+  /** Predicted session outcome (set by user). */
+  predictedOutcome?: "positive" | "negative" | "uncertain" | "pending";
+  /** Observed session outcome (set after turn completes). */
+  observedOutcome?: "positive" | "negative" | "uncertain" | "pending";
 }
 
 export interface CreateAgentInput {
@@ -113,6 +135,75 @@ export interface CreateAgentInput {
   endpoint?: string;
   allowedTools?: string[];
   metadata?: Record<string, unknown>;
+  enabled?: boolean;
+  temperature?: number;
+  maxTokens?: number;
+  topP?: number;
+  logoSvg?: string;
+  logoColor?: string;
+}
+
+/** One declarative field in an agent's settings schema. */
+export interface SettingsField {
+  key: string;
+  type: SettingsFieldType;
+  label: string;
+  description?: string;
+  default?: any;
+  required?: boolean;
+  options?: Array<{ label: string; value: string }>;
+  min?: number;
+  max?: number;
+  step?: number;
+  secret?: boolean;
+  placeholder?: string;
+}
+
+export type SettingsFieldType =
+  | "select"
+  | "number"
+  | "toggle"
+  | "secret"
+  | "textarea"
+  | "multiselect";
+
+/** What the renderer may see about an agent in the sidecar roster. */
+export interface AgentWithSettings extends AgentRecord {
+  enabled: boolean;
+  hasKey: boolean;
+  lastValidatedAt?: number;
+  validationError?: string | null;
+  status: "enabled" | "disabled" | "error" | "unconfigured";
+}
+
+/** The full detail card view for one agent's settings. */
+export interface AgentSettingsDetail extends AgentRecord {
+  enabled: boolean;
+  schema: SettingsField[];
+  values: Record<string, any>;
+  secretPlaceholder: string | null;
+  lastValidatedAt?: number;
+  validationError?: string | null;
+  sessions: SessionSummary[];
+}
+
+/** Body for updating an agent's settings. */
+export interface UpdateAgentSettingsInput {
+  enabled?: boolean;
+  temperature?: number;
+  maxTokens?: number;
+  topP?: number;
+  logoSvg?: string;
+  logoColor?: string;
+  predictedOutcome?: "positive" | "negative" | "uncertain" | "pending";
+  observedOutcome?: "positive" | "negative" | "uncertain" | "pending";
+}
+
+/** Vault key reference stored alongside an agent (never the raw key). */
+export interface AgentKeyReference {
+  keyId: string;
+  provider: string;
+  lastValidatedAt?: number;
 }
 
 export interface AgentTemplate {

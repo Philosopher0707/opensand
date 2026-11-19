@@ -16,6 +16,28 @@ export interface AgentRecord {
   createdAt: number;
   updatedAt: number;
   metadata?: Record<string, unknown>;
+  /** Whether this agent may run turns. New agents start disabled until enabled. */
+  enabled?: boolean;
+  /** Inline SVG avatar for the sidebar/details logo; absent = default avatar. */
+  logoSvg?: string;
+  /** Hex accent color tinting the logo paths. */
+  logoColor?: string;
+  /** Sampling temperature (0-2). Absent = model default. */
+  temperature?: number;
+  /** Maximum output tokens per turn. Absent = model default. */
+  maxTokens?: number;
+  /** Nucleus sampling probability (0-1). Absent = model default. */
+  topP?: number;
+  /** Vault reference id for the provider API key; raw key never travels on wire. */
+  openRouterApiKeyId?: string;
+  /** Epoch ms when the key was last validated. */
+  lastValidatedAt?: number;
+  /** Last validation error message, if any. */
+  validationError?: string | null;
+  /** Predicted session outcome (set by user). */
+  predictedOutcome?: "positive" | "negative" | "uncertain" | "pending";
+  /** Observed session outcome (set after turn completes). */
+  observedOutcome?: "positive" | "negative" | "uncertain" | "pending";
 }
 
 export interface CreateAgentInput {
@@ -27,6 +49,24 @@ export interface CreateAgentInput {
   endpoint?: string;
   allowedTools?: string[];
   metadata?: Record<string, unknown>;
+  enabled?: boolean;
+  temperature?: number;
+  maxTokens?: number;
+  topP?: number;
+  logoSvg?: string;
+  logoColor?: string;
+}
+
+/** Fields allowed to be patched on an existing agent's settings. */
+export interface UpdateAgentSettingsInput {
+  enabled?: boolean;
+  temperature?: number;
+  maxTokens?: number;
+  topP?: number;
+  logoSvg?: string;
+  logoColor?: string;
+  predictedOutcome?: "positive" | "negative" | "uncertain" | "pending";
+  observedOutcome?: "positive" | "negative" | "uncertain" | "pending";
 }
 
 export class AgentStore {
@@ -151,6 +191,25 @@ export class AgentStore {
     } catch {
       return false;
     }
+  }
+
+  /** Patch settings fields on an existing agent. */
+  async updateAgentSettings(idOrName: string, updates: UpdateAgentSettingsInput): Promise<AgentRecord> {
+    const existing = await this.getAgent(idOrName);
+    if (!existing) {
+      throw new Error(`Agent [${idOrName}] not found in store`);
+    }
+
+    const updated: AgentRecord = {
+      ...existing,
+      ...updates,
+      id: existing.id,
+      createdAt: existing.createdAt,
+      updatedAt: Date.now(),
+    };
+
+    await this.saveRecordAtomic(updated);
+    return updated;
   }
 
   /**
