@@ -14,6 +14,8 @@ import { GitManager } from "./git-manager.js";
 import { WorkspaceSentinel, createAutonomousHealer } from "./workspace-sentinel.js";
 import { AttachmentManager } from "./attachment-manager.js";
 import { UniversalLLMClient } from "./llm-client.js";
+import { createDriverLlmClient } from "./provider-llm.js";
+import { providerRegistry } from "./provider-registry.js";
 import { AgentCoordinator } from "./coordinator.js";
 import { buildToolDiscoverySummary, resolveRoleAllowedTools, recommendToolScopeMode } from "./token-hygiene.js";
 import { resolveAgentModel } from "./model-resolution.js";
@@ -60,6 +62,8 @@ export interface RegisterOrchestratorToolsOptions {
   defaultEndpoint?: string;
   defaultModel?: string;
   defaultApiKey?: string;
+  /** Provider selected in app settings; used to resolve the delegate's driver/key. */
+  defaultProvider?: string;
   sessionsBaseDir?: string;
   repoRoot?: string;
 }
@@ -208,12 +212,36 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       agentId: string;
       agentName: string;
       sessionId: string;
-      status: "running" | "completed" | "failed";
+      status: "running" | "completed" | "failed" | "cancelled";
       response?: string;
       error?: string;
       promise: Promise<string>;
+      settledAt?: number;
     }
   >();
+  const MAX_DELEGATIONS = 256;
+  const DELEGATION_TTL_MS = 10 * 60 * 1000;
+
+  /** Bound the registry: prune stale settled entries, then oldest settled if still full. */
+  const pruneDelegations = () => {
+    const now = Date.now();
+    for (const [id, entry] of delegations) {
+      if (entry.status !== "running" && entry.settledAt && now - entry.settledAt > DELEGATION_TTL_MS) {
+        delegations.delete(id);
+      }
+    }
+    while (delegations.size >= MAX_DELEGATIONS) {
+      let oldest: string | undefined;
+      let oldestAt = Infinity;
+      for (const [id, entry] of delegations) {
+        if (entry.status === "running") continue;
+        const at = entry.settledAt ?? 0;
+        if (at < oldestAt) { oldestAt = at; oldest = id; }
+      }
+      if (!oldest) break;
+      delegations.delete(oldest);
+    }
+  };
 
   const findDelegation = (id: string) => {
     const direct = delegations.get(id);
@@ -276,10 +304,21 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         throw new Error(`Subagent [${args.agent_id_or_name}] not found in Agent Store. Use list_agents to inspect available agents.`);
       }
 
-      // Create isolated LLM client for this subagent
+      // Create an isolated LLM client for this subagent through the same
+      // provider registry the main turn uses. This is the parity fix: env-only
+      // keys (e.g. OPENROUTER_API_KEY) and configured driver endpoints must
+      // work for delegates too, not just for the parent assistant.
       const subagentModel = resolveAgentModel(agent.model, options.defaultModel);
-      const subagentLlm = new UniversalLLMClient({
-        baseUrl: agent.endpoint || options.defaultEndpoint || "http://127.0.0.1:11434/v1",
+      const subagentEndpoint = agent.endpoint || options.defaultEndpoint || "http://127.0.0.1:11434/v1";
+      let delegateInstanceId: string | undefined;
+      const subagentLlm = (await createDriverLlmClient({
+        provider: options.defaultProvider ?? "",
+        endpoint: subagentEndpoint,
+        model: subagentModel,
+        apiKey: options.defaultApiKey,
+        onInstance: (id) => { delegateInstanceId = id; },
+      })) ?? new UniversalLLMClient({
+        baseUrl: subagentEndpoint,
         model: subagentModel,
         apiKey: options.defaultApiKey,
       });
@@ -301,6 +340,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           userInstructions: agent.systemPrompt,
           learnedRules: await habitExtractor.getLearnedRulesMarkdown(),
           memoryContext: await memoryStore.getPromptMemoryContext(agent.id),
+          skillsContext: await skillStore.formatSkillsPrompt(agent.id).catch(() => ""),
         },
         // Stream the child turn's events up to the parent's delegation
         // sink (threaded through tool context by the turn loop). Best-effort:
@@ -330,14 +370,22 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         subagentDepth: (context?.subagent?.depth ?? 0),
       });
 
+      // A parent abort must stop the child turn too. Use a derived controller
+      // so a normal tool return does not cancel work the caller is awaiting.
+      const childAbort = new AbortController();
+      const parentSignal = context?.signal as AbortSignal | undefined;
+      const onParentAbort = () => childAbort.abort();
+      parentSignal?.addEventListener("abort", onParentAbort, { once: true });
+
       const entry: {
         agentId: string;
         agentName: string;
         sessionId: string;
-        status: "running" | "completed" | "failed";
+        status: "running" | "completed" | "failed" | "cancelled";
         response?: string;
         error?: string;
         promise: Promise<string>;
+        settledAt?: number;
       } = {
         agentId: agent.id,
         agentName: agent.name,
@@ -345,19 +393,37 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         status: "running",
         promise: Promise.resolve(""),
       };
-      entry.promise = subCoordinator.runTurn(args.task)
+      entry.promise = subCoordinator.runTurn(args.task, childAbort.signal)
         .then((text) => {
+          if (childAbort.signal.aborted) {
+            entry.status = "cancelled";
+            throw new Error("Subagent turn cancelled by parent");
+          }
           entry.status = "completed";
           entry.response = text;
           return text;
         })
         .catch((error: any) => {
-          entry.status = "failed";
-          entry.error = error?.message ?? String(error);
+          if (childAbort.signal.aborted) {
+            entry.status = "cancelled";
+          } else if (entry.status !== "cancelled") {
+            entry.status = "failed";
+            entry.error = error?.message ?? String(error);
+          }
           throw error;
+        })
+        .finally(() => {
+          entry.settledAt = Date.now();
+          parentSignal?.removeEventListener("abort", onParentAbort);
+          // CLI driver instances outlive client creation; release them when the
+          // child turn ends so parallel delegations do not leak processes.
+          if (delegateInstanceId) {
+            void providerRegistry.disposeInstance(delegateInstanceId).catch(() => {});
+          }
         });
       // Background or timed-out delegations must never surface an unhandled rejection.
       entry.promise.catch(() => {});
+      pruneDelegations();
       delegations.set(subsessionId, entry);
 
       const timeoutMs = Number(args.timeout_ms ?? 0);
@@ -369,6 +435,12 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           status: "still_running",
           subagent: { id: agent.id, name: agent.name, role: agent.role, sessionId: subsessionId },
           hint: `Call await_agent with agent_id "${subsessionId}" to collect the result.`,
+        }, null, 2);
+      }
+      if (entry.status === "cancelled") {
+        return JSON.stringify({
+          status: "cancelled",
+          subagent: { id: agent.id, name: agent.name, role: agent.role, sessionId: subsessionId },
         }, null, 2);
       }
       if (entry.status === "failed") throw new Error(entry.error);
@@ -431,6 +503,12 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           status: "failed",
           subagent: { id: entry.agentId, name: entry.agentName, sessionId: entry.sessionId },
           error: entry.error,
+        }, null, 2);
+      }
+      if (entry.status === "cancelled") {
+        return JSON.stringify({
+          status: "cancelled",
+          subagent: { id: entry.agentId, name: entry.agentName, sessionId: entry.sessionId },
         }, null, 2);
       }
       return JSON.stringify({

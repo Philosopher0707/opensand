@@ -69,6 +69,8 @@ import {
   buildToolDiscoverySummary,
   createDriverLlmClient,
   providerRegistry,
+  resolveRoleAllowedTools,
+  recommendToolScopeMode,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -203,6 +205,7 @@ export class DesktopIpcBridge extends EventEmitter {
       defaultEndpoint: this.settings.endpoint,
       defaultModel: this.settings.model,
       defaultApiKey: this.settings.apiKey,
+      defaultProvider: this.settings.provider,
       sessionsBaseDir: path.join(this.baseDir, 'sessions'),
     });
 
@@ -589,6 +592,8 @@ export class DesktopIpcBridge extends EventEmitter {
     let targetModel = this.settings.model;
     let targetEndpoint = this.settings.endpoint;
     let customInstructions: string | undefined;
+    let effectiveAllowedTools: string[] | undefined;
+    let toolScopeMode: 'core' | 'all' | 'auto' | undefined;
 
     if (agentId) {
       const agent = await this.agentStore.getAgent(agentId);
@@ -596,6 +601,13 @@ export class DesktopIpcBridge extends EventEmitter {
         if (agent.model && agent.model !== 'default') targetModel = agent.model;
         if (agent.endpoint) targetEndpoint = agent.endpoint;
         customInstructions = agent.systemPrompt;
+        // Persona tool restrictions matter for the main turn too, not only for
+        // delegated subagents (CLI already does this).
+        effectiveAllowedTools = resolveRoleAllowedTools(agent.role, agent.allowedTools);
+        toolScopeMode = recommendToolScopeMode(targetModel, undefined, {
+          role: agent.role,
+          allowedTools: effectiveAllowedTools,
+        }) as typeof toolScopeMode;
       }
     }
 
@@ -653,6 +665,8 @@ export class DesktopIpcBridge extends EventEmitter {
       vaultStore: this.vaultStore,
       sessionsBaseDir: path.join(this.baseDir, 'sessions'),
       maxContextTokens: maxTokens,
+      ...(effectiveAllowedTools ? { allowedTools: effectiveAllowedTools } : {}),
+      ...(toolScopeMode ? { toolScopeMode } : {}),
       systemPromptContext: {
         userInstructions: customInstructions,
         learnedRules,
@@ -660,7 +674,7 @@ export class DesktopIpcBridge extends EventEmitter {
         skillsContext,
       },
       onApprovalRequired: async (req: ApprovalRequest) => {
-        return this.requestUserApproval(req.toolName, req.arguments, req.reason);
+        return this.requestUserApproval(req.toolName, req.arguments, req.reason, activeSessionId);
       },
       onEvent: (event: TurnEvent) => {
         this.dispatchTurnEvent(event, activeSessionId);
@@ -857,7 +871,12 @@ export class DesktopIpcBridge extends EventEmitter {
     this.sessionRuntimes.remove(runtime.key);
   }
 
-  public async requestUserApproval(toolName: string, args: Record<string, unknown>, reason?: string): Promise<boolean> {
+  public async requestUserApproval(
+    toolName: string,
+    args: Record<string, unknown>,
+    reason?: string,
+    sessionId?: string,
+  ): Promise<boolean> {
     if (this.daemon && !this.daemon.running) {
       this.ensureDaemon().catch(() => {});
     }
@@ -898,7 +917,7 @@ export class DesktopIpcBridge extends EventEmitter {
 
     return new Promise<boolean>((resolve) => {
       this.activeApprovals.set(approvalId, { request, resolve });
-      this.emitEvent('approval_required', request);
+      this.emitEvent('approval_required', request, undefined, sessionId);
     });
   }
 

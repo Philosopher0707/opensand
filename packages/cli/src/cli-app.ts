@@ -275,6 +275,7 @@ Examples:
     defaultEndpoint: config.endpoint,
     defaultModel: config.model,
     defaultApiKey: config.apiKey,
+    defaultProvider: config.provider,
   });
 
   // Handle direct listing flags

@@ -59,7 +59,8 @@ export class DesktopServer {
   private server: http.Server | null = null;
   private bridge: DesktopIpcBridge;
   private rpcGateway: RpcGateway;
-  private sseClients: Set<http.ServerResponse> = new Set();
+  /** Client response → session filter (null = global stream). */
+  private sseClients: Map<http.ServerResponse, string | null> = new Map();
   private readonly eventHistory = new Map<string, Array<{ seq: number; event: DesktopEvent }>>();
   private eventSeq = 0;
   private rendererDir: string;
@@ -247,7 +248,7 @@ export class DesktopServer {
   }
 
   public async stop(): Promise<void> {
-    for (const client of this.sseClients) {
+    for (const client of this.sseClients.keys()) {
       try {
         client.end();
       } catch {
@@ -290,10 +291,13 @@ export class DesktopServer {
   }
 
   private broadcastSse(event: DesktopEvent): void {
-    const payload = `data: ${JSON.stringify(event)}\n\n`;
-    for (const client of this.sseClients) {
+    const key = event.sessionId || 'default';
+    for (const [client, filter] of this.sseClients) {
+      // Server-side isolation: a session-filtered client never receives another
+      // session's live frames. Global clients (renderer) are unchanged.
+      if (filter !== null && filter !== key) continue;
       try {
-        client.write(payload);
+        client.write(`data: ${JSON.stringify(event)}\n\n`);
       } catch {
         this.sseClients.delete(client);
       }
@@ -411,7 +415,7 @@ export class DesktopServer {
       if (sessionFilter || after !== undefined) {
         this.replaySse(res, sessionFilter || 'default', after);
       }
-      this.sseClients.add(res);
+      this.sseClients.set(res, sessionFilter ?? null);
 
       req.on('close', () => {
         this.sseClients.delete(res);

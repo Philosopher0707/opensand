@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { DesktopIpcBridge } from '../src/ipc-bridge.js';
 import { DesktopServer } from '../src/desktop-server.js';
+import { AgentStore } from '@opensand/coordinator';
 import {
   MAX_PARALLEL_SESSIONS_PER_AGENT,
   MAX_QUEUED_SENDS_PER_AGENT,
@@ -235,6 +236,80 @@ test('DesktopIpcBridge - cancelling a queued session does not stop another sessi
     await new Promise((resolve) => setTimeout(resolve, 30));
     assert.strictEqual((bridge as any).sessionRuntimes.get('s-overflow:default'), undefined);
   } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
+  }
+});
+
+test('DesktopIpcBridge - approval_required is attributed to its session', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-parallel-approval-'));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir, defaultSettings: { autoApprove: false } });
+    const events: any[] = [];
+    bridge.on('event', (event) => events.push(event));
+    const pending = bridge.requestUserApproval('exec_command', { command: 'git status' }, undefined, 'sess-approval');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const approval = events.find((e) => e.type === 'approval_required');
+    assert.strictEqual(approval?.sessionId, 'sess-approval');
+    await bridge.approveTool(approval.data.approvalId, { action: 'approve_once' });
+    await pending;
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
+  }
+});
+
+test('DesktopIpcBridge - persona tool scope is applied to the main session', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-parallel-scope-'));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    bridge.updateSettings({ autoApprove: true, model: 'scope-model' });
+    const agentStore = new AgentStore(path.join(tmpDir, 'agents'));
+    const agent = await agentStore.createAgent({
+      name: 'ScopeBot',
+      role: 'Research Assistant',
+      systemPrompt: 'read only',
+      allowedTools: ['read_file'],
+    });
+    const coordinator = await bridge.createSessionCoordinator('scope-session', agent.id);
+    assert.deepStrictEqual((coordinator as any).allowedTools, ['read_file']);
+    assert.ok((coordinator as any).toolScopeMode, 'tool scope mode must be set from the persona');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
+  }
+});
+
+test('DesktopServer - live SSE frames are filtered per client session', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-parallel-livefilter-'));
+  const server = new DesktopServer({ baseDir: tmpDir, port: 0, host: '127.0.0.1' });
+  const readLive = async (url: string): Promise<string> => {
+    const controller = new AbortController();
+    const response = await fetch(url, {
+      headers: { authorization: `Bearer ${server.getAuthToken()}` },
+      signal: controller.signal,
+    });
+    const reader = response.body!.getReader();
+    let text = '';
+    const timer = setTimeout(() => controller.abort(), 150);
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += Buffer.from(value).toString('utf8');
+      }
+    } catch { /* abort */ } finally { clearTimeout(timer); }
+    return text;
+  };
+  try {
+    const { port } = await server.start();
+    const base = `http://127.0.0.1:${port}`;
+    const clientA = readLive(`${base}/api/events?sessionId=sess-A`);
+    const clientB = readLive(`${base}/api/events?sessionId=sess-B`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    server.getBridge().emitEvent('token', { token: 'only-A' }, undefined, 'sess-A');
+    const [a, b] = await Promise.all([clientA, clientB]);
+    assert.ok(a.includes('only-A'));
+    assert.ok(!b.includes('only-A'), 'live frames must not leak to another session');
+  } finally {
+    await server.stop();
     fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
   }
 });

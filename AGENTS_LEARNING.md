@@ -224,3 +224,9 @@
 * **What happened:** The Parallel Board module was initialised at the bottom of `app.js` at module top level. Its `client`, `currentView` and `activeAgentId` arguments are declared inside the `DOMContentLoaded` callback, so the call threw a ReferenceError; the nav still worked (its handlers are inside the callback) but the grid stayed empty. Only a real-Electron window-harness test caught it.
 * **Cause:** Scope was inferred from the file layout instead of read; the nav working made the feature look wired.
 * **Rule now:** New renderer features must be initialised inside the existing `DOMContentLoaded` callback, and a real-window test must assert the feature's DOM exists — a nav click or a passing module import is not evidence the feature mounted.
+
+### 11.13 Delegates must resolve credentials the same way as the parent
+* **Date:** 2026-11-21
+* **What happened:** The live chat showed a delegation failing with "no authentication key" while the parent assistant worked. The delegate built a plain `UniversalLLMClient` from `settings.apiKey` (`"none"`), while the parent went through the provider registry that falls back to `OPENROUTER_API_KEY` in the environment. A source map also claimed a session-id regex bug; direct evaluation showed the regex was correct.
+* **Cause:** Two credential-resolution paths, and a subagent's "gap report" taken as fact without reproduction.
+* **Rule now:** Any child agent/LLM client must use the same provider-registry resolution as the parent (registry-aware driver client + env fallback), and dispose CLI instances on settle. Verify a claimed bug by executing the exact input before writing a fix — never patch on a cited report alone.

@@ -27,6 +27,8 @@ export interface DriverLlmClientInput {
   onEngineSession?: (info: { threadId: string; sessionId: string }) => void;
   /** Forward adapter events (tool/permission/reasoning) to the owning session. */
   onDriverEvent?: (event: unknown) => void;
+  /** Called with the registry instance id for CLI drivers, which outlive client creation. */
+  onInstance?: (instanceId: string) => void;
 }
 
 /** Map the app's legacy provider names to registered driver kinds. */
@@ -144,5 +146,6 @@ export async function createDriverLlmClient(input: DriverLlmClientInput): Promis
   }
 
   // CLI driver: keep the instance alive for the lifetime of the chat session.
+  input.onInstance?.(instanceId);
   return createTextStreamShim(instance, input.model, input);
 }
