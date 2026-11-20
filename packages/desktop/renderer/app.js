@@ -5504,29 +5504,39 @@ document.addEventListener('DOMContentLoaded', async () => {
   const modelSuggestionsList = document.getElementById('modelSuggestionsList');
   const modelContextHint = document.getElementById('modelContextHint');
   let cachedModelList = [];
+  let modelRequestSeq = 0;
 
   async function populateModelSuggestions(provider, endpoint) {
     if (!modelSuggestionsList) return;
+    const seq = ++modelRequestSeq;
     try {
       const q = new URLSearchParams();
       if (provider) q.set('provider', provider);
       if (endpoint) q.set('endpoint', endpoint);
       const res = await fetch(`/api/models?${q.toString()}`);
-      if (!res.ok) return;
+      if (!res.ok || seq !== modelRequestSeq) return;
       const data = await res.json();
-      if (Array.isArray(data.models)) {
-        cachedModelList = data.models;
-        modelSuggestionsList.innerHTML = '';
-        for (const m of data.models) {
-          const opt = document.createElement('option');
-          opt.value = m.id;
-          opt.textContent = `${m.name || m.id} (~${(m.context_length || 0).toLocaleString()} tokens)`;
-          modelSuggestionsList.appendChild(opt);
-        }
-        updateModelHint(settingModel?.value);
+      if (!Array.isArray(data.models) || !data.models.length) return;
+      cachedModelList = data.models;
+      modelSuggestionsList.innerHTML = '';
+      for (const m of data.models) {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = `${m.name || m.id}${m.context_length ? ` (~${m.context_length.toLocaleString()} tokens)` : ''}`;
+        modelSuggestionsList.appendChild(opt);
       }
+      const known = data.models.some((m) => m.id === settingModel?.value);
+      if (settingModel && (!settingModel.value || !known) && data.default) {
+        settingModel.value = data.default;
+      }
+      if (modelContextHint && !modelContextHint.textContent) {
+        const source = data.source === 'endpoint' ? 'from provider endpoint'
+          : data.source === 'cli' ? 'from provider CLI' : 'static catalog';
+        modelContextHint.textContent = data.unconfirmed ? `${source} (unconfirmed)` : source;
+      }
+      updateModelHint(settingModel?.value);
     } catch {
-      // Ignore
+      // Keep the previous list if discovery fails.
     }
   }
 
@@ -5543,6 +5553,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (settingModel) {
     settingModel.addEventListener('input', () => updateModelHint(settingModel.value));
+  }
+
+  if (settingEndpoint) {
+    let endpointTimer;
+    settingEndpoint.addEventListener('input', () => {
+      clearTimeout(endpointTimer);
+      endpointTimer = setTimeout(() => {
+        populateModelSuggestions(settingProvider?.value, settingEndpoint.value);
+      }, 350);
+    });
   }
 
   if (settingProvider) {

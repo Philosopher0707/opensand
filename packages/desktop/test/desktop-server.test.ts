@@ -855,3 +855,49 @@ test('DesktopServer - /api/providers exposes the full registered driver catalog'
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('DesktopServer - /api/models lists live models for a discovered provider', async () => {
+  const http = await import('node:http');
+  let requests = 0;
+  const modelServer = http.createServer((req, res) => {
+    requests++;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ data: [
+      { id: 'live/gpt', name: 'Live GPT', context_length: 128_000 },
+      { id: 'live/mini', name: 'Live Mini' },
+    ] }));
+  });
+  await new Promise<void>((resolve) => modelServer.listen(0, '127.0.0.1', resolve));
+  const address = modelServer.address();
+  if (!address || typeof address === 'string') throw new Error('no port');
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-models-route-'));
+  try {
+    const server = new DesktopServer({ baseDir: tmpDir });
+    MockIncomingMessage.defaultToken = server.getAuthToken();
+    (server as any).bridge.updateSettings({ apiKey: 'route-test-key' });
+
+    const res = new MockServerResponse();
+    await (server as any).handleRequest(
+      new MockIncomingMessage('GET', `/api/models?provider=grok&endpoint=http://127.0.0.1:${address.port}/v1`),
+      res
+    );
+    assert.strictEqual(res.statusCode, 200);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.provider, 'grok');
+    assert.strictEqual(body.source, 'endpoint');
+    assert.strictEqual(body.unconfirmed, false);
+    assert.strictEqual(body.default, 'live/gpt');
+    assert.ok(body.models.some((m: any) => m.id === 'live/gpt' && m.context_length === 128_000));
+    assert.ok(requests >= 1);
+
+    const providersRes = new MockServerResponse();
+    await (server as any).handleRequest(new MockIncomingMessage('GET', '/api/providers'), providersRes);
+    const providers = JSON.parse(providersRes.body).providers;
+    const grok = providers.find((p: any) => p.kind === 'grok');
+    assert.strictEqual(grok.defaultUrl, 'https://api.x.ai/v1');
+  } finally {
+    await new Promise<void>((resolve) => modelServer.close(() => resolve()));
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

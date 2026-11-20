@@ -6,7 +6,7 @@ import * as crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
 import { createDefaultRpcGateway, RpcGateway } from './rpc-gateway.js';
-import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient, BUILT_IN_DRIVERS, installManagedRuntime } from '@opensand/coordinator';
+import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient, BUILT_IN_DRIVERS, installManagedRuntime, discoverProviderModels } from '@opensand/coordinator';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 import { runStateMigrations, readSchemaVersion } from '@opensand/shared';
 import { buildDiagnosticsReport } from './diagnostics.js';
@@ -1405,11 +1405,39 @@ export class DesktopServer {
     // API: GET /api/models (List available models from provider/catalog)
     if (pathname === '/api/models' && req.method === 'GET') {
       const provider = url.searchParams.get('provider') || this.bridge.getSettings().provider;
-      const endpoint = url.searchParams.get('endpoint') || this.bridge.getSettings().endpoint;
+      const explicitEndpoint = url.searchParams.get('endpoint');
+      const endpoint = explicitEndpoint || this.bridge.getSettings().endpoint;
       await this.bridge.ensureApiKeyResolved();
       const apiKey = this.bridge.getSettings().apiKey;
 
       try {
+        // With no explicit endpoint, keep the long-standing built-in Anthropic
+        // catalog. An explicit endpoint means the caller wants live discovery.
+        if (provider === 'anthropic' && !explicitEndpoint) {
+          const client = new AnthropicClient();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ models: client.listModels() }));
+          return;
+        }
+
+        const discovered = await discoverProviderModels({ provider, endpoint, apiKey });
+        if (discovered) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            models: discovered.models.options.map((m) => ({
+              id: m.id,
+              name: m.label,
+              context_length: m.contextWindow ?? 0,
+            })),
+            default: discovered.models.default,
+            provider: discovered.provider,
+            endpoint: discovered.endpoint,
+            source: discovered.source,
+            unconfirmed: discovered.unconfirmed,
+          }));
+          return;
+        }
+
         if (provider === 'anthropic' || endpoint?.includes('anthropic.com')) {
           const client = new AnthropicClient();
           res.writeHead(200, { 'Content-Type': 'application/json' });
