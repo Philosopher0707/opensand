@@ -10,16 +10,19 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/opensand-verify-selftest.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 FAILED=0
 
-# make_workspace <dir> <kind>: kind is ok | failing | zero | second-run-fails | parallel-ok | parallel-failing
+# make_workspace <dir> <kind>: kind is ok | failing | zero | second-run-fails | parallel-ok | parallel-failing | lint-brief-failing
 make_workspace() {
   local dir="$1" kind="$2"
-  mkdir -p "$dir/scripts" "$dir/packages/good/src" "$dir/packages/target/src"
+  mkdir -p "$dir/scripts" "$dir/docs" "$dir/packages/good/src" "$dir/packages/target/src"
   cp "$VERIFY" "$dir/scripts/verify.sh"
   cp "$ROOT/scripts/sync-versions.js" "$dir/scripts/sync-versions.js"
-  # The two checkers verify.sh calls have their own selftests; here they are stubs, and the lessons
-  # one fails on demand so the wiring in verify.sh is tested.
+  # The repo checkers verify.sh calls have their own selftests; here they are stubs, and the lessons
+  # and lint-brief ones fail on demand so the wiring in verify.sh is tested.
   printf '#!/usr/bin/env bash\nexit 0\n' > "$dir/scripts/check-scripts-catalog.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$dir/scripts/check-doc-links.sh"
   printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../.lessons-stale" ]] && { echo "FAIL: docs/lessons/INDEX.md is stale. Run: bash scripts/lessons-index.sh" >&2; exit 1; }\nexit 0\n' > "$dir/scripts/lessons-index.sh"
+  printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../.lint-brief-fail" ]] && { echo "FAIL: docs/brief-template.md missing sections: Goal" >&2; exit 1; }\nexit 0\n' > "$dir/scripts/lint-brief.sh"
+  printf '# Bot brief template\n\nGoal: the outcome.\n\nDone when: the finish line.\n\nScope: what may be touched.\n\nReport back with: the proof.\n' > "$dir/docs/brief-template.md"
 
   printf '{"name":"root","version":"1.0.0","private":true,"type":"module"}\n' > "$dir/package.json"
   printf 'packages:\n  - "packages/*"\n' > "$dir/pnpm-workspace.yaml"
@@ -33,6 +36,8 @@ make_workspace() {
     failing) printf "import test from 'node:test';\nimport assert from 'node:assert';\ntest('deliberately failing test', () => { assert.equal(1, 2); });\n" > "$dir/packages/target/test.mjs" ;;
     lessons-stale) printf "import test from 'node:test';\ntest('target passes', () => {});\n" > "$dir/packages/target/test.mjs"
              touch "$dir/.lessons-stale" ;;
+    lint-brief-failing) printf "import test from 'node:test';\ntest('target passes', () => {});\n" > "$dir/packages/target/test.mjs"
+             touch "$dir/.lint-brief-fail" ;;
     zero)    printf '{"name":"@fake/target","version":"1.0.0","scripts":{"build":"node -e 0","test":"node zero.mjs"}}\n' > "$dir/packages/target/package.json"
              echo "console.log('# tests 0');" > "$dir/packages/target/zero.mjs" ;;
     # Passes the first time and fails the second: proves the suite is run once, not twice.
@@ -203,6 +208,7 @@ expect failing-test failing 1 "verify error: Package @fake/target failed its tes
 expect single-run second-run-fails 0 "verify: ok"
 expect zero-tests zero 1 "Package @fake/target has TypeScript sources in src/ but reported 0 tests!"
 expect lessons-stale lessons-stale 1 "FAIL: docs/lessons/INDEX.md is stale"
+expect lint-brief-failing lint-brief-failing 1 "FAIL: docs/brief-template.md missing sections: Goal"
 expect_parallel_runs
 expect_docs_only docs-only-skip 0 1
 expect_docs_only docs-and-code-runs-full 1 0
