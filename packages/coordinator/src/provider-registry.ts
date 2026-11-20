@@ -129,9 +129,10 @@ import type {
   ProviderInstance,
 } from "@opensand/shared";
 import { OpenRouterDriver } from "./providers/openrouter-driver.ts";
+import { AnthropicDriver } from "./providers/anthropic-driver.ts";
 
 /** Shared singleton registry used by the coordinator and desktop. */
 export const providerRegistry = new ProviderRegistry();
 
 // Register built-in drivers (OpenMausBot's BUILT_IN_DRIVERS parity).
-providerRegistry.register(OpenRouterDriver);
+providerRegistry.register(OpenRouterDriver, AnthropicDriver);
