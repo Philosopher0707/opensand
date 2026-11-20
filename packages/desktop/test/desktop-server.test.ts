@@ -901,3 +901,59 @@ test('DesktopServer - /api/models lists live models for a discovered provider', 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('DesktopServer - provider sign-in routes are reachable', async () => {
+  const { providerRegistry, defineAcpDriver, disposeProviderAuth } = await import('@opensand/coordinator');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-auth-route-'));
+  const cli = path.join(tmpDir, 'fake-login');
+  fs.writeFileSync(cli, '#!/usr/bin/env node\nprocess.stderr.write("Visit https://x.ai/activate?code=ABCD1234\\n");\nsetInterval(() => {}, 1000);\n', { mode: 0o755 });
+
+  try {
+    providerRegistry.register(defineAcpDriver({
+      driverKind: 'grokAgent',
+      displayName: 'Grok',
+      cli,
+      spawnArgs: () => ['agent', 'stdio'],
+      models: { default: 'grok-4.7', options: [{ id: 'grok-4.7', label: 'Grok 4.7' }] },
+      auth: {
+        provider: 'grok',
+        homeEnv: 'GROK_HOME',
+        homeDir: '.grok',
+        loginArgs: ['login', '--device-auth'],
+        urlPattern: /https:\/\/x\.ai\/\S+/i,
+        codePattern: /\b[A-Z0-9]{4,12}\b/,
+        failureMessage: 'Sign-in failed',
+      },
+    }));
+
+    const server = new DesktopServer({ baseDir: tmpDir });
+    MockIncomingMessage.defaultToken = server.getAuthToken();
+
+    const catalogRes = new MockServerResponse();
+    await (server as any).handleRequest(new MockIncomingMessage('GET', '/api/providers'), catalogRes);
+    const grokAgent = JSON.parse(catalogRes.body).providers.find((p: any) => p.kind === 'grokAgent');
+    assert.strictEqual(grokAgent.auth, true);
+
+    const startRes = new MockServerResponse();
+    await (server as any).handleRequest(new MockIncomingMessage('POST', '/api/providers/grokAgent/auth/start'), startRes);
+    assert.strictEqual(startRes.statusCode, 200);
+    const started = JSON.parse(startRes.body).ok;
+    assert.ok(started.flowId);
+    assert.ok(started.authorizationUrl.includes('x.ai'));
+
+    const statusRes = new MockServerResponse();
+    await (server as any).handleRequest(
+      new MockIncomingMessage('GET', `/api/providers/grokAgent/auth/status?flowId=${encodeURIComponent(started.flowId)}`),
+      statusRes
+    );
+    assert.strictEqual(JSON.parse(statusRes.body).status, 'pending');
+
+    const cancelRes = new MockServerResponse();
+    await (server as any).handleRequest(new MockIncomingMessage('POST', '/api/providers/grokAgent/auth/cancel'), cancelRes);
+    assert.strictEqual(cancelRes.statusCode, 200);
+  } finally {
+    // Always release the fake login child, including when an assertion fails.
+    await disposeProviderAuth();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

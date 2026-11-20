@@ -1161,6 +1161,71 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) { /* keep the static options if the API is unavailable */ }
   }
 
+  // Provider sign-in (device-code / browser flows exposed by the driver).
+  const authPanel = document.getElementById('providerAuthPanel');
+  const btnProviderAuth = document.getElementById('btnProviderAuth');
+  const btnProviderAuthCancel = document.getElementById('btnProviderAuthCancel');
+  const providerAuthUrl = document.getElementById('providerAuthUrl');
+  const providerAuthStatus = document.getElementById('providerAuthStatus');
+  let authPoll = null;
+  let authFlowId = null;
+  let authPollCount = 0;
+
+  function stopAuthPoll() {
+    if (authPoll) { clearInterval(authPoll); authPoll = null; }
+    if (btnProviderAuthCancel) btnProviderAuthCancel.style.display = 'none';
+  }
+
+  function updateProviderAuthPanel(kind) {
+    stopAuthPoll();
+    authFlowId = null;
+    if (!authPanel) return;
+    const info = providerCatalog.find((item) => item.kind === kind);
+    if (!info || !info.auth) { authPanel.style.display = 'none'; return; }
+    authPanel.style.display = '';
+    btnProviderAuth.textContent = `Sign in with ${info.displayName}`;
+    providerAuthUrl.textContent = '';
+    providerAuthStatus.textContent = '';
+  }
+
+  if (btnProviderAuth) {
+    btnProviderAuth.onclick = async () => {
+      const kind = settingProvider.value;
+      stopAuthPoll();
+      try {
+        const res = await fetch(`/api/providers/${encodeURIComponent(kind)}/auth/start`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) { providerAuthStatus.textContent = data.error || 'Sign-in unavailable'; return; }
+        authFlowId = data.flowId;
+        authPollCount = 0;
+        providerAuthUrl.textContent = [data.authorizationUrl, data.userCode].filter(Boolean).join(' — ') || 'Check the provider CLI window';
+        providerAuthStatus.textContent = 'pending';
+        btnProviderAuthCancel.style.display = '';
+        authPoll = setInterval(async () => {
+          if (++authPollCount > 450 || !authFlowId) { stopAuthPoll(); return; }
+          try {
+            const pollRes = await fetch(`/api/providers/${encodeURIComponent(kind)}/auth/status?flowId=${encodeURIComponent(authFlowId)}`);
+            const status = await pollRes.json();
+            providerAuthStatus.textContent = status.status || 'unknown';
+            if (status.status && status.status !== 'pending') stopAuthPoll();
+          } catch { /* keep polling until the bound */ }
+        }, 2000);
+      } catch {
+        providerAuthStatus.textContent = 'Sign-in request failed';
+      }
+    };
+  }
+
+  if (btnProviderAuthCancel) {
+    btnProviderAuthCancel.onclick = async () => {
+      const kind = settingProvider.value;
+      stopAuthPoll();
+      try { await fetch(`/api/providers/${encodeURIComponent(kind)}/auth/cancel`, { method: 'POST' }); } catch {}
+      providerAuthStatus.textContent = 'cancelled';
+      authFlowId = null;
+    };
+  }
+
   // State
   let currentSessionId = null;
   let activeAgentId = null;
@@ -5598,6 +5663,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
       populateModelSuggestions(p, settingEndpoint.value);
+      updateProviderAuthPanel(p);
     });
   }
 
@@ -5618,6 +5684,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     settingApiKey.placeholder = hasStoredKey ? 'Saved (leave blank to keep)' : 'sk-...';
     settingAutoApprove.checked = !!s.autoApprove;
     settingsModal.classList.remove('hidden');
+    updateProviderAuthPanel(detectedProvider);
     populateModelSuggestions(settingProvider.value, settingEndpoint.value);
   };
   btnCloseSettings.onclick = () => settingsModal.classList.add('hidden');

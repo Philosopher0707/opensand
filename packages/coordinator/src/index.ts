@@ -49,6 +49,7 @@ export * from "./provider-clients.js";
 export * from "./provider-registry.js";
 export * from "./provider-llm.js";
 export * from "./provider-catalog.js";
+export * from "./provider-auth.js";
 export * from "./built-in-drivers.js";
 export * from "./providers/factories/acp-driver.js";
 export * from "./providers/factories/api-driver.js";

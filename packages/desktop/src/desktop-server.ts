@@ -6,7 +6,7 @@ import * as crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
 import { createDefaultRpcGateway, RpcGateway } from './rpc-gateway.js';
-import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient, BUILT_IN_DRIVERS, installManagedRuntime, discoverProviderModels } from '@opensand/coordinator';
+import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient, BUILT_IN_DRIVERS, installManagedRuntime, discoverProviderModels, startProviderAuth, getProviderAuthStatus, cancelProviderAuth, signOutProvider, AUTH_PROVIDER_KINDS } from '@opensand/coordinator';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 import { runStateMigrations, readSchemaVersion } from '@opensand/shared';
 import { buildDiagnosticsReport } from './diagnostics.js';
@@ -1364,6 +1364,7 @@ export class DesktopServer {
           kind: driver.driverKind,
           displayName: driver.metadata.displayName,
           access: driver.metadata.access ?? 'custom',
+          auth: AUTH_PROVIDER_KINDS.has(driver.driverKind),
           defaultUrl: typeof defaults.url === 'string' ? defaults.url : undefined,
           defaultCli: typeof defaults.cli === 'string' ? defaults.cli : undefined,
           models: { default: models.default, options: models.options.map((m) => m.id) },
@@ -1371,6 +1372,37 @@ export class DesktopServer {
       });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ providers }));
+      return;
+    }
+
+    // Provider sign-in flows: one instance per registered driver kind.
+    if (pathname.startsWith('/api/providers/') && req.method === 'POST') {
+      const parts = pathname.split('/');
+      const kind = decodeURIComponent(parts[3] ?? '');
+      const action = parts.slice(4).join('/');
+      if (action === 'auth/start' || action === 'auth/cancel' || action === 'auth/sign-out') {
+        try {
+          const result = action === 'auth/start'
+            ? await startProviderAuth(kind)
+            : action === 'auth/cancel'
+              ? await cancelProviderAuth(kind)
+              : await signOutProvider(kind);
+          res.writeHead(result === null ? 404 : 200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result === null ? { error: 'Provider does not support sign-in' } : { ok: result }));
+        } catch (err: any) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err?.message ?? 'Auth flow failed' }));
+        }
+        return;
+      }
+    }
+    if (pathname.startsWith('/api/providers/') && pathname.endsWith('/auth/status') && req.method === 'GET') {
+      const parts = pathname.split('/');
+      const kind = decodeURIComponent(parts[3] ?? '');
+      const flowId = url.searchParams.get('flowId') ?? '';
+      const status = await getProviderAuthStatus(kind, flowId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(status));
       return;
     }
 
