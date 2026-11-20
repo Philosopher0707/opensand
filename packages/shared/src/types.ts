@@ -408,6 +408,244 @@ export interface SubagentTurnEvent {
   event: TurnEvent;
 }
 
+/* ── Provider Drivers (OpenMausBot parity) ─────────────────────── */
+
+/** How an engine is presented in the picker rail. */
+export type EngineAccess = "subscription" | "custom" | "api";
+
+/** A driver kind slug (e.g. "openrouter", "anthropic", "openai", "grok", "codex"). */
+export type DriverKind = string;
+
+/** Opaque provider instance id. */
+export type InstanceId = string;
+
+/** A model option in a driver's catalog. */
+export interface ModelVariantOption {
+  id: string;
+  label: string;
+  contextWindow?: number;
+}
+
+/** A driver's model catalog. */
+export interface ModelCatalog {
+  default: string;
+  options: ModelVariantOption[];
+}
+
+/** Provider-specific error codes. */
+export type ProviderErrorCode =
+  | "missing_cli"
+  | "invalid_credentials"
+  | "inactive_subscription"
+  | "insufficient_funds"
+  | "quota_or_region_restriction"
+  | "upstream_outage"
+  | "model_catalog_outage";
+
+export class ProviderError extends Error {
+  readonly code: ProviderErrorCode;
+  constructor(code: ProviderErrorCode, message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "ProviderError";
+    this.code = code;
+  }
+}
+
+/** Configuration envelope for a provider instance. */
+export interface InstanceConfig {
+  driver: DriverKind;
+  displayName?: string;
+  accentColor?: string;
+  environment?: Record<string, string>;
+  enabled?: boolean;
+  hidden?: boolean;
+  access?: EngineAccess;
+  config?: unknown;
+}
+
+export type InstanceConfigMap = Record<InstanceId, InstanceConfig>;
+
+/** Input to ProviderDriver.create(). */
+export interface DriverCreateInput<Config = unknown> {
+  instanceId: InstanceId;
+  displayName: string | undefined;
+  environment: Record<string, string>;
+  enabled: boolean;
+  config: Config;
+}
+
+/** Text generation usage for a one-shot call. */
+export interface TextGenerationUsage {
+  model: string;
+  input?: number;
+  output?: number;
+  cachedInput?: number;
+  costUsd?: number;
+}
+
+/** Options for one-shot text generation. */
+export interface TextGenerationOptions {
+  signal?: AbortSignal;
+  onUsage?: (usage: TextGenerationUsage) => void;
+  model?: string;
+  timeoutMs?: number;
+  fallback?: SmallModelFallback;
+}
+
+export interface SmallModelFallback {
+  model?: string;
+  refused: ReadonlySet<string>;
+  onRefused: (model: string) => void;
+}
+
+/** A live provider instance returned by ProviderDriver.create(). */
+export interface ProviderInstance {
+  readonly instanceId: InstanceId;
+  readonly driverKind: DriverKind;
+  readonly displayName: string | undefined;
+  readonly enabled: boolean;
+  readonly models: ModelCatalog;
+  readonly modelsUnconfirmed?: boolean;
+  readonly quickModelsUsable?: () => boolean;
+  readonly refreshModels?: () => Promise<void>;
+  readonly startupModelRefresh?: Promise<void>;
+  readonly installRuntime?: () => Promise<void>;
+  readonly startAuthentication?: () => Promise<ProviderAuthenticationStart>;
+  readonly authenticationMethod?: "browser-pkce";
+  readonly getAuthentication?: (flowId: string) => Promise<ProviderAuthenticationStatus>;
+  readonly completeAuthentication?: (flowId: string, callbackUrl: string) => Promise<void>;
+  readonly cancelAuthentication?: () => Promise<void>;
+  readonly signOut?: () => Promise<void>;
+  readonly adapter: ProviderAdapter;
+  snapshot(): Promise<ProviderSnapshot>;
+  generateText?(prompt: string, options?: TextGenerationOptions): Promise<string>;
+  generateMemoryText?(prompt: string, options?: TextGenerationOptions): Promise<string>;
+  reviewPermission?(prompt: string, signal?: AbortSignal): Promise<string>;
+  dispose(): Promise<void>;
+}
+
+/** Authentication start result. */
+export interface ProviderAuthenticationStart {
+  flowId: string;
+  authorizationUrl: string;
+  userCode?: string;
+}
+
+/** Authentication status. */
+export interface ProviderAuthenticationStatus {
+  status: "pending" | "authorized" | "failed" | "cancelled";
+  /** Present when status === "authorized". */
+  credentials?: Record<string, string>;
+}
+
+/** Provider capabilities advertised via the adapter. */
+export interface ProviderAdapter {
+  readonly provider: DriverKind;
+  readonly capabilities: {
+    sessionModelSwitch?: "in-session" | "between-turns";
+    guestTurns?: "confined" | "unconfined";
+    agentsMcp?: boolean;
+    customMcp?: boolean;
+    computerMcp?: boolean;
+    composioMcp?: boolean;
+    mcpToolsFoundByName?: boolean;
+    phoneMcp?: boolean;
+    browserMcp?: boolean;
+    dataMcp?: boolean;
+    emailMcp?: boolean;
+    deviceMcp?: boolean;
+    images?: boolean;
+    nativeImageInput?: boolean;
+    effortLevels?: string[];
+    queueing?: boolean;
+    steerImages?: boolean;
+    strictResume?: boolean;
+    localComputerMcp?: boolean;
+    hooks?: boolean;
+    askTool?: { kind: "mcp"; server: string; name: string };
+  };
+  sendTurn(turn: SendTurnInput): Promise<unknown>;
+  steer(threadId: string, instruction: string): Promise<void>;
+  interruptTurn(threadId: string): Promise<void>;
+  respondToRequest(threadId: string, requestId: string, decision: { behavior: "allow" | "reject" | "answer"; message?: string; always?: boolean }): Promise<"allowed-once" | "rejected" | "answered" | "unavailable">;
+  hasSession(threadId: string): boolean;
+  enginePid(threadId: string): number | undefined;
+  stopAll(): Promise<void>;
+  onEvent(listener: (event: unknown) => void): () => void;
+}
+
+/** Provider snapshot returned by snapshot(). */
+export interface ProviderSnapshot {
+  readonly instanceId: InstanceId;
+  readonly driverKind: DriverKind;
+  readonly enabled: boolean;
+  readonly warning?: { title: string; message: string };
+  readonly error?: { code: ProviderErrorCode; message: string };
+}
+
+/** Input to ProviderAdapter.sendTurn(). */
+export interface SendTurnInput {
+  threadId: string;
+  botId?: string;
+  text: string;
+  recalled?: string;
+  approvalMode?: string;
+  approvalModeNow?: () => string;
+  toolScope?: string;
+  guestConfined?: boolean;
+  confinedWhy?: string;
+  images?: Array<{ path: string; mime: string; bytes: number; source?: string }>;
+  model?: string;
+  effort?: string;
+  variant?: string;
+  resumeCursor?: unknown;
+  sessionReset?: boolean;
+  startupRecovery?: boolean;
+  engineAdmission?: (start: "process" | "session", joining?: number) => Promise<void>;
+  recoveryText?: string;
+  transcript?: Array<{ role: "user" | "assistant"; text: string }>;
+  system?: string;
+  systemStable?: string;
+  systemVolatile?: string;
+  mentionTurn?: boolean;
+  preloadBrowserTools?: boolean;
+  integrations?: {
+    composio?: { command: string; args: string[]; env: Record<string, string> };
+    composioOwn?: { command: string; args: string[]; env: Record<string, string> };
+    localComputer?: { command: string; args: string[]; env: Record<string, string>; platform?: string; generation?: string; scope?: string };
+    hooks?: { url: string; token: string };
+    agents?: { command: string; args: string[]; env: Record<string, string> };
+    phone?: { command: string; args: string[]; env: Record<string, string> };
+    browser?: { command: string; args: string[]; env: Record<string, string> };
+    dataMcp?: { command: string; args: string[]; env: Record<string, string> };
+  };
+}
+
+/** The ProviderDriver interface — static config + factory for ProviderInstance. */
+export interface ProviderDriver<Config = unknown> {
+  readonly driverKind: DriverKind;
+  readonly metadata: {
+    displayName: string;
+    supportsMultipleInstances?: boolean;
+    access?: EngineAccess;
+    cliVersion?: RegExp;
+  };
+  readonly install?: EngineInstall;
+  decodeConfig(raw: unknown): Config;
+  defaultConfig(): Config;
+  readonly models: ModelCatalog;
+  create(input: DriverCreateInput<Config>): Promise<ProviderInstance>;
+}
+
+/** Optional engine installation/runtime setup. */
+export interface EngineInstall {
+  readonly check?: () => Promise<boolean>;
+  readonly install?: () => Promise<void>;
+}
+
+/** All built-in provider drivers. */
+export type AnyProviderDriver = ProviderDriver<any>;
+
 /* ── LLM client config ───────────────────────────────────────── */
 
 export interface LLMClientConfig {
