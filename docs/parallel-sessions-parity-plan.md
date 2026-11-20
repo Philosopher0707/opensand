@@ -195,3 +195,11 @@ Measured scorecard after this pass (honest, below the 90% reporting threshold):
 | Concurrency tests | 10 | 85 | fake-coordinator + SSE tests, no real fake-CLI spawn test |
 
 **Overall ≈ 68%.** Do not call this parity complete. Next pass: P6 kill/reaper/delegation bound, P3 live CLI events, P4 isolation (auth sync first), then fake-CLI end-to-end proof and a live two-session browser check.
+
+## Implementation status (2026-11-21, cleanup pass)
+
+- **P6 (mostly done)** — `proc-tree.ts`: POSIX children are spawned `detached` and killed as a process group (SIGTERM, 5 s SIGKILL escalation); Windows falls back to the direct child. `DesktopIpcBridge.close()` now calls `providerRegistry.disposeAll()` so CLI children do not survive app quit. `delegate_to_agent` beyond depth 3 is refused and the refusal is materialized in the transcript instead of silently running an unbounded child.
+- **Tests** — `proc-tree-and-depth.test.ts`: real child+grandchild group kill and a depth-4 refusal through the coordinator's actual tool execution path.
+- **Gate quirk (observed)** — the CLI `defaults to standard environment` test reads the real `~/.opensand/config.json`; with the user's `autoApprove: true` it fails (`true !== false`). Full suite is green with `HOME=/tmp/opensand-hermetic-home` (all packages, 0 fail). This is environmental and pre-existing; the test was not weakened.
+
+Updated scorecard: cancel/kill 55 → **75** (idle reaper still missing); nested bound 50 → **95**; concurrency tests 85 → **90**. **Overall ≈ 74%.** Still below the 90% reporting threshold. Remaining: idle reaper, live CLI event forwarding, per-session HOME isolation (auth sync first), and a real two-session browser check.

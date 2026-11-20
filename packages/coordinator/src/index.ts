@@ -47,6 +47,7 @@ export * from "./template-gallery.js";
 export * from "./github-client.js";
 export * from "./provider-clients.js";
 export * from "./provider-registry.js";
+export * from "./proc-tree.js";
 export * from "./provider-llm.js";
 export * from "./provider-catalog.js";
 export * from "./provider-auth.js";

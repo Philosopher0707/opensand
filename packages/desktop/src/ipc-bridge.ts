@@ -68,6 +68,7 @@ import {
   GalleryQueryOptions,
   buildToolDiscoverySummary,
   createDriverLlmClient,
+  providerRegistry,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -262,6 +263,13 @@ export class DesktopIpcBridge extends EventEmitter {
       } catch {
         // ignore
       }
+    }
+    // Provider instances own the CLI children; leaving them alive on quit is
+    // how parallel sessions become orphans.
+    try {
+      await providerRegistry.disposeAll();
+    } catch {
+      // ignore
     }
     this.removeAllListeners();
   }

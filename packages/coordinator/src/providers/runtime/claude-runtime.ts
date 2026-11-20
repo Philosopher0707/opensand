@@ -6,6 +6,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { killProcessTree } from "../../proc-tree.js";
 import type {
   DriverCreateInput,
   ModelCatalog,
@@ -84,7 +85,7 @@ export function createClaudeInstance(
     sessions.delete(threadId);
     session.stopped = true;
     settleTurn(session, new Error("Session stopped"));
-    if (!session.child.killed) session.child.kill("SIGTERM");
+    killProcessTree(session.child);
   };
 
   const handleLine = (threadId: string, session: ClaudeSession, line: string): void => {
@@ -160,7 +161,11 @@ export function createClaudeInstance(
       ...(resumeId ? ["--resume", resumeId] : ["--session-id", randomUUID()]),
     ];
     const env = { ...process.env, ...input.environment };
-    const child = spawn(config.cli, args, { env, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(config.cli, args, {
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+    });
 
     const session: ClaudeSession = {
       child,

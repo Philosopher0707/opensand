@@ -7,6 +7,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { killProcessTree } from "../../proc-tree.js";
 import type {
   DriverCreateInput,
   ModelCatalog,
@@ -125,13 +126,17 @@ export function createAcpInstance<Config extends AcpConfig>(
     settleTurn(session, new Error(`${options.driverKind} session stopped`));
     answerPermissions(session, null);
     session.rpc.close();
-    if (!session.child.killed) session.child.kill("SIGTERM");
+    killProcessTree(session.child);
   };
 
   const spawnSession = (threadId: string): AcpSession => {
     const env = { ...process.env, ...input.environment };
     const args = options.spawnArgs(config);
-    const child = spawn(config.cli, args, { env, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(config.cli, args, {
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+    });
 
     let session!: AcpSession;
     const rpc = new RpcTransport({

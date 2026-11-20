@@ -6,6 +6,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { killProcessTree } from "../../proc-tree.js";
 import type {
   DriverCreateInput,
   ModelCatalog,
@@ -111,12 +112,16 @@ export function createCodexInstance(
     settleTurn(session, new Error("Session stopped"));
     answerAllPermissions(session, false);
     session.rpc.close();
-    if (!session.child.killed) session.child.kill("SIGTERM");
+    killProcessTree(session.child);
   };
 
   const spawnSession = (threadId: string): CodexSession => {
     const env = { ...process.env, ...input.environment };
-    const child = spawn(config.cli, ["app-server"], { env, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(config.cli, ["app-server"], {
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+    });
 
     let session!: CodexSession;
     const rpc = new RpcTransport({

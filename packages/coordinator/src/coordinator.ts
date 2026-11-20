@@ -406,6 +406,8 @@ export class AgentCoordinator {
         const batch = pendingParallel;
         pendingParallel = [];
         const results = await Promise.all(batch.map(async (item) => {
+          const depthBlock = this.delegationDepthBlock(item.tc.function.name);
+          if (depthBlock) return depthBlock;
           if (!item.execution || !item.args) {
             return { status: "error" as const, error: { code: "TOOL_EXECUTION_NOT_PREPARED", message: "Tool execution was not prepared." } } satisfies ToolExecutionResult;
           }
@@ -453,13 +455,14 @@ export class AgentCoordinator {
             }
           }
           if (item.execution && item.args) {
-            const execResult = await this.daemon.executeTool(item.tc.function.name, item.args, {
+            const depthBlock = this.delegationDepthBlock(item.tc.function.name);
+            const execResult = depthBlock ?? await this.daemon.executeTool(item.tc.function.name, item.args, {
               approvalGranted: item.execution.approvalGranted,
               permissionGates: item.execution.gates,
               subagent: this.buildDelegationContext(item.tc.function.name),
               signal,
             });
-            await commitPrepared(item, execResult);
+            await commitPrepared(item, execResult, depthBlock !== null);
           }
         } else {
           pendingParallel.push(item);
@@ -484,6 +487,20 @@ export class AgentCoordinator {
       finalContent: fallbackMessage,
     });
     return fallbackMessage;
+  }
+
+  /** Refuse delegation past the bound instead of silently running an unbounded child turn. */
+  private delegationDepthBlock(toolName: string): ToolExecutionResult | null {
+    if (toolName === 'delegate_to_agent' && this.subagentDepth >= 3) {
+      return {
+        status: 'error',
+        error: {
+          code: 'DELEGATION_DEPTH_LIMIT',
+          message: 'Subagent depth limit (3) reached; finish this branch before delegating again.',
+        },
+      };
+    }
+    return null;
   }
 
   /**
