@@ -230,3 +230,9 @@
 * **What happened:** The live chat showed a delegation failing with "no authentication key" while the parent assistant worked. The delegate built a plain `UniversalLLMClient` from `settings.apiKey` (`"none"`), while the parent went through the provider registry that falls back to `OPENROUTER_API_KEY` in the environment. A source map also claimed a session-id regex bug; direct evaluation showed the regex was correct.
 * **Cause:** Two credential-resolution paths, and a subagent's "gap report" taken as fact without reproduction.
 * **Rule now:** Any child agent/LLM client must use the same provider-registry resolution as the parent (registry-aware driver client + env fallback), and dispose CLI instances on settle. Verify a claimed bug by executing the exact input before writing a fix — never patch on a cited report alone.
+
+### 11.14 An "unwired executor" is not a feature
+* **Date:** 2026-11-21
+* **What happened:** Rooms produced canned turns, routines returned a stub string, and webhook `agent` targets threw — all because their executor hooks existed but were never set in the desktop app. A test that expected the stub's `success` broke once real turns were wired.
+* **Cause:** Optional executor injection with a permissive default made stubs look like working features.
+* **Rule now:** A subsystem with an injectable executor must be wired to a production executor before it is called a feature; when wiring it, update the test to prove a real turn ran (fake local LLM) rather than lowering the old assertion.

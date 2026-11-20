@@ -71,6 +71,7 @@ import {
   providerRegistry,
   resolveRoleAllowedTools,
   recommendToolScopeMode,
+  type AgentTurnExecutor,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -179,6 +180,37 @@ export class DesktopIpcBridge extends EventEmitter {
       storageDir: path.join(this.baseDir, 'webhooks'),
       routineEngine: this.routineEngine,
     });
+
+    // One real-turn executor for rooms, routines and webhooks. Without this the
+    // three surfaces return canned strings instead of driving an agent.
+    const agentTurnExecutor: AgentTurnExecutor = {
+      runTurn: async ({ prompt, sessionId, agentId }) => {
+        const coordinator = await this.createSessionCoordinator(sessionId, agentId);
+        return coordinator.runTurn(prompt);
+      },
+    };
+    this.routineEngine.setExecutor(async (routine) => {
+      let record: { prompt?: string } = {};
+      try { record = JSON.parse(routine.recordJson) as { prompt?: string }; } catch { /* use fallback */ }
+      const result = await agentTurnExecutor.runTurn({
+        prompt: record.prompt || `Run routine ${routine.name}`,
+        agentId: routine.agentId || undefined,
+        sessionId: `routine_${routine.routineId}`,
+        source: 'routine',
+      });
+      return { result, status: 'success' as const };
+    });
+    this.roomManager.setExecutor(async (member, topic, _turnIndex, previousTurns) => {
+      const history = previousTurns.map((turn) => `${turn.memberAgentId}: ${turn.content}`).join('\n');
+      const content = await agentTurnExecutor.runTurn({
+        prompt: `Room discussion — topic: ${topic}\nYour role: ${member.role}\nPrevious turns:\n${history}\nRespond concisely.`,
+        agentId: member.agentId,
+        sessionId: `room_${member.agentId}`,
+        source: 'room',
+      });
+      return { content, status: 'success' as const };
+    });
+    this.webhookGateway.setAgentExecutor(agentTurnExecutor);
     this.connectorManager = new ConnectorManager({
       storagePath: path.join(this.baseDir, 'connectors.json'),
       vaultStore: this.vaultStore,

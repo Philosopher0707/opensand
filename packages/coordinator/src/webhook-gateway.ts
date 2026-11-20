@@ -10,6 +10,7 @@ import * as path from 'node:path';
 import { RoutineEngine } from './routine-engine.js';
 import { CompiledGraph } from './agent-graph.js';
 import { AgentCoordinator } from './coordinator.js';
+import type { AgentTurnExecutor } from './agent-turn-executor.js';
 
 export type WebhookTargetType = 'routine' | 'graph' | 'agent';
 
@@ -67,6 +68,7 @@ export class WebhookGateway {
   private routineEngine?: RoutineEngine;
   private graphs: Map<string, CompiledGraph<any>>;
   private coordinator?: AgentCoordinator;
+  private agentExecutor?: AgentTurnExecutor;
 
   constructor(options: WebhookGatewayOptions = {}) {
     this.routineEngine = options.routineEngine;
@@ -81,6 +83,11 @@ export class WebhookGateway {
 
   public registerGraph(name: string, graph: CompiledGraph<any>): void {
     this.graphs.set(name, graph);
+  }
+
+  /** Wire webhooks to real agent turns (target agent id is forwarded). */
+  public setAgentExecutor(executor: AgentTurnExecutor): void {
+    this.agentExecutor = executor;
   }
 
   public registerWebhook(webhook: Omit<WebhookRegistration, 'createdAt' | 'triggerCount'>): WebhookRegistration {
@@ -171,14 +178,22 @@ export class WebhookGateway {
         });
         output = graphResult;
       } else if (webhook.targetType === 'agent') {
-        if (!this.coordinator) {
-          throw new Error('AgentCoordinator is not wired to WebhookGateway');
-        }
         const queryText = typeof payload === 'string'
           ? payload
           : `[Webhook Trigger: ${name}] Event: ${githubEvent || 'generic'}\nPayload:\n${JSON.stringify(payload, null, 2)}`;
-        const agentResponse = await this.coordinator.runTurn(queryText);
-        output = { response: agentResponse };
+        if (this.agentExecutor) {
+          const agentResponse = await this.agentExecutor.runTurn({
+            prompt: queryText,
+            agentId: webhook.targetId || undefined,
+            source: 'webhook',
+          });
+          output = { response: agentResponse };
+        } else if (this.coordinator) {
+          const agentResponse = await this.coordinator.runTurn(queryText);
+          output = { response: agentResponse };
+        } else {
+          throw new Error('Agent executor is not wired to WebhookGateway');
+        }
       }
 
       webhook.triggerCount = (webhook.triggerCount || 0) + 1;

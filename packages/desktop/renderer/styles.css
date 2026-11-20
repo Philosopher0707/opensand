@@ -4303,3 +4303,4 @@ textarea#promptInput {
 .pb-composer { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; padding: 10px; border-top: 1px solid var(--border-color-subtle); background: var(--bg-subtle); }
 .pb-input { min-width: 0; }
 .pb-stop:disabled { opacity: 0.4; cursor: not-allowed; }
+.pb-subagent { border-left: 2px solid var(--accent); background: var(--accent-soft); color: var(--text-main); font-size: 12px; }

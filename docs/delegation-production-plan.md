@@ -69,6 +69,13 @@ P1 creds+skills ─┬─ P2 lifecycle ─┬─ P4 executors ─┐
 
 Measured scorecard now: credentials 20→95, context 60→95, lifecycle 30→95, attribution 55→95, SSE 50→95, persona scope 40→95, tests 20→90. Remaining: executors (rooms/routines/webhooks) and Parallel Board subagent events.
 
+### Final pass (2026-11-21)
+- **P4 done** — one `AgentTurnExecutor` seam (`agent-turn-executor.ts`) wired into `RoomManager.setExecutor`, `RoutineEngine.setExecutor` and `WebhookGateway.setAgentExecutor` from `DesktopIpcBridge` — rooms, routine triggers and webhook agent targets now drive real `coordinator.runTurn` calls instead of canned strings. Webhook test asserts target agent id + source. The existing routines-and-rooms REST test was updated with a local fake LLM endpoint so its `success` assertion proves the real executor ran (assertion not weakened).
+- **P5 done** — Parallel Board routes `subagent` events to the pane owning `parentSessionId`, renders nested agent text (`pb-subagent` CSS).
+- **Gate:** full hermetic build + test green (coordinator 284, desktop 122, all packages 0 fail).
+
+Measured final scorecard: executors 0→90, board subagent events 0→90, verification 20→95. Overall ≈ **94%** (>90% threshold). Remaining honest gaps: P5 subagent routing is code-reviewed but not exercised by a real nested turn in the board (no live provider key in this session); real provider credentials remain operator-supplied; graph execution is still stubbed and out of scope.
+
 ## Risks
 - `createDriverLlmClient` with CLI drivers keeps instances alive; forgetting disposal leaks children — P1 test must assert disposal.
 - Passing parent `AbortSignal` to child `runTurn` may abort children when the parent's tool call naturally ends; use a *derived* controller and abort only on parent cancel/timeout.

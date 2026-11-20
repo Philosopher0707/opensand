@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { EventEmitter } from 'node:events';
+import * as http from 'node:http';
 import { DesktopServer } from '../src/desktop-server.js';
 
 class MockIncomingMessage extends EventEmitter {
@@ -62,6 +63,20 @@ test('DesktopServer - Routines and Rooms REST API Endpoints', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-routines-rooms-test-'));
   const server = new DesktopServer({ baseDir: tmpDir });
   MockIncomingMessage.defaultToken = server.getAuthToken();
+
+  // Routines now drive a real agent turn; give the test a local fake LLM so
+  // the assertion proves the executor ran instead of the old canned stub.
+  const llm = http.createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    res.end('data: ' + JSON.stringify({ choices: [{ delta: { content: 'routine ok' } }] }) + '\n\ndata: [DONE]\n\n');
+  });
+  await new Promise<void>((resolve) => llm.listen(0, '127.0.0.1', () => resolve()));
+  const llmPort = (llm.address() as any).port;
+  server.getBridge().updateSettings({
+    endpoint: `http://127.0.0.1:${llmPort}/v1`,
+    apiKey: 'test-key',
+    autoApprove: true,
+  });
 
   try {
     // 1. POST /api/routines
@@ -195,6 +210,7 @@ test('DesktopServer - Routines and Rooms REST API Endpoints', async () => {
     assert.strictEqual(JSON.parse(resDelRoom.body).success, true);
   } finally {
     server.getBridge().routineEngine.stop();
+    await new Promise<void>((resolve) => llm.close(() => resolve()));
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });

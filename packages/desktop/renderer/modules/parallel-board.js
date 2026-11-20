@@ -132,6 +132,25 @@ export function initParallelBoard({ client, getView, getAgentId, maxPanes = 6 })
 
   function handleEvent(event) {
     if (getView() !== 'parallel') return;
+
+    // Subagent events belong to the pane that owns the parent session. The
+    // child session id travels in `subagent.sessionId`, not the DesktopEvent id.
+    if (event.type === 'subagent') {
+      const info = event.subagent || event.data?.subagent || {};
+      const ownerId = info.parentSessionId || event.sessionId;
+      const owner = [...panes.values()].find((p) => p.sessionId === ownerId);
+      if (!owner) return;
+      const inner = event.data?.event || event.data || {};
+      let text = '';
+      if (inner.type === 'text_delta') text = String(inner.text ?? '');
+      else if (inner.type === 'turn_completed') text = String(inner.finalContent ?? '');
+      else if (inner.type === 'error') text = String(inner.error?.message ?? 'error');
+      else if (inner.type) text = String(inner.type);
+      if (text) append(owner, 'subagent', `${info.agentName || info.agentId || 'subagent'} · ${text}`);
+      updateStatus();
+      return;
+    }
+
     const sessionId = event.sessionId;
     const pane = [...panes.values()].find((p) => p.sessionId === sessionId);
     if (!pane) return;
