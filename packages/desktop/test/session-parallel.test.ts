@@ -197,3 +197,25 @@ test('DesktopIpcBridge - overflow sends are queued and drained when a slot frees
     fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
   }
 });
+
+test('DesktopIpcBridge - cancelling a queued session does not stop another session', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-parallel-queuecancel-'));
+  try {
+    const { bridge, coordinators } = fakeBridge(tmpDir);
+    for (let i = 0; i < MAX_PARALLEL_SESSIONS_PER_AGENT; i++) {
+      await bridge.sendQuery(`q${i}`, `s${i}`);
+    }
+    assert.strictEqual((await bridge.sendQuery('overflow', 's-overflow')).queued, true);
+
+    const activeSignal = (bridge as any).sessionRuntimes.get('s0:default').abort.signal;
+    const cancelled = await bridge.cancelTurn('s-overflow');
+    assert.strictEqual(cancelled.cancelled, true);
+    assert.strictEqual(activeSignal.aborted, false, 'cancelling a queued turn must not abort a running session');
+
+    coordinators.get('s0')!.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.strictEqual((bridge as any).sessionRuntimes.get('s-overflow:default'), undefined);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
+  }
+});

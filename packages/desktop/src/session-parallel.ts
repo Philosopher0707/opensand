@@ -139,6 +139,20 @@ export class SessionAdmission {
     }
   }
 
+  /** Remove queued sends for a session that has no live runtime yet. */
+  cancelSession(sessionId: string): boolean {
+    let removed = false;
+    for (const [agent, queue] of this.queues) {
+      const kept = queue.filter((send) => send.sessionId !== sessionId);
+      if (kept.length !== queue.length) {
+        removed = true;
+        if (kept.length) this.queues.set(agent, kept);
+        else this.queues.delete(agent);
+      }
+    }
+    return removed;
+  }
+
   clear(): void {
     this.activeByAgent.clear();
     this.queues.clear();

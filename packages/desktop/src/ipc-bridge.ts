@@ -776,6 +776,9 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async cancelTurn(sessionId?: string): Promise<{ success: boolean; cancelled: boolean }> {
+    // A queued session has no runtime yet; remove its pending send first so we
+    // never fall through to the legacy focused-turn abort and stop the wrong one.
+    const removedQueued = sessionId ? this.sessionAdmission.cancelSession(sessionId) : false;
     const target = sessionId
       ? this.sessionRuntimes.findBySession(sessionId)
       : this.sessionRuntimes.findBySession(this.currentSessionId || '');
@@ -788,10 +791,15 @@ export class DesktopIpcBridge extends EventEmitter {
       target.running = false;
       this.sessionAdmission.cancelQueued(target.key);
       this.sessionAdmission.release(target.agentId ?? 'default', target.key);
-      if (cancelled) {
+      if (cancelled || removedQueued) {
         this.emitEvent('turn_cancelled', { message: 'Turn cancelled by user.' }, undefined, target.sessionId);
       }
-      return { success: true, cancelled };
+      return { success: true, cancelled: cancelled || removedQueued };
+    }
+
+    if (removedQueued) {
+      this.emitEvent('turn_cancelled', { message: 'Turn cancelled by user.' }, undefined, sessionId);
+      return { success: true, cancelled: true };
     }
 
     // Legacy callers without a session id still abort the focused controller.
