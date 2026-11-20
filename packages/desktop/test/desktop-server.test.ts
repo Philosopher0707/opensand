@@ -832,3 +832,26 @@ test('DesktopServer - exposes read-only pending approvals and live tool discover
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('DesktopServer - /api/providers exposes the full registered driver catalog', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-providers-test-'));
+  try {
+    const server = new DesktopServer({ baseDir: tmpDir });
+    MockIncomingMessage.defaultToken = server.getAuthToken();
+
+    const res = new MockServerResponse();
+    await (server as any).handleRequest(new MockIncomingMessage('GET', '/api/providers'), res);
+    assert.strictEqual(res.statusCode, 200);
+    const body = JSON.parse(res.body);
+    const kinds: string[] = body.providers.map((p: any) => p.kind);
+    assert.ok(kinds.length >= 26, `expected 26+ drivers, got ${kinds.length}`);
+    for (const kind of ['openrouter', 'anthropic', 'codex', 'grok', 'kimiAgent', 'minimax']) {
+      assert.ok(kinds.includes(kind), `missing ${kind}`);
+    }
+    const grok = body.providers.find((p: any) => p.kind === 'grok');
+    assert.strictEqual(grok.defaultUrl, 'https://api.x.ai/v1');
+    assert.strictEqual(grok.models.default, 'grok-4.7');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

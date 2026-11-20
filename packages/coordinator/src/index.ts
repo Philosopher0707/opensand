@@ -48,5 +48,8 @@ export * from "./github-client.js";
 export * from "./provider-clients.js";
 export * from "./provider-registry.js";
 export * from "./provider-llm.js";
+export * from "./built-in-drivers.js";
+export * from "./providers/factories/acp-driver.js";
+export * from "./providers/factories/api-driver.js";
 
 export * from './errors.js';

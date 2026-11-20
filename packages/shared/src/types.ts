@@ -652,7 +652,7 @@ export interface LLMClientConfig {
   baseUrl: string;
   apiKey?: string;
   model: string;
-  provider?: "openai" | "anthropic" | "openrouter";
+  provider?: string;
   thinkingBudgetTokens?: number;
   enablePromptCaching?: boolean;
   temperature?: number;
@@ -673,7 +673,7 @@ export interface DesktopSettings {
   model: string;
   apiKey?: string;
   autoApprove: boolean;
-  provider: 'openai' | 'anthropic' | 'openrouter';
+  provider: string;
   theme: 'dark' | 'light' | 'system';
   maxContextTokens?: number;
 }

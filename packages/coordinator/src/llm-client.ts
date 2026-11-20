@@ -15,6 +15,20 @@ export interface ConsolidatedAssistantResponse {
   tool_calls?: ToolCall[];
 }
 
+/** The narrow contract the coordinator needs from an LLM transport. API drivers
+ * provide UniversalLLMClient directly; CLI drivers provide a text-only shim. */
+export interface LlmStreamClient {
+  readonly model: string;
+  streamCompletion(
+    messages: ChatMessage[],
+    tools?: ToolDefinition[],
+    signal?: AbortSignal
+  ): Promise<{
+    stream: AsyncIterable<StreamDelta>;
+    getConsolidated: () => ConsolidatedAssistantResponse;
+  }>;
+}
+
 export class NetworkError extends Error {
   public readonly endpoint: string;
   public readonly code?: string;

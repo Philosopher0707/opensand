@@ -8,7 +8,8 @@ describe("provider-llm production bridge", () => {
   it("maps the app's provider names to driver kinds", () => {
     assert.equal(driverKindForProvider("openrouter"), "openrouter");
     assert.equal(driverKindForProvider("Anthropic"), "anthropic");
-    assert.equal(driverKindForProvider("openai"), null);
+    assert.equal(driverKindForProvider("openai"), "openai-compat");
+    assert.equal(driverKindForProvider("something-unknown"), null);
   });
 
   it("builds an LLM client through the registered OpenRouter driver", async () => {
@@ -64,16 +65,16 @@ describe("provider-llm production bridge", () => {
     }
   });
 
-  it("returns null for local/unmapped providers so the legacy path is used", async () => {
+  it("returns null for unregistered providers so the legacy path is used", async () => {
     assert.equal(await createDriverLlmClient({
-      provider: "openai",
+      provider: "totally-unknown-provider",
       endpoint: "http://127.0.0.1:11434/v1",
       model: "qwen3:8b",
       apiKey: "none",
     }), null);
   });
 
-  it("never leaves a registry instance behind for non-API drivers", async () => {
+  it("adapts a CLI driver into a working text-only streaming client", async () => {
     const models = { default: "fake-1", options: [{ id: "fake-1", label: "Fake" }] };
     const fake: ProviderDriver = {
       driverKind: "fake-cli-driver",
@@ -91,7 +92,7 @@ describe("provider-llm production bridge", () => {
           adapter: {
             provider: "fake-cli-driver",
             capabilities: {},
-            async sendTurn() { return ""; },
+            async sendTurn() { return { text: "from-cli", toolCalls: [] }; },
             steer: () => Promise.resolve(),
             interruptTurn: () => Promise.resolve(),
             respondToRequest: () => Promise.resolve("unavailable" as const),
@@ -112,13 +113,23 @@ describe("provider-llm production bridge", () => {
     // createDriverLlmClient uses the singleton; node:test runs each file in its
     // own process, so registering here cannot affect other test files.
     providerRegistry.register(fake);
-    assert.equal(providerRegistry.listInstances().length, 0);
-    assert.equal(await createDriverLlmClient({
+    const client = await createDriverLlmClient({
       provider: "fake-cli-driver",
       endpoint: "",
       model: "fake-1",
       apiKey: "",
-    }), null);
-    assert.equal(providerRegistry.listInstances().length, 0, "factory instances must be disposed");
+    });
+    assert.ok(client, "a CLI driver must still yield a text-only client");
+    assert.equal(client.model, "fake-1");
+    const { stream, getConsolidated } = await client.streamCompletion([{ role: "user", content: "hi" }]);
+    let streamed = "";
+    for await (const delta of stream) streamed += delta.content ?? "";
+    assert.equal(streamed, "from-cli");
+    assert.equal(getConsolidated().content, "from-cli");
+
+    // CLI instances stay in the registry for the lifetime of the chat session.
+    assert.ok(providerRegistry.listInstances().length > 0);
+    await providerRegistry.disposeAll();
+    assert.equal(providerRegistry.listInstances().length, 0);
   });
 });

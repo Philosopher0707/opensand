@@ -1137,6 +1137,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   const settingAutoApprove = document.getElementById('settingAutoApprove');
   const btnCopyDiagnostics = document.getElementById('btnCopyDiagnostics');
 
+  // Provider list comes from the registry so every registered driver is selectable.
+  let providerCatalog = [];
+  async function loadProviderCatalog(selected) {
+    try {
+      const res = await fetch('/api/providers');
+      const data = await res.json();
+      const list = Array.isArray(data.providers) ? data.providers : [];
+      if (!list.length) return;
+      providerCatalog = list;
+      settingProvider.innerHTML = '';
+      const local = document.createElement('option');
+      local.value = 'openai';
+      local.textContent = 'OpenAI / Ollama / Local';
+      settingProvider.appendChild(local);
+      for (const item of list) {
+        const opt = document.createElement('option');
+        opt.value = item.kind;
+        opt.textContent = item.displayName + (item.access === 'custom' ? ' (CLI)' : '');
+        settingProvider.appendChild(opt);
+      }
+      if (selected) settingProvider.value = selected;
+    } catch (e) { /* keep the static options if the API is unavailable */ }
+  }
+
   // State
   let currentSessionId = null;
   let activeAgentId = null;
@@ -5545,6 +5569,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!settingModel.value || settingModel.value.startsWith('claude-') || settingModel.value.includes('/')) {
           settingModel.value = 'llama3.1';
         }
+      } else {
+        const info = providerCatalog.find((item) => item.kind === p);
+        if (info) {
+          if (info.defaultUrl) settingEndpoint.value = info.defaultUrl;
+          else if (info.defaultCli) settingEndpoint.value = '';
+          if (info.models && info.models.default && !settingModel.value) settingModel.value = info.models.default;
+        }
       }
       populateModelSuggestions(p, settingEndpoint.value);
     });
@@ -5557,6 +5588,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if ((!s.provider || s.provider === 'openai') && s.endpoint?.includes('openrouter.ai')) {
       detectedProvider = 'openrouter';
     }
+    await loadProviderCatalog(detectedProvider);
     settingProvider.value = detectedProvider;
     settingEndpoint.value = s.endpoint || '';
     settingModel.value = s.model || '';

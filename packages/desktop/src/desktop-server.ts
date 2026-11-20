@@ -6,7 +6,7 @@ import * as crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
 import { createDefaultRpcGateway, RpcGateway } from './rpc-gateway.js';
-import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient } from '@opensand/coordinator';
+import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient, BUILT_IN_DRIVERS } from '@opensand/coordinator';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 import { runStateMigrations, readSchemaVersion } from '@opensand/shared';
 import { buildDiagnosticsReport } from './diagnostics.js';
@@ -1352,6 +1352,25 @@ export class DesktopServer {
       const telemetry = await this.bridge.getTokenTelemetry(agentId, sessionId);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(telemetry));
+      return;
+    }
+
+    // API: GET /api/providers (registered driver catalog for provider selection)
+    if (pathname === '/api/providers' && req.method === 'GET') {
+      const providers = BUILT_IN_DRIVERS.map((driver) => {
+        const defaults = driver.defaultConfig() as { url?: string; cli?: string };
+        const models = driver.models;
+        return {
+          kind: driver.driverKind,
+          displayName: driver.metadata.displayName,
+          access: driver.metadata.access ?? 'custom',
+          defaultUrl: typeof defaults.url === 'string' ? defaults.url : undefined,
+          defaultCli: typeof defaults.cli === 'string' ? defaults.cli : undefined,
+          models: { default: models.default, options: models.options.map((m) => m.id) },
+        };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ providers }));
       return;
     }
 

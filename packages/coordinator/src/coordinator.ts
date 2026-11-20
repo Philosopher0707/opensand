@@ -7,7 +7,7 @@ import {
 } from "@opensand/shared";
 import { LocalExecDaemon, ToolExecutionResult, PolicyDecision, ToolDefinition } from "@opensand/local-exec-daemon";
 import { isParallelSafeTool } from "./tool-parallelism.js";
-import { UniversalLLMClient, ConsolidatedAssistantResponse } from "./llm-client.js";
+import { ConsolidatedAssistantResponse, LlmStreamClient } from "./llm-client.js";
 import {
   ChatMessage,
   ToolCall,
@@ -33,7 +33,7 @@ import {
 } from "./token-hygiene.js";
 
 export interface CoordinatorOptions {
-  llmClient: UniversalLLMClient;
+  llmClient: LlmStreamClient;
   daemon: LocalExecDaemon;
   sessionId?: string;
   systemPromptContext?: SystemPromptContext;
@@ -54,7 +54,7 @@ export interface CoordinatorOptions {
 }
 
 export class AgentCoordinator {
-  public readonly llmClient: UniversalLLMClient;
+  public readonly llmClient: LlmStreamClient;
   public readonly daemon: LocalExecDaemon;
   public readonly transcript: TranscriptManager;
   public readonly sessionId: string;

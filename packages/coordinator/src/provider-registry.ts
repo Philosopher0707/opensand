@@ -16,12 +16,7 @@ import type {
   ProviderDriver,
   ProviderInstance,
 } from "@opensand/shared";
-import { OpenRouterDriver } from "./providers/openrouter-driver.js";
-import { AnthropicDriver } from "./providers/anthropic-driver.js";
-import { ClaudeDriver } from "./providers/claude-driver.js";
-import { CodexDriver } from "./providers/codex-driver.js";
-import { OpenCodeDriver } from "./providers/opencode-driver.js";
-import { AntigravityDriver } from "./providers/antigravity-driver.js";
+import { BUILT_IN_DRIVERS } from "./built-in-drivers.js";
 
 /** A registered driver plus its resolved config type marker. */
 export interface RegisteredDriver<Config = unknown> extends ProviderDriver<Config> {
@@ -132,4 +127,4 @@ export class ProviderRegistry {
 export const providerRegistry = new ProviderRegistry();
 
 // Register built-in drivers (OpenMausBot's BUILT_IN_DRIVERS parity).
-providerRegistry.register(OpenRouterDriver, AnthropicDriver, ClaudeDriver, CodexDriver, OpenCodeDriver, AntigravityDriver);
+providerRegistry.register(...BUILT_IN_DRIVERS);

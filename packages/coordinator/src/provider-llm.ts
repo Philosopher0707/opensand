@@ -1,14 +1,15 @@
 /**
  * Production bridge from the app's provider settings to the driver registry.
  *
- * The coordinator's turn loop needs a streaming LLM client with tool-call
- * support, so only API-backed drivers (which wrap UniversalLLMClient) can
- * serve it. CLI drivers stay reachable through ProviderRegistry for callers
- * that use ProviderAdapter.sendTurn directly.
+ * API-backed drivers expose UniversalLLMClient directly (full tool-call loop).
+ * CLI-backed drivers expose only text turns; they are adapted to the same
+ * streaming contract so they are still selectable in chat, with the explicit
+ * limitation that tool calls run inside the CLI process, not in the app loop.
  */
 
 import { randomUUID } from "node:crypto";
-import type { UniversalLLMClient } from "./llm-client.js";
+import type { ChatMessage, ProviderInstance } from "@opensand/shared";
+import type { LlmStreamClient, UniversalLLMClient } from "./llm-client.js";
 import { providerRegistry } from "./provider-registry.js";
 import type { ApiProviderInstance } from "./providers/runtime/api-chat-runtime.js";
 
@@ -27,17 +28,60 @@ export function driverKindForProvider(provider: string): string | null {
       return "openrouter";
     case "anthropic":
       return "anthropic";
+    case "openai":
+      return "openai-compat";
     default:
       return null;
   }
 }
 
+function extractText(result: unknown): string {
+  if (typeof result === "string") return result;
+  if (result && typeof result === "object" && "text" in result) {
+    const text = (result as { text: unknown }).text;
+    return typeof text === "string" ? text : String(text ?? "");
+  }
+  return "";
+}
+
+/** Text-only adapter for CLI drivers that cannot serve the coordinator's tool loop. */
+function createTextStreamShim(instance: ProviderInstance, model: string): LlmStreamClient {
+  const threadId = `chat_${randomUUID()}`;
+  return {
+    model,
+    async streamCompletion(messages: ChatMessage[], _tools, signal) {
+      if (signal?.aborted) throw new Error("This operation was aborted");
+      const system = messages
+        .filter((m) => m.role === "system")
+        .map((m) => m.content ?? "")
+        .join("\n\n");
+      const transcript = messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({ role: m.role as "user" | "assistant", text: m.content ?? "" }));
+      const lastUser = [...messages].reverse().find((m) => m.role === "user");
+      const result = await instance.adapter.sendTurn({
+        threadId,
+        text: lastUser?.content ?? "",
+        ...(system ? { system } : {}),
+        transcript,
+        model,
+      });
+      const content = extractText(result);
+      return {
+        stream: (async function* () {
+          if (content) yield { content };
+        })(),
+        getConsolidated: () => ({ role: "assistant" as const, content }),
+      };
+    },
+  };
+}
+
 /**
  * Build an LLM client through a registered provider driver.
- * Returns null when the selected provider has no API-backed driver, so the
- * caller can keep using the existing local/compatible client path.
+ * Returns null only when no driver is registered for the selected provider.
  */
-export async function createDriverLlmClient(input: DriverLlmClientInput): Promise<UniversalLLMClient | null> {
+export async function createDriverLlmClient(input: DriverLlmClientInput): Promise<LlmStreamClient | null> {
   const kind = providerRegistry.hasDriver(input.provider)
     ? input.provider
     : driverKindForProvider(input.provider);
@@ -70,14 +114,13 @@ export async function createDriverLlmClient(input: DriverLlmClientInput): Promis
   );
 
   const apiInstance = instance as ApiProviderInstance;
-  if (typeof apiInstance.createLlmClient !== "function") {
-    // CLI-backed drivers cannot serve the tool loop; do not leave a dead instance behind.
+  if (typeof apiInstance.createLlmClient === "function") {
+    const client: UniversalLLMClient = apiInstance.createLlmClient(input.model);
+    // The client owns its own transport; the registry instance is only a factory here.
     await providerRegistry.disposeInstance(instanceId);
-    return null;
+    return client;
   }
 
-  const client = apiInstance.createLlmClient(input.model);
-  // The client owns its own transport; the registry instance is only a factory here.
-  await providerRegistry.disposeInstance(instanceId);
-  return client;
+  // CLI driver: keep the instance alive for the lifetime of the chat session.
+  return createTextStreamShim(instance, input.model);
 }
