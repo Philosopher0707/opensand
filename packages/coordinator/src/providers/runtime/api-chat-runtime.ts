@@ -27,6 +27,12 @@ export interface ApiRuntimeOptions {
   headers?: Record<string, string>;
 }
 
+/** API instances expose their configured client so the app's turn loop can
+ * reuse the driver's hardened transport (timeouts, retries, error mapping). */
+export interface ApiProviderInstance extends ProviderInstance {
+  createLlmClient(model?: string): UniversalLLMClient;
+}
+
 const TIMEOUT_MS = 120_000;
 const IDLE_TIMEOUT_MS = 30_000;
 const MAX_RETRIES = 3;
@@ -90,7 +96,7 @@ export function createApiInstance(
     return consolidated.content ?? streamed;
   };
 
-  const instance: ProviderInstance = {
+  const instance: ApiProviderInstance = {
     instanceId: input.instanceId,
     driverKind: options.driverKind as ProviderInstance["driverKind"],
     displayName: input.displayName,
@@ -175,6 +181,9 @@ export function createApiInstance(
       };
       genOptions?.onUsage?.(usage);
       return text;
+    },
+    createLlmClient(model) {
+      return makeClient(model ?? options.models.default);
     },
     async dispose() {
       disposed = true;

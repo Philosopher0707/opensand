@@ -67,6 +67,7 @@ import {
   GalleryTemplateItem,
   GalleryQueryOptions,
   buildToolDiscoverySummary,
+  createDriverLlmClient,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -547,7 +548,16 @@ export class DesktopIpcBridge extends EventEmitter {
       }
     }
 
-    const llmClient = new UniversalLLMClient({
+    // Route API-backed providers (OpenRouter, Anthropic) through the registered
+    // driver so config validation, timeouts and retries come from the driver.
+    // Local / OpenAI-compatible endpoints keep the existing client path.
+    const driverClient = await createDriverLlmClient({
+      provider: this.settings.provider,
+      endpoint: targetEndpoint,
+      model: targetModel,
+      apiKey: this.settings.apiKey,
+    });
+    const llmClient = driverClient ?? new UniversalLLMClient({
       baseUrl: targetEndpoint,
       model: targetModel,
       apiKey: this.settings.apiKey,

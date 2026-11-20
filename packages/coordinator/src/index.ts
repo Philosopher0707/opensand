@@ -46,5 +46,7 @@ export * from "./connectors.js";
 export * from "./template-gallery.js";
 export * from "./github-client.js";
 export * from "./provider-clients.js";
+export * from "./provider-registry.js";
+export * from "./provider-llm.js";
 
 export * from './errors.js';
