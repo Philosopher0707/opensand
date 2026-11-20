@@ -1,22 +1,15 @@
 /**
- * Anthropic / Claude provider driver — API-key driver over the Anthropic Messages API.
- * No local binary; config is base URL + API key env name. Mirrors OpenMausBot's
- * drivers/grok.ts pattern (OpenAI-compatible API-key driver), adapted for Anthropic.
+ * Anthropic Messages API driver. Protocol, retry and timeout behavior lives in
+ * the shared API chat runtime; this file only validates config and declares
+ * the driver's static catalog.
  */
 
-import { UniversalLLMClient } from "../llm-client.js";
-import type {
-  DriverCreateInput,
-  ModelCatalog,
-  ProviderDriver,
-  ProviderInstance,
-  ProviderSnapshot,
-  SendTurnInput,
-  TextGenerationUsage,
-} from "@opensand/shared";
+import type { ModelCatalog, ProviderDriver } from "@opensand/shared";
+import { createApiInstance, type ApiChatConfig } from "./runtime/api-chat-runtime.js";
 
 const DRIVER_KIND = "anthropic";
 const DEFAULT_URL = "https://api.anthropic.com/v1";
+const DEFAULT_KEY_ENV = "ANTHROPIC_API_KEY";
 
 const MODELS: ModelCatalog = {
   default: "claude-3-7-sonnet-20250219",
@@ -28,20 +21,21 @@ const MODELS: ModelCatalog = {
   ],
 };
 
-export interface AnthropicConfig {
-  url: string;
-  apiKeyEnv: string;
-}
-
-function decodeConfig(raw: unknown): AnthropicConfig {
+function decodeConfig(raw: unknown): ApiChatConfig {
   const config = (raw ?? {}) as Record<string, unknown>;
+  if (config.url !== undefined && typeof config.url !== "string") {
+    throw new Error("url must be a string");
+  }
+  if (config.apiKeyEnv !== undefined && typeof config.apiKeyEnv !== "string") {
+    throw new Error("apiKeyEnv must be a string");
+  }
   return {
     url: typeof config.url === "string" ? config.url : DEFAULT_URL,
-    apiKeyEnv: typeof config.apiKeyEnv === "string" ? config.apiKeyEnv : "ANTHROPIC_API_KEY",
+    apiKeyEnv: typeof config.apiKeyEnv === "string" ? config.apiKeyEnv : DEFAULT_KEY_ENV,
   };
 }
 
-export const AnthropicDriver: ProviderDriver<AnthropicConfig> = {
+export const AnthropicDriver: ProviderDriver<ApiChatConfig> = {
   driverKind: DRIVER_KIND,
   metadata: {
     displayName: "Anthropic (Claude)",
@@ -51,132 +45,14 @@ export const AnthropicDriver: ProviderDriver<AnthropicConfig> = {
   models: MODELS,
   decodeConfig,
   defaultConfig: () => decodeConfig({}),
-
-  async create(input) {
-    const { config } = input;
-    const apiKey = input.environment[config.apiKeyEnv] ?? process.env[config.apiKeyEnv] ?? "";
-
-    const client = new UniversalLLMClient({
-      baseUrl: config.url,
-      apiKey,
-      model: MODELS.default,
-      provider: "anthropic",
-    });
-
-    let models = MODELS;
-
-    const instance: ProviderInstance = {
-      instanceId: input.instanceId,
-      driverKind: DRIVER_KIND,
-      displayName: input.displayName,
-      enabled: input.enabled,
-      get models() {
-        return models;
-      },
-      async refreshModels() {
-        models = MODELS;
-      },
-      async snapshot(): Promise<ProviderSnapshot> {
-        return {
-          instanceId: input.instanceId,
-          driverKind: DRIVER_KIND,
-          enabled: input.enabled,
-          ...(apiKey
-            ? {}
-            : { error: { code: "invalid_credentials" as const, message: `No ${config.apiKeyEnv} set` } }),
-        };
-      },
-      adapter: {
-        provider: DRIVER_KIND,
-        capabilities: {
-          sessionModelSwitch: "in-session",
-          guestTurns: "unconfined",
-          agentsMcp: false,
-          customMcp: false,
-          computerMcp: false,
-          composioMcp: false,
-          mcpToolsFoundByName: false,
-          phoneMcp: false,
-          browserMcp: false,
-          dataMcp: false,
-          emailMcp: false,
-          deviceMcp: false,
-          images: false,
-          nativeImageInput: false,
-          effortLevels: [],
-          queueing: false,
-          steerImages: false,
-          strictResume: false,
-          localComputerMcp: false,
-          hooks: false,
-        },
-        async sendTurn(turn) {
-          const c = new UniversalLLMClient({
-            baseUrl: config.url,
-            apiKey,
-            model: turn.model ?? MODELS.default,
-            provider: "anthropic",
-          });
-          const messages = turn.transcript
-            ? turn.transcript.map((t) => ({ role: t.role, content: t.text }))
-            : [{ role: "user", content: turn.text }];
-          if (turn.system) {
-            messages.unshift({ role: "system", content: turn.system });
-          }
-          const { stream, getConsolidated } = await c.streamCompletion(messages);
-          const chunks: string[] = [];
-          for await (const delta of stream) {
-            if (delta.content) chunks.push(delta.content);
-          }
-          return getConsolidated();
-        },
-        steer(_threadId, _instruction) {
-          return Promise.resolve();
-        },
-        interruptTurn(_threadId) {
-          return Promise.resolve();
-        },
-        respondToRequest(_threadId, _requestId, _decision) {
-          return Promise.resolve("unavailable");
-        },
-        hasSession(_threadId) {
-          return false;
-        },
-        enginePid(_threadId) {
-          return undefined;
-        },
-        async stopAll() {
-          return;
-        },
-        onEvent(_listener) {
-          return () => {};
-        },
-      },
-      generateText: async (prompt, options) => {
-        const c = new UniversalLLMClient({
-          baseUrl: config.url,
-          apiKey,
-          model: options?.model ?? MODELS.default,
-          provider: "anthropic",
-        });
-        const { stream, getConsolidated } = await c.streamCompletion([{ role: "user", content: prompt }]);
-        let text = "";
-        for await (const delta of stream) {
-          if (delta.content) text += delta.content;
-        }
-        const usage: TextGenerationUsage = {
-          model: options?.model ?? MODELS.default,
-          input: prompt.length,
-          output: text.length,
-        };
-        options?.onUsage?.(usage);
-        return text;
-      },
-      dispose() {
-        return;
-      },
-    };
-
-    return instance;
+  create(input) {
+    return Promise.resolve(
+      createApiInstance({ ...input, config: input.config }, {
+        driverKind: DRIVER_KIND,
+        displayName: "Anthropic (Claude)",
+        models: MODELS,
+        provider: "anthropic",
+      })
+    );
   },
 };

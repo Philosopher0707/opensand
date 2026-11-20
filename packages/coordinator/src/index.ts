@@ -9,8 +9,20 @@ export * from "./anthropic-client.js";
 export * from "./openrouter-catalog.js";
 export * from "./mcp-client.js";
 export * from "./mcp-manager.js";
-export * from "./agent-store.js";
-export * from "./agent-tasks.js";
+// Two modules export an AgentTask type. TaskStore's is the public one; the
+// agent-store variant is a different shape and is not re-exported from here.
+export { AgentStore } from "./agent-store.js";
+export type {
+  AgentRecord,
+  CreateAgentInput,
+  CreateAgentTaskInput,
+  UpdateAgentProfileInput,
+  AgentProfileSnapshot,
+  AgentProfileChange,
+  UpdateAgentSettingsInput,
+} from "./agent-store.js";
+export { TaskStore } from "./agent-tasks.js";
+export type { TaskStatus, TaskPriority, AgentTask, CreateTaskInput } from "./agent-tasks.js";
 export * from "./habit-extractor.js";
 export * from "./memory-store.js";
 export * from "./memo-store.js";

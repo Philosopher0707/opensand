@@ -16,12 +16,12 @@ import type {
   ProviderDriver,
   ProviderInstance,
 } from "@opensand/shared";
-import { OpenRouterDriver } from "./providers/openrouter-driver.ts";
-import { AnthropicDriver } from "./providers/anthropic-driver.ts";
-import { ClaudeDriver } from "./providers/claude-driver.ts";
-import { CodexDriver } from "./providers/codex-driver.ts";
-import { OpenCodeDriver } from "./providers/opencode-driver.ts";
-import { AntigravityDriver } from "./providers/antigravity-driver.ts";
+import { OpenRouterDriver } from "./providers/openrouter-driver.js";
+import { AnthropicDriver } from "./providers/anthropic-driver.js";
+import { ClaudeDriver } from "./providers/claude-driver.js";
+import { CodexDriver } from "./providers/codex-driver.js";
+import { OpenCodeDriver } from "./providers/opencode-driver.js";
+import { AntigravityDriver } from "./providers/antigravity-driver.js";
 
 /** A registered driver plus its resolved config type marker. */
 export interface RegisteredDriver<Config = unknown> extends ProviderDriver<Config> {
@@ -69,7 +69,7 @@ export class ProviderRegistry {
   async createInstance(
     instanceId: InstanceId,
     config: InstanceConfig,
-    environment: Record<string, string> = {}
+    environmentOverride: Record<string, string> = {}
   ): Promise<CreateProviderInstanceResult> {
     const driver = this.drivers.get(config.driver);
     if (!driver) {
@@ -77,6 +77,9 @@ export class ProviderRegistry {
     }
 
     const parsedConfig = driver.decodeConfig(config.config ?? {});
+    // InstanceConfig.environment is the stored source; the explicit argument wins
+    // when a caller supplies per-invocation secrets.
+    const environment = { ...(config.environment ?? {}), ...environmentOverride };
 
     const input: DriverCreateInput<typeof parsedConfig> = {
       instanceId,

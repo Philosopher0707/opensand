@@ -236,19 +236,19 @@ export class DesktopApp {
       return this.bridge.setAgentAvatar(agentId, avatarUrl);
     });
 
-    ipcMain.handle('opensand:updateAgentApproval', async (_: any, { id, updates }: { id: string; updates: { approvalMode?: string; autoApprove?: boolean; alwaysAllow?: string[] } }) => {
+    ipcMain.handle('opensand:updateAgentApproval', async (_: any, { id, updates }: { id: string; updates: { approvalMode?: "ask" | "custom" | "allow"; autoApprove?: boolean; alwaysAllow?: string[] } }) => {
       return this.bridge.updateAgentApproval(id, updates);
     });
 
-    ipcMain.handle('opensand:updateAgentSection', async (_: any, { id, updates }: { id: string; updates: { section?: string; chiefOfStaff?: boolean; managedSections?: string[]; createdBy?: string; reportsTo?: string; visibility?: string } }) => {
+    ipcMain.handle('opensand:updateAgentSection', async (_: any, { id, updates }: { id: string; updates: { section?: string; chiefOfStaff?: boolean; managedSections?: string[]; createdBy?: string; reportsTo?: string; visibility?: "everyone" | "admins" | { people: string[] } } }) => {
       return this.bridge.updateAgentSection(id, updates);
     });
 
-    ipcMain.handle('opensand:updateAgentVoice', async (_: any, { id, updates }: { id: string; updates: { voice?: string; speakReplies?: boolean; voiceNotes?: boolean; replyStyle?: string } }) => {
+    ipcMain.handle('opensand:updateAgentVoice', async (_: any, { id, updates }: { id: string; updates: { voice?: string; speakReplies?: boolean; voiceNotes?: boolean; replyStyle?: "default" | "concise" | "detailed" } }) => {
       return this.bridge.updateAgentVoice(id, updates);
     });
 
-    ipcMain.handle('opensand:createAgentTask', async (_: any, { agentId, threadId, title, status, pinned, metadata }: { agentId: string; threadId: string; title: string; status?: string; pinned?: boolean; metadata?: Record<string, unknown> }) => {
+    ipcMain.handle('opensand:createAgentTask', async (_: any, { agentId, threadId, title, status, pinned, metadata }: { agentId: string; threadId: string; title: string; status?: "todo" | "in_progress" | "done" | "blocked"; pinned?: boolean; metadata?: Record<string, unknown> }) => {
       return this.bridge.createAgentTask(agentId, { threadId, title, status, pinned, metadata });
     });
 

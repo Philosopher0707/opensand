@@ -3,122 +3,99 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { ClaudeDriver } from "../src/providers/claude-driver.ts";
+import { ClaudeDriver } from "../src/providers/claude-driver.js";
+import { FAKE_CLAUDE, readJsonl, writeFakeCli } from "./helpers/fake-cli.js";
 
-describe("ClaudeDriver - Grok Bot drivers/claude.ts parity", () => {
+describe("ClaudeDriver", () => {
   let tmpDir: string;
+  let cli: string;
+  let argvLog: string;
+  let msgLog: string;
 
   before(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-claude-test-"));
+    cli = await writeFakeCli(tmpDir, "fake-claude", FAKE_CLAUDE);
+    argvLog = path.join(tmpDir, "argv.jsonl");
+    msgLog = path.join(tmpDir, "msg.jsonl");
   });
 
   after(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("decodes config with defaults", () => {
-    const config = ClaudeDriver.decodeConfig({});
-    assert.equal(config.cli, "claude");
-    assert.equal(config.fullAuto, false);
-    assert.equal(config.configDir, undefined);
-  });
-
-  it("decodes config with custom values", () => {
-    const config = ClaudeDriver.decodeConfig({
-      cli: "/usr/local/bin/claude",
+  it("decodes config with defaults and custom values", () => {
+    assert.deepEqual(ClaudeDriver.decodeConfig({}), { cli: "claude", fullAuto: false });
+    assert.deepEqual(ClaudeDriver.decodeConfig({ cli: "/bin/claude", fullAuto: true, configDir: "/tmp/c" }), {
+      cli: "/bin/claude",
       fullAuto: true,
-      configDir: "/tmp/claude-config",
+      configDir: "/tmp/c",
     });
-    assert.equal(config.cli, "/usr/local/bin/claude");
-    assert.equal(config.fullAuto, true);
-    assert.equal(config.configDir, "/tmp/claude-config");
+    assert.throws(() => ClaudeDriver.decodeConfig({ cli: 3 }), /cli must be a string/);
+    assert.throws(() => ClaudeDriver.decodeConfig({ fullAuto: "yes" }), /fullAuto must be a boolean/);
   });
 
-  it("defaultConfig returns decodeConfig({})", () => {
-    const d1 = ClaudeDriver.defaultConfig();
-    const d2 = ClaudeDriver.decodeConfig({});
-    assert.deepEqual(d1, d2);
-  });
-
-  it("exposes model catalog", () => {
-    assert.equal(ClaudeDriver.models.default, "claude-3-7-sonnet-20250219");
-    assert.ok(Array.isArray(ClaudeDriver.models.options));
-    assert.ok(ClaudeDriver.models.options.length > 0);
-    assert.ok(
-      ClaudeDriver.models.options.some((m) => m.id === "claude-3-7-sonnet-20250219")
-    );
-    assert.ok(
-      ClaudeDriver.models.options.some((m) => m.id === "claude-3-haiku-20240307")
-    );
-  });
-
-  it("metadata identifies driver as Claude Code", () => {
+  it("exposes catalog and metadata", () => {
     assert.equal(ClaudeDriver.driverKind, "claude-code");
     assert.equal(ClaudeDriver.metadata.displayName, "Claude Code");
     assert.equal(ClaudeDriver.metadata.access, "custom");
+    assert.equal(ClaudeDriver.models.default, "claude-3-7-sonnet-20250219");
   });
 
-  it("create returns an instance with expected shape", async () => {
+  it("creates an instance with expected shape", async () => {
     const instance = await ClaudeDriver.create({
       instanceId: "claude-1",
       displayName: "Claude Test",
       environment: {},
       enabled: true,
-      config: ClaudeDriver.decodeConfig({ cli: "claude", fullAuto: true }),
+      config: ClaudeDriver.decodeConfig({ cli }),
     });
-
     assert.equal(instance.instanceId, "claude-1");
     assert.equal(instance.driverKind, "claude-code");
-    assert.equal(instance.displayName, "Claude Test");
-    assert.equal(instance.enabled, true);
-    assert.equal(instance.models.default, "claude-3-7-sonnet-20250219");
-
-    const snap = await instance.snapshot();
-    assert.equal(snap.instanceId, "claude-1");
-    assert.equal(snap.driverKind, "claude-code");
-    assert.equal(snap.enabled, true);
-
-    // adapter capabilities mirror OpenMausBot's Claude driver
+    assert.equal((await instance.snapshot()).enabled, true);
     assert.equal(instance.adapter.provider, "claude-code");
-    assert.ok(instance.adapter.capabilities.queueing === true);
-    assert.ok(instance.adapter.capabilities.strictResume === true);
-    assert.ok(instance.adapter.capabilities.localComputerMcp === true);
-
-    await instance.stopAll();
+    assert.equal(instance.adapter.hasSession("t"), false);
     await instance.dispose();
   });
 
-  it("refreshModels resolves without error", async () => {
+  it("spawns the correct stream-json CLI, streams text and retains one process across turns", { timeout: 15_000 }, async () => {
     const instance = await ClaudeDriver.create({
-      instanceId: "claude-2",
-      displayName: "Refresh Test",
-      environment: {},
+      instanceId: "claude-proto",
+      displayName: "Protocol Test",
+      environment: { ARGV_LOG: argvLog, MSG_LOG: msgLog },
       enabled: true,
-      config: ClaudeDriver.decodeConfig({}),
-    });
-    await instance.refreshModels();
-    await instance.dispose();
-  });
-
-  it("generateText returns a string", async () => {
-    const instance = await ClaudeDriver.create({
-      instanceId: "claude-3",
-      displayName: "Generate Test",
-      environment: {},
-      enabled: true,
-      config: ClaudeDriver.decodeConfig({}),
+      config: ClaudeDriver.decodeConfig({ cli, fullAuto: true }),
     });
 
-    // spawn will fail because `claude` CLI is not installed; generateText
-    // should reject with a spawn error rather than hang forever
-    let threw = false;
-    try {
-      await instance.generateText("hello", { onUsage: () => {} });
-    } catch {
-      threw = true;
-    }
-    assert.ok(threw, "generateText should throw when claude CLI is unavailable");
+    const events: Array<{ type: string }> = [];
+    instance.adapter.onEvent((event) => events.push(event as { type: string }));
 
+    const first = await instance.adapter.sendTurn({ threadId: "thread-1", text: "first" });
+    const pid = instance.adapter.enginePid("thread-1");
+    const second = await instance.adapter.sendTurn({ threadId: "thread-1", text: "second" });
+
+    assert.equal((first as { text: string }).text, "hello");
+    assert.equal((second as { text: string }).text, "hello");
+    assert.equal(instance.adapter.enginePid("thread-1"), pid, "process must be retained across turns");
+    assert.equal(instance.adapter.hasSession("thread-1"), true);
+    assert.ok(events.some((e) => e.type === "text.delta"));
+    assert.ok(events.some((e) => e.type === "assistant_text"));
+
+    const argv = await readJsonl(argvLog) as string[][];
+    assert.equal(argv.length, 1, "fake CLI should be spawned exactly once");
+    const args = argv[0];
+    assert.ok(args.includes("-p"));
+    assert.ok(args.includes("--output-format") && args.includes("stream-json"));
+    assert.ok(args.includes("--input-format") && args.includes("stream-json"));
+    assert.ok(args.includes("--verbose"));
+    assert.ok(args.includes("--include-partial-messages"));
+    assert.ok(args.includes("--permission-mode") && args.includes("bypassPermissions"));
+
+    const messages = await readJsonl(msgLog) as Array<{ message: { content: string } }>;
+    assert.equal(messages.length, 2);
+    assert.equal(messages[0].message.content, "first");
+    assert.equal(messages[1].message.content, "second");
+
+    await instance.adapter.stopAll();
     await instance.dispose();
   });
 });

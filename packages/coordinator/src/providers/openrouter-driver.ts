@@ -1,19 +1,14 @@
 /**
- * OpenRouter provider driver — API-key driver over the OpenAI chat-completions
- * contract. No local binary; config is just the base URL and API key env name.
- * Matches OpenMausBot's drivers/grok.ts pattern.
+ * OpenRouter driver over the OpenAI-compatible chat-completions contract.
+ * Uses the shared API chat runtime for retry, timeouts and usage accounting.
  */
 
-import { UniversalLLMClient } from "../llm-client.js";
-import type {
-  DriverCreateInput,
-  ModelCatalog,
-  ProviderDriver,
-  ProviderInstance,
-} from "@opensand/shared";
+import type { ModelCatalog, ProviderDriver } from "@opensand/shared";
+import { createApiInstance, type ApiChatConfig } from "./runtime/api-chat-runtime.js";
 
 const DRIVER_KIND = "openrouter";
 const DEFAULT_URL = "https://openrouter.ai/api/v1";
+const DEFAULT_KEY_ENV = "OPENROUTER_API_KEY";
 
 const MODELS: ModelCatalog = {
   default: "openrouter/auto",
@@ -29,20 +24,26 @@ const MODELS: ModelCatalog = {
   ],
 };
 
-export interface OpenRouterConfig {
-  url: string;
-  apiKeyEnv: string;
-}
+const HEADERS = {
+  "HTTP-Referer": "https://opensand.dev",
+  "X-Title": "OpenSand",
+};
 
-function decodeConfig(raw: unknown): OpenRouterConfig {
+function decodeConfig(raw: unknown): ApiChatConfig {
   const config = (raw ?? {}) as Record<string, unknown>;
+  if (config.url !== undefined && typeof config.url !== "string") {
+    throw new Error("url must be a string");
+  }
+  if (config.apiKeyEnv !== undefined && typeof config.apiKeyEnv !== "string") {
+    throw new Error("apiKeyEnv must be a string");
+  }
   return {
     url: typeof config.url === "string" ? config.url : DEFAULT_URL,
-    apiKeyEnv: typeof config.apiKeyEnv === "string" ? config.apiKeyEnv : "OPENROUTER_API_KEY",
+    apiKeyEnv: typeof config.apiKeyEnv === "string" ? config.apiKeyEnv : DEFAULT_KEY_ENV,
   };
 }
 
-export const OpenRouterDriver: ProviderDriver<OpenRouterConfig> = {
+export const OpenRouterDriver: ProviderDriver<ApiChatConfig> = {
   driverKind: DRIVER_KIND,
   metadata: {
     displayName: "OpenRouter",
@@ -52,144 +53,15 @@ export const OpenRouterDriver: ProviderDriver<OpenRouterConfig> = {
   models: MODELS,
   decodeConfig,
   defaultConfig: () => decodeConfig({}),
-
-  async create(input) {
-    const { config } = input;
-    const apiKey = input.environment[config.apiKeyEnv] ?? process.env[config.apiKeyEnv] ?? "";
-
-    const client = new UniversalLLMClient({
-      baseUrl: config.url,
-      apiKey,
-      model: MODELS.default,
-      provider: "openrouter",
-      headers: {
-        "HTTP-Referer": "https://opensand.dev",
-        "X-Title": "OpenSand",
-      },
-    });
-
-    let models = MODELS;
-
-    const instance: ProviderInstance = {
-      instanceId: input.instanceId,
-      driverKind: DRIVER_KIND,
-      displayName: input.displayName,
-      enabled: input.enabled,
-      get models() {
-        return models;
-      },
-      async refreshModels() {
-        // OpenRouter has a static catalog for now; refresh is a no-op.
-        models = MODELS;
-      },
-      adapter: {
-        provider: DRIVER_KIND,
-        capabilities: {
-          sessionModelSwitch: "in-session",
-          guestTurns: "unconfined",
-          agentsMcp: false,
-          customMcp: false,
-          computerMcp: false,
-          composioMcp: false,
-          mcpToolsFoundByName: false,
-          phoneMcp: false,
-          browserMcp: false,
-          dataMcp: false,
-          emailMcp: false,
-          deviceMcp: false,
-          images: false,
-          nativeImageInput: false,
-          effortLevels: [],
-          queueing: false,
-          steerImages: false,
-          strictResume: false,
-          localComputerMcp: false,
-          hooks: false,
-        },
-        async sendTurn(turn) {
-          // Delegate to the coordinator's LLM client stream; the adapter is
-          // the turn-entry point for provider-specific execution.
-          const client2 = new UniversalLLMClient({
-            baseUrl: config.url,
-            apiKey,
-            model: turn.model ?? MODELS.default,
-            provider: "openrouter",
-            headers: {
-              "HTTP-Referer": "https://opensand.dev",
-              "X-Title": "OpenSand",
-            },
-          });
-          const messages = turn.transcript
-            ? turn.transcript.map((t) => ({ role: t.role, content: t.text }))
-            : [{ role: "user", content: turn.text }];
-          if (turn.system) {
-            messages.unshift({ role: "system", content: turn.system });
-          }
-          const { stream, getConsolidated } = await client2.streamCompletion(messages);
-          const chunks: string[] = [];
-          for await (const delta of stream) {
-            if (delta.content) chunks.push(delta.content);
-          }
-          return getConsolidated();
-        },
-        steer(_threadId, _instruction) {
-          return Promise.resolve();
-        },
-        interruptTurn(_threadId) {
-          return Promise.resolve();
-        },
-        respondToRequest(_threadId, _requestId, _decision) {
-          return Promise.resolve("unavailable");
-        },
-        hasSession(_threadId) {
-          return false;
-        },
-        enginePid(_threadId) {
-          return undefined;
-        },
-        async stopAll() {
-          return;
-        },
-        onEvent(_listener) {
-          return () => {};
-        },
-      },
-      snapshot() {
-        return {
-          instanceId: input.instanceId,
-          driverKind: DRIVER_KIND,
-          enabled: input.enabled,
-          ...(apiKey ? {} : { error: { code: "invalid_credentials", message: `No ${config.apiKeyEnv} set` } }),
-        };
-      },
-      generateText: async (prompt, options) => {
-        const c = new UniversalLLMClient({
-          baseUrl: config.url,
-          apiKey,
-          model: options?.model ?? MODELS.default,
-          provider: "openrouter",
-          headers: {
-            "HTTP-Referer": "https://opensand.dev",
-            "X-Title": "OpenSand",
-          },
-        });
-        const { stream, getConsolidated } = await c.streamCompletion([{ role: "user", content: prompt }]);
-        let text = "";
-        for await (const delta of stream) {
-          if (delta.content) text += delta.content;
-        }
-        options?.onUsage?.({
-          model: options?.model ?? MODELS.default,
-          input: prompt.length,
-          output: text.length,
-        });
-        return text;
-      },
-      dispose() {
-        return;
-      },
-    };
-
-    return instance;
+  create(input) {
+    return Promise.resolve(
+      createApiInstance(input, {
+        driverKind: DRIVER_KIND,
+        displayName: "OpenRouter",
+        models: MODELS,
+        provider: "openrouter",
+        headers: HEADERS,
+      })
+    );
   },
 };

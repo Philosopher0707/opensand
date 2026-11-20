@@ -1,60 +1,45 @@
-import { describe, it, before, after } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
-import * as os from "node:os";
-import {
-  providerRegistry,
-  ProviderRegistry,
-} from "../src/provider-registry.ts";
-import { AnthropicDriver } from "../src/providers/anthropic-driver.ts";
-import { ClaudeDriver } from "../src/providers/claude-driver.ts";
-import { CodexDriver } from "../src/providers/codex-driver.ts";
-import { OpenCodeDriver } from "../src/providers/opencode-driver.ts";
-import { AntigravityDriver } from "../src/providers/antigravity-driver.ts";
+import { providerRegistry, ProviderRegistry } from "../src/provider-registry.js";
+import { OpenRouterDriver } from "../src/providers/openrouter-driver.js";
+import { AnthropicDriver } from "../src/providers/anthropic-driver.js";
+import { ClaudeDriver } from "../src/providers/claude-driver.js";
+import { CodexDriver } from "../src/providers/codex-driver.js";
+import { OpenCodeDriver } from "../src/providers/opencode-driver.js";
+import { AntigravityDriver } from "../src/providers/antigravity-driver.js";
 
-describe("ProviderRegistry - driver lifecycle and instance management", () => {
-  let tmpDir: string;
+const BUILT_INS = {
+  openrouter: OpenRouterDriver,
+  anthropic: AnthropicDriver,
+  "claude-code": ClaudeDriver,
+  codex: CodexDriver,
+  opencode: OpenCodeDriver,
+  antigravity: AntigravityDriver,
+};
 
-  before(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-registry-test-"));
-  });
-
-  after(async () => {
-    await fs.rm(tmpDir, { recursive: true, force: true });
-  });
-
-  it("singleton has all built-in drivers registered", () => {
+describe("ProviderRegistry", () => {
+  it("singleton has all six built-in drivers registered", () => {
     const kinds = providerRegistry.listDrivers();
-    assert.ok(kinds.includes("anthropic"));
-    assert.ok(kinds.includes("claude-code"));
-    assert.ok(kinds.includes("codex"));
-    assert.ok(kinds.includes("opencode"));
-    assert.ok(kinds.includes("antigravity"));
+    for (const kind of Object.keys(BUILT_INS)) assert.ok(kinds.includes(kind), `missing ${kind}`);
   });
 
-  it("getDriver returns the correct driver for each kind", () => {
-    assert.equal(providerRegistry.getDriver("anthropic"), AnthropicDriver);
-    assert.equal(providerRegistry.getDriver("claude-code"), ClaudeDriver);
-    assert.equal(providerRegistry.getDriver("codex"), CodexDriver);
-    assert.equal(providerRegistry.getDriver("opencode"), OpenCodeDriver);
-    assert.equal(providerRegistry.getDriver("antigravity"), AntigravityDriver);
+  it("getDriver / hasDriver resolve every built-in driver", () => {
+    for (const [kind, driver] of Object.entries(BUILT_INS)) {
+      assert.equal(providerRegistry.getDriver(kind), driver);
+      assert.equal(providerRegistry.hasDriver(kind), true);
+    }
     assert.equal(providerRegistry.getDriver("nonexistent"), undefined);
-  });
-
-  it("hasDriver returns true for registered kinds", () => {
-    assert.equal(providerRegistry.hasDriver("anthropic"), true);
     assert.equal(providerRegistry.hasDriver("nonexistent"), false);
   });
 
-  it("creates an instance from an InstanceConfig", async () => {
+  it("creates an instance from an InstanceConfig using the driver's decodeConfig", async () => {
     const { instance, config } = await providerRegistry.createInstance(
       "anthropic-reg-1",
       {
         driver: "anthropic",
         displayName: "Registry Anthropic",
         enabled: true,
-        config: { apiKey: "sk-ant-test", baseUrl: "https://api.anthropic.com" },
+        config: { url: "https://api.anthropic.com/v1", apiKeyEnv: "ANTHROPIC_TEST_KEY" },
       }
     );
 
@@ -62,105 +47,90 @@ describe("ProviderRegistry - driver lifecycle and instance management", () => {
     assert.equal(instance.driverKind, "anthropic");
     assert.equal(instance.displayName, "Registry Anthropic");
     assert.equal(instance.enabled, true);
-    assert.equal(instance.models.default, "claude-3-7-sonnet-20250219");
-
-    assert.equal((config as { apiKey: string }).apiKey, "sk-ant-test");
-
+    assert.deepEqual(config, { url: "https://api.anthropic.com/v1", apiKeyEnv: "ANTHROPIC_TEST_KEY" });
     await instance.dispose();
   });
 
-  it("getInstance returns the created instance", async () => {
-    const { instance } = await providerRegistry.createInstance(
-      "anthropic-reg-2",
-      {
-        driver: "anthropic",
-        displayName: "Registry Anthropic 2",
-        enabled: true,
-        config: { apiKey: "sk-ant-test" },
-      }
-    );
-
-    const fetched = providerRegistry.getInstance("anthropic-reg-2");
-    assert.equal(fetched, instance);
-
-    await instance.dispose();
-  });
-
-  it("listInstances returns all live instances", async () => {
-    await providerRegistry.createInstance("anthropic-reg-3", {
-      driver: "anthropic",
-      displayName: "Registry Anthropic 3",
+  it("passes environment through to the created instance", async () => {
+    const { instance } = await providerRegistry.createInstance("or-reg", {
+      driver: "openrouter",
+      displayName: "Registry OpenRouter",
       enabled: true,
-      config: { apiKey: "sk-ant-test" },
+      environment: { OPENROUTER_REG_KEY: "key" },
+      config: { apiKeyEnv: "OPENROUTER_REG_KEY" },
     });
-    await providerRegistry.createInstance("claude-reg-1", {
-      driver: "claude-code",
-      displayName: "Registry Claude",
+    assert.equal((await instance.snapshot()).error, undefined);
+    await instance.dispose();
+  });
+
+  it("tracks, fetches and lists live instances", async () => {
+    await providerRegistry.createInstance("anthropic-reg-2", {
+      driver: "anthropic",
+      displayName: "A2",
       enabled: true,
-      config: { cli: "claude" },
+      config: {},
+    });
+    await providerRegistry.createInstance("codex-reg-1", {
+      driver: "codex",
+      displayName: "C1",
+      enabled: true,
+      config: {},
     });
 
     const instances = providerRegistry.listInstances();
-    assert.ok(instances.length >= 2);
-    assert.ok(instances.some((i) => i.instanceId === "anthropic-reg-3"));
-    assert.ok(instances.some((i) => i.instanceId === "claude-reg-1"));
-
-    for (const inst of instances) {
-      await inst.dispose();
-    }
-  });
-
-  it("disposeInstance removes an instance", async () => {
-    const { instance } = await providerRegistry.createInstance("anthropic-reg-4", {
-      driver: "anthropic",
-      displayName: "Registry Anthropic 4",
-      enabled: true,
-      config: { apiKey: "sk-ant-test" },
-    });
-
-    assert.equal(providerRegistry.getInstance("anthropic-reg-4"), instance);
-    const disposed = await providerRegistry.disposeInstance("anthropic-reg-4");
-    assert.equal(disposed, true);
-    assert.equal(providerRegistry.getInstance("anthropic-reg-4"), undefined);
-  });
-
-  it("disposeInstance returns false for unknown id", async () => {
-    const disposed = await providerRegistry.disposeInstance("nonexistent-id");
-    assert.equal(disposed, false);
-  });
-
-  it("createInstance throws for unknown driver kind", async () => {
-    let threw = false;
-    try {
-      await providerRegistry.createInstance("bad-driver", {
-        driver: "nonexistent-driver" as any,
-        displayName: "Bad",
-        enabled: true,
-        config: {},
-      });
-    } catch {
-      threw = true;
-    }
-    assert.ok(threw, "createInstance should throw for unknown driver kind");
-  });
-
-  it("disposeAll clears all instances", async () => {
-    await providerRegistry.createInstance("anthropic-reg-5", {
-      driver: "anthropic",
-      displayName: "Registry Anthropic 5",
-      enabled: true,
-      config: { apiKey: "sk-ant-test" },
-    });
-    assert.ok(providerRegistry.listInstances().length > 0);
-
+    assert.ok(instances.some((i) => i.instanceId === "anthropic-reg-2"));
+    assert.ok(instances.some((i) => i.instanceId === "codex-reg-1"));
+    assert.equal(providerRegistry.getInstance("anthropic-reg-2")?.instanceId, "anthropic-reg-2");
     await providerRegistry.disposeAll();
     assert.equal(providerRegistry.listInstances().length, 0);
   });
 
-  it("a fresh ProviderRegistry instance starts empty", () => {
+  it("disposeInstance removes an instance and returns false for unknown ids", async () => {
+    const { instance } = await providerRegistry.createInstance("anthropic-reg-3", {
+      driver: "anthropic",
+      displayName: "A3",
+      enabled: true,
+      config: {},
+    });
+    assert.equal(await providerRegistry.disposeInstance("anthropic-reg-3"), true);
+    assert.equal(providerRegistry.getInstance("anthropic-reg-3"), undefined);
+    assert.equal(await providerRegistry.disposeInstance("nonexistent-id"), false);
+  });
+
+  it("throws for an unknown driver kind and propagates config validation errors", async () => {
+    await assert.rejects(
+      providerRegistry.createInstance("bad-driver", {
+        driver: "nonexistent-driver" as string,
+        displayName: "Bad",
+        enabled: true,
+        config: {},
+      }),
+      /Unknown provider driver/
+    );
+    await assert.rejects(
+      providerRegistry.createInstance("bad-config", {
+        driver: "anthropic",
+        displayName: "Bad",
+        enabled: true,
+        config: { url: 42 },
+      }),
+      /url must be a string/
+    );
+  });
+
+  it("a fresh registry starts empty and can register drivers explicitly", async () => {
     const fresh = new ProviderRegistry();
     assert.equal(fresh.listDrivers().length, 0);
     assert.equal(fresh.getDriver("anthropic"), undefined);
-    assert.equal(fresh.listInstances().length, 0);
+    fresh.register(AnthropicDriver, AnthropicDriver);
+    assert.deepEqual(fresh.listDrivers(), ["anthropic"]);
+    const { instance } = await fresh.createInstance("fresh-1", {
+      driver: "anthropic",
+      displayName: "Fresh",
+      enabled: true,
+      config: {},
+    });
+    await instance.dispose();
+    await fresh.disposeAll();
   });
 });

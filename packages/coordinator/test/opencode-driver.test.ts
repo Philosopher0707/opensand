@@ -3,117 +3,83 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { OpenCodeDriver } from "../src/providers/opencode-driver.ts";
+import { OpenCodeDriver } from "../src/providers/opencode-driver.js";
+import { FAKE_ACP, readJsonl, writeFakeCli } from "./helpers/fake-cli.js";
 
-describe("OpenCodeDriver - Grok Bot drivers/acp/opencode-go.ts parity", () => {
+describe("OpenCodeDriver", () => {
   let tmpDir: string;
+  let cli: string;
+  let argvLog: string;
+  let msgLog: string;
 
   before(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-opencode-test-"));
+    cli = await writeFakeCli(tmpDir, "fake-opencode", FAKE_ACP);
+    argvLog = path.join(tmpDir, "argv.jsonl");
+    msgLog = path.join(tmpDir, "msg.jsonl");
   });
 
   after(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("decodes config with defaults", () => {
-    const config = OpenCodeDriver.decodeConfig({});
-    assert.equal(config.cli, "opencode");
-    assert.equal(config.fullAuto, false);
-  });
-
-  it("decodes config with custom values", () => {
-    const config = OpenCodeDriver.decodeConfig({
-      cli: "/usr/local/bin/opencode",
-      fullAuto: true,
-    });
-    assert.equal(config.cli, "/usr/local/bin/opencode");
-    assert.equal(config.fullAuto, true);
-  });
-
-  it("defaultConfig returns decodeConfig({})", () => {
-    const d1 = OpenCodeDriver.defaultConfig();
-    const d2 = OpenCodeDriver.decodeConfig({});
-    assert.deepEqual(d1, d2);
-  });
-
-  it("exposes model catalog", () => {
-    assert.equal(OpenCodeDriver.models.default, "opencode/auto");
-    assert.ok(Array.isArray(OpenCodeDriver.models.options));
-    assert.ok(OpenCodeDriver.models.options.length > 0);
-    assert.ok(OpenCodeDriver.models.options.some((m) => m.id === "opencode/auto"));
-    assert.ok(OpenCodeDriver.models.options.some((m) => m.id === "openrouter/auto"));
-  });
-
-  it("metadata identifies driver as OpenCode", () => {
+  it("decodes config and exposes metadata", () => {
+    assert.deepEqual(OpenCodeDriver.decodeConfig({}), { cli: "opencode", fullAuto: false });
     assert.equal(OpenCodeDriver.driverKind, "opencode");
     assert.equal(OpenCodeDriver.metadata.displayName, "OpenCode");
-    assert.equal(OpenCodeDriver.metadata.access, "custom");
+    assert.equal(OpenCodeDriver.models.default, "opencode/auto");
   });
 
-  it("create returns an instance with expected shape", async () => {
+  it("creates an instance with expected shape", async () => {
     const instance = await OpenCodeDriver.create({
       instanceId: "opencode-1",
       displayName: "OpenCode Test",
       environment: {},
       enabled: true,
-      config: OpenCodeDriver.decodeConfig({ cli: "opencode", fullAuto: true }),
+      config: OpenCodeDriver.decodeConfig({ cli }),
     });
-
-    assert.equal(instance.instanceId, "opencode-1");
-    assert.equal(instance.driverKind, "opencode");
-    assert.equal(instance.displayName, "OpenCode Test");
-    assert.equal(instance.enabled, true);
-    assert.equal(instance.models.default, "opencode/auto");
-
-    const snap = instance.snapshot();
+    const snap = await instance.snapshot();
     assert.equal(snap.instanceId, "opencode-1");
     assert.equal(snap.driverKind, "opencode");
     assert.equal(snap.enabled, true);
-
-    // adapter capabilities mirror OpenMausBot's opencode-go driver
     assert.equal(instance.adapter.provider, "opencode");
-    assert.ok(instance.adapter.capabilities.queueing === true);
-    assert.ok(instance.adapter.capabilities.strictResume === true);
-    assert.ok(instance.adapter.capabilities.localComputerMcp === true);
-    assert.ok(instance.adapter.capabilities.agentsMcp === true);
-    assert.ok(instance.adapter.capabilities.customMcp === true);
-    assert.ok(instance.adapter.capabilities.computerMcp === true);
-    assert.ok(instance.adapter.capabilities.composioMcp === true);
-
-    await instance.stopAll();
     await instance.dispose();
   });
 
-  it("refreshModels resolves without error", async () => {
+  it("spawns `opencode acp`, performs the ACP handshake and streams a turn", { timeout: 15_000 }, async () => {
     const instance = await OpenCodeDriver.create({
-      instanceId: "opencode-2",
-      displayName: "Refresh Test",
-      environment: {},
+      instanceId: "opencode-proto",
+      displayName: "Protocol Test",
+      environment: { ARGV_LOG: argvLog, MSG_LOG: msgLog },
       enabled: true,
-      config: OpenCodeDriver.decodeConfig({}),
-    });
-    await instance.refreshModels();
-    await instance.dispose();
-  });
-
-  it("generateText throws when opencode CLI is unavailable", async () => {
-    const instance = await OpenCodeDriver.create({
-      instanceId: "opencode-3",
-      displayName: "Generate Test",
-      environment: {},
-      enabled: true,
-      config: OpenCodeDriver.decodeConfig({}),
+      config: OpenCodeDriver.decodeConfig({ cli, fullAuto: true }),
     });
 
-    let threw = false;
-    try {
-      await instance.generateText("hello", { onUsage: () => {} });
-    } catch {
-      threw = true;
-    }
-    assert.ok(threw, "generateText should throw when opencode CLI is unavailable");
+    const events: Array<{ type: string }> = [];
+    instance.adapter.onEvent((event) => events.push(event as { type: string }));
 
+    const result = await instance.adapter.sendTurn({
+      threadId: "thread-1",
+      text: "hello",
+      model: "opencode/auto",
+    });
+    assert.equal((result as { text: string }).text, "hello");
+    assert.ok(events.some((e) => e.type === "text.delta"));
+    assert.equal(instance.adapter.hasSession("thread-1"), true);
+
+    const argv = await readJsonl(argvLog) as string[][];
+    assert.deepEqual(argv[0], ["acp"]);
+
+    const messages = await readJsonl(msgLog) as Array<{ id?: number; method: string; params?: Record<string, unknown> }>;
+    const methods = messages.map((m) => m.method);
+    assert.equal(methods[0], "initialize");
+    assert.ok(methods.includes("session/new"));
+    assert.ok(methods.includes("session/set_config_option"));
+    assert.ok(methods.includes("session/prompt"));
+    const prompt = messages.find((m) => m.method === "session/prompt");
+    assert.deepEqual(prompt?.params?.prompt, [{ type: "text", text: "hello" }]);
+
+    await instance.adapter.stopAll();
     await instance.dispose();
   });
 });

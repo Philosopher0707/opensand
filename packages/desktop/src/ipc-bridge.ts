@@ -814,19 +814,19 @@ export class DesktopIpcBridge extends EventEmitter {
     return this.agentStore.updateAgentProfile(agentId, { avatarUrl });
   }
 
-  public async updateAgentApproval(id: string, updates: { approvalMode?: string; autoApprove?: boolean; alwaysAllow?: string[] }): Promise<any> {
+  public async updateAgentApproval(id: string, updates: { approvalMode?: "ask" | "custom" | "allow"; autoApprove?: boolean; alwaysAllow?: string[] }): Promise<any> {
     return this.agentStore.updateAgentApproval(id, updates);
   }
 
-  public async updateAgentSection(id: string, updates: { section?: string; chiefOfStaff?: boolean; managedSections?: string[]; createdBy?: string; reportsTo?: string; visibility?: string }): Promise<any> {
+  public async updateAgentSection(id: string, updates: { section?: string; chiefOfStaff?: boolean; managedSections?: string[]; createdBy?: string; reportsTo?: string; visibility?: "everyone" | "admins" | { people: string[] } }): Promise<any> {
     return this.agentStore.updateAgentSection(id, updates);
   }
 
-  public async updateAgentVoice(id: string, updates: { voice?: string; speakReplies?: boolean; voiceNotes?: boolean; replyStyle?: string }): Promise<any> {
+  public async updateAgentVoice(id: string, updates: { voice?: string; speakReplies?: boolean; voiceNotes?: boolean; replyStyle?: "default" | "concise" | "detailed" }): Promise<any> {
     return this.agentStore.updateAgentVoice(id, updates);
   }
 
-  public async createAgentTask(agentId: string, input: { threadId: string; title: string; status?: string; pinned?: boolean; metadata?: Record<string, unknown> }): Promise<any> {
+  public async createAgentTask(agentId: string, input: { threadId: string; title: string; status?: "todo" | "in_progress" | "done" | "blocked"; pinned?: boolean; metadata?: Record<string, unknown> }): Promise<any> {
     return this.agentStore.createAgentTask(agentId, input);
   }
 
