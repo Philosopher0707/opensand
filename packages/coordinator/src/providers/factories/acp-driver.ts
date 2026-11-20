@@ -2,6 +2,7 @@
 
 import type { EngineAccess, ModelCatalog, ProviderDriver } from "@opensand/shared";
 import { createAcpInstance, type AcpConfig, type AcpRuntimeOptions } from "../runtime/acp-runtime.js";
+import type { DeviceAuthSpec } from "../runtime/device-auth.js";
 
 export interface AcpDriverSpec {
   driverKind: string;
@@ -12,6 +13,7 @@ export interface AcpDriverSpec {
   access?: EngineAccess;
   cliVersion?: RegExp;
   modelConfigId?: string;
+  auth?: DeviceAuthSpec;
   configureSession?: AcpRuntimeOptions["configureSession"];
 }
 
@@ -53,6 +55,7 @@ export function defineAcpDriver(spec: AcpDriverSpec): ProviderDriver<AcpConfig> 
           clientName: "opensand",
           spawnArgs: spec.spawnArgs,
           ...(spec.modelConfigId ? { modelConfigId: spec.modelConfigId } : {}),
+          ...(spec.auth ? { auth: spec.auth } : {}),
           ...(spec.configureSession ? { configureSession: spec.configureSession } : {}),
         })
       );

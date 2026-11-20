@@ -15,6 +15,7 @@ import type {
   SendTurnInput,
 } from "@opensand/shared";
 import { RpcTransport, type RpcId } from "./rpc-transport.js";
+import { createDeviceAuthController, type DeviceAuthSpec } from "./device-auth.js";
 
 export interface AcpConfig {
   cli: string;
@@ -31,6 +32,7 @@ export interface AcpRuntimeOptions<Config extends AcpConfig = AcpConfig> {
   clientVersion?: string;
   modelConfigId?: string;
   install?: { docsUrl: string };
+  auth?: DeviceAuthSpec;
   /** Session-scoped configuration, e.g. Antigravity's permission `mode`. */
   configureSession?: (
     request: (method: string, params: unknown) => Promise<unknown>,
@@ -64,8 +66,13 @@ export function createAcpInstance<Config extends AcpConfig>(
   options: AcpRuntimeOptions<Config>
 ): ProviderInstance {
   const { config } = input;
+  const auth = options.auth
+    ? createDeviceAuthController(options.auth, input.instanceId, input.environment, config.cli)
+    : null;
   const sessions = new Map<string, AcpSession>();
   const listeners = new Set<(event: unknown) => void>();
+  let models = options.models;
+  let modelsUnconfirmed = false;
   let disposed = false;
 
   const emit = (event: unknown): void => {
@@ -283,10 +290,53 @@ export function createAcpInstance<Config extends AcpConfig>(
     displayName: input.displayName,
     enabled: input.enabled,
     get models() {
-      return options.models;
+      return models;
     },
+    get modelsUnconfirmed() {
+      return modelsUnconfirmed;
+    },
+    ...(auth ? {
+      authenticationMethod: "device-code" as const,
+      startAuthentication: () => auth.start(),
+      getAuthentication: (flowId: string) => auth.get(flowId),
+      cancelAuthentication: () => auth.cancel(),
+      signOut: () => auth.signOut(),
+    } : {}),
     async refreshModels() {
-      // Static catalog; ACP model discovery is a separate, feature-flagged surface.
+      if (disposed) return;
+      const probeId = `probe_${randomUUID()}`;
+      const session = spawnSession(probeId);
+      try {
+        await initSession(session);
+        const result = await session.rpc.request<{ configOptions?: Array<{ id?: string; category?: string; currentValue?: unknown; options?: Array<{ value?: unknown; name?: string }> }> }>(
+          "session/new",
+          { cwd: config.workspace ?? process.cwd(), mcpServers: [] },
+          8_000
+        );
+        const modelOption = (result?.configOptions ?? []).find(
+          (o) => o.id === "model" || o.category === "model"
+        );
+        const discovered = (modelOption?.options ?? [])
+          .map((entry) => ({
+            id: String(entry.value ?? ""),
+            label: entry.name ?? String(entry.value ?? ""),
+          }))
+          .filter((entry) => entry.id.length > 0);
+        if (discovered.length) {
+          const current = typeof modelOption?.currentValue === "string" ? modelOption.currentValue : models.default;
+          models = {
+            default: discovered.some((m) => m.id === current) ? current : (discovered[0]?.id ?? models.default),
+            options: discovered,
+          };
+          modelsUnconfirmed = false;
+        } else {
+          modelsUnconfirmed = true;
+        }
+      } catch {
+        modelsUnconfirmed = true;
+      } finally {
+        closeSession(probeId);
+      }
     },
     async snapshot(): Promise<ProviderSnapshot> {
       return {
@@ -374,6 +424,7 @@ export function createAcpInstance<Config extends AcpConfig>(
       disposed = true;
       for (const threadId of Array.from(sessions.keys())) closeSession(threadId);
       listeners.clear();
+      await auth?.dispose();
     },
   };
 

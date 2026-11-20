@@ -21,4 +21,14 @@ export const GrokAgentDriver = defineAcpDriver({
     ],
   },
   modelConfigId: "model",
+  auth: {
+    provider: "grok",
+    homeEnv: "GROK_HOME",
+    homeDir: ".grok",
+    loginArgs: ["login", "--device-auth"],
+    signedInFile: "auth.json",
+    urlPattern: /https:\/\/(?:x\.ai|grok\.com)\/\S+/i,
+    codePattern: /\b[A-Z0-9]{4,12}\b/,
+    failureMessage: "Grok device sign-in failed. Check the CLI output in Settings.",
+  },
 });

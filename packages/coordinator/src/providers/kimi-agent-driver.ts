@@ -17,4 +17,15 @@ export const KimiAgentDriver = defineAcpDriver({
     ],
   },
   modelConfigId: "model",
+  auth: {
+    provider: "kimi",
+    homeEnv: "KIMI_CODE_HOME",
+    homeDir: ".kimi-code",
+    loginArgs: ["login"],
+    logoutArgs: ["logout"],
+    signedInFile: "credentials/kimi-code.json",
+    urlPattern: /https:\/\/(?:kimi\.com|kimi\.moonshot\.cn)\/\S+/i,
+    codePattern: /\b[A-Z0-9]{4,12}\b/,
+    failureMessage: "Kimi sign-in failed. Check the CLI output in Settings.",
+  },
 });

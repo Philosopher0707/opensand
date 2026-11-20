@@ -45,6 +45,8 @@ export function createApiInstance(
   const { config } = input;
   const apiKey = input.environment[config.apiKeyEnv] ?? process.env[config.apiKeyEnv] ?? "";
   const listeners = new Set<(event: unknown) => void>();
+  let models = options.models;
+  let modelsUnconfirmed = false;
   let disposed = false;
 
   const emit = (event: unknown): void => {
@@ -102,10 +104,53 @@ export function createApiInstance(
     displayName: input.displayName,
     enabled: input.enabled,
     get models() {
-      return options.models;
+      return models;
+    },
+    get modelsUnconfirmed() {
+      return modelsUnconfirmed;
     },
     async refreshModels() {
-      // Static catalog; no authenticated discovery in this driver layer.
+      if (disposed) return;
+      if (!apiKey) {
+        modelsUnconfirmed = true;
+        return;
+      }
+      const url = config.url.replace(/\/+$/, "") + "/models";
+      try {
+        const response = await fetch(url, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+          signal: AbortSignal.timeout(8_000),
+          redirect: "error",
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload: unknown = await response.json();
+        const rows = Array.isArray(payload)
+          ? payload
+          : (payload as { data?: unknown[] } | null)?.data ?? [];
+        const discovered = rows
+          .map((row) => {
+            const item = row as { id?: unknown; name?: unknown; context_length?: unknown };
+            return typeof item.id === "string"
+              ? {
+                  id: item.id,
+                  label: typeof item.name === "string" ? item.name : item.id,
+                  ...(typeof item.context_length === "number" ? { contextWindow: item.context_length } : {}),
+                }
+              : null;
+          })
+          .filter((entry): entry is { id: string; label: string; contextWindow?: number } => entry !== null);
+        if (discovered.length) {
+          models = {
+            default: discovered.some((m) => m.id === models.default) ? models.default : discovered[0].id,
+            options: discovered,
+          };
+          modelsUnconfirmed = false;
+        } else {
+          modelsUnconfirmed = true;
+        }
+      } catch {
+        modelsUnconfirmed = true;
+      }
     },
     async snapshot(): Promise<ProviderSnapshot> {
       return {
@@ -183,7 +228,7 @@ export function createApiInstance(
       return text;
     },
     createLlmClient(model) {
-      return makeClient(model ?? options.models.default);
+      return makeClient(model ?? models.default);
     },
     async dispose() {
       disposed = true;

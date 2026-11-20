@@ -6,7 +6,7 @@ import * as crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
 import { createDefaultRpcGateway, RpcGateway } from './rpc-gateway.js';
-import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient, BUILT_IN_DRIVERS } from '@opensand/coordinator';
+import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient, BUILT_IN_DRIVERS, installManagedRuntime } from '@opensand/coordinator';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 import { runStateMigrations, readSchemaVersion } from '@opensand/shared';
 import { buildDiagnosticsReport } from './diagnostics.js';
@@ -1371,6 +1371,34 @@ export class DesktopServer {
       });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ providers }));
+      return;
+    }
+
+    // API: POST /api/runtimes/install (pinned, hash-verified single-file runtime)
+    if (pathname === '/api/runtimes/install' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      const release = body?.release;
+      const valid = release
+        && typeof release.provider === 'string' && /^[\w-]+$/.test(release.provider)
+        && typeof release.version === 'string' && release.version.length <= 64
+        && typeof release.url === 'string'
+        && typeof release.sha256 === 'string' && /^[a-f0-9]{64}$/.test(release.sha256)
+        && Number.isInteger(release.bytes) && release.bytes > 0 && release.bytes <= 2 * 1024 * 1024 * 1024
+        && typeof release.executable === 'string' && /^[\w.-]+$/.test(release.executable);
+      if (!valid) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid release pin' }));
+        return;
+      }
+      const allowHosts = (process.env.OPENSAND_INSTALL_HOSTS ?? '').split(',').map((h) => h.trim()).filter(Boolean);
+      try {
+        const result = await installManagedRuntime(release, { allowHosts });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err: any) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err?.message ?? 'Install failed' }));
+      }
       return;
     }
 

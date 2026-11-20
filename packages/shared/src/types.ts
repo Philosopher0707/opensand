@@ -511,7 +511,7 @@ export interface ProviderInstance {
   readonly startupModelRefresh?: Promise<void>;
   readonly installRuntime?: () => Promise<void>;
   readonly startAuthentication?: () => Promise<ProviderAuthenticationStart>;
-  readonly authenticationMethod?: "browser-pkce";
+  readonly authenticationMethod?: "browser-pkce" | "device-code" | "browser";
   readonly getAuthentication?: (flowId: string) => Promise<ProviderAuthenticationStatus>;
   readonly completeAuthentication?: (flowId: string, callbackUrl: string) => Promise<void>;
   readonly cancelAuthentication?: () => Promise<void>;
@@ -526,14 +526,21 @@ export interface ProviderInstance {
 
 /** Authentication start result. */
 export interface ProviderAuthenticationStart {
-  flowId: string;
-  authorizationUrl: string;
+  flowId: string | null;
+  authorizationUrl: string | null;
   userCode?: string;
+  expiresAt?: string | null;
 }
 
 /** Authentication status. */
 export interface ProviderAuthenticationStatus {
   status: "pending" | "authorized" | "failed" | "cancelled";
+  flowId?: string | null;
+  authorizationUrl?: string | null;
+  expiresAt?: string | null;
+  userCode?: string;
+  /** Safe, actionable copy — never raw CLI output or credentials. */
+  message?: string;
   /** Present when status === "authorized". */
   credentials?: Record<string, string>;
 }

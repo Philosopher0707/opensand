@@ -99,3 +99,33 @@ process.stdin.on("data", (chunk) => {
   }
 });
 `;
+
+/** ACP fake that advertises a dynamic model catalog in session/new. */
+export const FAKE_ACP_MODELS = FAKE_ACP.replace(
+  'configOptions: [{ id: "mode", currentValue: "default" }, { id: "model", currentValue: "auto" }]',
+  'configOptions: [{ id: "mode", currentValue: "default" }, { id: "model", currentValue: "probed/model-2", options: [{ value: "probed/model-1", name: "Model One" }, { value: "probed/model-2", name: "Model Two" }] }]'
+);
+
+/** Codex app-server fake that serves a paged model/list catalog. */
+export const FAKE_CODEX_MODELS = FAKE_CODEX.replace(
+  'if (msg.method === "initialize")',
+  'if (msg.method === "model/list") send({ jsonrpc: "2.0", id: msg.id, result: { data: [{ id: "probed-o3", displayName: "Probed o3", isDefault: true }, { id: "probed-mini", displayName: "Probed Mini" }] } });\n    else if (msg.method === "initialize")'
+);
+
+/** Claude CLI fake that emits a tool_use block before the result. */
+export const FAKE_CLAUDE_TOOLS = FAKE_CLAUDE.replace(
+  'out({ type: "result", is_error: false, result: "hello" });',
+  'out({ type: "assistant", message: { content: [{ type: "tool_use", id: "tu-1", name: "read_file" }] } });\n    out({ type: "result", is_error: false, result: "hello" });'
+);
+
+/** ACP fake that emits a tool_call update before completing the turn. */
+export const FAKE_ACP_TOOLS = FAKE_ACP.replace(
+  'send({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn", usage: { inputTokens: 3, outputTokens: 2 } } });',
+  'send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: msg.params.sessionId, update: { sessionUpdate: "tool_call", toolCallId: "tc-1", title: "read_file", status: "completed" } } });\n      send({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn", usage: { inputTokens: 3, outputTokens: 2 } } });'
+);
+
+/** Codex fake that emits item/started + item/completed for a tool. */
+export const FAKE_CODEX_TOOLS = FAKE_CODEX.replace(
+  'send({ jsonrpc: "2.0", method: "turn/completed", params: { turn: { status: "completed" } } });',
+  'send({ jsonrpc: "2.0", method: "item/started", params: { item: { type: "commandExecution", id: "it-1", command: "pwd" } } });\n      send({ jsonrpc: "2.0", method: "item/completed", params: { item: { type: "commandExecution", id: "it-1" } } });\n      send({ jsonrpc: "2.0", method: "turn/completed", params: { turn: { status: "completed" } } });'
+);

@@ -37,7 +37,7 @@ export const OpenCodeDriver: ProviderDriver<AcpConfig> = {
     displayName: "OpenCode",
     supportsMultipleInstances: true,
     access: "custom",
-    cliVersion: /^(\d+)\.(\d+)\.(\d+)/,
+    cliVersion: /v?(\d+)\.(\d+)\.(\d+)/,
   },
   models: MODELS,
   decodeConfig,

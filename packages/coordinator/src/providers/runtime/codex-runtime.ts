@@ -5,7 +5,7 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
   DriverCreateInput,
   ModelCatalog,
@@ -62,6 +62,8 @@ export function createCodexInstance(
   const { config } = input;
   const sessions = new Map<string, CodexSession>();
   const listeners = new Set<(event: unknown) => void>();
+  let models = options.models;
+  let modelsUnconfirmed = false;
   let disposed = false;
 
   const emit = (event: unknown): void => {
@@ -129,9 +131,14 @@ export function createCodexInstance(
           }
           return;
         }
-        if (method === "item/completed") {
-          const item = (params as { item?: { type?: string; text?: string } } | undefined)?.item;
-          if (item?.type === "agentMessage" && typeof item.text === "string") session.lastText = item.text;
+        if (method === "item/started" || method === "item/completed") {
+          const item = (params as { item?: { type?: string; text?: string; name?: string; id?: string; command?: string } } | undefined)?.item;
+          if (!item || typeof item.type !== "string") return;
+          if (item.type === "agentMessage" && typeof item.text === "string") {
+            session.lastText = item.text;
+          } else if (item.type !== "userMessage") {
+            emit({ type: method === "item/started" ? "tool.call" : "tool.result", threadId, name: item.name ?? item.command ?? item.type, id: item.id });
+          }
           return;
         }
         if (method === "thread/tokenUsage/updated") {
@@ -262,9 +269,46 @@ export function createCodexInstance(
     displayName: input.displayName,
     enabled: input.enabled,
     get models() {
-      return options.models;
+      return models;
     },
-    async refreshModels() {},
+    get modelsUnconfirmed() {
+      return modelsUnconfirmed;
+    },
+    async refreshModels() {
+      if (disposed) return;
+      const probeId = `probe_${randomUUID()}`;
+      const session = spawnSession(probeId);
+      try {
+        await initSession(session);
+        const discovered: Array<{ id: string; label: string; contextWindow?: number }> = [];
+        let cursor: string | undefined;
+        for (let page = 0; page < 5; page++) {
+          const result = await session.rpc.request<{ data?: Array<{ id?: string; displayName?: string; isDefault?: boolean; hidden?: boolean; contextWindow?: number }>; nextCursor?: string }>(
+            "model/list",
+            { ...(cursor ? { cursor } : {}), limit: 100 },
+            8_000
+          );
+          for (const row of result?.data ?? []) {
+            if (row.hidden || typeof row.id !== "string" || !/^[\w][\w./:+-]*$/.test(row.id)) continue;
+            if (discovered.some((m) => m.id === row.id)) continue;
+            discovered.push({ id: row.id, label: row.displayName ?? row.id, ...(row.contextWindow ? { contextWindow: row.contextWindow } : {}) });
+          }
+          cursor = result?.nextCursor;
+          if (!cursor) break;
+        }
+        if (discovered.length) {
+          const defaultId = discovered.find((m) => m.id === models.default)?.id ?? discovered[0].id;
+          models = { default: defaultId, options: discovered };
+          modelsUnconfirmed = false;
+        } else {
+          modelsUnconfirmed = true;
+        }
+      } catch {
+        modelsUnconfirmed = true;
+      } finally {
+        closeSession(probeId);
+      }
+    },
     async snapshot(): Promise<ProviderSnapshot> {
       return {
         instanceId: input.instanceId,
