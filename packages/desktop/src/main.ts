@@ -180,8 +180,8 @@ export class DesktopApp {
       return this.bridge.sendQuery(query, sessionId, agentId);
     });
 
-    ipcMain.handle('opensand:cancelTurn', async () => {
-      return this.bridge.cancelTurn();
+    ipcMain.handle('opensand:cancelTurn', async (_: any, { sessionId }: { sessionId?: string } = {}) => {
+      return this.bridge.cancelTurn(sessionId);
     });
 
     ipcMain.handle('opensand:approveTool', async (_: any, { approvalId, decision }: { approvalId: string; decision: ApprovalDecision }) => {

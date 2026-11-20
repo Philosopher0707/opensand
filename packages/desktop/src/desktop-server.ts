@@ -60,6 +60,8 @@ export class DesktopServer {
   private bridge: DesktopIpcBridge;
   private rpcGateway: RpcGateway;
   private sseClients: Set<http.ServerResponse> = new Set();
+  private readonly eventHistory = new Map<string, Array<{ seq: number; event: DesktopEvent }>>();
+  private eventSeq = 0;
   private rendererDir: string;
   private port: number;
   private host: string;
@@ -125,8 +127,10 @@ export class DesktopServer {
     this.rpcGateway = createDefaultRpcGateway(this.bridge);
     this.rendererDir = resolveRendererDir(__dirname);
 
-    // Forward bridge events to SSE clients
+    // Forward bridge events to SSE clients and keep a bounded per-session
+    // replay buffer so a reconnect can rebuild one session's stream.
     this.bridge.on('event', (event: DesktopEvent) => {
+      this.recordEvent(event);
       this.broadcastSse(event);
     });
   }
@@ -270,6 +274,21 @@ export class DesktopServer {
     }
   }
 
+  private recordEvent(event: DesktopEvent): void {
+    const key = event.sessionId || 'default';
+    const history = this.eventHistory.get(key) ?? [];
+    history.push({ seq: ++this.eventSeq, event });
+    if (history.length > 500) history.shift();
+    this.eventHistory.set(key, history);
+  }
+
+  private replaySse(res: http.ServerResponse, sessionId: string, after: number | undefined): void {
+    for (const { seq, event } of this.eventHistory.get(sessionId) ?? []) {
+      if (after !== undefined && seq <= after) continue;
+      res.write(`id: ${seq}\ndata: ${JSON.stringify(event)}\n\n`);
+    }
+  }
+
   private broadcastSse(event: DesktopEvent): void {
     const payload = `data: ${JSON.stringify(event)}\n\n`;
     for (const client of this.sseClients) {
@@ -377,7 +396,8 @@ export class DesktopServer {
       return;
     }
 
-    // SSE event stream: /api/events
+    // SSE event stream: /api/events?sessionId=<id>&after=<seq>
+    // Without a filter this is the original global stream (backwards compatible).
     if (pathname === '/api/events' && req.method === 'GET') {
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -385,6 +405,12 @@ export class DesktopServer {
         'Connection': 'keep-alive',
       });
       res.write(': keep-alive\n\n');
+      const sessionFilter = url.searchParams.get('sessionId');
+      const afterRaw = url.searchParams.get('after');
+      const after = afterRaw && /^\d+$/.test(afterRaw) ? Number(afterRaw) : undefined;
+      if (sessionFilter || after !== undefined) {
+        this.replaySse(res, sessionFilter || 'default', after);
+      }
       this.sseClients.add(res);
 
       req.on('close', () => {
@@ -411,7 +437,8 @@ export class DesktopServer {
 
     // API: POST /api/cancel
     if (pathname === '/api/cancel' && req.method === 'POST') {
-      const result = await this.bridge.cancelTurn();
+      const body = await this.readJsonBody(req);
+      const result = await this.bridge.cancelTurn(body.sessionId);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
       return;

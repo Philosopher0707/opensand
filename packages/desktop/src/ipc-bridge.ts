@@ -73,6 +73,7 @@ import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBa
 import { registerNativeTools } from '@opensand/native-bridge';
 import { EVENT, EventLogWriter, migrateSessionFolder } from '@opensand/shared';
 import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSummary, DesktopEvent, ToolDiscoverySummary } from './types.js';
+import { SessionAdmission, SessionRuntimeRegistry, type QueuedSend } from './session-parallel.js';
 
 export interface IpcBridgeOptions {
   baseDir?: string;
@@ -108,6 +109,10 @@ export class DesktopIpcBridge extends EventEmitter {
   }> = new Map();
   private currentSessionId: string | null = null;
   private activeAbortController: AbortController | null = null;
+  // Parallel turns are owned by these records; the fields above remain the
+  // focused-session aliases used by the single-session APIs and AG-UI.
+  private readonly sessionRuntimes = new SessionRuntimeRegistry();
+  private readonly sessionAdmission = new SessionAdmission();
 
   constructor(options: IpcBridgeOptions = {}) {
     super();
@@ -225,6 +230,14 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async close(): Promise<void> {
+    for (const runtime of [...this.sessionRuntimes.values()]) {
+      runtime.generation++;
+      runtime.abort?.abort();
+      runtime.abort = null;
+      runtime.running = false;
+    }
+    this.sessionRuntimes.clear();
+    this.sessionAdmission.clear();
     if (this.sentinelListener) {
       workspaceSentinel.removeListener('diagnostic', this.sentinelListener);
       this.sentinelListener = null;
@@ -347,6 +360,9 @@ export class DesktopIpcBridge extends EventEmitter {
       // would make an open session keep using the old model/endpoint/key.
       this.coordinatorMap.clear();
       this.activeAgentId = undefined;
+      for (const runtime of [...this.sessionRuntimes.values()]) runtime.abort?.abort();
+      this.sessionRuntimes.clear();
+      this.sessionAdmission.clear();
     }
     this.saveSettings();
     this.emitEvent('status', { settings: this.getSanitizedSettings() });
@@ -422,10 +438,17 @@ export class DesktopIpcBridge extends EventEmitter {
     }
   }
 
-  public emitEvent(type: DesktopEvent['type'], data: unknown, subagent?: DesktopEvent['subagent']): void {
+  public emitEvent(
+    type: DesktopEvent['type'],
+    data: unknown,
+    subagent?: DesktopEvent['subagent'],
+    sessionId?: string,
+  ): void {
     const event: DesktopEvent = {
       type,
-      sessionId: this.currentSessionId || 'default',
+      // Never attribute a turn's events to whichever session happens to be
+      // focused; parallel sessions must stay distinguishable downstream.
+      sessionId: sessionId || this.currentSessionId || 'default',
       data,
       ...(subagent ? { subagent } : {}),
     };
@@ -445,8 +468,8 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   /** Read sessions/<id>/meta.json written at coordinator creation. */
-  private readSessionMeta(sessionId: string): { agentId?: string; roomId?: string; title?: string } {
-    const result: { agentId?: string; roomId?: string; title?: string } = {};
+  private readSessionMeta(sessionId: string): { agentId?: string; roomId?: string; title?: string; threadId?: string; resumeCursor?: string } {
+    const result: { agentId?: string; roomId?: string; title?: string; threadId?: string; resumeCursor?: string } = {};
     const sessDir = path.join(this.baseDir, 'sessions', sessionId);
     const metaPath = path.join(sessDir, 'meta.json');
 
@@ -457,6 +480,8 @@ export class DesktopIpcBridge extends EventEmitter {
         if (typeof meta.agentId === 'string') result.agentId = meta.agentId;
         if (typeof meta.roomId === 'string') result.roomId = meta.roomId;
         if (typeof meta.title === 'string') result.title = meta.title;
+        if (typeof meta.threadId === 'string') result.threadId = meta.threadId;
+        if (typeof meta.resumeCursor === 'string') result.resumeCursor = meta.resumeCursor;
       } catch {
         // Fall through
       }
@@ -487,16 +512,27 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   /** Persist agent/model origin so a resumed session keeps its bot. */
-  private writeSessionMeta(sessionId: string, agentId?: string, model?: string): void {
+  private writeSessionMeta(
+    sessionId: string,
+    agentId?: string,
+    model?: string,
+    engine?: { threadId?: string; resumeCursor?: string },
+  ): void {
     try {
       const sessDir = path.join(this.baseDir, 'sessions', sessionId);
       fs.mkdirSync(sessDir, { recursive: true, mode: 0o700 });
       const metaPath = path.join(sessDir, 'meta.json');
+      const previous = this.readSessionMeta(sessionId);
       const meta: Record<string, unknown> = {
         sessionId,
         agentId: agentId ?? null,
         model: model ?? this.settings.model,
         createdAt: new Date().toISOString(),
+        ...(previous.title ? { title: previous.title } : {}),
+        ...(engine?.threadId || previous.threadId ? { threadId: engine?.threadId || previous.threadId } : {}),
+        ...(engine?.resumeCursor || previous.resumeCursor
+          ? { resumeCursor: engine?.resumeCursor || previous.resumeCursor }
+          : {}),
       };
       fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), { mode: 0o600 });
     } catch {
@@ -522,10 +558,17 @@ export class DesktopIpcBridge extends EventEmitter {
     if (existing) {
       this.coordinator = existing;
       this.activeAgentId = agentId;
+      this.sessionRuntimes.register(mapKey, activeSessionId, agentId, existing);
       return existing;
     }
     this.currentSessionId = activeSessionId;
-    this.writeSessionMeta(activeSessionId, agentId, this.settings.model);
+    const savedMeta = this.readSessionMeta(activeSessionId);
+    const engineThreadId = savedMeta.threadId;
+    const engineResumeCursor = savedMeta.resumeCursor;
+    this.writeSessionMeta(activeSessionId, agentId, this.settings.model, {
+      ...(engineThreadId ? { threadId: engineThreadId } : {}),
+      ...(engineResumeCursor ? { resumeCursor: engineResumeCursor } : {}),
+    });
 
     if (
       this.coordinator &&
@@ -556,6 +599,14 @@ export class DesktopIpcBridge extends EventEmitter {
       endpoint: targetEndpoint,
       model: targetModel,
       apiKey: this.settings.apiKey,
+      ...(engineThreadId ? { threadId: engineThreadId } : {}),
+      ...(engineResumeCursor ? { resumeCursor: engineResumeCursor } : {}),
+      onEngineSession: ({ threadId, sessionId }) => {
+        this.writeSessionMeta(activeSessionId, agentId, targetModel, {
+          threadId,
+          resumeCursor: sessionId,
+        });
+      },
     });
     const llmClient = driverClient ?? new UniversalLLMClient({
       baseUrl: targetEndpoint,
@@ -603,12 +654,13 @@ export class DesktopIpcBridge extends EventEmitter {
         return this.requestUserApproval(req.toolName, req.arguments, req.reason);
       },
       onEvent: (event: TurnEvent) => {
-        this.dispatchTurnEvent(event);
+        this.dispatchTurnEvent(event, activeSessionId);
       },
     });
 
     this.coordinator = coordinator;
     this.coordinatorMap.set(mapKey, coordinator);
+    this.sessionRuntimes.register(mapKey, activeSessionId, agentId, coordinator);
     this.activeAgentId = agentId;
 
     // Auto-wire Sentinel Healer to session coordinator
@@ -620,7 +672,10 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   /** Map a coordinator TurnEvent to DesktopEvents for the renderer. */
-  private dispatchTurnEvent(event: TurnEvent): void {
+  private dispatchTurnEvent(event: TurnEvent, sessionId?: string): void {
+    const emit = (type: DesktopEvent['type'], data: unknown, subagent?: DesktopEvent['subagent']) =>
+      this.emitEvent(type, data, subagent, sessionId);
+
     // Subagent delegation: forward the wrapped child event so the renderer
     // can show live subagent activity in a nested card.
     if (event.type === 'subagent') {
@@ -630,13 +685,13 @@ export class DesktopIpcBridge extends EventEmitter {
         event: TurnEvent;
       };
       const inner = wrapper.event;
-      this.emitEvent('subagent', inner, wrapper.subagent as DesktopEvent['subagent']);
+      emit('subagent', inner, wrapper.subagent as DesktopEvent['subagent']);
       return;
     }
     if (event.type === 'text_delta') {
-      this.emitEvent('token', { token: event.text });
+      emit('token', { token: event.text });
     } else if (event.type === 'thought_delta') {
-      this.emitEvent('thought', { thought: event.text });
+      emit('thought', { thought: event.text });
     } else if (event.type === 'tool_call_started') {
       let parsedArgs = {};
       try {
@@ -644,57 +699,120 @@ export class DesktopIpcBridge extends EventEmitter {
       } catch {
         parsedArgs = { raw: event.toolCall.function.arguments };
       }
-      this.emitEvent('tool_call', { name: event.toolCall.function.name, args: parsedArgs });
+      emit('tool_call', { name: event.toolCall.function.name, args: parsedArgs });
     } else if (event.type === 'tool_call_completed') {
-      this.emitEvent('tool_result', { name: event.toolCall.function.name, result: event.result.output });
+      emit('tool_result', { name: event.toolCall.function.name, result: event.result.output });
     } else if (event.type === 'turn_completed') {
-      this.emitEvent('turn_complete', { response: event.finalContent });
+      emit('turn_complete', { response: event.finalContent });
     } else if (event.type === 'error') {
-      this.emitEvent('error', { message: event.error.message });
+      emit('error', { message: event.error.message });
     }
   }
 
-  public async sendQuery(query: string, sessionId?: string, agentId?: string): Promise<{ success: boolean; sessionId: string }> {
+  public async sendQuery(
+    query: string,
+    sessionId?: string,
+    agentId?: string,
+  ): Promise<{ success: boolean; sessionId: string; queued?: boolean; reason?: string }> {
     await this.ensureApiKeyResolved();
-    const coordinator = await this.createSessionCoordinator(sessionId, agentId);
-    const activeSessionId = this.currentSessionId!;
+    const activeSessionId = sessionId || this.currentSessionId ||
+      `session_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const key = this.coordinatorKey(activeSessionId, agentId);
+    const agent = agentId ?? 'default';
+    const send: QueuedSend = { key, sessionId: activeSessionId, agentId, query };
 
-    this.emitEvent('session_started', { sessionId: activeSessionId });
+    // Admission is a synchronous decision made before any coordinator work.
+    const decision = this.sessionAdmission.admit(agent, send);
+    if (!decision.admitted) {
+      return {
+        success: decision.queued,
+        sessionId: activeSessionId,
+        queued: decision.queued,
+        ...(decision.reason ? { reason: decision.reason } : {}),
+      };
+    }
 
-    // Abort any turn still running on this coordinator (double-submit, stop-then-resend).
-    this.activeAbortController?.abort();
+    const coordinator = await this.createSessionCoordinator(activeSessionId, agentId);
+    const runtime = this.sessionRuntimes.register(key, activeSessionId, agentId, coordinator);
+    const generation = ++runtime.generation;
+
+    // A second submit on this session replaces only its own turn.
+    runtime.abort?.abort();
     const abortController = new AbortController();
+    runtime.abort = abortController;
+    runtime.running = true;
+    runtime.lastActive = Date.now();
     this.activeAbortController = abortController;
+    this.emitEvent('session_started', { sessionId: activeSessionId }, undefined, activeSessionId);
 
-    // Run query asynchronously
+    const settle = (): boolean => {
+      if (runtime.generation !== generation) return false;
+      runtime.abort = null;
+      runtime.running = false;
+      if (this.activeAbortController === abortController) this.activeAbortController = null;
+      const next = this.sessionAdmission.finish(agent, key);
+      if (next) void this.sendQuery(next.query, next.sessionId, next.agentId).catch((err) => {
+        this.emitEvent('error', { message: err instanceof Error ? err.message : String(err) }, undefined, next.sessionId);
+      });
+      return true;
+    };
+
     coordinator.runTurn(query, abortController.signal)
       .then((finalResponse) => {
-        if (this.activeAbortController === abortController) {
-          this.activeAbortController = null;
+        if (settle()) {
+          this.emitEvent('turn_complete', { response: finalResponse }, undefined, activeSessionId);
         }
-        this.emitEvent('turn_complete', { response: finalResponse });
       })
       .catch((err) => {
-        if (this.activeAbortController === abortController) {
-          this.activeAbortController = null;
-        }
+        if (!settle()) return;
         if (err instanceof Error && err.name === 'AbortError') {
-          this.emitEvent('turn_cancelled', { message: 'Turn cancelled by user.' });
+          this.emitEvent('turn_cancelled', { message: 'Turn cancelled by user.' }, undefined, activeSessionId);
           return;
         }
-        this.emitEvent('error', { message: err instanceof Error ? err.message : String(err) });
+        this.emitEvent('error', { message: err instanceof Error ? err.message : String(err) }, undefined, activeSessionId);
       });
 
     return { success: true, sessionId: activeSessionId };
   }
 
-  public async cancelTurn(): Promise<{ success: boolean; cancelled: boolean }> {
-    if (!this.activeAbortController) {
-      return { success: true, cancelled: false };
+  public async cancelTurn(sessionId?: string): Promise<{ success: boolean; cancelled: boolean }> {
+    const target = sessionId
+      ? this.sessionRuntimes.findBySession(sessionId)
+      : this.sessionRuntimes.findBySession(this.currentSessionId || '');
+
+    if (target) {
+      const cancelled = target.running || target.abort !== null;
+      target.generation++;
+      target.abort?.abort();
+      target.abort = null;
+      target.running = false;
+      this.sessionAdmission.cancelQueued(target.key);
+      this.sessionAdmission.release(target.agentId ?? 'default', target.key);
+      if (cancelled) {
+        this.emitEvent('turn_cancelled', { message: 'Turn cancelled by user.' }, undefined, target.sessionId);
+      }
+      return { success: true, cancelled };
     }
-    this.activeAbortController.abort();
-    this.activeAbortController = null;
-    return { success: true, cancelled: true };
+
+    // Legacy callers without a session id still abort the focused controller.
+    if (this.activeAbortController) {
+      this.activeAbortController.abort();
+      this.activeAbortController = null;
+      return { success: true, cancelled: true };
+    }
+    return { success: true, cancelled: false };
+  }
+
+  private disposeSessionRuntime(sessionId: string): void {
+    const runtime = this.sessionRuntimes.findBySession(sessionId);
+    if (!runtime) return;
+    runtime.generation++;
+    runtime.abort?.abort();
+    runtime.abort = null;
+    runtime.running = false;
+    this.sessionAdmission.cancelQueued(runtime.key);
+    this.sessionAdmission.release(runtime.agentId ?? 'default', runtime.key);
+    this.sessionRuntimes.remove(runtime.key);
   }
 
   public async requestUserApproval(toolName: string, args: Record<string, unknown>, reason?: string): Promise<boolean> {
@@ -1092,6 +1210,7 @@ export class DesktopIpcBridge extends EventEmitter {
       this.coordinator = null;
       this.activeAgentId = undefined;
     }
+    this.disposeSessionRuntime(sessionId);
 
     if (fs.existsSync(resolvedSessionDir)) {
       fs.rmSync(resolvedSessionDir, { recursive: true, force: true });
@@ -1104,6 +1223,9 @@ export class DesktopIpcBridge extends EventEmitter {
     this.currentSessionId = null;
     this.coordinator = null;
     this.activeAgentId = undefined;
+    for (const runtime of [...this.sessionRuntimes.values()]) {
+      this.disposeSessionRuntime(runtime.sessionId);
+    }
 
     const sessionsDir = path.join(this.baseDir, 'sessions');
     if (!fs.existsSync(sessionsDir)) {

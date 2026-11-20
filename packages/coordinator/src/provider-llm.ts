@@ -19,6 +19,12 @@ export interface DriverLlmClientInput {
   model: string;
   apiKey?: string;
   environment?: Record<string, string>;
+  /** Stable per-session identity for the engine child; generated when absent. */
+  threadId?: string;
+  /** Engine resume cursor from a previous turn of this session. */
+  resumeCursor?: unknown;
+  /** Called when the engine reports the session id that resumes this session. */
+  onEngineSession?: (info: { threadId: string; sessionId: string }) => void;
 }
 
 /** Map the app's legacy provider names to registered driver kinds. */
@@ -45,8 +51,20 @@ function extractText(result: unknown): string {
 }
 
 /** Text-only adapter for CLI drivers that cannot serve the coordinator's tool loop. */
-function createTextStreamShim(instance: ProviderInstance, model: string): LlmStreamClient {
-  const threadId = `chat_${randomUUID()}`;
+function createTextStreamShim(
+  instance: ProviderInstance,
+  model: string,
+  input: DriverLlmClientInput,
+): LlmStreamClient {
+  const threadId = input.threadId || `chat_${randomUUID()}`;
+  if (input.onEngineSession) {
+    instance.adapter.onEvent((event: unknown) => {
+      const e = event as { type?: string; sessionId?: unknown };
+      if (e.type === 'session.started' && typeof e.sessionId === 'string') {
+        input.onEngineSession?.({ threadId, sessionId: e.sessionId });
+      }
+    });
+  }
   return {
     model,
     async streamCompletion(messages: ChatMessage[], _tools, signal) {
@@ -65,6 +83,7 @@ function createTextStreamShim(instance: ProviderInstance, model: string): LlmStr
         ...(system ? { system } : {}),
         transcript,
         model,
+        ...(input.resumeCursor ? { resumeCursor: input.resumeCursor } : {}),
       });
       const content = extractText(result);
       return {
@@ -122,5 +141,5 @@ export async function createDriverLlmClient(input: DriverLlmClientInput): Promis
   }
 
   // CLI driver: keep the instance alive for the lifetime of the chat session.
-  return createTextStreamShim(instance, input.model);
+  return createTextStreamShim(instance, input.model, input);
 }

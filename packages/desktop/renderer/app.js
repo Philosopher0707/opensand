@@ -5079,6 +5079,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
 
+    // Parallel sessions stream into the same event bus. Events belonging to a
+    // different, already-open session must not be appended to this chat.
+    if (event.sessionId && event.sessionId !== 'default' && currentSessionId && event.sessionId !== currentSessionId) {
+      return;
+    }
+
     // Subagent delegation activity (delegate_to_agent, nested cards)
     if (event.type === 'subagent') {
       const wrapperInner = event.data;

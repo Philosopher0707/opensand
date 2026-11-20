@@ -132,4 +132,65 @@ describe("provider-llm production bridge", () => {
     await providerRegistry.disposeAll();
     assert.equal(providerRegistry.listInstances().length, 0);
   });
+
+  it("reuses a session thread id and resume cursor for CLI drivers", async () => {
+    const seen: any[] = [];
+    let emit: (event: unknown) => void = () => {};
+    const models = { default: "fake-1", options: [{ id: "fake-1", label: "Fake" }] };
+    const fake: ProviderDriver = {
+      driverKind: "fake-resume-driver",
+      metadata: { displayName: "Fake Resume", access: "custom" },
+      models,
+      decodeConfig: (raw) => raw,
+      defaultConfig: () => ({}),
+      async create(input) {
+        return {
+          instanceId: input.instanceId,
+          driverKind: "fake-resume-driver",
+          displayName: input.displayName,
+          enabled: input.enabled,
+          models,
+          adapter: {
+            provider: "fake-resume-driver",
+            capabilities: {},
+            async sendTurn(turn) { seen.push(turn); return { text: "ok", toolCalls: [] }; },
+            steer: () => Promise.resolve(),
+            interruptTurn: () => Promise.resolve(),
+            respondToRequest: () => Promise.resolve("unavailable" as const),
+            hasSession: () => false,
+            enginePid: () => undefined,
+            stopAll: () => Promise.resolve(),
+            onEvent: (listener) => { emit = listener; return () => {}; },
+          },
+          snapshot: async () => ({
+            instanceId: input.instanceId,
+            driverKind: "fake-resume-driver",
+            enabled: input.enabled,
+          }),
+          dispose: () => Promise.resolve(),
+        };
+      },
+    };
+    providerRegistry.register(fake);
+
+    let engineSession: { threadId: string; sessionId: string } | undefined;
+    const client = await createDriverLlmClient({
+      provider: "fake-resume-driver",
+      endpoint: "",
+      model: "fake-1",
+      apiKey: "",
+      threadId: "session-thread-1",
+      resumeCursor: "cursor-1",
+      onEngineSession: (info) => { engineSession = info; },
+    });
+    assert.ok(client);
+    emit({ type: "session.started", threadId: "session-thread-1", sessionId: "cursor-2" });
+    const { stream } = await client.streamCompletion([{ role: "user", content: "hi" }]);
+    for await (const _chunk of stream) { /* drain */ }
+
+    assert.equal(seen[0].threadId, "session-thread-1");
+    assert.equal(seen[0].resumeCursor, "cursor-1");
+    assert.deepStrictEqual(engineSession, { threadId: "session-thread-1", sessionId: "cursor-2" });
+    await providerRegistry.disposeAll();
+  });
 });

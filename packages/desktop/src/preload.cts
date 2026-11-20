@@ -30,8 +30,8 @@ try {
         ipcRenderer.invoke('opensand:listPendingApprovals'),
       getToolDiscovery: () =>
         ipcRenderer.invoke('opensand:getToolDiscovery'),
-      cancelTurn: () =>
-        ipcRenderer.invoke('opensand:cancelTurn'),
+      cancelTurn: (sessionId?: string) =>
+        ipcRenderer.invoke('opensand:cancelTurn', { sessionId }),
       getSessions: () =>
         ipcRenderer.invoke('opensand:getSessions'),
       loadSession: (sessionId: string) =>
