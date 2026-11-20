@@ -299,6 +299,8 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         }),
         systemPromptContext: {
           userInstructions: agent.systemPrompt,
+          learnedRules: await habitExtractor.getLearnedRulesMarkdown(),
+          memoryContext: await memoryStore.getPromptMemoryContext(agent.id),
         },
         // Stream the child turn's events up to the parent's delegation
         // sink (threaded through tool context by the turn loop). Best-effort:
