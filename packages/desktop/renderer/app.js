@@ -5,6 +5,7 @@
 import { renderMarkdown, renderMarkdownCached, escapeHtml } from './modules/chat/markdown.js';
 import { createApprovalQueue } from './modules/chat/approval-queue.js';
 import { createArtifactCanvas } from './modules/chat/canvas.js';
+import { initParallelBoard } from './modules/parallel-board.js';
 
 // Native title bar is hiddenInset on macOS; CSS keys traffic-light clearance off this.
 // Detected via userAgent for instant CSS styling, and via window.opensand for IPC bridge.
@@ -172,11 +173,15 @@ class OpenSandClient {
     return data;
   }
 
-  async cancelTurn() {
+  async cancelTurn(sessionId) {
     if (this.isElectron && window.opensand?.cancelTurn) {
-      return window.opensand.cancelTurn();
+      return window.opensand.cancelTurn(sessionId);
     }
-    const res = await fetch('/api/cancel', { method: 'POST' });
+    const res = await fetch('/api/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(data?.error || `Cancel turn failed (HTTP ${res.status})`);
@@ -746,12 +751,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     boundaries: document.getElementById('viewBoundaries'),
     webhooks: document.getElementById('viewWebhooks'),
     connectors: document.getElementById('viewConnectors'),
+    parallel: document.getElementById('viewParallel'),
   };
 
   let currentView = 'chat';
 
   const viewTitles = {
     chat: 'Chat & Dialogue',
+    parallel: 'Parallel Board — Concurrent Sessions',
     graphs: 'Agent Graphs & Cyclical Loops',
     sentinel: 'Workspace Sentinel & Self-Healing',
     rooms: 'Multi-Agent Collaborative Rooms',
@@ -5070,6 +5077,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Real-time Event Stream Handling
   client.onEvent((event) => {
+    // The board owns its panes' events while it is visible; the chat view must
+    // not append a background session's tokens to its single open message.
+    if (currentView === 'parallel') return;
     if (event.type === 'session_started') {
       const sessId = event.data?.sessionId || event.sessionId;
       if (sessId && currentSessionId !== sessId) {
@@ -6148,4 +6158,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   setTurnBusy(false);
   await refreshTokenBadge();
+
+  // Parallel Board — each pane owns a session id and receives only its own events.
+  const parallelBoard = initParallelBoard({
+    client,
+    getView: () => currentView,
+    getAgentId: () => activeAgentId,
+  });
+  client.onEvent((event) => parallelBoard.handleEvent(event));
 });

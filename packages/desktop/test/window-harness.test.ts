@@ -305,6 +305,42 @@ test("Real-Window Harness: default renderer (960x740 and full screen)", async (t
   assert.strictEqual(r.res960.hasBtnSend, true, ".input-panel #btnSend must be present");
 });
 
+test("Real-Window Harness: Parallel Board mounts independent panes", async (t) => {
+  const boardScript = [
+    "(async () => {",
+    "  document.getElementById('navBtnParallel')?.click();",
+    "  await new Promise((r) => setTimeout(r, 250));",
+    "  const grid = document.getElementById('parallelGrid');",
+    "  const panes = Array.from(grid?.querySelectorAll('.pb-pane') || []);",
+    "  const titles = panes.map((p) => p.querySelector('.pb-title')?.textContent || '');",
+    "  const inputs = panes.map((p) => !!p.querySelector('.pb-input'));",
+    "  document.getElementById('btnParallelAdd')?.click();",
+    "  await new Promise((r) => setTimeout(r, 120));",
+    "  const afterAdd = grid?.querySelectorAll('.pb-pane').length || 0;",
+    "  return {",
+    "    visible: !document.getElementById('viewParallel')?.classList.contains('hidden'),",
+    "    navExists: !!document.getElementById('navBtnParallel'),",
+    "    gridExists: !!grid,",
+    "    gridChildren: grid?.children.length || 0,",
+    "    paneCount: panes.length,",
+    "    distinctTitles: new Set(titles).size,",
+    "    allHaveComposers: inputs.every(Boolean),",
+    "    afterAdd,",
+    "    status: document.getElementById('parallelStatus')?.textContent || '',",
+    "  };",
+    "})()",
+  ].join("\n");
+
+  const r = await runHarness("default", { interactScript: boardScript });
+  if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
+  assert.strictEqual(r.interactResult?.visible, true, "Parallel view must become visible from the footer nav");
+  assert.strictEqual(r.interactResult?.paneCount, 2, `Board starts with two independent panes (${JSON.stringify(r.interactResult)})`);
+  assert.strictEqual(r.interactResult?.distinctTitles, 2, "Each pane must own a distinct session id");
+  assert.strictEqual(r.interactResult?.allHaveComposers, true, "Each pane needs its own prompt input");
+  assert.strictEqual(r.interactResult?.afterAdd, 3, "Add button must create a third pane");
+  assert.match(r.interactResult?.status || "", /3 pane/, "Status must reflect pane count");
+});
+
 test("Real-Window Harness: Preact shell frame seeded sessions & search (960x740 and 1920x1080)", async (t) => {
   const built = fs.existsSync(path.join(pkgRoot, "dist", "renderer-next", "index.html"));
   if (!built) {

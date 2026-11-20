@@ -218,3 +218,9 @@
 * **What happened:** The full suite failed one CLI test (`defaults to standard environment`, expected `autoApprove: false`, got `true`) because the user's real `~/.opensand/config.json` has `autoApprove: true`. The same suite was green with `HOME=/tmp/opensand-hermetic-home`.
 * **Cause:** A test that parses CLI args reads user config from the ambient home; local state decides the result.
 * **Rule now:** Run the full gate with a hermetic `HOME` before claiming local green, and report any failure that only appears with the real home as environmental instead of weakening the assertion. Engine children are killed as a process group (POSIX `detached`) because a direct-child SIGTERM leaves CLI descendants orphaned.
+
+### 11.12 Renderer state is inside DOMContentLoaded, not module scope
+* **Date:** 2026-11-21
+* **What happened:** The Parallel Board module was initialised at the bottom of `app.js` at module top level. Its `client`, `currentView` and `activeAgentId` arguments are declared inside the `DOMContentLoaded` callback, so the call threw a ReferenceError; the nav still worked (its handlers are inside the callback) but the grid stayed empty. Only a real-Electron window-harness test caught it.
+* **Cause:** Scope was inferred from the file layout instead of read; the nav working made the feature look wired.
+* **Rule now:** New renderer features must be initialised inside the existing `DOMContentLoaded` callback, and a real-window test must assert the feature's DOM exists — a nav click or a passing module import is not evidence the feature mounted.

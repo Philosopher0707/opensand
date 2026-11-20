@@ -105,6 +105,10 @@
             <span class="footer-nav-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg></span>
             <span class="footer-nav-label">Connections</span>
           </button>
+          <button class="footer-nav-btn" data-view="parallel" id="navBtnParallel" title="Parallel Board — Concurrent Sessions">
+            <span class="footer-nav-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-users"></use></svg></span>
+            <span class="footer-nav-label">Parallel</span>
+          </button>
         </nav>
 
         <div class="sidebar-account-box">
@@ -669,6 +673,27 @@
           <div class="card-grid" id="connectorsCardGrid">
             <!-- Rendered dynamically: Slack, Linear, GitHub App connect cards -->
           </div>
+        </div>
+      </div>
+
+      <div id="viewParallel" class="view-panel hidden">
+        <div class="dashboard-container parallel-board">
+          <div class="dashboard-header">
+            <div>
+              <div class="dashboard-title">Parallel Board</div>
+              <div class="dashboard-subtitle">Independent sessions, independent streams. Each pane owns one live turn — send to several at once and watch them race.</div>
+            </div>
+            <div class="parallel-actions">
+              <button id="btnParallelAdd" class="btn btn-primary" title="Add another session pane">+ Pane</button>
+              <button id="btnParallelClear" class="btn btn-secondary" title="Close every pane">Clear</button>
+            </div>
+          </div>
+          <div class="parallel-toolbar">
+            <input id="parallelBroadcastInput" class="input" type="text" autocomplete="off" placeholder="Broadcast one prompt to every pane…" />
+            <button id="btnParallelBroadcast" class="btn btn-secondary">Broadcast ↗</button>
+            <span id="parallelStatus" class="parallel-status">0 running · 0 panes</span>
+          </div>
+          <div id="parallelGrid" class="parallel-grid"></div>
         </div>
       </div>
     </main>

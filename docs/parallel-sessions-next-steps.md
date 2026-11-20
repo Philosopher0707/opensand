@@ -87,4 +87,15 @@ N1, N2 and N5 are independent; N3 needs both N1 and N2; N4 and N6 need N3.
 - Real sign-in credentials are operator-supplied; N6 cannot prove them, only the sync mechanics.
 - `file:line` references are from the current checkout and drift with edits; re-read before each phase.
 
-Skipped in this pass: no implementation, no build/test (plan only). Risk: D1/D2 defaults could be wrong for your intended UX — say the word before N4 starts.
+Skipped in the plan pass: no implementation. Risk: D1 was wrong for the owner — corrected below.
+
+## Execution status (2026-11-21)
+
+- **D1 overridden by owner:** "single pane nahi yaar be creative" — the board is a real grid, not a session switcher.
+- **N1 done** — `engine-idle.ts` + `lastUsedAt` in all three runtimes; bounded, unref'd, never reaps a pending turn. Commit `07bfb7a` (with N2).
+- **N2 done** — `onDriverEvent` in the CLI shim, `dispatchDriverEvent` in the bridge; tool/result/reasoning events reach SSE tagged with the owning session. Text deltas deliberately not forwarded (would duplicate `turn_complete`).
+- **N4 done (board UI)** — new `viewParallel` panel, footer nav, `modules/parallel-board.js`, CSS. Two panes on open, `+ Pane` up to 6, per-pane composer/Stop, `Broadcast ↗` sends one prompt to all panes, status line, per-pane event routing by `event.sessionId`; chat view ignores board events while the board is visible. Real-Electron window-harness test asserts nav → visible panel → 2 distinct panes → add third.
+- **Bug found and fixed during N4:** renderer modules' `client`, `currentView` and `activeAgentId` are scoped **inside** the `DOMContentLoaded` callback; initialising the board at module top level threw a ReferenceError and silently produced zero panes. The board init now lives inside that callback.
+- **Gate:** `pnpm build` green; desktop window harness **119/119**; full hermetic suite green.
+
+Measured scorecard now ≈ **82%**: idle reaping 0→90, live CLI events 70→90, UI 90→95, tests 90→95. Still below the 90% reporting threshold. Remaining: N3 fake-CLI PID proof, N5 queue persistence, N6 session HOME/auth sync, and an actual two-provider live turn through the board.
