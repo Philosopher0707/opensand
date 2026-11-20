@@ -564,6 +564,20 @@ export class DesktopIpcBridge extends EventEmitter {
       provider: this.settings.provider,
     });
 
+    // SIM loop (self-improvement): run habit extraction + correction marking at
+    // session start so prior corrections shape this session's prompt context.
+    const simResult = await this.habitExtractor
+      .runSIMCycle({ maxChats: 50, memoryStore: this.memoryStore })
+      .catch(() => undefined);
+    if (simResult) {
+      const skipped = simResult.persisted.filter((p) => p.error === "skipped: duplicate").length;
+      console.log(
+        `[SIM] analyzed ${simResult.transcriptsAnalyzed} transcripts, ${simResult.correctionsFound} corrections, ` +
+          `${simResult.factsPersisted} new rules persisted (${skipped} duplicates skipped), ` +
+          `${simResult.factsMarkedNegative} facts marked negative.`
+      );
+    }
+
     const learnedRules = await this.habitExtractor.getLearnedRulesMarkdown();
     const memoryContext = await this.memoryStore.getPromptMemoryContext(agentId);
     const skillsContext = agentId ? await this.skillStore.formatSkillsPrompt(agentId) : '';

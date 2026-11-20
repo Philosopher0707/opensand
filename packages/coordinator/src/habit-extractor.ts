@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import { MemoryStore } from "./memory-store.js";
 
 export interface LearnedPreference {
   category: "workflow" | "tool_usage" | "formatting" | "correction";
@@ -102,14 +103,10 @@ export class HabitExtractor {
           this.recordPattern(patternMap, "Maintain zero external runtime dependencies and native primitives", q.sessionId, "workflow");
         }
 
-        // 2. Explicit corrections
+        // 2. Explicit corrections — record the user's own words as the rule,
+        // not a canned slogan, so the memory reflects what was actually said.
         if (q.isCorrection) {
-          if (normalized.includes("don't") || normalized.includes("do not") || normalized.includes("stop")) {
-            this.recordPattern(patternMap, `User correction: Avoid unrequested manual actions without user approval`, q.sessionId, "correction");
-          }
-          if (normalized.includes("orchestrator") || normalized.includes("agent")) {
-            this.recordPattern(patternMap, "Ensure multi-agent delegation is executed autonomously via Agent Orchestrator tools", q.sessionId, "correction");
-          }
+          this.recordPattern(patternMap, this.ruleFromCorrection(q.text), q.sessionId, "correction");
         }
       }
 
@@ -161,6 +158,141 @@ export class HabitExtractor {
     } catch {
       return "";
     }
+  }
+
+  /**
+   * Run the full SIM (self-improvement) cycle: extract habits/corrections from
+   * recent transcripts, persist them as user log-tier memory facts (deduped),
+   * then retroactively mark any fact contradicted by a user correction as
+   * observedOutcome="negative" so it is excluded from future prompt context.
+   *
+   * Returns a summary object suitable for surfacing to the caller/UI.
+   */
+  async runSIMCycle(options?: {
+    maxChats?: number;
+    memoryStore?: MemoryStore;
+  }): Promise<{
+    transcriptsAnalyzed: number;
+    queriesExtracted: number;
+    correctionsFound: number;
+    rulesLearned: number;
+    factsPersisted: number;
+    factsMarkedNegative: number;
+    persisted: Array<{ rule: string; factId?: string; error?: string }>;
+    negatedFacts: Array<{ factId: string; text: string; matchedBy: string }>;
+  }> {
+    const maxChats = options?.maxChats ?? 50;
+    const memoryStore = options?.memoryStore ?? new MemoryStore();
+
+    // Step 1: Extract habits/corrections from transcripts and write learned_rules.md
+    const report = await this.analyzeTranscripts(maxChats);
+
+    // Step 2: Persist each extracted rule as a MemoryFact (deduped against existing)
+    const existingFacts = await memoryStore.listMemories({ scope: "user", tier: "log" });
+    const existingTexts = new Set(existingFacts.map((f) => f.text.toLowerCase().trim()));
+
+    const persisted: Array<{ rule: string; factId?: string; error?: string }> = [];
+    for (const rule of report.rules) {
+      const key = rule.rule.toLowerCase().trim();
+      if (existingTexts.has(key)) {
+        persisted.push({ rule: rule.rule, factId: undefined, error: "skipped: duplicate" });
+        continue;
+      }
+      try {
+        const fact = await memoryStore.addMemoryWithOutcome({
+          text: rule.rule,
+          scope: "user",
+          tier: "log",
+          agentId: undefined,
+          predictedOutcome: "positive",
+          observedOutcome: undefined,
+        });
+        persisted.push({ rule: rule.rule, factId: fact.factId });
+        existingTexts.add(key);
+      } catch (err: any) {
+        persisted.push({ rule: rule.rule, error: err.message });
+      }
+    }
+
+    // Step 3: SIM correction loop — mark facts negative when user corrections contradict them
+    const corrections = await this.getCorrectionQueries(maxChats);
+    const negationWords = [
+      "don't",
+      "do not",
+      "stop",
+      "no,",
+      "no ",
+      "undo",
+      "incorrect",
+      "that's wrong",
+      "not",
+    ];
+
+    const splitClauses = (text: string): string[] =>
+      text.split(/[.!?;]\s*/).filter(Boolean);
+
+    const factHasNegatedTerm = (factWords: string[], cText: string): boolean => {
+      const clauses = splitClauses(cText);
+      return clauses.some((clause) => {
+        const hasNegation = negationWords.some((n) => clause.includes(n));
+        if (!hasNegation) return false;
+        return factWords.some((fw) => clause.includes(fw));
+      });
+    };
+
+    const negatedFacts: Array<{ factId: string; text: string; matchedBy: string }> = [];
+    const candidateFacts = await memoryStore.listMemories({
+      scope: "user",
+      tier: "log",
+      observedOutcome: undefined,
+    });
+
+    for (const fact of candidateFacts) {
+      if (fact.predictedOutcome !== "positive") continue;
+      const factText = fact.text.toLowerCase();
+
+      const factWords = factText
+        .split(/\s+/)
+        .filter(
+          (w) =>
+            w.length > 3 &&
+            ![
+              "always","never","should","would","could","prefer","use","uses","with","from","that","this",
+              "have","been","were","them","they","their","what","when","where","while","after","before",
+              "because","since","until","unless","although","though","whether","however","therefore",
+              "moreover","furthermore","otherwise","meanwhile","indeed","certainly","actually",
+              "basically","simply","really","quite","very","just","only","even","still","also","already",
+              "yet","soon","now","then","here","there","every","each","all","any","some","many","much",
+              "few","little","less","more","most","least","own","same","such","no","nor","not","so","than",
+              "too","s","t","can","will","don","now",
+            ].includes(w)
+        )
+        .slice(0, 8);
+
+      for (const correction of corrections) {
+        const cText = correction.text.toLowerCase();
+        if (!factHasNegatedTerm(factWords, cText)) continue;
+
+        try {
+          await memoryStore.updateMemoryOutcome(fact.factId, "negative", "user");
+          negatedFacts.push({ factId: fact.factId, text: fact.text, matchedBy: correction.text });
+        } catch {
+          // Fact may have already been updated; skip
+        }
+        break;
+      }
+    }
+
+    return {
+      transcriptsAnalyzed: report.totalTranscriptsAnalyzed,
+      queriesExtracted: report.extractedQueriesCount,
+      correctionsFound: report.correctionsCount,
+      rulesLearned: report.rules.length,
+      factsPersisted: persisted.length,
+      factsMarkedNegative: negatedFacts.length,
+      persisted,
+      negatedFacts,
+    };
   }
 
   /**
@@ -227,6 +359,23 @@ export class HabitExtractor {
       "hey this job is for",
     ];
     return correctionTriggers.some((t) => q.startsWith(t) || q.includes(t));
+  }
+
+  /**
+   * Build a remembered rule from the user's own correction wording, trimmed to a
+   * single imperative sentence when possible. Falls back to the full query text
+   * if no clean sentence boundary exists.
+   */
+  private ruleFromCorrection(query: string): string {
+    const trimmed = query.trim();
+    const delimiters = [
+      trimmed.indexOf(". ", 0),
+      trimmed.indexOf("! ", 0),
+      trimmed.indexOf("? ", 0),
+    ].filter((i) => i !== -1);
+    const end = delimiters.length > 0 ? Math.min(...delimiters) : -1;
+    const sentence = end === -1 ? trimmed : trimmed.slice(0, end).trim();
+    return sentence.length >= 6 ? sentence : trimmed;
   }
 
   private recordPattern(

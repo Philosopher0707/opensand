@@ -60,7 +60,9 @@ Understood, delegating to Agent Orchestrator.
     const onDisk = await fs.readFile(memoryFile, "utf-8");
     assert.ok(onDisk.includes("# OpenSand Continuous Learning & User Guidelines"));
     assert.ok(onDisk.includes("pnpm"));
-    assert.ok(onDisk.includes("Agent Orchestrator"));
+    // Corrections now record the user's own words (not canned slogans), so the
+    // actual correction wording appears in learned rules.
+    assert.ok(onDisk.includes("agent orchestrator"));
   });
 
   // Cleanup

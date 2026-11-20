@@ -626,79 +626,18 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
     },
     handler: async (args) => {
       const maxChats = args.max_chats ?? 50;
-      const report = await habitExtractor.analyzeTranscripts(maxChats);
-
-      // SIM: persist each extracted rule as a MemoryFact with outcome tracking so
-      // future rounds can avoid repeating failed attempts (predictedOutcome = what
-      // we expect the rule to achieve; observedOutcome starts unknown/uncertain).
-      const persisted: Array<{ rule: string; factId?: string; error?: string }> = [];
-      for (const rule of report.rules) {
-        try {
-          const fact = await memoryStore.addMemoryWithOutcome({
-            text: rule.rule,
-            scope: "user",
-            tier: "log",
-            agentId: undefined,
-            predictedOutcome: "positive", // we expect the extracted rule to hold
-            observedOutcome: undefined,   // no evidence yet; becomes negative on correction
-          });
-          persisted.push({ rule: rule.rule, factId: fact.factId });
-        } catch (err: any) {
-          persisted.push({ rule: rule.rule, error: err.message });
-        }
-      }
-
-      // SIM correction loop: retroactively mark facts negative when user
-      // corrections contradict them (don't repeat failed attempts).
-      const corrections = await habitExtractor.getCorrectionQueries(maxChats);
-      const negationWords = ["don't", "do not", "stop", "no,", "no ", "undo", "incorrect", "that's wrong", "not"];
-
-      const negatedFacts: Array<{ factId: string; text: string; matchedBy: string }> = [];
-      const candidateFacts = await memoryStore.listMemories({
-        scope: "user",
-        tier: "log",
-        observedOutcome: undefined,
-      });
-
-      for (const fact of candidateFacts) {
-        if (fact.predictedOutcome !== "positive") continue;
-        const factText = fact.text.toLowerCase();
-
-        // Extract key content words from the fact (skip stopwords)
-        const factWords = factText
-          .split(/\s+/)
-          .filter((w) => w.length > 3 && !["always","never","should","would","could","prefer","use","uses","with","from","that","this","have","been","were","them","they","their","what","when","where","while","after","before","because","since","until","unless","although","though","whether","however","therefore","moreover","furthermore","otherwise","meanwhile","indeed","certainly","actually","basically","simply","really","quite","very","just","only","even","still","also","already","yet","soon","now","then","here","there","every","each","all","any","some","many","much","few","little","less","more","most","least","own","same","such","no","nor","not","own","same","so","than","too","very","s","t","can","will","just","don","should","now"].includes(w))
-          .slice(0, 8);
-
-        for (const correction of corrections) {
-          const cText = correction.text.toLowerCase();
-          const hasNegation = negationWords.some((n) => cText.includes(n) || cText.startsWith(n));
-          if (!hasNegation) continue;
-
-          // Check if correction mentions key terms from the fact
-          const sharesTerms = factWords.some((fw) => cText.includes(fw));
-          if (sharesTerms) {
-            try {
-              await memoryStore.updateMemoryOutcome(fact.factId, "negative", "user");
-              negatedFacts.push({ factId: fact.factId, text: fact.text, matchedBy: correction.text });
-            } catch {
-              // Fact may have already been updated; skip
-            }
-            break; // One correction per fact is enough
-          }
-        }
-      }
+      const sim = await habitExtractor.runSIMCycle({ maxChats, memoryStore });
 
       return JSON.stringify({
         status: "success",
-        transcriptsAnalyzed: report.totalTranscriptsAnalyzed,
-        queriesExtracted: report.extractedQueriesCount,
-        correctionsFound: report.correctionsCount,
-        rulesLearned: report.rules.length,
-        rulesPersisted: persisted.length,
-        factsMarkedNegative: negatedFacts.length,
-        negatedFacts,
-        summary: report.markdownSummary,
+        transcriptsAnalyzed: sim.transcriptsAnalyzed,
+        queriesExtracted: sim.queriesExtracted,
+        correctionsFound: sim.correctionsFound,
+        rulesLearned: sim.rulesLearned,
+        rulesPersisted: sim.factsPersisted,
+        factsMarkedNegative: sim.factsMarkedNegative,
+        negatedFacts: sim.negatedFacts,
+        summary: await habitExtractor.getLearnedRulesMarkdown(),
       }, null, 2);
     },
   });

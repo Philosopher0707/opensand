@@ -575,6 +575,15 @@ export class MemoryStore {
    */
   async getPromptMemoryContext(agentId?: string): Promise<string> {
     const userProfileFacts = await this.listMemories({ scope: "user", tier: "profile" });
+    // SIM: inject only SIM-created log-tier habit facts into the prompt so the
+    // self-improvement loop actually closes. SIM-created facts carry a
+    // predictedOutcome; pre-existing observational notes (written via
+    // update_memory directly) do not and should not bloat every prompt.
+    // Exclude facts whose latest observed outcome is "negative" — don't repeat
+    // failed attempts.
+    const userLogFacts = (await this.listMemories({ scope: "user", tier: "log" })).filter(
+      (f) => f.predictedOutcome !== undefined && f.observedOutcome !== "negative"
+    );
     const teamSummary = await this.getTeamContextSummary(agentId);
     let agentProfileFacts: MemoryFact[] = [];
     if (agentId) {
@@ -585,6 +594,10 @@ export class MemoryStore {
 
     if (userProfileFacts.length > 0) {
       sections.push("### User Profile & Preferences\n" + userProfileFacts.map((f) => `- ${f.text}`).join("\n"));
+    }
+
+    if (userLogFacts.length > 0) {
+      sections.push("### Learned User Habits (self-improvement)\n" + userLogFacts.map((f) => `- ${f.text}`).join("\n"));
     }
 
     if (agentProfileFacts.length > 0) {

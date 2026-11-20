@@ -355,10 +355,21 @@ Examples:
     }
   }
 
+  // SIM loop (self-improvement): run habit extraction + correction marking at
+  // session start so prior corrections shape this session's prompt context.
+  const memoryStore = new MemoryStore();
+  const simResult = await habitExtractor.runSIMCycle({ maxChats: 50, memoryStore }).catch(() => undefined);
+  if (simResult) {
+    const skipped = simResult.persisted.filter((p) => p.error === "skipped: duplicate").length;
+    ui.printInfo(
+      `SIM: analyzed ${simResult.transcriptsAnalyzed} transcripts, ${simResult.correctionsFound} corrections, ` +
+        `${simResult.factsPersisted} new rules persisted (${skipped} duplicates skipped), ` +
+        `${simResult.factsMarkedNegative} facts marked negative.`
+    );
+  }
   const learnedRules = await habitExtractor.getLearnedRulesMarkdown();
   // Stored memories were previously only injected by the desktop bridge; the
   // CLI started every session blind. Load them here so both surfaces agree.
-  const memoryStore = new MemoryStore();
   const legacyContext = await memoryStore.getPromptMemoryContext().catch(() => "");
   // The real store: ~/.memory/memo.db, written by the `memo` tool.
   const memoContext = new MemoStore().formatForPrompt(process.cwd());
