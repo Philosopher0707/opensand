@@ -615,6 +615,7 @@ export class DesktopIpcBridge extends EventEmitter {
           resumeCursor: sessionId,
         });
       },
+      onDriverEvent: (event) => this.dispatchDriverEvent(activeSessionId, event),
     });
     const llmClient = driverClient ?? new UniversalLLMClient({
       baseUrl: targetEndpoint,
@@ -715,6 +716,31 @@ export class DesktopIpcBridge extends EventEmitter {
     } else if (event.type === 'error') {
       emit('error', { message: event.error.message });
     }
+  }
+
+  /** Map a CLI adapter event into the stream of the session that owns it. */
+  private dispatchDriverEvent(sessionId: string, event: unknown): void {
+    const e = event as {
+      type?: string;
+      name?: string;
+      id?: string;
+      text?: string;
+      delta?: unknown;
+      result?: unknown;
+    };
+    const emit = (type: DesktopEvent['type'], data: unknown) =>
+      this.emitEvent(type, data, undefined, sessionId);
+
+    if (e.type === 'tool.call' || e.type === 'tool_call') {
+      emit('tool_call', { name: e.name ?? e.id ?? 'tool', args: {} });
+    } else if (e.type === 'tool.result' || e.type === 'tool_result') {
+      emit('tool_result', { name: e.name ?? 'tool', result: e.result });
+    } else if (e.type === 'reasoning.delta') {
+      emit('thought', { thought: e.text ?? e.delta });
+    }
+    // text.delta is deliberately not forwarded: the coordinator already emits
+    // one token event for the shim's consolidated text, and turn_complete
+    // carries the final answer. Forwarding it would duplicate the reply.
   }
 
   public async sendQuery(

@@ -174,6 +174,7 @@ describe("provider-llm production bridge", () => {
     providerRegistry.register(fake);
 
     let engineSession: { threadId: string; sessionId: string } | undefined;
+    const driverEvents: unknown[] = [];
     const client = await createDriverLlmClient({
       provider: "fake-resume-driver",
       endpoint: "",
@@ -182,15 +183,21 @@ describe("provider-llm production bridge", () => {
       threadId: "session-thread-1",
       resumeCursor: "cursor-1",
       onEngineSession: (info) => { engineSession = info; },
+      onDriverEvent: (event) => { driverEvents.push(event); },
     });
     assert.ok(client);
     emit({ type: "session.started", threadId: "session-thread-1", sessionId: "cursor-2" });
+    emit({ type: "tool.call", threadId: "session-thread-1", name: "read_file" });
     const { stream } = await client.streamCompletion([{ role: "user", content: "hi" }]);
     for await (const _chunk of stream) { /* drain */ }
 
     assert.equal(seen[0].threadId, "session-thread-1");
     assert.equal(seen[0].resumeCursor, "cursor-1");
     assert.deepStrictEqual(engineSession, { threadId: "session-thread-1", sessionId: "cursor-2" });
+    assert.deepStrictEqual(driverEvents, [
+      { type: "session.started", threadId: "session-thread-1", sessionId: "cursor-2" },
+      { type: "tool.call", threadId: "session-thread-1", name: "read_file" },
+    ]);
     await providerRegistry.disposeAll();
   });
 });

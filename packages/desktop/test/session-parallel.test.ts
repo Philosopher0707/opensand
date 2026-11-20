@@ -125,6 +125,25 @@ test('DesktopIpcBridge - two sessions run concurrently with independent aborts',
   }
 });
 
+test('DesktopIpcBridge - CLI driver events are tagged with the owning session', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-parallel-driver-events-'));
+  try {
+    const { bridge, events } = fakeBridge(tmpDir);
+    const dispatch = (bridge as any).dispatchDriverEvent.bind(bridge);
+    dispatch('sess-A', { type: 'tool.call', name: 'read_file' });
+    dispatch('sess-B', { type: 'tool.result', name: 'write_file', result: 'ok' });
+
+    const toolCall = events.find((e) => e.type === 'tool_call');
+    const toolResult = events.find((e) => e.type === 'tool_result');
+    assert.strictEqual(toolCall?.sessionId, 'sess-A');
+    assert.strictEqual(toolResult?.sessionId, 'sess-B');
+    assert.deepStrictEqual(toolCall?.data, { name: 'read_file', args: {} });
+    assert.deepStrictEqual(toolResult?.data, { name: 'write_file', result: 'ok' });
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
+  }
+});
+
 test('DesktopServer - /api/events filters by session and replays after a sequence', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-parallel-sse-'));
   const server = new DesktopServer({ baseDir: tmpDir, port: 0, host: '127.0.0.1' });

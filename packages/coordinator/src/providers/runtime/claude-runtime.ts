@@ -7,6 +7,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { killProcessTree } from "../../proc-tree.js";
+import { startIdleReaper } from "../../engine-idle.js";
 import type {
   DriverCreateInput,
   ModelCatalog,
@@ -31,6 +32,7 @@ export interface ClaudeRuntimeOptions {
 interface ClaudeSession {
   child: ChildProcess;
   sessionId: string | null;
+  lastUsedAt: number;
   lastText: string;
   pendingTurn: {
     resolve: (value: unknown) => void;
@@ -87,6 +89,7 @@ export function createClaudeInstance(
     settleTurn(session, new Error("Session stopped"));
     killProcessTree(session.child);
   };
+  const stopIdleReaper = startIdleReaper(sessions, closeSession);
 
   const handleLine = (threadId: string, session: ClaudeSession, line: string): void => {
     let message: Record<string, unknown>;
@@ -170,6 +173,7 @@ export function createClaudeInstance(
     const session: ClaudeSession = {
       child,
       sessionId: resumeId,
+      lastUsedAt: Date.now(),
       lastText: "",
       pendingTurn: null,
       stopped: false,
@@ -211,6 +215,7 @@ export function createClaudeInstance(
     if (disposed) throw new Error(`${options.driverKind} provider ${input.instanceId} is disposed`);
     let session = sessions.get(turn.threadId);
     if (!session || session.stopped) session = spawnSession(turn.threadId, turn);
+    session.lastUsedAt = Date.now();
     session.lastText = "";
 
     const completion = new Promise<{ text: string; toolCalls: unknown[] }>((resolve, reject) => {
@@ -285,7 +290,7 @@ export function createClaudeInstance(
         const session = sessions.get(threadId);
         if (!session) return;
         settleTurn(session, new Error("Turn cancelled"));
-        if (!session.child.killed) session.child.kill("SIGTERM");
+        killProcessTree(session.child);
       },
       respondToRequest() {
         return Promise.resolve("unavailable");
@@ -316,6 +321,7 @@ export function createClaudeInstance(
     },
     async dispose() {
       disposed = true;
+      stopIdleReaper();
       for (const threadId of Array.from(sessions.keys())) closeSession(threadId);
       listeners.clear();
     },

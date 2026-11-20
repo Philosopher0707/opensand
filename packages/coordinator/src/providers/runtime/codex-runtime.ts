@@ -7,6 +7,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { killProcessTree } from "../../proc-tree.js";
+import { startIdleReaper } from "../../engine-idle.js";
 import type {
   DriverCreateInput,
   ModelCatalog,
@@ -34,6 +35,7 @@ interface CodexSession {
   rpc: RpcTransport;
   threadId: string | null;
   turnId: string | null;
+  lastUsedAt: number;
   initialized: boolean;
   lastText: string;
   pendingTurn: {
@@ -114,6 +116,7 @@ export function createCodexInstance(
     session.rpc.close();
     killProcessTree(session.child);
   };
+  const stopIdleReaper = startIdleReaper(sessions, closeSession);
 
   const spawnSession = (threadId: string): CodexSession => {
     const env = { ...process.env, ...input.environment };
@@ -181,6 +184,7 @@ export function createCodexInstance(
       rpc,
       threadId: null,
       turnId: null,
+      lastUsedAt: Date.now(),
       initialized: false,
       lastText: "",
       pendingTurn: null,
@@ -215,6 +219,7 @@ export function createCodexInstance(
   const sendTurn = async (turn: SendTurnInput): Promise<{ text: string; toolCalls: unknown[] }> => {
     if (disposed) throw new Error(`${options.driverKind} provider ${input.instanceId} is disposed`);
     const session = getSession(turn.threadId);
+    session.lastUsedAt = Date.now();
     session.lastText = "";
     await initSession(session);
 
@@ -397,6 +402,7 @@ export function createCodexInstance(
     },
     async dispose() {
       disposed = true;
+      stopIdleReaper();
       for (const threadId of Array.from(sessions.keys())) closeSession(threadId);
       listeners.clear();
     },

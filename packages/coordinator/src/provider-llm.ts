@@ -25,6 +25,8 @@ export interface DriverLlmClientInput {
   resumeCursor?: unknown;
   /** Called when the engine reports the session id that resumes this session. */
   onEngineSession?: (info: { threadId: string; sessionId: string }) => void;
+  /** Forward adapter events (tool/permission/reasoning) to the owning session. */
+  onDriverEvent?: (event: unknown) => void;
 }
 
 /** Map the app's legacy provider names to registered driver kinds. */
@@ -57,12 +59,13 @@ function createTextStreamShim(
   input: DriverLlmClientInput,
 ): LlmStreamClient {
   const threadId = input.threadId || `chat_${randomUUID()}`;
-  if (input.onEngineSession) {
+  if (input.onEngineSession || input.onDriverEvent) {
     instance.adapter.onEvent((event: unknown) => {
       const e = event as { type?: string; sessionId?: unknown };
       if (e.type === 'session.started' && typeof e.sessionId === 'string') {
         input.onEngineSession?.({ threadId, sessionId: e.sessionId });
       }
+      input.onDriverEvent?.(event);
     });
   }
   return {
