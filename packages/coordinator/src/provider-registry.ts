@@ -20,6 +20,7 @@ import { OpenRouterDriver } from "./providers/openrouter-driver.ts";
 import { AnthropicDriver } from "./providers/anthropic-driver.ts";
 import { ClaudeDriver } from "./providers/claude-driver.ts";
 import { CodexDriver } from "./providers/codex-driver.ts";
+import { OpenCodeDriver } from "./providers/opencode-driver.ts";
 
 /** A registered driver plus its resolved config type marker. */
 export interface RegisteredDriver<Config = unknown> extends ProviderDriver<Config> {
@@ -127,4 +128,4 @@ export class ProviderRegistry {
 export const providerRegistry = new ProviderRegistry();
 
 // Register built-in drivers (OpenMausBot's BUILT_IN_DRIVERS parity).
-providerRegistry.register(OpenRouterDriver, AnthropicDriver, ClaudeDriver, CodexDriver);
+providerRegistry.register(OpenRouterDriver, AnthropicDriver, ClaudeDriver, CodexDriver, OpenCodeDriver);
