@@ -16,6 +16,9 @@ import type {
   ProviderDriver,
   ProviderInstance,
 } from "@opensand/shared";
+import { OpenRouterDriver } from "./providers/openrouter-driver.ts";
+import { AnthropicDriver } from "./providers/anthropic-driver.ts";
+import { ClaudeDriver } from "./providers/claude-driver.ts";
 
 /** A registered driver plus its resolved config type marker. */
 export interface RegisteredDriver<Config = unknown> extends ProviderDriver<Config> {
@@ -119,20 +122,8 @@ export class ProviderRegistry {
   }
 }
 
-import type {
-  AnyProviderDriver,
-  DriverCreateInput,
-  DriverKind,
-  InstanceConfig,
-  InstanceId,
-  ProviderDriver,
-  ProviderInstance,
-} from "@opensand/shared";
-import { OpenRouterDriver } from "./providers/openrouter-driver.ts";
-import { AnthropicDriver } from "./providers/anthropic-driver.ts";
-
 /** Shared singleton registry used by the coordinator and desktop. */
 export const providerRegistry = new ProviderRegistry();
 
 // Register built-in drivers (OpenMausBot's BUILT_IN_DRIVERS parity).
-providerRegistry.register(OpenRouterDriver, AnthropicDriver);
+providerRegistry.register(OpenRouterDriver, AnthropicDriver, ClaudeDriver);
