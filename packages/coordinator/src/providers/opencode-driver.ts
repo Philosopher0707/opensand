@@ -178,7 +178,7 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeConfig> = {
       async refreshModels() {
         // OpenCode model catalog is static for now
       },
-      snapshot(): ProviderSnapshot {
+      async snapshot(): Promise<ProviderSnapshot> {
         return {
           instanceId: input.instanceId,
           driverKind: DRIVER_KIND,

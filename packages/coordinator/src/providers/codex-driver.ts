@@ -178,7 +178,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       async refreshModels() {
         // Codex model catalog is static for now
       },
-      snapshot(): ProviderSnapshot {
+      async snapshot(): Promise<ProviderSnapshot> {
         return {
           instanceId: input.instanceId,
           driverKind: DRIVER_KIND,

@@ -12,7 +12,6 @@ import type {
   ProviderInstance,
   ProviderSnapshot,
   SendTurnInput,
-  TextGenerationOptions,
   TextGenerationUsage,
 } from "@opensand/shared";
 
@@ -77,7 +76,7 @@ export const AnthropicDriver: ProviderDriver<AnthropicConfig> = {
       async refreshModels() {
         models = MODELS;
       },
-      snapshot(): ProviderSnapshot {
+      async snapshot(): Promise<ProviderSnapshot> {
         return {
           instanceId: input.instanceId,
           driverKind: DRIVER_KIND,
