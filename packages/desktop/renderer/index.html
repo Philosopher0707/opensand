@@ -723,10 +723,57 @@
             <div class="detail-bot-model-tag" id="detailBotModelTag">
               <span>Model:</span> <code id="detailBotModelCode">stealth/crouton-alpha</code>
             </div>
-            <div class="detail-prompt-label">System Instructions:</div>
             <div class="detail-prompt-preview" id="detailBotPromptPreview">
               Loading instructions...
             </div>
+          </div>
+        </section>
+
+        <!-- Editable engine & persona settings (per-bot provider/model parity) -->
+        <section class="detail-section" id="detailEngineSection">
+          <div class="detail-section-title">Engine &amp; Persona</div>
+          <div class="detail-engine-form">
+            <label class="detail-field">
+              <span>Provider</span>
+              <select id="detailProvider" class="detail-input">
+                <option value="">Follow global provider</option>
+              </select>
+            </label>
+            <label class="detail-field">
+              <span>Endpoint</span>
+              <input id="detailEndpoint" class="detail-input" type="text" placeholder="Provider default" />
+            </label>
+            <label class="detail-field">
+              <span>Model</span>
+              <span class="detail-field-row">
+                <input id="detailModel" class="detail-input" type="text" placeholder="Model id" />
+                <button id="btnDetailPickModel" class="btn btn-secondary btn-xs" type="button">Pick…</button>
+              </span>
+            </label>
+            <label class="detail-field">
+              <span>Role</span>
+              <input id="detailRole" class="detail-input" type="text" />
+            </label>
+            <div class="detail-field">
+              <span>Avatar color</span>
+              <div class="detail-swatches" id="detailColorSwatches">
+                <button type="button" data-color="#3b82f6" style="--swatch:#3b82f6" aria-label="Blue"></button>
+                <button type="button" data-color="#8b5cf6" style="--swatch:#8b5cf6" aria-label="Purple"></button>
+                <button type="button" data-color="#10b981" style="--swatch:#10b981" aria-label="Green"></button>
+                <button type="button" data-color="#f59e0b" style="--swatch:#f59e0b" aria-label="Amber"></button>
+                <button type="button" data-color="#ef4444" style="--swatch:#ef4444" aria-label="Red"></button>
+              </div>
+              <input id="detailLogoColor" type="hidden" />
+            </div>
+            <label class="detail-field">
+              <span>System instructions</span>
+              <textarea id="detailSystemPrompt" class="detail-input detail-textarea" rows="4"></textarea>
+            </label>
+            <label class="detail-field">
+              <span>Allowed tools (comma separated, empty = role defaults)</span>
+              <input id="detailAllowedTools" class="detail-input" type="text" placeholder="read_file, grep" />
+            </label>
+            <button id="btnDetailSave" class="btn btn-primary" type="button">Save bot settings</button>
           </div>
         </section>
 

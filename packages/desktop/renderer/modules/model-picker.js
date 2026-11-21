@@ -129,8 +129,11 @@ export function createModelPicker({ onPick, onOpenAuth }) {
       details.appendChild(endpointRow);
 
       if (current.auth) {
-        const auth = el('button', 'mp-auth-hint', 'Sign-in required — open provider auth');
+        const auth = el('button', 'mp-auth-hint');
         auth.type = 'button';
+        auth.textContent = state.botName
+          ? `${state.botName} can't run until ${current.displayName} is set up — open sign-in`
+          : `Sign-in required for ${current.displayName} — open provider auth`;
         auth.onclick = () => { close(); onOpenAuth?.(state.provider); };
         details.appendChild(auth);
       }
@@ -204,10 +207,11 @@ export function createModelPicker({ onPick, onOpenAuth }) {
     list.appendChild(save);
   }
 
-  async function open({ anchor, botId, provider, model, endpoint }) {
+  async function open({ anchor, botId, botName, provider, model, endpoint }) {
     close();
     state = {
       botId,
+      botName: botName || '',
       provider: provider || '',
       model: model || '',
       endpoint: endpoint || '',

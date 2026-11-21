@@ -307,6 +307,18 @@ class OpenSandClient {
     return res.json();
   }
 
+  async updateAgentProfile(id, updates) {
+    if (this.isElectron && window.opensand?.updateAgentProfile) {
+      return window.opensand.updateAgentProfile(id, updates);
+    }
+    const res = await fetch(`/api/agents/${encodeURIComponent(id)}/profile`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    return res.json();
+  }
+
   async updateAgentSettings(id, updates) {
     if (this.isElectron && window.opensand?.updateAgentSettings) {
       return window.opensand.updateAgentSettings(id, updates);
@@ -918,6 +930,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   const detailBotRole = document.getElementById('detailBotRole');
   const detailBotModelCode = document.getElementById('detailBotModelCode');
   const detailBotPromptPreview = document.getElementById('detailBotPromptPreview');
+  const detailProvider = document.getElementById('detailProvider');
+  const detailEndpoint = document.getElementById('detailEndpoint');
+  const detailModel = document.getElementById('detailModel');
+  const detailRole = document.getElementById('detailRole');
+  const detailSystemPrompt = document.getElementById('detailSystemPrompt');
+  const detailAllowedTools = document.getElementById('detailAllowedTools');
+  const detailLogoColor = document.getElementById('detailLogoColor');
+  const detailColorSwatches = document.getElementById('detailColorSwatches');
+  const btnDetailPickModel = document.getElementById('btnDetailPickModel');
+  const btnDetailSave = document.getElementById('btnDetailSave');
   const detailTokensUsed = document.getElementById('detailTokensUsed');
   const detailMeterFill = document.getElementById('detailMeterFill');
   const detailTokensMax = document.getElementById('detailTokensMax');
@@ -1460,6 +1482,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
+      // Engine & persona editor (only meaningful for a real bot).
+      if (detailProvider) {
+        if (!providerCatalog.length) {
+          try {
+            const res = await fetch('/api/providers');
+            const data = await res.json();
+            providerCatalog = Array.isArray(data.providers) ? data.providers : providerCatalog;
+          } catch { /* keep last known catalog */ }
+        }
+        const options = providerCatalog.map((provider) =>
+          `<option value="${escapeHtml(provider.kind)}">${escapeHtml(provider.displayName)}${provider.access === 'custom' ? ' (CLI)' : ''}</option>`).join('');
+        detailProvider.innerHTML = `<option value="">Follow global provider</option>${options}`;
+        detailProvider.value = current?.provider || '';
+        if (detailEndpoint) detailEndpoint.value = current?.endpoint || '';
+        if (detailModel) detailModel.value = current?.model || '';
+        if (detailRole) detailRole.value = current?.role || '';
+        if (detailSystemPrompt) detailSystemPrompt.value = current?.systemPrompt || '';
+        if (detailAllowedTools) detailAllowedTools.value = (current?.allowedTools || []).join(', ');
+        if (detailLogoColor) detailLogoColor.value = current?.logoColor || '#3b82f6';
+        if (detailColorSwatches) {
+          for (const swatch of detailColorSwatches.querySelectorAll('button')) {
+            swatch.classList.toggle('active', swatch.dataset.color === detailLogoColor.value);
+            swatch.onclick = () => {
+              detailLogoColor.value = swatch.dataset.color;
+              for (const other of detailColorSwatches.querySelectorAll('button')) other.classList.remove('active');
+              swatch.classList.add('active');
+            };
+          }
+        }
+      }
+      const engineSection = document.getElementById('detailEngineSection');
+      if (engineSection) engineSection.classList.toggle('hidden', !current);
+
       // 2. Token Telemetry Gauge
       const telemetry = await client.getTokenTelemetry(activeAgentId || undefined, currentSessionId || undefined);
       if (telemetry) {
@@ -1531,6 +1586,44 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       console.warn('Error refreshing detail panel:', err);
     }
+  }
+
+  if (btnDetailSave) {
+    btnDetailSave.onclick = async () => {
+      if (!activeAgentId) return;
+      const tools = (detailAllowedTools?.value || '').split(',').map((item) => item.trim()).filter(Boolean);
+      try {
+        await client.updateAgentSettings(activeAgentId, {
+          provider: detailProvider?.value || '',
+          model: (detailModel?.value || '').trim(),
+          endpoint: (detailEndpoint?.value || '').trim(),
+          allowedTools: tools,
+          logoColor: detailLogoColor?.value || undefined,
+        });
+        await client.updateAgentProfile(activeAgentId, {
+          role: (detailRole?.value || '').trim(),
+          systemPrompt: detailSystemPrompt?.value || '',
+        });
+        await refreshBots();
+        await refreshDetailPanel();
+        await refreshTemplates();
+      } catch (err) {
+        console.error('[detail] save failed:', err);
+      }
+    };
+  }
+  if (btnDetailPickModel) {
+    btnDetailPickModel.onclick = () => {
+      if (!activeAgentId) return;
+      const bot = { id: activeAgentId, name: detailBotName?.textContent || 'This bot', provider: detailProvider?.value, model: detailModel?.value, endpoint: detailEndpoint?.value };
+      void modelPicker.open({
+        anchor: btnDetailPickModel,
+        botId: bot.id,
+        provider: bot.provider || '',
+        model: bot.model || '',
+        endpoint: bot.endpoint || '',
+      });
+    };
   }
 
   // Session Actions in Detail Panel
@@ -1760,6 +1853,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const item = document.createElement('div');
       item.className = `bot-item ${activeAgentId === a.id ? 'active' : ''}`;
       item.dataset.status = activeAgentId === a.id ? 'active' : 'idle';
+      item.dataset.agentId = a.id;
       item.innerHTML = `
         <span class="bot-avatar-wrap">
           ${botAvatarMarkup(a)}
@@ -2309,6 +2403,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           </div>
           <div class="card-desc">${escapeHtml((a.systemPrompt || '').slice(0, 120))}...</div>
           <div class="card-meta">
+            <span class="badge badge-bot">${escapeHtml(a.provider || 'global')}</span>
             <span class="badge">Model: ${escapeHtml(a.model || 'default')}</span>
             <span class="badge">Tools: ${a.allowedTools ? a.allowedTools.length : 'All'}</span>
           </div>
@@ -5120,8 +5215,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const lastToolArgs = new Map();
 
+  function setBotCardStatus(agentId, status) {
+    if (!agentId) return;
+    const card = document.querySelector(`#botList .bot-item[data-agent-id="${CSS.escape(agentId)}"]`);
+    if (card) card.dataset.status = status;
+  }
+
   // Real-time Event Stream Handling
   client.onEvent((event) => {
+    if (event.type === 'session_started') setBotCardStatus(activeAgentId, 'busy');
+    if (['turn_complete', 'turn_cancelled', 'error'].includes(event.type)) {
+      setBotCardStatus(activeAgentId, 'active');
+    }
     // The board owns its panes' events while it is visible; the chat view must
     // not append a background session's tokens to its single open message.
     if (currentView === 'parallel') return;
@@ -6251,6 +6356,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     void modelPicker.open({
       anchor,
       botId: bot?.id || null,
+      botName: bot?.name || '',
       provider: bot?.provider || '',
       model: bot?.model || '',
       endpoint: bot?.endpoint || '',

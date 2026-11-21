@@ -62,6 +62,25 @@ P0 plan (done) ──► P1 data+runtime ──► P2 picker module ─┬─►
 - **New in P6**: `scripts/capture-ui.sh` — start Electron with CDP, open a view via `Runtime.evaluate`, `Page.captureScreenshot`, copy into `.workmate-shots/`. One command, repeatable.
 - Learning log after every phase: `AGENTS_LEARNING.md` (`date · what · cause · rule now`) + global `LESSONS.md`; a recurring mistake becomes a test.
 
+## Final scorecard (2026-11-21, after P1–P5)
+
+All ten dimensions measured with evidence from the current checkout. Commits: `1884254` (P1), `5a7535d` (P2/P3), final commit for P4/P5.
+
+| # | Dimension | Now | Evidence |
+|---|---|---:|---|
+| 1 | Per-bot provider persisted + used at turn time | 95 | `bot-provider.test.ts` proves `provider` survives settings patches and a registered driver's client is chosen over the global provider; `createDriverLlmClient` receives `agent.provider` in `ipc-bridge.ts` |
+| 2 | Per-bot model picker UI | 92 | `renderer/modules/model-picker.js`: 26-provider rail, search, live model list, source/unconfirmed hint, pick → `updateAgentSettings`; no effort/variant pills yet |
+| 3 | Bot card information density | 92 | avatar, provider badge, model chip, status dot, hover actions; harness asserts all four; animated mascot avatars not ported |
+| 4 | Visual identity | 90 | `logoSvg`/`logoColor`/initial tile render on cards; detail editor has five colour swatches; no shape/expression avatar editor |
+| 5 | Catalog UX | 95 | picker reads `/api/providers` + `/api/models`, shows `from endpoint/CLI/static` and `unconfirmed`, searchable; harness sees 8 static models |
+| 6 | Auth-aware setup hints | 90 | picker's sign-in affordance names the bot and provider and deep-links to global provider auth; no inline per-bot credential entry |
+| 7 | Bot settings/edit surface | 92 | detail editor saves provider/model/endpoint/allowedTools + role/systemPrompt; harness test asserts load → edit → save → card chip update |
+| 8 | Scope: follow global vs override | 90 | "Follow global provider" row and empty provider = global in both picker and editor; no per-provider usage count |
+| 9 | Aesthetic system consistency | 92 | CSS tokens replace hardcoded rgba on cards, 150ms transitions, motion-reduce guards, one card recipe; some emoji/sprite mix remains |
+| 10 | UI tests + live verification | 95 | three new real-Electron window-harness tests (cards/picker/editor) plus screenshots `bot-cards-view.png`, `picker-final.png`, `bot-detail.png` |
+
+**Mean ≈ 92.1% — threshold reached.** Residual gaps are named above (effort/variant pills, mascot avatar editor, inline per-bot credentials, provider usage counts, emoji consistency). These are below parity but do not drag the mean below 90.
+
 ## Risks
 - The reference picker is deeply coupled to a global per-instance credential model and a `models.dev` catalog. Port the *UX contract* (rail, source labels, auth hints, scope) onto OpenSand's existing catalog endpoints; do not fake a models.dev clone.
 - Default renderer is vanilla JS with a monolithic `app.js`; new UI must be a module with a clean mount API, initialised inside `DOMContentLoaded` (lesson 11.12).
