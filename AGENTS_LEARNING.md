@@ -242,3 +242,9 @@
 * **What happened:** After adding `provider` to `AgentRecord`, running `pnpm run build` from `packages/desktop` left the coordinator's `dist` stale; desktop compiled against old `.d.ts` files and failed with "Property 'provider' does not exist", while a direct Node check of the coordinator source worked.
 * **Cause:** A workspace package's local build does not rebuild sibling packages' dist; TypeScript project references resolved to stale declarations.
 * **Rule now:** After any change in `shared/` or `coordinator/`, run `pnpm run build` from the **workspace root**, then run the tests. Never debug a "missing field" type error before checking the dependency's dist timestamp.
+
+### 11.16 A capture script must pass HOME and consume each CDP reply once
+* **Date:** 2026-11-21
+* **What happened:** `scripts/capture-ui.sh` first launched Electron without forwarding `HOME`, so the seeded demo agent never appeared. After fixing that, it timed out because its Python loop consumed the `Runtime.evaluate` reply (id 1) and then waited for id 1 again after sending `Page.captureScreenshot`.
+* **Cause:** Environment passthrough was assumed, and the CDP reply loop was copied without tracking which ids were already consumed.
+* **Rule now:** For hermetic Electron runs set `HOME="$HOME_DIR"` on the launch command explicitly; a CDP script consumes each response id exactly once and lets the compositor paint (short sleep) before capture. Verify a captured image by reading it, not by trusting the JSON result.

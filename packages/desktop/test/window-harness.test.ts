@@ -341,6 +341,70 @@ test("Real-Window Harness: Parallel Board mounts independent panes", async (t) =
   assert.match(r.interactResult?.status || "", /3 pane/, "Status must reflect pane count");
 });
 
+test("Real-Window Harness: bot card provider chip and model picker", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-bot-card-home-"));
+  const agentPath = path.join(tmpHome, ".opensand", "agents");
+  fs.mkdirSync(agentPath, { recursive: true });
+  const now = Date.now();
+  fs.writeFileSync(path.join(agentPath, "agent_pickerbot_ab12cd34.json"), JSON.stringify({
+    id: "agent_pickerbot_ab12cd34",
+    name: "Picker Bot",
+    role: "Research Assistant",
+    systemPrompt: "You research things.",
+    kind: "AGENT",
+    model: "bot-model",
+    provider: "openrouter",
+    endpoint: "https://openrouter.ai/api/v1",
+    allowedTools: ["read_file"],
+    createdAt: now,
+    updatedAt: now,
+  }), "utf8");
+
+  const pickerScript = [
+    "(async () => {",
+    "  await new Promise((r) => setTimeout(r, 350));",
+    "  const chips = Array.from(document.querySelectorAll('#botList .bot-model-chip')).map((e) => e.textContent.trim());",
+    "  const btn = document.querySelector('#botList .btn-bot-model');",
+    "  btn?.click();",
+    "  await new Promise((r) => setTimeout(r, 500));",
+    "  const pop = document.querySelector('.mp-popover');",
+    "  const result = {",
+    "    chips,",
+    "    avatars: document.querySelectorAll('#botList .bot-avatar').length,",
+    "    providerBadges: Array.from(document.querySelectorAll('#botList .bot-provider-badge')).map((e) => e.textContent.trim()),",
+    "    statusDots: document.querySelectorAll('#botList .bot-status-dot').length,",
+    "    hasPicker: !!pop,",
+    "    railGroups: Array.from(pop?.querySelectorAll('.mp-rail-label') || []).map((e) => e.textContent.trim()),",
+    "    railCount: pop?.querySelectorAll('.mp-rail-item').length || 0,",
+    "    hasSearch: !!pop?.querySelector('.mp-search'),",
+    "    source: pop?.querySelector('.mp-source')?.textContent || '',",
+    "    hasFollow: !!pop?.querySelector('.mp-follow'),",
+    "    saveLabel: pop?.querySelector('.mp-save')?.textContent || '',",
+    "  };",
+    "  document.querySelector('.mp-backdrop')?.remove();",
+    "  return result;",
+    "})()",
+  ].join("\n");
+
+  try {
+    const r = await runHarness("default", { home: tmpHome, interactScript: pickerScript });
+    if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
+    const result = r.interactResult || {};
+    assert.ok((result.chips || []).some((c: string) => c.includes('openrouter')), `bot card must show provider chip (${JSON.stringify(result)})`);
+    assert.ok(result.avatars >= 2, `every bot card needs an avatar (${JSON.stringify(result)})`);
+    assert.ok((result.providerBadges || []).includes('O'), `bot card needs a provider badge (${JSON.stringify(result)})`);
+    assert.ok(result.statusDots >= 2, `bot card needs a status dot (${JSON.stringify(result)})`);
+    assert.strictEqual(result.hasPicker, true, `clicking the bot model button must open the picker (${JSON.stringify(result)})`);
+    assert.ok(result.railCount >= 3, `provider rail must be populated from the catalog (${JSON.stringify(result)})`);
+    assert.ok((result.railGroups || []).length >= 1, `rail must group providers (${JSON.stringify(result)})`);
+    assert.strictEqual(result.hasSearch, true, "picker must expose model search");
+    assert.strictEqual(result.hasFollow, true, "picker must offer the follow-global choice");
+    assert.match(result.saveLabel || '', /Use this model/);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test("Real-Window Harness: Preact shell frame seeded sessions & search (960x740 and 1920x1080)", async (t) => {
   const built = fs.existsSync(path.join(pkgRoot, "dist", "renderer-next", "index.html"));
   if (!built) {

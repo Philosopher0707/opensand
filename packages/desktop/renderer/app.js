@@ -6,6 +6,7 @@ import { renderMarkdown, renderMarkdownCached, escapeHtml } from './modules/chat
 import { createApprovalQueue } from './modules/chat/approval-queue.js';
 import { createArtifactCanvas } from './modules/chat/canvas.js';
 import { initParallelBoard } from './modules/parallel-board.js';
+import { createModelPicker } from './modules/model-picker.js';
 
 // Native title bar is hiddenInset on macOS; CSS keys traffic-light clearance off this.
 // Detected via userAgent for instant CSS styling, and via window.opensand for IPC bridge.
@@ -302,6 +303,18 @@ class OpenSandClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(agent),
+    });
+    return res.json();
+  }
+
+  async updateAgentSettings(id, updates) {
+    if (this.isElectron && window.opensand?.updateAgentSettings) {
+      return window.opensand.updateAgentSettings(id, updates);
+    }
+    const res = await fetch(`/api/agents/${encodeURIComponent(id)}/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
     });
     return res.json();
   }
@@ -1706,17 +1719,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  function botAvatarMarkup(bot) {
+    const color = /^#[0-9a-fA-F]{3,8}$/.test(bot.logoColor || '') ? bot.logoColor : 'var(--accent)';
+    if (bot.logoSvg) {
+      return `<span class="bot-avatar" style="--bot-tint:${color}">${bot.logoSvg}</span>`;
+    }
+    const initial = escapeHtml((bot.name || '?').trim().charAt(0).toUpperCase());
+    return `<span class="bot-avatar" style="--bot-tint:${color}">${initial}</span>`;
+  }
+
+  function providerBadgeMarkup(bot) {
+    const provider = bot.provider || 'global';
+    const glyph = escapeHtml(provider.charAt(0).toUpperCase());
+    return `<span class="bot-provider-badge" title="${escapeHtml(provider)}">${glyph}</span>`;
+  }
+
   async function refreshBots() {
     const agents = await client.getAgents();
     botList.innerHTML = '';
 
     const defaultItem = document.createElement('div');
     defaultItem.className = `bot-item ${activeAgentId === null ? 'active' : ''}`;
+    defaultItem.dataset.status = activeAgentId === null ? 'active' : 'idle';
     defaultItem.innerHTML = `
-      <span class="bot-icon">${uiIcon('bot')}</span>
+      <span class="bot-avatar default-avatar">${uiIcon('bot')}</span>
       <div class="bot-item-info">
         <span class="bot-item-name">Default Assistant</span>
+        <span class="bot-model-chip">global · default</span>
       </div>
+      <span class="bot-status-dot" aria-hidden="true"></span>
     `;
     defaultItem.onclick = () => {
       activeAgentId = null;
@@ -1728,22 +1759,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     for (const a of agents) {
       const item = document.createElement('div');
       item.className = `bot-item ${activeAgentId === a.id ? 'active' : ''}`;
-      const icon = uiIcon(a.kind === 'ROOM' ? 'users' : 'spark');
+      item.dataset.status = activeAgentId === a.id ? 'active' : 'idle';
       item.innerHTML = `
-        <span class="bot-icon">${icon}</span>
+        <span class="bot-avatar-wrap">
+          ${botAvatarMarkup(a)}
+          ${providerBadgeMarkup(a)}
+        </span>
         <div class="bot-item-info">
           <span class="bot-item-name">${escapeHtml(a.name)}</span>
           ${a.role ? `<span class="bot-item-role">${escapeHtml(a.role)}</span>` : ''}
+          <span class="bot-model-chip" title="Provider & model">${escapeHtml(a.provider || 'global')} · ${escapeHtml(a.model || 'default')}</span>
         </div>
+        <span class="bot-status-dot" aria-hidden="true"></span>
+        <button class="btn-bot-model" title="Choose provider & model" data-bot-id="${escapeHtml(a.id)}" aria-label="Choose provider and model">${uiIcon('spark')}</button>
         <button class="btn-delete-bot" title="Delete bot" data-bot-id="${escapeHtml(a.id)}" aria-label="Delete bot">${uiIcon('trash')}</button>
       `;
       item.title = a.role || a.name;
       item.onclick = (e) => {
-        if (e.target.closest('.btn-delete-bot')) return;
+        if (e.target.closest('.btn-delete-bot') || e.target.closest('.btn-bot-model')) return;
         activeAgentId = a.id;
         badgeActiveBot.textContent = a.name;
         persistAgent();
       };
+
+      const modelBtn = item.querySelector('.btn-bot-model');
+      if (modelBtn) {
+        modelBtn.onclick = (e) => {
+          e.stopPropagation();
+          openBotModelPicker(a, modelBtn);
+        };
+      }
 
       const delBtn = item.querySelector('.btn-delete-bot');
       if (delBtn) {
@@ -6166,4 +6211,49 @@ document.addEventListener('DOMContentLoaded', async () => {
     getAgentId: () => activeAgentId,
   });
   client.onEvent((event) => parallelBoard.handleEvent(event));
+
+  // Per-bot model picker. One shared popover; bot cards are its entry points.
+  const modelPicker = createModelPicker({
+    onPick: async ({ botId, provider, model, endpoint }) => {
+      try {
+        if (botId) {
+          await client.updateAgentSettings(botId, {
+            provider: provider || '',
+            model,
+            ...(endpoint ? { endpoint } : {}),
+          });
+          await refreshBots();
+          if (currentView === 'templates') void refreshTemplates();
+        } else if (provider) {
+          await client.updateSettings({
+            provider,
+            model,
+            ...(endpoint ? { endpoint } : {}),
+          });
+        }
+        refreshDetailPanel();
+      } catch (err) {
+        console.error('[model-picker] save failed:', err);
+      }
+    },
+    onOpenAuth: (provider) => {
+      void btnSettings.onclick?.();
+      window.setTimeout(() => {
+        if (provider && settingProvider) {
+          settingProvider.value = provider;
+          updateProviderAuthPanel?.(provider);
+        }
+      }, 60);
+    },
+  });
+
+  function openBotModelPicker(bot, anchor) {
+    void modelPicker.open({
+      anchor,
+      botId: bot?.id || null,
+      provider: bot?.provider || '',
+      model: bot?.model || '',
+      endpoint: bot?.endpoint || '',
+    });
+  }
 });
