@@ -405,6 +405,63 @@ test("Real-Window Harness: bot card provider chip and model picker", async (t) =
   }
 });
 
+test("Real-Window Harness: bot settings editor saves provider and model", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-bot-settings-home-"));
+  const agentPath = path.join(tmpHome, ".opensand", "agents");
+  fs.mkdirSync(agentPath, { recursive: true });
+  const now = Date.now();
+  fs.writeFileSync(path.join(agentPath, "agent_settingsbot_ab12cd34.json"), JSON.stringify({
+    id: "agent_settingsbot_ab12cd34",
+    name: "Settings Bot",
+    role: "Research Assistant",
+    systemPrompt: "You research things.",
+    kind: "AGENT",
+    model: "original-model",
+    provider: "openrouter",
+    endpoint: "https://openrouter.ai/api/v1",
+    allowedTools: ["read_file"],
+    createdAt: now,
+    updatedAt: now,
+  }), "utf8");
+
+  const editorScript = [
+    "(async () => {",
+    "  await new Promise((r) => setTimeout(r, 350));",
+    "  const rows = document.querySelectorAll('#botList .bot-item');",
+    "  rows[1]?.click();",
+    "  await new Promise((r) => setTimeout(r, 150));",
+    "  document.getElementById('btnToggleDetail')?.click();",
+    "  await new Promise((r) => setTimeout(r, 450));",
+    "  const before = {",
+    "    provider: document.getElementById('detailProvider')?.value || '',",
+    "    model: document.getElementById('detailModel')?.value || '',",
+    "    role: document.getElementById('detailRole')?.value || '',",
+    "    sectionVisible: !document.getElementById('detailEngineSection')?.classList.contains('hidden'),",
+    "  };",
+    "  const model = document.getElementById('detailModel');",
+    "  if (model) model.value = 'patched-model-xyz';",
+    "  document.getElementById('btnDetailSave')?.click();",
+    "  await new Promise((r) => setTimeout(r, 450));",
+    "  return { before, after: document.getElementById('detailModel')?.value || '',",
+    "    chip: Array.from(document.querySelectorAll('#botList .bot-model-chip')).map((e) => e.textContent.trim()),",
+    "  };",
+    "})()",
+  ].join("\n");
+
+  try {
+    const r = await runHarness("default", { home: tmpHome, interactScript: editorScript });
+    if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
+    const result = r.interactResult || {};
+    assert.strictEqual(result.before?.provider, 'openrouter', `editor must load the bot provider (${JSON.stringify(result)})`);
+    assert.strictEqual(result.before?.model, 'original-model', `editor must load the bot model (${JSON.stringify(result)})`);
+    assert.strictEqual(result.before?.sectionVisible, true, "engine section must be visible for a real bot");
+    assert.strictEqual(result.after, 'patched-model-xyz', `save must keep the new model (${JSON.stringify(result)})`);
+    assert.ok((result.chip || []).some((c: string) => c.includes('patched-model-xyz')), `card chip must update after save (${JSON.stringify(result)})`);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test("Real-Window Harness: Preact shell frame seeded sessions & search (960x740 and 1920x1080)", async (t) => {
   const built = fs.existsSync(path.join(pkgRoot, "dist", "renderer-next", "index.html"));
   if (!built) {
