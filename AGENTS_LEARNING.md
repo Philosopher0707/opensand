@@ -243,6 +243,12 @@
 * **Cause:** A workspace package's local build does not rebuild sibling packages' dist; TypeScript project references resolved to stale declarations.
 * **Rule now:** After any change in `shared/` or `coordinator/`, run `pnpm run build` from the **workspace root**, then run the tests. Never debug a "missing field" type error before checking the dependency's dist timestamp.
 
+### 11.17 Deferred credentials and cached coordinators both go stale
+* **Date:** 2026-11-21
+* **What happened:** The live chat showed a delegate failing with 401 at OpenRouter while the parent assistant worked. `registerOrchestratorTools` captured `defaultApiKey: this.settings.apiKey` in the bridge constructor, but vault key resolution is deferred to first use — the delegate kept `"none"` forever. Separately, changing a bot's model/provider in the UI persisted correctly but the cached per-session coordinator kept the old LLM client, so the next turn still used the old model.
+* **Cause:** A startup snapshot of an asynchronously resolved value, and a settings write that did not invalidate derived state.
+* **Rule now:** Any value resolved after construction (API key, provider, endpoint) is passed to long-lived helpers as a getter (`resolveApiKey: () => this.settings.apiKey`), never as a captured string. Every agent settings/profile write invalidates cached coordinators for that agent so the next turn rebuilds the client. Test both with a fake driver: assert the delegate's Authorization header and that a provider change changes the coordinator's client.
+
 ### 11.16 A capture script must pass HOME and consume each CDP reply once
 * **Date:** 2026-11-21
 * **What happened:** `scripts/capture-ui.sh` first launched Electron without forwarding `HOME`, so the seeded demo agent never appeared. After fixing that, it timed out because its Python loop consumed the `Runtime.evaluate` reply (id 1) and then waited for id 1 again after sending `Page.captureScreenshot`.

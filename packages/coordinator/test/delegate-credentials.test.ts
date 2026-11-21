@@ -109,6 +109,81 @@ describe("delegate production wiring", () => {
     }
   });
 
+  it("uses the live key getter, not the startup snapshot, for delegate credentials", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-delegate-livekey-"));
+    let authorization = "";
+    const server = http.createServer((req, res) => {
+      authorization = String(req.headers.authorization ?? "");
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end("data: " + JSON.stringify({ choices: [{ delta: { content: "ok" } }] }) + "\n\ndata: [DONE]\n\n");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const port = (server.address() as any).port;
+    const models = { default: "live-1", options: [{ id: "live-1", label: "Live" }] };
+    const driver: ProviderDriver = {
+      driverKind: "fake-live-driver",
+      metadata: { displayName: "Fake Live", access: "api" },
+      models,
+      decodeConfig: (raw) => raw,
+      defaultConfig: () => ({ apiKeyEnv: "TEST_LIVE_KEY" }),
+      async create(input) {
+        const env = (input.environment ?? {}) as Record<string, string>;
+        return {
+          instanceId: input.instanceId,
+          driverKind: "fake-live-driver",
+          displayName: input.displayName,
+          enabled: input.enabled,
+          models,
+          adapter: {
+            provider: "fake-live-driver",
+            capabilities: {},
+            async sendTurn() { return { text: "", toolCalls: [] }; },
+            steer: () => Promise.resolve(),
+            interruptTurn: () => Promise.resolve(),
+            respondToRequest: () => Promise.resolve("unavailable" as const),
+            hasSession: () => false,
+            enginePid: () => undefined,
+            stopAll: () => Promise.resolve(),
+            onEvent: () => () => {},
+          },
+          createLlmClient: () => new UniversalLLMClient({
+            baseUrl: `http://127.0.0.1:${port}/v1`,
+            model: "live-1",
+            apiKey: env.TEST_LIVE_KEY,
+          }),
+          snapshot: async () => ({ instanceId: input.instanceId, driverKind: "fake-live-driver", enabled: input.enabled }),
+          dispose: () => Promise.resolve(),
+        };
+      },
+    };
+    providerRegistry.register(driver);
+    const daemon = new LocalExecDaemon({ stateDir: path.join(tmpDir, "state") });
+    await daemon.start();
+    await daemon.state.writePermissionGates({ computerUseAllowed: true });
+    try {
+      const store = new AgentStore(path.join(tmpDir, "agents"));
+      registerOrchestratorTools({
+        daemon,
+        store,
+        defaultEndpoint: `http://127.0.0.1:${port}/v1`,
+        defaultModel: "live-1",
+        defaultApiKey: "none",
+        defaultProvider: "fake-live-driver",
+        resolveApiKey: () => "live-vault-key-xyz",
+        sessionsBaseDir: path.join(tmpDir, "sessions"),
+      });
+      const agent = await store.createAgent({ name: "Live Bot", role: "Assistant", systemPrompt: "x" });
+      const result = await daemon.executeTool("delegate_to_agent", { agent_id_or_name: agent.id, task: "work" });
+      assert.strictEqual(result.status, "ok");
+      assert.strictEqual(authorization, "Bearer live-vault-key-xyz", "delegate must use the live key, not the startup snapshot");
+    } finally {
+      await daemon.stop();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      await providerRegistry.disposeAll();
+    }
+  });
+
   it("propagates parent cancellation to the child and bounds the delegation registry", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-delegate-lifecycle-"));
     let mode: "hang" | "fast" = "hang";

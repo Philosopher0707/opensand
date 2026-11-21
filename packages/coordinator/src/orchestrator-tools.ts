@@ -64,6 +64,14 @@ export interface RegisterOrchestratorToolsOptions {
   defaultApiKey?: string;
   /** Provider selected in app settings; used to resolve the delegate's driver/key. */
   defaultProvider?: string;
+  /**
+   * Live getters for values that are resolved asynchronously after startup.
+   * Static defaults alone go stale (vault key resolution happens on first use),
+   * which makes delegates 401 while the main turn uses the fresh value.
+   */
+  resolveApiKey?: () => string | undefined;
+  resolveProvider?: () => string | undefined;
+  resolveEndpoint?: () => string | undefined;
   sessionsBaseDir?: string;
   repoRoot?: string;
 }
@@ -309,18 +317,19 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       // keys (e.g. OPENROUTER_API_KEY) and configured driver endpoints must
       // work for delegates too, not just for the parent assistant.
       const subagentModel = resolveAgentModel(agent.model, options.defaultModel);
-      const subagentEndpoint = agent.endpoint || options.defaultEndpoint || "http://127.0.0.1:11434/v1";
+      const liveApiKey = options.resolveApiKey?.() ?? options.defaultApiKey;
+      const subagentEndpoint = agent.endpoint || options.resolveEndpoint?.() || options.defaultEndpoint || "http://127.0.0.1:11434/v1";
       let delegateInstanceId: string | undefined;
       const subagentLlm = (await createDriverLlmClient({
-        provider: agent.provider || options.defaultProvider || "",
+        provider: agent.provider || options.resolveProvider?.() || options.defaultProvider || "",
         endpoint: subagentEndpoint,
         model: subagentModel,
-        apiKey: options.defaultApiKey,
+        apiKey: liveApiKey,
         onInstance: (id) => { delegateInstanceId = id; },
       })) ?? new UniversalLLMClient({
         baseUrl: subagentEndpoint,
         model: subagentModel,
-        apiKey: options.defaultApiKey,
+        apiKey: liveApiKey,
       });
 
       const effectiveAllowedTools = resolveRoleAllowedTools(agent.role, agent.allowedTools);

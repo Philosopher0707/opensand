@@ -238,6 +238,9 @@ export class DesktopIpcBridge extends EventEmitter {
       defaultModel: this.settings.model,
       defaultApiKey: this.settings.apiKey,
       defaultProvider: this.settings.provider,
+      resolveApiKey: () => this.settings.apiKey,
+      resolveProvider: () => this.settings.provider,
+      resolveEndpoint: () => this.settings.endpoint,
       sessionsBaseDir: path.join(this.baseDir, 'sessions'),
     });
 
@@ -1036,12 +1039,31 @@ export class DesktopIpcBridge extends EventEmitter {
     return this.agentStore.deleteAgent(id);
   }
 
+  /** A model/provider change must reach the next turn, not stay cached in the old coordinator. */
+  private invalidateAgentCoordinators(agentId: string): void {
+    const suffix = `:${agentId}`;
+    for (const key of [...this.coordinatorMap.keys()]) {
+      if (!key.endsWith(suffix)) continue;
+      this.coordinatorMap.delete(key);
+      const runtime = this.sessionRuntimes.get(key);
+      if (runtime && !runtime.running) this.sessionRuntimes.remove(key);
+    }
+    if (this.activeAgentId === agentId) {
+      this.activeAgentId = undefined;
+      this.coordinator = null;
+    }
+  }
+
   public async updateAgentSettings(id: string, updates: any): Promise<any> {
-    return this.agentStore.updateAgentSettings(id, updates);
+    const updated = await this.agentStore.updateAgentSettings(id, updates);
+    this.invalidateAgentCoordinators(id);
+    return updated;
   }
 
   public async updateAgentProfile(id: string, updates: any): Promise<any> {
-    return this.agentStore.updateAgentProfile(id, updates);
+    const updated = await this.agentStore.updateAgentProfile(id, updates);
+    this.invalidateAgentCoordinators(id);
+    return updated;
   }
 
   public async listProfileChanges(agentId: string): Promise<any[]> {
@@ -1053,7 +1075,9 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async updateAgentApproval(id: string, updates: { approvalMode?: "ask" | "custom" | "allow"; autoApprove?: boolean; alwaysAllow?: string[] }): Promise<any> {
-    return this.agentStore.updateAgentApproval(id, updates);
+    const updated = await this.agentStore.updateAgentApproval(id, updates);
+    this.invalidateAgentCoordinators(id);
+    return updated;
   }
 
   public async updateAgentSection(id: string, updates: { section?: string; chiefOfStaff?: boolean; managedSections?: string[]; createdBy?: string; reportsTo?: string; visibility?: "everyone" | "admins" | { people: string[] } }): Promise<any> {
