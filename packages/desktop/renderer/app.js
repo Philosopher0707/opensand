@@ -7,6 +7,9 @@ import { createApprovalQueue } from './modules/chat/approval-queue.js';
 import { createArtifactCanvas } from './modules/chat/canvas.js';
 import { initParallelBoard } from './modules/parallel-board.js';
 import { createModelPicker } from './modules/model-picker.js';
+import { createSessionBuffers } from './modules/session-buffers.js';
+import { createBotRail, setBotCardBadge, setBotCardStatus } from './modules/bot-rail.js';
+import { openBotIdentity, safeAvatarMarkup } from './modules/bot-identity.js';
 
 // Native title bar is hiddenInset on macOS; CSS keys traffic-light clearance off this.
 // Detected via userAgent for instant CSS styling, and via window.opensand for IPC bridge.
@@ -1308,6 +1311,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     refreshDetailPanel();
   }
 
+  // Per-bot sessions + compact rail. Built here, inside DOMContentLoaded, so
+  // every refreshBots() call during boot sees an initialized renderer.
+  const sessionBuffers = createSessionBuffers();
+  const botRail = createBotRail({
+    buffers: sessionBuffers,
+    getAgents: () => client.getAgents(),
+    getActiveAgentId: () => activeAgentId,
+    onIdentity: (bot, anchor) => openBotIdentity({
+      bot,
+      anchor,
+      onSave: async (patch) => {
+        await client.updateAgentSettings(bot.id, patch);
+        await refreshBots();
+      },
+    }),
+    onModel: (bot, anchor) => openBotModelPicker(bot, anchor),
+    onDelete: async (bot) => {
+      await client.deleteAgent(bot.id);
+      if (activeAgentId === bot.id) {
+        activeAgentId = null;
+        badgeActiveBot.textContent = 'Default Assistant';
+      }
+      await refreshBots();
+      refreshTokenBadge();
+      localStorage.removeItem(AGENT_KEY);
+      refreshTemplates();
+    },
+    onSelect: (bot) => {
+      activeAgentId = bot?.id || null;
+      void selectSession(bot ? 'bot_' + bot.id : null);
+      badgeActiveBot.textContent = bot ? bot.name : 'Default Assistant';
+      persistAgent();
+    },
+  });
+  window.__railState = {
+    buffers: sessionBuffers,
+    getActive: () => ({ currentSessionId, activeAgentId }),
+    emit: (event) => client.dispatch(event),
+    refresh: () => refreshBots(),
+  };
+
   // Restore saved session + bot (validated against live lists in boot)
   currentSessionId = localStorage.getItem(SESSION_KEY) || null;
   activeAgentId = localStorage.getItem(AGENT_KEY) || null;
@@ -1467,7 +1511,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const agents = await client.getAgents();
       const current = agents.find((a) => a.id === activeAgentId);
       if (current) {
-        if (detailBotAvatar) detailBotAvatar.innerHTML = uiIcon(current.kind === 'ROOM' ? 'users' : 'spark');
+        if (detailBotAvatar) detailBotAvatar.innerHTML = safeAvatarMarkup(current) || uiIcon(current.kind === 'ROOM' ? 'users' : 'spark');
         if (detailBotName) detailBotName.textContent = current.name;
         if (detailBotRole) detailBotRole.textContent = current.role || 'Autonomous Specialist';
         if (detailBotModelCode) detailBotModelCode.textContent = current.model || badgeModel?.textContent || 'stealth/crouton-alpha';
@@ -1812,97 +1856,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  function botAvatarMarkup(bot) {
-    const color = /^#[0-9a-fA-F]{3,8}$/.test(bot.logoColor || '') ? bot.logoColor : 'var(--accent)';
-    if (bot.logoSvg) {
-      return `<span class="bot-avatar" style="--bot-tint:${color}">${bot.logoSvg}</span>`;
-    }
-    const initial = escapeHtml((bot.name || '?').trim().charAt(0).toUpperCase());
-    return `<span class="bot-avatar" style="--bot-tint:${color}">${initial}</span>`;
-  }
-
-  function providerBadgeMarkup(bot) {
-    const provider = bot.provider || 'global';
-    const glyph = escapeHtml(provider.charAt(0).toUpperCase());
-    return `<span class="bot-provider-badge" title="${escapeHtml(provider)}">${glyph}</span>`;
-  }
-
+  // The rail renderer lives in modules/bot-rail.js; refreshBots stays as the
+  // shared entry point so every existing caller keeps working unchanged.
   async function refreshBots() {
-    const agents = await client.getAgents();
-    botList.innerHTML = '';
-
-    const defaultItem = document.createElement('div');
-    defaultItem.className = `bot-item ${activeAgentId === null ? 'active' : ''}`;
-    defaultItem.dataset.status = activeAgentId === null ? 'active' : 'idle';
-    defaultItem.innerHTML = `
-      <span class="bot-avatar default-avatar">${uiIcon('bot')}</span>
-      <div class="bot-item-info">
-        <span class="bot-item-name">Default Assistant</span>
-        <span class="bot-model-chip">global · default</span>
-      </div>
-      <span class="bot-status-dot" aria-hidden="true"></span>
-    `;
-    defaultItem.onclick = () => {
-      activeAgentId = null;
-      badgeActiveBot.textContent = 'Default Assistant';
-      persistAgent();
-    };
-    botList.appendChild(defaultItem);
-
-    for (const a of agents) {
-      const item = document.createElement('div');
-      item.className = `bot-item ${activeAgentId === a.id ? 'active' : ''}`;
-      item.dataset.status = activeAgentId === a.id ? 'active' : 'idle';
-      item.dataset.agentId = a.id;
-      item.innerHTML = `
-        <span class="bot-avatar-wrap">
-          ${botAvatarMarkup(a)}
-          ${providerBadgeMarkup(a)}
-        </span>
-        <div class="bot-item-info">
-          <span class="bot-item-name">${escapeHtml(a.name)}</span>
-          ${a.role ? `<span class="bot-item-role">${escapeHtml(a.role)}</span>` : ''}
-          <span class="bot-model-chip" title="Provider & model">${escapeHtml(a.provider || 'global')} · ${escapeHtml(a.model || 'default')}</span>
-        </div>
-        <span class="bot-status-dot" aria-hidden="true"></span>
-        <button class="btn-bot-model" title="Choose provider & model" data-bot-id="${escapeHtml(a.id)}" aria-label="Choose provider and model">${uiIcon('spark')}</button>
-        <button class="btn-delete-bot" title="Delete bot" data-bot-id="${escapeHtml(a.id)}" aria-label="Delete bot">${uiIcon('trash')}</button>
-      `;
-      item.title = a.role || a.name;
-      item.onclick = (e) => {
-        if (e.target.closest('.btn-delete-bot') || e.target.closest('.btn-bot-model')) return;
-        activeAgentId = a.id;
-        badgeActiveBot.textContent = a.name;
-        persistAgent();
-      };
-
-      const modelBtn = item.querySelector('.btn-bot-model');
-      if (modelBtn) {
-        modelBtn.onclick = (e) => {
-          e.stopPropagation();
-          openBotModelPicker(a, modelBtn);
-        };
-      }
-
-      const delBtn = item.querySelector('.btn-delete-bot');
-      if (delBtn) {
-        delBtn.onclick = async (e) => {
-          e.stopPropagation();
-          if (confirm(`Are you sure you want to delete bot "${a.name}"?`)) {
-            await client.deleteAgent(a.id);
-            if (activeAgentId === a.id) {
-              activeAgentId = null;
-              badgeActiveBot.textContent = 'Default Assistant';
-            }
-            refreshBots();
-            refreshTokenBadge();
-            localStorage.removeItem(AGENT_KEY);
-            refreshTemplates();
-          }
-        };
-      }
-      botList.appendChild(item);
-    }
+    await botRail.render();
   }
 
   async function refreshTasks() {
@@ -4016,124 +3973,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // --- Subagent Activity Cards (delegate_to_agent live view) ---
-  function getOrCreateSubagentCard(subagent) {
-    if (!currentAssistantMessage || !subagent || !subagent.sessionId) return null;
-    const key = subagent.sessionId;
-    if (!currentAssistantMessage._subagentCards) currentAssistantMessage._subagentCards = new Map();
-    let card = currentAssistantMessage._subagentCards.get(key);
-    if (card) return card;
-    const depth = Math.max(0, Math.min(3, Number(subagent.depth) || 0));
-    const cardEl = document.createElement("div");
-    cardEl.className = "subagent-card subagent-depth-" + depth;
-    cardEl.dataset.subagentSessionId = key;
-    const name = subagent.agentName || subagent.agentId || "Subagent";
-    const role = subagent.role ? " · " + subagent.role : "";
-    const task = subagent.task ? String(subagent.task).slice(0, 160) : "";
-    cardEl.innerHTML = '<div class="subagent-card-header">'
-      + '<span class="subagent-card-icon">🤖</span>'
-      + '<span class="subagent-card-name">' + escapeHtml(name + role) + '</span>'
-      + '<span class="subagent-card-status tool-line-badge badge-running">Running</span>'
-      + (task ? '<span class="subagent-card-task" title="' + escapeHtml(task) + '">' + escapeHtml(task) + '</span>' : "")
-      + '</div>'
-      + '<div class="subagent-card-thought"></div>'
-      + '<div class="subagent-card-text message-content subagent-text-block"></div>'
-      + '<div class="subagent-card-tools"></div>';
-    // Nested delegations render inside their parent card when the parent
-    // already exists (depth >= 1); direct children mount at the message root.
-    const parentCard = subagent.parentSessionId ? currentAssistantMessage._subagentCards.get(subagent.parentSessionId) : null;
-    if (parentCard && parentCard.toolsEl) {
-      parentCard.toolsEl.appendChild(cardEl);
-    } else {
-      currentAssistantMessage.body.insertBefore(cardEl, currentAssistantMessage.actionsEl);
-    }
-    if (!currentAssistantMessage._subagentCards) currentAssistantMessage._subagentCards = new Map();
-    card = {
-      element: cardEl,
-      thoughtEl: cardEl.querySelector(".subagent-card-thought"),
-      textEl: cardEl.querySelector(".subagent-card-text"),
-      toolsEl: cardEl.querySelector(".subagent-card-tools"),
-      statusEl: cardEl.querySelector(".subagent-card-status"),
-      toolLines: [],
-      thoughtText: "",
-      segmentText: "",
-      done: false,
-      children: new Map(),
-    };
-    currentAssistantMessage._subagentCards.set(key, card);
-    return card;
-  }
-
-  function setSubagentCardStatus(card, text, kind) {
-    if (!card || !card.statusEl) return;
-    card.statusEl.textContent = text;
-    card.statusEl.className = "subagent-card-status tool-line-badge " + (kind || "badge-running");
-  }
-
-  function handleSubagentEvent(subagent, inner) {
-    if (!inner || !inner.type) return;
-    const card = getOrCreateSubagentCard(subagent);
-    if (!card || card.done) return;
-    smartScrollToBottom();
-    switch (inner.type) {
-      case "text_delta": {
-        const delta = inner.text || "";
-        if (!delta) return;
-        card.segmentText += delta;
-        card.textEl.innerHTML = renderMarkdownCached(card.segmentText);
-        setSubagentCardStatus(card, "Generating…", "badge-running");
-        break;
-      }
-      case "thought_delta": {
-        card.thoughtText += inner.text || "";
-        renderThoughtBlock(card.thoughtEl, card.thoughtText, true);
-        setSubagentCardStatus(card, "Thinking…", "badge-running");
-        break;
-      }
-      case "phase_started": {
-        setSubagentCardStatus(card, inner.phase === "executing" ? "Executing…" : "Thinking…", "badge-running");
-        break;
-      }
-      case "tool_call_started": {
-        const toolCall = inner.toolCall || inner.data || inner;
-        const toolEl = createToolLineElement(toolCall, "running");
-        card.toolLines.push(toolEl);
-        card.toolsEl.appendChild(toolEl);
-        const toolName = toolCall.function?.name || toolCall.name || "tool";
-        setSubagentCardStatus(card, "Running " + toolName + "…", "badge-running");
-        break;
-      }
-      case "tool_call_completed": {
-        const toolName = inner.toolCall?.function?.name || inner.toolCall?.name || inner.name;
-        const result = inner.result !== undefined ? (inner.result.output !== undefined ? inner.result.output : inner.result) : (inner.data && inner.data.result);
-        const targetEl = card.toolLines.find(function(el) { return el.classList.contains("tool-line-running") && (!toolName || el.dataset.toolName === toolName); })
-          || card.toolLines.find(function(el) { return el.classList.contains("tool-line-running"); });
-        if (targetEl) updateToolLineStatus(targetEl, "done", result);
-        setSubagentCardStatus(card, "Processing…", "badge-running");
-        break;
-      }
-      case "turn_completed": {
-        card.done = true;
-        card.textEl.innerHTML = renderMarkdown(inner.finalContent || card.segmentText || "Done");
-        if (card.thoughtText) renderThoughtBlock(card.thoughtEl, card.thoughtText, false);
-        setSubagentCardStatus(card, "Done", "badge-done");
-        if (subagent && subagent.parentSessionId && currentAssistantMessage._subagentCards) {
-          const parent = currentAssistantMessage._subagentCards.get(subagent.parentSessionId);
-          if (parent && !parent.done) setSubagentCardStatus(parent, "Running…", "badge-running");
-        }
-        break;
-      }
-      case "error": {
-        card.done = true;
-        const msg = (inner.error && inner.error.message) || inner.message || "Subagent error";
-        card.textEl.textContent = msg;
-        setSubagentCardStatus(card, "Failed", "badge-error");
-        break;
-      }
-      default:
-        break;
-    }
-  }
   // --- Thought Process Renderer ---
   function renderThoughtBlock(thoughtEl, thoughtText, isStreaming = false) {
     if (!thoughtEl) return;
@@ -4355,6 +4194,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error('Error loading session:', err);
       messageFeed.innerHTML = `<div class="message message-assistant"><div class="message-body" style="color: var(--danger)">Error loading session: ${escapeHtml(err.message)}</div></div>`;
     }
+    // Append buffered delegated turns on top of any persisted history so mixed
+    // sessions keep both, and drain them so they are shown exactly once.
+    if (sessionId) {
+      for (const message of sessionBuffers.drain(sessionId)) messageFeed.appendChild(renderMessage(message));
+      setBotCardBadge(activeAgentId, null);
+    }
     refreshSessions();
     refreshTokenBadge();
   }
@@ -4435,7 +4280,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
   }
 
-  function appendMessage(role, content = '', toolCalls = [], thought = '', timestamp = null, blocks = null) {
+  // Buffered delegated turns are rendered into a scratch node so the caller
+  // can append the resulting node into the feed exactly once.
+  function renderMessage(message) {
+    const scratch = document.createElement('div');
+    appendMessage(message.role || 'assistant', message.content || '', [], '', null, null, scratch);
+    return scratch.firstElementChild;
+  }
+
+  function appendToFeed(text) {
+    appendMessage('assistant', text);
+  }
+
+  function appendMessage(role, content = '', toolCalls = [], thought = '', timestamp = null, blocks = null, targetFeed = messageFeed) {
     welcomeBanner.classList.add('hidden');
     const msgDiv = document.createElement('div');
     msgDiv.className = `message message-${role}`;
@@ -4529,7 +4386,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     msgDiv.appendChild(avatar);
     msgDiv.appendChild(body);
-    messageFeed.appendChild(msgDiv);
+    targetFeed.appendChild(msgDiv);
 
     // Virtualize: keep the DOM bounded. Older messages are removed from
     // the DOM but remain in session storage (re-rendered on selectSession
@@ -4556,7 +4413,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       activeTextBlock: null,
       activeToolGroup: null,
       _activity: null,
-      _subagentCards: new Map(),
       currentSegmentText: '',
     };
   }
@@ -5215,14 +5071,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const lastToolArgs = new Map();
 
-  function setBotCardStatus(agentId, status) {
-    if (!agentId) return;
-    const card = document.querySelector(`#botList .bot-item[data-agent-id="${CSS.escape(agentId)}"]`);
-    if (card) card.dataset.status = status;
-  }
-
   // Real-time Event Stream Handling
   client.onEvent((event) => {
+    // Delegated turns belong to the child bot's own session, not the parent's.
+    // Handle them before the view/session filters so background bots still
+    // receive their output even while another session or view is open.
+    if (event.type === 'subagent') {
+      const targetId = event.subagent?.agentId;
+      const child = event.data?.event || event.data || {};
+      // Buffer only the consolidated final text. Buffering text_delta fragments
+      // as well would render each fragment plus the full answer again on drain.
+      if (child.type === 'turn_completed' && child.finalContent) {
+        if (currentSessionId === 'bot_' + targetId) {
+          // Target is open: render the answer live only. Buffering it too would
+          // make a later selectSession drain the same text into the feed twice.
+          sessionBuffers.clear('bot_' + targetId);
+          appendToFeed(child.finalContent);
+        } else {
+          sessionBuffers.append('bot_' + targetId, { role: 'assistant', content: child.finalContent });
+        }
+      }
+      // An open target shows output live and needs no unread badge; a background
+      // target gets the badge (also rehydrated from the buffer's unread state).
+      setBotCardBadge(targetId, currentSessionId === 'bot_' + targetId ? null : 'delegated');
+      if (currentSessionId !== event.sessionId) return;
+      appendToFeed('↳ delegated to ' + (event.subagent?.agentName || 'bot'));
+      return;
+    }
     if (event.type === 'session_started') setBotCardStatus(activeAgentId, 'busy');
     if (['turn_complete', 'turn_cancelled', 'error'].includes(event.type)) {
       setBotCardStatus(activeAgentId, 'active');
@@ -5245,20 +5120,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    // Subagent delegation activity (delegate_to_agent, nested cards)
-    if (event.type === 'subagent') {
-      const wrapperInner = event.data;
-      const subagentInfo = event.subagent || (wrapperInner && wrapperInner.subagent) || {};
-      if (wrapperInner && wrapperInner.event && wrapperInner.subagent) {
-        // Preserve parentSessionId only if already on the wrapper subagent
-        // (coordinator v2 forwards it via SubagentInfo). handleSubagentEvent
-        // keys cards by sessionId, so nested cards adopt their parent.
-        handleSubagentEvent(wrapperInner.subagent, wrapperInner.event);
-      } else if (wrapperInner && wrapperInner.type) {
-        handleSubagentEvent(subagentInfo, wrapperInner);
-      }
-      if (currentAssistantMessage) botStatusText.textContent = 'Subagent running…';
-    }
     // Token delta stream
     if (event.type === 'token' || event.type === 'text_delta') {
       const delta = event.data?.token || event.token || event.text || '';

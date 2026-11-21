@@ -462,6 +462,219 @@ test("Real-Window Harness: bot settings editor saves provider and model", async 
   }
 });
 
+test("Real-Window Harness: per-bot rail state exposes active session and agent", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-rail-state-home-"));
+  const agentPath = path.join(tmpHome, ".opensand", "agents");
+  fs.mkdirSync(agentPath, { recursive: true });
+  // Seed a persisted bot transcript: opening the delegated session must show
+  // both this history and the buffered delegated text (mixed-history fix).
+  seedSessions(tmpHome, [{ id: "bot_agent_railbot_ab12cd34", firstLine: "persisted-bot-history" }]);
+  const now = Date.now();
+  // Canonical bytes from renderer/modules/bot-identity.js iconMarkup('mascot', '#3b82f6', 'neutral').
+  // Imported literally because tsc has no allowJs and the source-relative path does not resolve.
+  const canonicalMascotSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" data-icon="mascot" data-expression="neutral" stroke="#3b82f6" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/><line x1="9" y1="15" x2="15" y2="15"/></svg>';
+  const hostileLogoSvg = '<svg onload="window.__pwned=1" data-icon="mascot"></svg>';
+  const hostileName = '<img src=x onerror="window.__pwnedImg=1">';
+  fs.writeFileSync(path.join(agentPath, "agent_railbot_ab12cd34.json"), JSON.stringify({
+    id: "agent_railbot_ab12cd34",
+    name: "Rail Bot",
+    role: "Research Assistant",
+    systemPrompt: "You research things.",
+    kind: "AGENT",
+    model: "bot-model",
+    provider: "openrouter",
+    endpoint: "https://openrouter.ai/api/v1",
+    allowedTools: ["read_file"],
+    logoColor: "#3b82f6",
+    logoSvg: canonicalMascotSvg,
+    createdAt: now,
+    updatedAt: now,
+  }), "utf8");
+  fs.writeFileSync(path.join(agentPath, "agent_hostile_ab12cd34.json"), JSON.stringify({
+    id: "agent_hostile_ab12cd34",
+    name: "Hostile Bot",
+    role: "Research Assistant",
+    systemPrompt: "You research things.",
+    kind: "AGENT",
+    model: "bot-model",
+    provider: "openrouter",
+    endpoint: "https://openrouter.ai/api/v1",
+    allowedTools: ["read_file"],
+    logoColor: "#10b981",
+    logoSvg: hostileLogoSvg,
+    createdAt: now,
+    updatedAt: now,
+  }), "utf8");
+  fs.writeFileSync(path.join(agentPath, "agent_escaped_ab12cd34.json"), JSON.stringify({
+    id: "agent_escaped_ab12cd34",
+    name: hostileName,
+    role: "Research Assistant",
+    systemPrompt: "You research things.",
+    kind: "AGENT",
+    model: "bot-model",
+    provider: "openrouter",
+    endpoint: "https://openrouter.ai/api/v1",
+    allowedTools: ["read_file"],
+    createdAt: now,
+    updatedAt: now,
+  }), "utf8");
+
+  const railScript = [
+    "(async () => {",
+    "  await new Promise((r) => setTimeout(r, 350));",
+    "  const s = window.__railState;",
+    "  const active = s.getActive();",
+    "  const canonicalCard = document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_railbot_ab12cd34\"]');",
+    "  const hostileCard = document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_hostile_ab12cd34\"]');",
+    "  const escapedCard = document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_escaped_ab12cd34\"]');",
+    "  const canonicalSvgCount = canonicalCard ? canonicalCard.querySelectorAll('svg').length : -1;",
+    "  const canonicalAvatarMascotSvg = canonicalCard ? canonicalCard.querySelectorAll('.bot-avatar svg[data-icon=\"mascot\"]').length : -1;",
+    // A rail card always carries a .btn-bot-model spark <svg>; scope the hostile check to the avatar.
+    "  const hostileAvatarSvg = hostileCard ? hostileCard.querySelectorAll('.bot-avatar svg').length : -1;",
+    "  const hostileInitialTile = hostileCard ? (hostileCard.querySelector('.bot-avatar')?.textContent || '').trim() : null;",
+    "  const hostileOnloadCount = hostileCard ? hostileCard.querySelectorAll('[onload]').length : -1;",
+    "  const hostileName = " + JSON.stringify(hostileName) + ";",
+    "  const escapedNameText = escapedCard ? (escapedCard.querySelector('.bot-item-name')?.textContent || '') : '';",
+    "  const escapedNameInDom = escapedNameText.includes(hostileName);",
+    "  const escapedImgCount = escapedCard ? escapedCard.querySelectorAll('img').length : -1;",
+    "  const escapedOnerrorCount = escapedCard ? escapedCard.querySelectorAll('[onerror]').length : -1;",
+    "  const childEvent = (event) => s.emit({ type: 'subagent', sessionId: active.currentSessionId || 'parent-session', subagent: { agentId: 'agent_railbot_ab12cd34', agentName: 'Rail Bot' }, data: { event } });",
+    // Progressive text_delta fragments plus the consolidated final answer must
+    // NOT both land in the buffer (the double-render regression).
+    "  childEvent({ type: 'text_delta', text: 'FRAG_A' });",
+    "  childEvent({ type: 'text_delta', text: 'FRAG_B' });",
+    "  childEvent({ type: 'turn_completed', finalContent: 'FINAL_ANSWER' });",
+    "  const badgeAfterEmit = !!document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_railbot_ab12cd34\"] .delegated-badge');",
+    // Capture the buffered text before opening the session drains it.
+    "  const buffered = s.buffers.get('bot_agent_railbot_ab12cd34').map((m) => m.content);",
+    // A rail re-render must rehydrate the badge from the buffers' unread state.
+    "  await s.refresh();",
+    "  const badgeAfterRefresh = !!document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_railbot_ab12cd34\"] .delegated-badge');",
+    "  const liveCanonicalCard = document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_railbot_ab12cd34\"]');",
+    "  const parentHasChildText = ['FRAG_A', 'FRAG_B', 'FINAL_ANSWER'].some((t) => document.getElementById('messageFeed').textContent.includes(t));",
+    "  const ipcUpdated = await window.opensand.updateAgentSettings('agent_railbot_ab12cd34', { logoColor: '#ef4444' });",
+    "  const apiAgents = await (await fetch('/api/agents')).json();",
+    "  const apiColor = Array.isArray(apiAgents) ? (apiAgents.find((a) => a.id === 'agent_railbot_ab12cd34') || {}).logoColor : null;",
+    // Opening the delegated bot's session last: clears the badge and exposes the active session/agent.
+    "  liveCanonicalCard.click();",
+    "  await new Promise((r) => setTimeout(r, 250));",
+    "  const activeAfterClick = s.getActive();",
+    "  const badgeAfterOpen = !!document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_railbot_ab12cd34\"] .delegated-badge');",
+    "  const feedText = document.getElementById('messageFeed').textContent;",
+    "  const feedHasPersisted = feedText.includes('persisted-bot-history');",
+    "  const feedHasDelegated = feedText.includes('FINAL_ANSWER');",
+    "  const finalCount = feedText.split('FINAL_ANSWER').length - 1;",
+    "  const messageRaw = Array.from(document.querySelectorAll('#messageFeed .message')).map((m) => m._rawContent || '');",
+    "  const fragANodes = messageRaw.filter((c) => c.includes('FRAG_A')).length;",
+    "  const fragBNodes = messageRaw.filter((c) => c.includes('FRAG_B')).length;",
+    "  const finalNodes = messageRaw.filter((c) => c.includes('FINAL_ANSWER')).length;",
+    "  const bufferedAfterOpen = s.buffers.get('bot_agent_railbot_ab12cd34').length;",
+    // Second injection with the target bot's session now OPEN: a completed turn
+    // must render live only, leaving nothing buffered for a later drain.
+    "  childEvent({ type: 'turn_completed', finalContent: 'FINAL_LIVE_ONCE' });",
+    "  const liveFinalCount = document.getElementById('messageFeed').textContent.split('FINAL_LIVE_ONCE').length - 1;",
+    "  const bufferedWhileOpen = s.buffers.get('bot_agent_railbot_ab12cd34').length;",
+    "  const badgeWhileOpen = !!document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_railbot_ab12cd34\"] .delegated-badge');",
+    // Simulate the selectSession drain: nothing should be pending, and the live
+    // answer must still appear exactly once after the drain.
+    "  const drainedWhileOpen = s.buffers.drain('bot_agent_railbot_ab12cd34').length;",
+    "  const liveFinalCountAfterDrain = document.getElementById('messageFeed').textContent.split('FINAL_LIVE_ONCE').length - 1;",
+    "  return {",
+    "    hasRailState: !!s,",
+    "    hasBuffers: !!(s && s.buffers),",
+    "    active: s && typeof s.getActive === 'function' ? s.getActive() : null,",
+    "    cards: document.querySelectorAll('#botList .bot-rail-card').length,",
+    "    buffered,",
+    "    badge: badgeAfterEmit,",
+    "    badgeAfterRefresh,",
+    "    parentHasChildText,",
+    "    canonicalSvgCount,",
+    "    canonicalAvatarMascotSvg,",
+    "    hostileAvatarSvg,",
+    "    hostileInitialTile,",
+    "    hostileOnloadCount,",
+    "    pwnedIsUndefined: window.__pwned === undefined,",
+    "    pwnedImgIsUndefined: window.__pwnedImg === undefined,",
+    "    escapedNameInDom,",
+    "    escapedImgCount,",
+    "    escapedOnerrorCount,",
+    "    activeAfterClick,",
+    "    ipcColor: ipcUpdated && ipcUpdated.logoColor,",
+    "    apiColor,",
+    "    badgeAfterOpen,",
+    "    feedHasPersisted,",
+    "    feedHasDelegated,",
+    "    finalCount,",
+    "    fragANodes,",
+    "    fragBNodes,",
+    "    finalNodes,",
+    "    bufferedAfterOpen,",
+    "    liveFinalCount,",
+    "    bufferedWhileOpen,",
+    "    badgeWhileOpen,",
+    "    drainedWhileOpen,",
+    "    liveFinalCountAfterDrain,",
+    "  };",
+    "})()",
+  ].join("\n");
+
+  try {
+    const r = await runHarness("default", { home: tmpHome, interactScript: railScript });
+    if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
+    const result = r.interactResult || {};
+    assert.strictEqual(result.hasRailState, true, `window.__railState must be installed by the renderer (${JSON.stringify(result)})`);
+    assert.strictEqual(result.hasBuffers, true, "rail state must expose per-session buffers");
+    assert.ok(result.active && typeof result.active === 'object', "getActive() must return an object");
+    assert.ok('currentSessionId' in result.active && 'activeAgentId' in result.active,
+      `getActive() must return {currentSessionId, activeAgentId} (${JSON.stringify(result)})`);
+    assert.ok((result.buffered || []).includes('FINAL_ANSWER'),
+      `consolidated final text must land in the child bot's session buffer (${JSON.stringify(result)})`);
+    assert.ok(!(result.buffered || []).some((c: string) => c.includes('FRAG_A') || c.includes('FRAG_B')),
+      `text_delta fragments must NOT be buffered alongside the final answer (${JSON.stringify(result)})`);
+    assert.strictEqual(result.badge, true, "delegated bot card must show the unread badge");
+    assert.strictEqual(result.badgeAfterRefresh, true, `delegated badge must survive a rail re-render/refresh (${JSON.stringify(result)})`);
+    assert.strictEqual(result.parentHasChildText, false, "delegated text must not land in the parent feed");
+    assert.ok(result.canonicalSvgCount > 0, `canonical-icon bot card must render inline svg (${JSON.stringify(result)})`);
+    assert.strictEqual(result.canonicalAvatarMascotSvg, 1,
+      `canonical logoSvg must render as the bot avatar (${JSON.stringify(result)})`);
+    assert.strictEqual(result.hostileAvatarSvg, 0,
+      `hostile logoSvg must not render as inline svg in the avatar (${JSON.stringify(result)})`);
+    assert.strictEqual(result.hostileInitialTile, 'H',
+      `hostile logoSvg must fall back to an escaped initial tile (${JSON.stringify(result)})`);
+    assert.strictEqual(result.hostileOnloadCount, 0, `no [onload] attribute may survive (${JSON.stringify(result)})`);
+    assert.strictEqual(result.pwnedIsUndefined, true, `window.__pwned must stay undefined (${JSON.stringify(result)})`);
+    assert.strictEqual(result.escapedNameInDom, true, `hostile name must appear as literal text (${JSON.stringify(result)})`);
+    assert.strictEqual(result.escapedImgCount, 0, `no <img> element may be created from the name (${JSON.stringify(result)})`);
+    assert.strictEqual(result.escapedOnerrorCount, 0, `no [onerror] attribute may survive (${JSON.stringify(result)})`);
+    assert.strictEqual(result.pwnedImgIsUndefined, true, `window.__pwnedImg must stay undefined (${JSON.stringify(result)})`);
+    assert.ok(result.activeAfterClick && typeof result.activeAfterClick === 'object',
+      `getActive() after selecting the bot card must return an object (${JSON.stringify(result)})`);
+    assert.strictEqual(result.activeAfterClick?.activeAgentId, 'agent_railbot_ab12cd34',
+      `clicking the bot card must select that agent (${JSON.stringify(result)})`);
+    assert.strictEqual(result.activeAfterClick?.currentSessionId, 'bot_agent_railbot_ab12cd34',
+      `clicking the bot card must open its bot_ session (${JSON.stringify(result)})`);
+    assert.strictEqual(result.ipcColor, '#ef4444', `IPC updateAgentSettings must persist the color (${JSON.stringify(result)})`);
+    assert.strictEqual(result.apiColor, '#ef4444', `GET /api/agents must reflect the IPC write (${JSON.stringify(result)})`);
+    assert.strictEqual(result.badgeAfterOpen, false, `unread badge must clear when the delegated bot's session opens (${JSON.stringify(result)})`);
+    assert.strictEqual(result.feedHasPersisted, true, `persisted bot history must survive opening the delegated session (${JSON.stringify(result)})`);
+    assert.strictEqual(result.feedHasDelegated, true, `buffered delegated text must be appended to the feed (${JSON.stringify(result)})`);
+    assert.strictEqual(result.finalCount, 1, `full final answer must appear exactly ONCE in the feed (${JSON.stringify(result)})`);
+    assert.strictEqual(result.finalNodes, 1, `exactly one feed message must carry the final answer (${JSON.stringify(result)})`);
+    assert.strictEqual(result.fragANodes, 0, `fragment FRAG_A must NOT appear as its own feed message (${JSON.stringify(result)})`);
+    assert.strictEqual(result.fragBNodes, 0, `fragment FRAG_B must NOT appear as its own feed message (${JSON.stringify(result)})`);
+    assert.strictEqual(result.bufferedAfterOpen, 0, `drained buffer must be empty after opening the session (${JSON.stringify(result)})`);
+    // A turn completing while the target bot is open renders live once and
+    // leaves no buffered copy for a later drain to duplicate.
+    assert.strictEqual(result.liveFinalCount, 1, `completed turn in the open bot must render live exactly once (${JSON.stringify(result)})`);
+    assert.strictEqual(result.bufferedWhileOpen, 0, `completed turn in the open bot must NOT be buffered (${JSON.stringify(result)})`);
+    assert.strictEqual(result.badgeWhileOpen, false, `open bot showing output live must carry no delegated badge (${JSON.stringify(result)})`);
+    assert.strictEqual(result.drainedWhileOpen, 0, `no buffered text must remain to drain for the open bot (${JSON.stringify(result)})`);
+    assert.strictEqual(result.liveFinalCountAfterDrain, 1, `draining after a live render must not duplicate the answer (${JSON.stringify(result)})`);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test("Real-Window Harness: Preact shell frame seeded sessions & search (960x740 and 1920x1080)", async (t) => {
   const built = fs.existsSync(path.join(pkgRoot, "dist", "renderer-next", "index.html"));
   if (!built) {

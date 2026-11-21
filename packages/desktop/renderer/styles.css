@@ -4359,7 +4359,6 @@ textarea#promptInput {
 .btn-bot-model .icon, .btn-delete-bot .icon { width: 13px; height: 13px; }
 
 /* ---- Bot card avatars, provider badge and status (UI parity P3) -------- */
-.bot-list.compact { max-height: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-bottom: 20px; }
 .bot-avatar-wrap { position: relative; flex: none; width: 34px; height: 34px; }
 .bot-avatar {
   display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px;
@@ -4399,3 +4398,78 @@ textarea#promptInput {
 .detail-swatches { display: flex; gap: 8px; }
 .detail-swatches button { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; background: var(--swatch); cursor: pointer; }
 .detail-swatches button.active { border-color: var(--text-main); box-shadow: 0 0 0 2px var(--bg-card) inset; }
+
+/* ---- Compact bot rail: one card per bot, one session per bot -------------- */
+.bot-rail {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 220px; overflow-y: auto; margin-bottom: 14px;
+}
+.bot-rail-card {
+  position: relative; min-width: 0; display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm); background: var(--bg-card); cursor: pointer;
+  transition: background 150ms var(--ease-out), border-color 150ms var(--ease-out);
+}
+.bot-rail-card:hover { background: var(--bg-hover); }
+.bot-rail-card.active { background: var(--accent-soft); border-color: var(--accent); }
+.bot-rail-card .bot-item-info { min-width: 0; flex: 1; }
+.bot-rail-card .bot-avatar-wrap { width: 28px; height: 28px; }
+.bot-rail-card .bot-avatar { width: 28px; height: 28px; border-radius: 8px; font-size: 12px; }
+.bot-rail-card .bot-avatar svg { width: 16px; height: 16px; }
+.bot-rail-card .bot-model-chip { max-width: 100%; }
+.btn-bot-identity {
+  border: 0; background: transparent; cursor: pointer; padding: 2px; flex: none;
+  font-size: 11px; line-height: 1; opacity: 0;
+  transition: opacity 150ms var(--ease-out);
+}
+.bot-rail-card:hover .btn-bot-identity,
+.bot-rail-card:focus-within .btn-bot-identity { opacity: 1; }
+.btn-bot-identity:hover { filter: brightness(1.3); }
+.delegated-badge {
+  position: absolute; top: -5px; right: -4px; z-index: 1;
+  font-size: 8px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase;
+  padding: 1px 5px; border-radius: 999px; color: var(--accent);
+  background: var(--bg-main); border: 1px solid var(--accent);
+}
+
+/* ---- Bot identity popover (modules/bot-identity.js) ---------------------- */
+.identity-backdrop { position: fixed; inset: 0; z-index: 130; background: rgba(0,0,0,.4); }
+.identity-popover {
+  position: fixed; width: 286px; max-height: 90vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 9px; padding: 14px;
+  background: var(--bg-card); color: var(--text-main);
+  border: 1px solid var(--border-color); border-radius: var(--radius-md);
+  box-shadow: 0 18px 48px rgba(0,0,0,.45);
+  animation: identity-in 160ms var(--ease-out);
+}
+@keyframes identity-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.identity-title { font-size: 13px; font-weight: 700; }
+.identity-preview {
+  display: grid; place-items: center; height: 72px; border-radius: var(--radius-sm);
+  background: var(--accent-soft); border: 1px solid var(--border-color);
+}
+.identity-preview svg { width: 44px; height: 44px; }
+.identity-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.identity-shapes, .identity-colors { display: flex; flex-wrap: wrap; gap: 6px; }
+.identity-expressions { display: flex; gap: 6px; }
+.identity-shape, .identity-swatch, .identity-chip {
+  border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+  background: var(--bg-input); color: var(--text-main); cursor: pointer;
+}
+.identity-shape { width: 38px; height: 38px; display: grid; place-items: center; padding: 3px; }
+.identity-glyph svg { width: 22px; height: 22px; }
+.identity-swatch { width: 26px; height: 26px; border-radius: 50%; }
+.identity-chip { padding: 5px 9px; font-size: 11px; text-transform: capitalize; }
+.identity-shape.active, .identity-chip.active { border-color: var(--accent); background: var(--accent-soft); }
+.identity-swatch.active { outline: 2px solid var(--accent); outline-offset: 2px; }
+.identity-chip:disabled { opacity: .4; cursor: not-allowed; }
+.identity-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.identity-cancel, .identity-save {
+  border-radius: var(--radius-sm); padding: 7px 12px; font-size: 12px; cursor: pointer;
+}
+.identity-cancel { border: 1px solid var(--border-color); background: transparent; color: var(--text-muted); }
+.identity-save { border: 0; background: var(--accent); color: #fff; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) {
+  .identity-popover { animation: none; }
+  .bot-rail-card, .btn-bot-identity { transition: none; }
+}
