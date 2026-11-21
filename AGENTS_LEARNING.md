@@ -243,6 +243,12 @@
 * **Cause:** A workspace package's local build does not rebuild sibling packages' dist; TypeScript project references resolved to stale declarations.
 * **Rule now:** After any change in `shared/` or `coordinator/`, run `pnpm run build` from the **workspace root**, then run the tests. Never debug a "missing field" type error before checking the dependency's dist timestamp.
 
+### 11.19 A buffered event has exactly one rendering destination
+* **Date:** 2026-11-22
+* **What happened:** Building the bot sidecar, the delegated-turn handler initially appended both streamed `text_delta` fragments and the consolidated `turn_completed.finalContent` to the per-session buffer; opening the bot rendered both. Then, when the target session was open, final text was written both live and to the buffer — a later re-select duplicated it. Also, `renderInto()` cleared the feed and wiped real persisted history for sessions that had both.
+* **Cause:** A single event stream (deltas + final) was treated as independent messages, and a "clear then render" helper was reused where "append once" was needed.
+* **Rule now:** One event → one authoritative destination. Buffer only the consolidated final text; when the target is open, render live and do NOT buffer; drain (remove) pending messages on display rather than clearing the feed. Wire the check BEFORE view/session filters or background sessions are dropped. A mutation probe (restore old code → test fails) proved the discrimination.
+
 ### 11.18 Assistant tools must be registered AND scoped in
 * **Date:** 2026-11-21
 * **What happened:** The default assistant could `create_agent` and `list_agents` but had no tool to delete a bot or set its provider/model/system prompt. `create_agent` also only accepted `model`, not `provider`/`endpoint`. A tool being present in the daemon is not enough — `CORE_TOOL_NAMES` and the role keyword patterns decide which definitions reach the model.
