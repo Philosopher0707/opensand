@@ -98,6 +98,8 @@ export interface AgentRecord {
   kind?: "AGENT" | "ROOM";
   model?: string;
   endpoint?: string;
+  /** Registered driver kind for this bot. Absent = follow the app's global provider. */
+  provider?: string;
   allowedTools?: string[];
   createdAt: number;
   updatedAt: number;
@@ -165,6 +167,8 @@ export interface CreateAgentInput {
   kind?: "AGENT" | "ROOM";
   model?: string;
   endpoint?: string;
+  /** Registered driver kind; absent = follow global provider. */
+  provider?: string;
   allowedTools?: string[];
   metadata?: Record<string, unknown>;
   enabled?: boolean;
@@ -281,6 +285,11 @@ export interface AgentSettingsDetail extends AgentRecord {
 /** Body for updating an agent's settings. */
 export interface UpdateAgentSettingsInput {
   enabled?: boolean;
+  /** Per-bot engine selection. Empty string or undefined = follow global provider. */
+  provider?: string;
+  model?: string;
+  endpoint?: string;
+  allowedTools?: string[];
   temperature?: number;
   maxTokens?: number;
   topP?: number;

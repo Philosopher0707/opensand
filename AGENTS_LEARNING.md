@@ -236,3 +236,9 @@
 * **What happened:** Rooms produced canned turns, routines returned a stub string, and webhook `agent` targets threw — all because their executor hooks existed but were never set in the desktop app. A test that expected the stub's `success` broke once real turns were wired.
 * **Cause:** Optional executor injection with a permissive default made stubs look like working features.
 * **Rule now:** A subsystem with an injectable executor must be wired to a production executor before it is called a feature; when wiring it, update the test to prove a real turn ran (fake local LLM) rather than lowering the old assertion.
+
+### 11.15 Build from the workspace root when types cross packages
+* **Date:** 2026-11-21
+* **What happened:** After adding `provider` to `AgentRecord`, running `pnpm run build` from `packages/desktop` left the coordinator's `dist` stale; desktop compiled against old `.d.ts` files and failed with "Property 'provider' does not exist", while a direct Node check of the coordinator source worked.
+* **Cause:** A workspace package's local build does not rebuild sibling packages' dist; TypeScript project references resolved to stale declarations.
+* **Rule now:** After any change in `shared/` or `coordinator/`, run `pnpm run build` from the **workspace root**, then run the tests. Never debug a "missing field" type error before checking the dependency's dist timestamp.

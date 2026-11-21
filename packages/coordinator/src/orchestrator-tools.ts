@@ -312,7 +312,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       const subagentEndpoint = agent.endpoint || options.defaultEndpoint || "http://127.0.0.1:11434/v1";
       let delegateInstanceId: string | undefined;
       const subagentLlm = (await createDriverLlmClient({
-        provider: options.defaultProvider ?? "",
+        provider: agent.provider || options.defaultProvider || "",
         endpoint: subagentEndpoint,
         model: subagentModel,
         apiKey: options.defaultApiKey,

@@ -12,6 +12,8 @@ export interface AgentRecord {
   kind?: "AGENT" | "ROOM";
   model?: string;
   endpoint?: string;
+  /** Registered driver kind; absent = follow the app-wide provider. */
+  provider?: string;
   allowedTools?: string[];
   createdAt: number;
   updatedAt: number;
@@ -85,6 +87,7 @@ export interface CreateAgentInput {
   kind?: "AGENT" | "ROOM";
   model?: string;
   endpoint?: string;
+  provider?: string;
   allowedTools?: string[];
   metadata?: Record<string, unknown>;
   enabled?: boolean;
@@ -165,6 +168,10 @@ export interface AgentProfileChange {
 /** Fields allowed to be patched on an existing agent's settings. */
 export interface UpdateAgentSettingsInput {
   enabled?: boolean;
+  provider?: string;
+  model?: string;
+  endpoint?: string;
+  allowedTools?: string[];
   temperature?: number;
   maxTokens?: number;
   topP?: number;
@@ -213,6 +220,7 @@ export class AgentStore {
       kind: input.kind ?? "AGENT",
       model: input.model,
       endpoint: input.endpoint,
+      provider: input.provider,
       allowedTools: input.allowedTools,
       soul: input.soul,
       avatarUrl: input.avatarUrl ?? null,

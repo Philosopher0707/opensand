@@ -623,6 +623,8 @@ export class DesktopIpcBridge extends EventEmitter {
 
     let targetModel = this.settings.model;
     let targetEndpoint = this.settings.endpoint;
+    // A bot can override the app-wide provider; empty/unset means "follow global".
+    let targetProvider = this.settings.provider;
     let customInstructions: string | undefined;
     let effectiveAllowedTools: string[] | undefined;
     let toolScopeMode: 'core' | 'all' | 'auto' | undefined;
@@ -632,6 +634,7 @@ export class DesktopIpcBridge extends EventEmitter {
       if (agent) {
         if (agent.model && agent.model !== 'default') targetModel = agent.model;
         if (agent.endpoint) targetEndpoint = agent.endpoint;
+        if (agent.provider) targetProvider = agent.provider;
         customInstructions = agent.systemPrompt;
         // Persona tool restrictions matter for the main turn too, not only for
         // delegated subagents (CLI already does this).
@@ -647,7 +650,7 @@ export class DesktopIpcBridge extends EventEmitter {
     // driver so config validation, timeouts and retries come from the driver.
     // Local / OpenAI-compatible endpoints keep the existing client path.
     const driverClient = await createDriverLlmClient({
-      provider: this.settings.provider,
+      provider: targetProvider,
       endpoint: targetEndpoint,
       model: targetModel,
       apiKey: this.settings.apiKey,
@@ -665,7 +668,7 @@ export class DesktopIpcBridge extends EventEmitter {
       baseUrl: targetEndpoint,
       model: targetModel,
       apiKey: this.settings.apiKey,
-      provider: this.settings.provider,
+      provider: targetProvider,
     });
 
     // SIM loop (self-improvement): run habit extraction + correction marking at
