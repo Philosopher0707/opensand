@@ -253,7 +253,10 @@ test("canonicalJson sorts object keys recursively", () => {
   );
 });
 
-test("append benchmark: 5k appends proves O(1) tail read with last 100 mean < 3x first 100 mean", { timeout: 60_000 }, async () => {
+// The 5k-append loop is I/O-bound; under the full parallel workspace suite it
+// measured ~100s wall time while the O(1) assertions still pass. Cap the
+// harness at 180s (matching measured slow runs) without weakening the ratios.
+test("append benchmark: 5k appends proves O(1) tail read with last 100 mean < 3x first 100 mean", { timeout: 180_000 }, async () => {
   const dir = tempDir();
   try {
     const logPath = path.join(dir, "event-log.jsonl");

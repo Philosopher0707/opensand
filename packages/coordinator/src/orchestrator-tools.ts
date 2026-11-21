@@ -121,6 +121,26 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   const mcpManager = options.mcpManager ?? new McpManager({ daemon });
   const habitExtractor = options.habitExtractor ?? new HabitExtractor({ sessionsDir: sessionsBaseDir });
 
+  // Shared validation for agent creation/configuration. Fail closed on unknown
+  // providers and non-HTTP endpoints — a bot with a bad provider cannot run.
+  const validateProviderChoice = (provider?: string): string | undefined => {
+    if (!provider) return undefined;
+    if (!providerRegistry.hasDriver(provider)) {
+      const known = providerRegistry.listDrivers().map((kind) => typeof kind === "string" ? kind : (kind as any).driverKind).join(", ");
+      throw new Error(`Unknown provider "${provider}". Registered providers: ${known}`);
+    }
+    return provider;
+  };
+  const validateEndpoint = (endpoint?: string): string | undefined => {
+    if (!endpoint) return undefined;
+    let parsed: URL;
+    try { parsed = new URL(endpoint); } catch { throw new Error(`Invalid endpoint "${endpoint}" — expected an http/https URL`); }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error(`Invalid endpoint "${endpoint}" — only http/https URLs are allowed`);
+    }
+    return endpoint;
+  };
+
   // 1. Tool: create_agent (Parity with CreateGrokBotAgent / CreateGrokBotAgentFromTemplate)
   daemon.registerCustomTool({
     definition: {
@@ -147,6 +167,14 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
               type: "string",
               description: "Optional model identifier to use when this agent is invoked (e.g. 'qwen3:8b', 'claude-3-7-sonnet', 'gpt-4o').",
             },
+            provider: {
+              type: "string",
+              description: "Optional registered provider/driver kind for this bot. Omit to follow the app-wide provider.",
+            },
+            endpoint: {
+              type: "string",
+              description: "Optional chat-completions endpoint for this bot (http/https). Omit to use the provider default.",
+            },
             allowed_tools: {
               type: "array",
               items: { type: "string" },
@@ -159,11 +187,15 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
     },
     requiresGate: "computerUse",
     handler: async (args) => {
+      const provider = validateProviderChoice(args.provider);
+      const endpoint = validateEndpoint(args.endpoint);
       const record = await store.createAgent({
         name: args.name,
         role: args.role,
         systemPrompt: args.system_prompt,
         model: args.model,
+        provider,
+        endpoint,
         allowedTools: args.allowed_tools,
       });
 
@@ -174,7 +206,9 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           id: record.id,
           name: record.name,
           role: record.role,
+          provider: record.provider ?? "global",
           model: record.model ?? "default",
+          endpoint: record.endpoint ?? "provider default",
           allowedTools: record.allowedTools ?? "all",
         },
       }, null, 2);
@@ -208,6 +242,107 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         null,
         2
       );
+    },
+  });
+
+  // 2b. Tool: configure_agent — set a bot's provider, model, endpoint and system prompt.
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "configure_agent",
+        description: "Update an existing agent's provider, model, endpoint, system prompt, role or allowed tools. Omit a field to keep its current value. Set provider to empty string to follow the app-wide provider.",
+        parameters: {
+          type: "object",
+          properties: {
+            agent: { type: "string", description: "Agent id or name to configure." },
+            provider: { type: "string", description: "Registered provider/driver kind, or empty string to follow global settings." },
+            model: { type: "string", description: "Model identifier for this agent." },
+            endpoint: { type: "string", description: "Optional chat-completions endpoint (http/https); empty string clears it." },
+            system_prompt: { type: "string", description: "Replacement system instructions for this agent." },
+            role: { type: "string", description: "Replacement role/title for this agent." },
+            allowed_tools: {
+              type: "array",
+              items: { type: "string" },
+              description: "Replacement tool whitelist. Empty array means no tools; omit to keep current.",
+            },
+          },
+          required: ["agent"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const existing = await store.getAgent(args.agent);
+      if (!existing) throw new Error(`Agent [${args.agent}] not found. Use list_agents to inspect available agents.`);
+      const fields = ["provider", "model", "endpoint", "system_prompt", "role", "allowed_tools"];
+      if (!fields.some((field) => args[field] !== undefined)) {
+        throw new Error("No fields to update. Provide at least one of: provider, model, endpoint, system_prompt, role, allowed_tools.");
+      }
+
+      const settings: Record<string, unknown> = {};
+      if (args.provider !== undefined) settings.provider = validateProviderChoice(args.provider);
+      if (args.model !== undefined) settings.model = String(args.model);
+      if (args.endpoint !== undefined) settings.endpoint = validateEndpoint(args.endpoint || undefined) ?? "";
+      if (args.allowed_tools !== undefined) settings.allowedTools = args.allowed_tools;
+      const profile: Record<string, unknown> = {};
+      if (args.system_prompt !== undefined) profile.systemPrompt = String(args.system_prompt);
+      if (args.role !== undefined) profile.role = String(args.role);
+
+      let updated = existing;
+      if (Object.keys(settings).length) updated = await store.updateAgentSettings(existing.id, settings);
+      if (Object.keys(profile).length) updated = await store.updateAgentProfile(existing.id, profile);
+
+      return JSON.stringify({
+        status: "success",
+        message: `Agent [${updated.name}] updated in Agent Store.`,
+        agent: {
+          id: updated.id, name: updated.name, role: updated.role,
+          provider: updated.provider ?? "global", model: updated.model ?? "default",
+          endpoint: updated.endpoint ?? "provider default",
+          systemPrompt: updated.systemPrompt, allowedTools: updated.allowedTools ?? "all",
+        },
+      }, null, 2);
+    },
+  });
+
+  // 2c. Tool: delete_agent — requires explicit confirmation (destructive).
+  daemon.registerCustomTool({
+    definition: {
+      type: "function",
+      function: {
+        name: "delete_agent",
+        description: "Delete an agent from the persistent Agent Store. Destructive: requires confirm=true. Refuses while the agent has a running delegation.",
+        parameters: {
+          type: "object",
+          properties: {
+            agent: { type: "string", description: "Agent id or name to delete." },
+            confirm: { type: "boolean", description: "Must be true to delete. Without it the tool returns a confirmation prompt only." },
+          },
+          required: ["agent"],
+        },
+      },
+    },
+    requiresGate: "computerUse",
+    handler: async (args) => {
+      const existing = await store.getAgent(args.agent);
+      if (!existing) throw new Error(`Agent [${args.agent}] not found. Use list_agents to inspect available agents.`);
+      const running = [...delegations.values()].some((entry) => entry.agentId === existing.id && entry.status === "running");
+      if (running) throw new Error(`Agent [${existing.name}] has a running delegation; wait for it to finish before deleting.`);
+      if (args.confirm !== true) {
+        return JSON.stringify({
+          status: "confirmation_required",
+          message: `About to delete agent [${existing.name}] (${existing.id}). Re-run with confirm=true to proceed.`,
+          agent: { id: existing.id, name: existing.name },
+        }, null, 2);
+      }
+      const deleted = await store.deleteAgent(existing.id);
+      if (!deleted) throw new Error(`Agent [${existing.name}] could not be deleted.`);
+      return JSON.stringify({
+        status: "success",
+        message: `Agent [${existing.name}] deleted from Agent Store.`,
+        agent: { id: existing.id, name: existing.name },
+      }, null, 2);
     },
   });
 

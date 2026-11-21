@@ -243,6 +243,12 @@
 * **Cause:** A workspace package's local build does not rebuild sibling packages' dist; TypeScript project references resolved to stale declarations.
 * **Rule now:** After any change in `shared/` or `coordinator/`, run `pnpm run build` from the **workspace root**, then run the tests. Never debug a "missing field" type error before checking the dependency's dist timestamp.
 
+### 11.18 Assistant tools must be registered AND scoped in
+* **Date:** 2026-11-21
+* **What happened:** The default assistant could `create_agent` and `list_agents` but had no tool to delete a bot or set its provider/model/system prompt. `create_agent` also only accepted `model`, not `provider`/`endpoint`. A tool being present in the daemon is not enough — `CORE_TOOL_NAMES` and the role keyword patterns decide which definitions reach the model.
+* **Cause:** Agent-management surface was implemented from the UI side only; the in-chat tool surface lagged behind.
+* **Rule now:** When adding a capability the assistant should control, register the custom tool, add it to `CORE_TOOL_NAMES`, add a keyword category, and write a test that asserts the tool name appears in `daemon.getToolDefinitions()` — mirroring the "existence is not reachability" rule for tools. Destructive tools require `confirm=true` and refuse while a delegation is running.
+
 ### 11.17 Deferred credentials and cached coordinators both go stale
 * **Date:** 2026-11-21
 * **What happened:** The live chat showed a delegate failing with 401 at OpenRouter while the parent assistant worked. `registerOrchestratorTools` captured `defaultApiKey: this.settings.apiKey` in the bridge constructor, but vault key resolution is deferred to first use — the delegate kept `"none"` forever. Separately, changing a bot's model/provider in the UI persisted correctly but the cached per-session coordinator kept the old LLM client, so the next turn still used the old model.

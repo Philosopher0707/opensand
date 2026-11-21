@@ -217,6 +217,8 @@ export const CORE_TOOL_NAMES = new Set([
   "git_commit",
   "create_agent",
   "list_agents",
+  "configure_agent",
+  "delete_agent",
   "delegate_to_agent",
   "discover_tools",
   "show_app_access",
@@ -233,6 +235,10 @@ const TOOL_CATEGORY_PATTERNS: Array<{ pattern: RegExp; toolNames: string[] }> = 
   {
     pattern: /\b(task|todo|milestone|backlog)\b/i,
     toolNames: ["create_agent_task", "list_agent_tasks", "update_agent_task", "delete_agent_task"],
+  },
+  {
+    pattern: /\b(bot|agent|persona|subagent|provider|model|system prompt)\b/i,
+    toolNames: ["create_agent", "list_agents", "configure_agent", "delete_agent", "delegate_to_agent", "await_agent", "get_agent_tail"],
   },
   {
     pattern: /\b(memory|memories|remember|recall|fact)\b/i,
