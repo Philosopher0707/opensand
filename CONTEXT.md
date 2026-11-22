@@ -181,3 +181,22 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 * **Exhaustive Contracts**: [`grok_bot_clean_room_complete_contracts.md`](file:///Users/philosopher/.gemini/antigravity-cli/brain/cd7866de-1de3-4c4b-a336-de8db1f0fc83/grok_bot_clean_room_complete_contracts.md)
 * **ConnectRPC Catalog**: [`all_rpc_functions_catalog.md`](file:///Users/philosopher/.gemini/antigravity-cli/brain/cd7866de-1de3-4c4b-a336-de8db1f0fc83/all_rpc_functions_catalog.md) & [`all_rpc_functions.json`](file:///Users/philosopher/.gemini/antigravity-cli/brain/cd7866de-1de3-4c4b-a336-de8db1f0fc83/all_rpc_functions.json)
 * **OpenSand Source Code**: [`/Users/philosopher/dev/opensand`](file:///Users/philosopher/dev/opensand)
+
+---
+
+## 6. Chief-of-Staff Sidecar & Parallel Sessions — Phase Log (2026-11-22)
+
+**Owner's new intent:** the human talks to a self-chosen chief-of-staff bot, which delegates work to specialist bots; the human can also talk to any bot directly in parallel sessions. Every session must nest under its owning bot in the sidebar, with a disclosure arrow on the left and a tree-dots menu on the right. No Default Assistant; any bot can be chosen as chief.
+
+### Phase 0 — Evidence & decomposition (COMPLETE)
+- Three read-only investigations completed (settings/boot, delegation/parallel engine, sidebar tree/APIs). Ledger: `/tmp/opensand-job-ledger.md`.
+- Key findings:
+  - `DesktopSettings` (`shared/src/types.ts:687-695`) persists automatically to `~/.opensand/config.json` through `ipc-bridge.ts:393,413,437,476`; IPC/REST/ApiClient already pass the whole object. Best home for `chiefOfStaffAgentId`.
+  - A distinct per-bot `chiefOfStaff?: boolean` already exists in `AgentRecord` but has **no runtime reader** — not the user's chosen chief.
+  - `delegate_to_agent` is registered (`orchestrator-tools.ts:417-441`) but gated by `computerUse` (`requiresGate`, default false) and stripped by role tool whitelists (`token-hygiene.ts:310-330`, `ipc-bridge.ts:643`). A chief needs an explicit tool union and a delegation instruction.
+  - Backend parallel turns already work (`session-parallel.ts:45-46,90-159`; `ipc-bridge.ts:799-863`); the renderer Parallel Board forces one global agent on all panes (`parallel-board.js:116`, `app.js:6243`) — per-pane bot selection is the blocker.
+  - Current sidebar rail (`bot-rail.js`) has a hardcoded Default Assistant row (`:82-88`) and no session source; no tree/aria-expanded patterns exist in the renderer.
+  - `getSessions()` (`ipc-bridge.ts:1131-1178`) returns `SessionSummary` with `agentId`; one call plus `s.agentId === bot.id || s.id === 'bot_'+bot.id` reliably groups sessions; no per-agent endpoint exists (none needed).
+  - Global roster (`app.js:1968-2039`) currently duplicates bot-owned sessions; must be filtered and nested rows must gain delete.
+- Planned phases with deps: P1 chief core → P2 sidecar tree → P3 per-pane parallel bots → P4 delegation UX/persistence → P5 full verification & docs.
+- Status: design pending owner approval; no code changed in Phase 0.
