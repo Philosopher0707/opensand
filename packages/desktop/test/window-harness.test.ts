@@ -694,7 +694,7 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     "    sectionInSidebar: !!section?.closest('aside.sidebar'),",
     "    sectionNotInView: !section?.closest('.view-panel'),",
     "    sameNode: document.getElementById('botList') === nodeBefore,",
-    "    visible: !!list && getComputedStyle(section).display !== 'none' && list.getBoundingClientRect().width > 0,",
+    "    visible: !!list && !!section && getComputedStyle(section).display !== 'none' && list.getBoundingClientRect().width > 0,",
     "    searchToggle: !!document.getElementById('btnBotSearch'),",
     "    newButton: !!document.getElementById('btnBotNew'),",
     "    moreButton: !!document.getElementById('btnBotShowMore'),",

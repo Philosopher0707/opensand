@@ -4401,7 +4401,7 @@ textarea#promptInput {
 
 /* ---- Bots section in the sidebar spine (Orca-style) --------------------- */
 .bot-sidecar {
-  flex: 0 0 auto; padding: 6px 4px 8px;
+  flex: 0 1 auto; min-height: 0; padding: 6px 4px 8px;
   border-bottom: 1px solid var(--border-color);
 }
 .bot-sidecar-header { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 6px 4px; }
@@ -4410,12 +4410,10 @@ textarea#promptInput {
 .bot-sidecar-search { display: flex; align-items: center; gap: 6px; margin: 0 4px 6px; padding: 4px 7px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); }
 .bot-sidecar-search .icon { width: 13px; height: 13px; color: var(--text-muted); flex: none; }
 .bot-sidecar-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text-main); font: inherit; font-size: 11.5px; }
-.bot-sidecar-search.hidden { display: none; }
 .bot-sidecar-more { display: block; width: calc(100% - 8px); margin: 4px 4px 0; padding: 4px 6px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font-size: 11px; cursor: pointer; }
 .bot-sidecar-more:hover { background: var(--bg-hover); color: var(--text-main); }
-.bot-sidecar-more.hidden { display: none; }
 
-.bot-rail { display: flex; flex-direction: column; gap: 3px; }
+.bot-rail { display: flex; flex-direction: column; gap: 3px; min-height: 0; overflow-y: auto; }
 .bot-rail-card {
   position: relative; min-width: 0; display: flex; align-items: center; gap: 8px;
   padding: 5px 8px; border: 1px solid var(--border-color);
