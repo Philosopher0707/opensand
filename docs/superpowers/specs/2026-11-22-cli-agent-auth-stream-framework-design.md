@@ -1,107 +1,124 @@
 # Design: CLI agent auth wrapper, chat-stream conventions and OpenSand framework fidelity
 
 Date: 2026-11-22
-Status: approved by owner in conversation ("continue" after scope presentation)
-Baseline: `39a94f6`, branch `feat/agent-settings-ui`. `CONTEXT.md` gets a section-7 phase log updated after every phase.
+Status: design approved by owner in conversation; rewritten after spec review
+Baseline: `39a94f6`, branch `feat/agent-settings-ui`. `CONTEXT.md` section 7 is the running phase log.
 
-## Problem
+## Problem (verified)
 
-CLI coding agents (Grok, Kimi, Copilot via ACP; Claude Code and Codex via their runtimes) do not reliably
-authenticate or follow the OpenSand framework. Evidence:
-- Auth writes credentials into a per-instance home derived from a random `auth:<kind>:<uuid>` id
+- Auth writes credentials into a home derived from a random `auth:<kind>:<uuid>` id
   (`provider-auth.ts:33`, `device-auth.ts:62-64`), but turn subprocesses build env as
   `{...process.env, ...input.environment}` with no credential home (`acp-runtime.ts:136`,
-  `claude-runtime.ts:166`, `codex-runtime.ts:122`). Chat/catalog use different instance ids
-  (`llm:`, `catalog:`) so the digest can never match.
-- The login child's `exit` handler (`device-auth.ts:125-128`) resolves without re-checking
-  `isSignedIn()`; no code produces `"authorized"` even though `provider-auth.ts:86` consumes it.
-  `GET auth/status` without a flowId returns `cancelled` (`desktop-server.ts:1470-1474`).
-- `AUTH_PROVIDER_KINDS` is a hardcoded 3-element set (`desktop-server.ts:1438`) instead of derived from
-  registered drivers' auth capability.
-- `dispatchDriverEvent` (`ipc-bridge.ts:821-843`) handles tool/reasoning events but drops
-  `permission.request`; ACP/Codex approval requests wait for the 15-min fail-closed timeout.
-  `text.delta` is **deliberately** not forwarded because the shim consolidates text — this is correct
-  and must not be changed.
-- The framework system prompt (`system-prompt.ts:16-69`) is joined into `turn.system` by the shim
-  (`provider-llm.ts:77-92`) but each runtime concatenates it into the **user** text
-  (`claude-runtime.ts:234-237`, `acp-runtime.ts:276`, `codex-runtime.ts:257`). The prompt also claims
-  OpenSand tools while ACP passes `mcpServers: []` (`acp-runtime.ts:242`). Approval mode never reaches
-  the shim, so Claude always spawns with `--permission-mode default`.
+  `claude-runtime.ts:166`, `codex-runtime.ts:122`). Chat/catalog use `llm:`/`catalog:` ids, so the digest
+  can never match. No turn sees sign-in credentials.
+- The login child's `exit` handler resolves without re-checking `isSignedIn()` (`device-auth.ts:125-128`),
+  and `finish()` nulls the flow so `get()` returns `cancelled` (`device-auth.ts:77-83,179-183`). No code
+  produces `"authorized"` although `provider-auth.ts:86` consumes it.
+- `AUTH_PROVIDER_KINDS` is a hardcoded 3-element set (`provider-auth.ts:21`, `desktop-server.ts:1438`);
+  `GET auth/status` requires a flowId (`desktop-server.ts:1470-1474`).
+- `dispatchDriverEvent` (`ipc-bridge.ts:821-843`) drops `permission.request`; ACP/Codex approvals wait for
+  the fail-closed 15-min timeout (`acp-runtime.ts:64,178-185`, `codex-runtime.ts:51,175-178`).
+  `text.delta` is deliberately **not** forwarded (shim consolidates text) — correct, do not change.
+- Framework prompt is joined into `turn.system` (`provider-llm.ts:77-92`) then concatenated into **user**
+  text by all three runtimes (`claude-runtime.ts:234-237`, `acp-runtime.ts:276`, `codex-runtime.ts:257`).
+  It claims OpenSand tools while ACP passes `mcpServers: []` (`acp-runtime.ts:242`).
 
 ## Non-goals
 
-- Do not replace the retained-process streaming protocols or change the shim's consolidated-text behavior.
-- Do not delete the dead `AgentWrapper` (`coordinator/src/agent-wrapper.ts`) without owner approval.
-- Do not add CLI-agent selection to the terminal CLI (`F10`, `cli-app.ts:399-403`).
-- No live cloud sign-in; only local fake-CLI and already-installed binary probes.
-- Do not weaken approval/security gates; fail-closed timeouts stay.
+- Do not replace retained-process streaming or change the shim's consolidated-text behavior.
+- Do not delete dead `AgentWrapper` (`coordinator/src/agent-wrapper.ts`) without owner approval.
+- Do not add CLI-agent selection to the terminal CLI (`cli-app.ts:399-403`).
+- No live cloud sign-in; only fake-CLI tests and installed-binary probes.
+- Do not weaken approval gates or fail-closed timeouts.
+- No new `approvalMode` plumbing: `config.fullAuto` already yields Claude `bypassPermissions`
+  (`claude-runtime.ts:48-53,163`); verify it, do not add a parallel flag.
+- No `CLAUDE_CONFIG_DIR` change — `configDir` is currently unused but unrelated to auth; leave it.
 
 ## Architecture
 
-### P1 — Auth core: one credential home, observable sign-in
-- In `device-auth.ts` export a pure `credentialHome(spec): string` using the existing base
-  `~/.opensand/providers/<spec.provider>/<spec.homeDir leaf>` (no random instance digest) and
-  `credentialEnv(spec, environment): Record<string,string>` returning
-  `{...environment, [spec.homeEnv]: credentialHome(spec)}`.
-- `createDeviceAuthController` uses `credentialEnv`; `instanceId` is no longer part of the home. Keep the
-  bounded flow, URL/code allowlists and output cap unchanged.
-- `auth start` → on login child `exit`, re-run `isSignedIn()` and `finish({status:"authorized"})` if the
-  credential file is non-empty, else `failed` with `spec.failureMessage`. Expose `isSignedIn()` on the
-  controller.
-- `provider-auth.ts`: stable session per kind (`auth:${kind}`), `getProviderAuthState(kind)` returning
-  `{signedIn:boolean, flowId:string|null}` by calling `isSignedIn()`; `getProviderAuthStatus` unchanged for
-  flow polling. `ensureSession` uses `credentialEnv` through the driver instance so catalog/chat/turn
-  instances share the home.
-- ACP runtime spawn env (`acp-runtime.ts:136`) applies `credentialEnv(input.auth, input.environment)`
-  when the driver has an auth spec; Claude/Codex keep standard HOME behavior but must not lose
-  `configDir` if provided (set `CLAUDE_CONFIG_DIR` from `ClaudeConfig.configDir`).
-- Regression: fake CLI writes a credential file into `homeEnv` during `loginArgs`; after `start()` exits,
-  status is `authorized`; a subsequent ACP turn spawn asserts the same `homeEnv` value.
+### P1 — Auth core: one stable credential home, observable sign-in
+- In `device-auth.ts` add a **new stable** layout (no random digest):
+  `credentialHome(spec) = path.join(os.homedir(), '.opensand', 'providers', spec.provider, spec.homeDir.replace(/^\./,''))`.
+  This intentionally replaces the per-instance digest; `spec.homeDir` becomes used for the first time.
+- Export `credentialEnv(spec, environment)` = `{...environment, [spec.homeEnv]: credentialHome(spec)}`.
+  Call sites must pass the full base env: `credentialEnv(spec, {...process.env, ...input.environment})`.
+- `createDeviceAuthController` uses `credentialEnv`; extend `DeviceAuthController` with
+  `isSignedIn(): Promise<boolean>` (wraps the existing `statSync(...).size > 0`) and keep a
+  `lastStatus: ProviderAuthenticationStatus | null` that survives `finish()` nulling `flow`.
+  `get(flowId)` returns `lastStatus` when its `flowId` matches, otherwise `cancelled`.
+- On login child `exit` (`device-auth.ts:125-128`): re-run `isSignedIn()`; if true, set
+  `lastStatus`/flow status to `authorized`; otherwise `failed` with `spec.failureMessage`. If the 30 s
+  timer already recorded `failed`, the later successful exit overwrites it with `authorized`.
+  Define signed-in strictly as non-empty credential file; "corrupt" JSON is not detectable generically
+  and is not claimed.
+- Extend `ProviderInstance` (`shared/src/types.ts:511-534`) with optional `isSignedIn?: () => Promise<boolean>`
+  and wire it in `acp-runtime.ts` instance (`authenticationMethod` block at :304-313) to the controller.
+  `provider-auth.ts` adds `getProviderAuthState(kind)` using `ensureSession()` + `isSignedIn()`;
+  keep stable session per kind by replacing `auth:${kind}:${randomUUID()}` with `auth:${kind}`.
+- `acp-runtime.ts`: the auth spec lives on **`options.auth`** (`AcpRuntimeOptions.auth:37`, used at :72),
+  not on `input`. At spawn (`:136`) use `credentialEnv(options.auth, {...process.env, ...input.environment})`
+  when auth exists. Claude/Codex keep standard HOME behavior.
+- Regression: fake CLI writes a credential file under `homeEnv` during `loginArgs`; `start()` → child exit →
+  `getProviderAuthStatus(kind, flowId)` returns `authorized`; a subsequent ACP turn spawn asserts
+  `env[homeEnv] === credentialHome(spec)`.
 
 ### P2 — Auth API and UI derive from drivers
-- `desktop-server.ts`: `AUTH_PROVIDER_KINDS` derived from registered drivers that expose auth; add
-  `GET /api/providers/:kind/auth/state` returning `{signedIn, flowId}` without requiring a flowId.
-- Renderer (`model-picker.js`, `app.js`): show a signed-in/out marker per CLI provider and disable the
-  "sign in" hint when already signed in. Keep the existing auth start/cancel/sign-out REST paths.
-- Tests: REST state route for signed-out and signed-in fake homes; UI marker test in the harness.
+- Add `supportsAuthentication?: boolean` to `ProviderDriver.metadata` (`shared/src/types.ts:641-654`);
+  `defineAcpDriver` (`factories/acp-driver.ts`) sets it true when `spec.auth` exists. Remove the hardcoded
+  `AUTH_PROVIDER_KINDS` set and derive auth capability from `providerRegistry` drivers.
+- `desktop-server.ts`: add `GET /api/providers/:kind/auth/state` returning `{signedIn, flowId}` from
+  `getProviderAuthState(kind)`; keep existing start/cancel/sign-out/status routes.
+- Renderer: `model-picker.js` / `app.js` shows signed-in/out per provider from the state route and hides
+  the "sign in" hint when already signed in. No credential values reach the UI.
+- Security note: with a stable home, `signOut()` `rmSync(home, {recursive:true,force:true})`
+  (`device-auth.ts:197`) removes credentials for all instances of that provider — intended CLI-like
+  behavior, documented in the spec and UI tooltip.
 
 ### P3 — Stream conventions and framework fidelity
-- `ipc-bridge.dispatchDriverEvent`: add a `permission.request` branch that emits a desktop approval event
-  with `{requestId, method, options, sessionId}`; wire the response path back to the owning instance's
-  `respondToRequest(threadId, requestId, decision)` via a new bridge method exposed through preload/main.
-  Keep fail-closed timeout as the fallback.
-- Framework prompt for CLI drivers:
-  - Claude: pass the framework/system prompt through a real system channel (`--system-prompt` or temp file
-    on the retained child's first spawn) instead of prefixing user text; keep stream-json parsing intact.
-  - ACP/Codex: if the protocol has no system channel, keep the current concatenation but make it explicit
-    in code with a one-line comment and stop claiming OpenSand tools in that path.
-  - `system-prompt.ts`: add a `toolClaim` option (or omit the tools section) when the runtime has
-    `mcpServers: []`; default behavior unchanged for the normal coordinator.
-  - Propagate `approvalMode` from `SendTurnInput`/driver config into the shim/runtime so `fullAuto`
-    reaches Claude's `--permission-mode`; ACP/Codex map it to their config option where supported.
-- Tests: permission request → approve → `respondToRequest` called; denial → fail-closed; framework prompt
-  appears as system (Claude) and not duplicated in user text; approval-mode flag reaches spawn args.
+- Keep `dispatchDriverEvent`'s deliberate `text.delta` skip. Add permission handling in the **shim**
+  (`provider-llm.ts`), not by adding a DesktopEvent type or new IPC method:
+  - `DriverLlmClientInput` gains `onPermissionRequest?: (req) => Promise<{behavior:'allow'|'answer'|'reject'}>`.
+    The bridge supplies it from its existing approval system (`approval_required` → `approveTool`,
+    `ipc-bridge.ts:1005-1020`); map `approve_once`/`always_allow` → `allow`, `reject` → `reject`.
+  - ACP/Codex `permission.request` events already carry `threadId`/`requestId` (`acp-runtime.ts:178`,
+    `codex-runtime.ts:175`). The shim passes them with method/options to `onPermissionRequest`, then calls
+    `instance.respondToRequest(threadId, requestId, {behavior})` using the retained CLI instance
+    (`DriverLlmClientInput.onInstance`, `provider-llm.ts:31,149`).
+  - No UI response → existing fail-closed timeout; no silent approval.
+- Framework prompt:
+  - Add `toolClaim?: 'full' | 'none'` to `SystemPromptContext` (`system-prompt.ts:3-11`). `buildSystemPrompt`
+    emits the "Tools Available" section only for `'full'` (default), so existing callers are unchanged.
+    `AgentCoordinator` passes `systemPromptContext` through (`coordinator.ts:103`).
+  - For CLI drivers where `mcpServers: []`, the bridge sets `toolClaim:'none'`; normal in-process turns stay
+    `'full'`.
+  - Claude: pass the framework/system prompt via a temp file created for the retained child on first spawn
+    using `--system-prompt-file <path>`; verify the flag against the installed `claude --help` during P3,
+    and if unsupported keep the current concatenation and record it as a documented limitation. The file
+    is a first-turn snapshot; system-prompt changes require a new child (same as session semantics).
+  - ACP/Codex: no system channel exists in these protocols; keep concatenation with an explicit one-line
+    comment and `toolClaim:'none'`.
+- Tests: permission request → approve → `respondToRequest` called with `allow`; reject → `reject`; no response
+  → timeout; framework prompt not duplicated in user text for Claude when the flag is supported;
+  `toolClaim:'none'` removes tool claims; `fullAuto` still reaches `--permission-mode bypassPermissions`.
 
 ### P4 — Verification and documentation
-- Full hermetic gate; `real-cli-compat.test.ts` smoke for installed binaries; live screenshot of provider
-  auth panel if a CLI is installed; per-phase spec/quality reviews; `CONTEXT.md` section 7,
-  `AGENTS_LEARNING.md`, commonplace source note and daily memory.
+- Full hermetic gate; `real-cli-compat.test.ts` smoke for installed binaries; per-phase spec + quality
+  reviews; `CONTEXT.md` section 7, `AGENTS_LEARNING.md`, commonplace source note and daily memory.
 
 ## Error handling / edge cases
-- Unknown provider kind → sign-in/status routes return null/404, no crash.
-- Corrupt/missing credential file → `signedIn:false`.
-- Login timeout with credential present → `authorized` (recheck wins over timeout race if login already exited).
-- Approval request with no UI response → existing timeout marks failed; no silent acceptance.
-- No approval when `autoApprove` false? Existing gate policy unchanged.
+- Unknown provider kind → sign-in/state routes return null/404, never throw into the UI.
+- Missing or empty credential file → `signedIn:false`.
+- Login timeout with credential present → successful child exit overwrites `failed` with `authorized`.
+- Approval request with no UI response → existing timeout; no silent acceptance.
+- `signOut()` blast radius on a shared stable home documented and surfaced in the UI tooltip.
 
 ## Testing
-- P1: fake-CLI auth round-trip + env propagation + authorized status.
-- P2: driver-derived auth capability + state route.
-- P3: permission bridge response + system-prompt channel + approval-mode propagation.
-- P4: full gate + real CLI probes + reviews + docs.
+- P1 fake-CLI credential round-trip + env propagation + authorized status.
+- P2 driver-derived auth capability + state route + UI marker.
+- P3 permission bridge response + system-prompt channel + tool-claim + fullAuto check.
+- P4 gate + real CLI probes + reviews + docs.
 
 ## Risks
-- Several CLI binaries may not be installed; live probes are best-effort and reported honestly.
-- Changing Claude's system prompt channel can alter model behavior; default path untouched and tested.
-- Stable credential home means multiple OpenSand instances share CLI credentials — this is the intended
-  "normal CLI login" behavior and removes the previous impossible instance-id mismatch.
+- CLI binaries may not be installed; live probes are best-effort and reported honestly.
+- `--system-prompt-file` support is external; fallback keeps current concatenation.
+- Stable credential home removes per-instance isolation by design; sign-out deletes all instances' creds.
