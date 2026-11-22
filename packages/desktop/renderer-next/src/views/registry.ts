@@ -4,6 +4,7 @@ import type { ViewId } from "../../../src/shell/navigation-model";
 import { RoomsView } from "./RoomsView";
 import { RoutinesView } from "./RoutinesView";
 import { SkillsView } from "./SkillsView";
+import { AttachmentsView } from "./AttachmentsView";
 import { VaultView } from "./VaultView";
 import { MemoriesView } from "./MemoriesView";
 
@@ -18,6 +19,7 @@ export const VIEW_COMPONENTS: Partial<Record<ViewId, ComponentType<ViewProps>>> 
   rooms: RoomsView,
   routines: RoutinesView,
   skills: SkillsView,
+  attachments: AttachmentsView,
   vault: VaultView,
   memories: MemoriesView,
 };

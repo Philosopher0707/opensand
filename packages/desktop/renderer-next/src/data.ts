@@ -11,24 +11,27 @@ import type { TurnEvent } from "../../src/shell/quick-capture-model";
 import type { Room, DiscussionResult, CreateRoomInput } from "../../src/shell/rooms-model";
 import type { Routine, CreateRoutineInput } from "../../src/shell/routines-model";
 import type { Skill, CreateSkillInput } from "../../src/shell/skills-model";
+import type { Attachment } from "../../src/shell/attachments-model";
 import type { VaultSecret, VaultCredential, SecretInput, CredentialInput } from "../../src/shell/vault-model";
 import { persistToken } from "../../src/shell/auth-model";
 import type { RoomsData } from "./data/rooms";
 import type { RoutinesData } from "./data/routines";
 import type { SkillsData } from "./data/skills";
+import type { AttachmentsData } from "./data/attachments";
 import type { VaultData } from "./data/vault";
 import { roomsData } from "./data/rooms";
 import { routinesData } from "./data/routines";
 import { skillsData } from "./data/skills";
+import { attachmentsData } from "./data/attachments";
 import { vaultData } from "./data/vault";
 import type { MemoriesData } from "./data/memories";
 import { memoriesData } from "./data/memories";
 
-export type { RoomsData, RoutinesData, SkillsData, VaultData, MemoriesData };
-export { roomsData, routinesData, skillsData, vaultData, memoriesData };
+export type { RoomsData, RoutinesData, SkillsData, AttachmentsData, VaultData, MemoriesData };
+export { roomsData, routinesData, skillsData, attachmentsData, vaultData, memoriesData };
 
 
-export type { SessionSummary, SessionRow, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent, Room, DiscussionResult, CreateRoomInput, Routine, CreateRoutineInput, Skill, CreateSkillInput, VaultSecret, VaultCredential, SecretInput, CredentialInput };
+export type { SessionSummary, SessionRow, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent, Room, DiscussionResult, CreateRoomInput, Routine, CreateRoutineInput, Skill, CreateSkillInput, Attachment, VaultSecret, VaultCredential, SecretInput, CredentialInput };
 
 /** sessionStorage can be blocked in a restricted page; keep the token in memory then. */
 function authStorage() {
@@ -124,7 +127,7 @@ export interface CoreShellData {
 
 }
 
-export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & VaultData & MemoriesData;
+export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & AttachmentsData & VaultData & MemoriesData;
 
 export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
   const b = bridge ?? (typeof window !== "undefined" ? (window as any).opensand : undefined);
@@ -477,6 +480,7 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
     ...roomsData(b, http),
     ...routinesData(b, http),
     ...skillsData(b, http),
+    ...attachmentsData(b, http),
     ...vaultData(b, http),
     ...memoriesData(b, http),
   };
