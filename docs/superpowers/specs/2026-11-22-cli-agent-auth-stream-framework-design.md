@@ -46,9 +46,11 @@ Baseline: `39a94f6`, branch `feat/agent-settings-ui`. `CONTEXT.md` section 7 is 
   `isSignedIn(): Promise<boolean>` (wraps the existing `statSync(...).size > 0`) and keep a
   `lastStatus: ProviderAuthenticationStatus | null` that survives `finish()` nulling `flow`.
   `get(flowId)` returns `lastStatus` when its `flowId` matches, otherwise `cancelled`.
-- On login child `exit` (`device-auth.ts:125-128`): re-run `isSignedIn()`; if true, set
-  `lastStatus`/flow status to `authorized`; otherwise `failed` with `spec.failureMessage`. If the 30 s
-  timer already recorded `failed`, the later successful exit overwrites it with `authorized`.
+- In `start()` immediately after `await run(spec.loginArgs, ...)` (`device-auth.ts:152-169`) — `run()`
+  resolves when the login child exits — re-run `isSignedIn()`; if true, `finish({status:'authorized',
+  flowId:id, ...})`, otherwise `finish({status:'failed', ...})` with `spec.failureMessage`. Do this in
+  `start()` (not inside generic `run()`, where `id` and flow identity are not in scope). `finish()` stores
+  into `lastStatus` unconditionally, so an authorized result can overwrite an earlier timer `failed`.
   Define signed-in strictly as non-empty credential file; "corrupt" JSON is not detectable generically
   and is not claimed.
 - Extend `ProviderInstance` (`shared/src/types.ts:511-534`) with optional `isSignedIn?: () => Promise<boolean>`
@@ -63,8 +65,9 @@ Baseline: `39a94f6`, branch `feat/agent-settings-ui`. `CONTEXT.md` section 7 is 
   `env[homeEnv] === credentialHome(spec)`.
 
 ### P2 — Auth API and UI derive from drivers
-- Add `supportsAuthentication?: boolean` to `ProviderDriver.metadata` (`shared/src/types.ts:641-654`);
-  `defineAcpDriver` (`factories/acp-driver.ts`) sets it true when `spec.auth` exists. Remove the hardcoded
+- Add `supportsAuthentication?: boolean` and `cli?: boolean` to `ProviderDriver.metadata`
+  (`shared/src/types.ts:641-654`); `defineAcpDriver` (`factories/acp-driver.ts`) sets both (auth from
+  `spec.auth`, CLI true), and Claude/Codex factories set `cli:true`. Remove the hardcoded
   `AUTH_PROVIDER_KINDS` set and derive auth capability from `providerRegistry` drivers.
 - `desktop-server.ts`: add `GET /api/providers/:kind/auth/state` returning `{signedIn, flowId}` from
   `getProviderAuthState(kind)`; keep existing start/cancel/sign-out/status routes.
@@ -77,10 +80,12 @@ Baseline: `39a94f6`, branch `feat/agent-settings-ui`. `CONTEXT.md` section 7 is 
 ### P3 — Stream conventions and framework fidelity
 - Keep `dispatchDriverEvent`'s deliberate `text.delta` skip. Add permission handling in the **shim**
   (`provider-llm.ts`), not by adding a DesktopEvent type or new IPC method:
-  - `DriverLlmClientInput` gains `onPermissionRequest?: (req) => Promise<{behavior:'allow'|'reject'|'answer'; always?: boolean}>`.
-    The bridge supplies it from its existing approval system (`approval_required` → `approveTool`,
-    `ipc-bridge.ts:1005-1020`); map `approve_once` → `{behavior:'allow'}`, `always_allow` →
-    `{behavior:'allow', always:true}`, `reject` → `{behavior:'reject'}`.
+  - `DriverLlmClientInput` gains `onPermissionRequest?: (req) => Promise<{behavior:'allow'|'reject'}>`.
+    The bridge supplies it via `requestUserApproval(toolName, args, reason, sessionId, forcePrompt=true)`
+    — add the optional `forcePrompt` parameter so CLI permissions cannot be silently auto-approved by
+    `settings.autoApprove` (`ipc-bridge.ts:990-992`). The approval system returns a boolean; map
+    `true → {behavior:'allow'}`, `false → {behavior:'reject'}`. `always_allow` is treated as allow-once
+    for CLI permissions (documented; no separate standing rule for provider permissions).
   - ACP/Codex `permission.request` events already carry `threadId`/`requestId` (`acp-runtime.ts:178`,
     `codex-runtime.ts:175`). The shim passes them with method/options to `onPermissionRequest`, then calls
     **`instance.adapter.respondToRequest(threadId, requestId, decision)`** — `respondToRequest` is on
@@ -91,12 +96,13 @@ Baseline: `39a94f6`, branch `feat/agent-settings-ui`. `CONTEXT.md` section 7 is 
   - Add `toolClaim?: 'full' | 'none'` to `SystemPromptContext` (`system-prompt.ts:3-11`). `buildSystemPrompt`
     emits the "Tools Available" section only for `'full'` (default), so existing callers are unchanged.
     `AgentCoordinator` passes `systemPromptContext` through (`coordinator.ts:103`).
-  - For CLI drivers where `mcpServers: []`, the bridge sets `toolClaim:'none'`; normal in-process turns stay
-    `'full'`.
-  - Claude: pass the framework/system prompt via a temp file created for the retained child on first spawn
-    using `--system-prompt-file <path>`; verify the flag against the installed `claude --help` during P3,
-    and if unsupported keep the current concatenation and record it as a documented limitation. The file
-    is a first-turn snapshot; system-prompt changes require a new child (same as session semantics).
+  - For CLI drivers (`metadata.cli === true`) the bridge sets `toolClaim:'none'`; normal in-process turns
+    stay `'full'`.
+  - Claude: this machine's `claude --help` lists `--system-prompt <prompt>` (not a file flag). On the
+    retained child's **first spawn** pass the framework prompt with `--system-prompt <text>` from
+    `turn.system`, and remove the per-turn concatenation at `claude-runtime.ts:234-237` when the flag is
+    used. It is a first-turn snapshot; a changed system prompt requires a new child. If a future CLI lacks
+    the flag, fall back to concatenation with a one-line comment.
   - ACP/Codex: no system channel exists in these protocols; keep concatenation with an explicit one-line
     comment and `toolClaim:'none'`.
 - Tests: permission request → approve → `respondToRequest` called with `allow`; reject → `reject`; no response
@@ -122,5 +128,5 @@ Baseline: `39a94f6`, branch `feat/agent-settings-ui`. `CONTEXT.md` section 7 is 
 
 ## Risks
 - CLI binaries may not be installed; live probes are best-effort and reported honestly.
-- `--system-prompt-file` support is external; fallback keeps current concatenation.
+- `--system-prompt` availability was checked in this environment's `claude --help`; other versions may lack it, with concatenation as the documented fallback.
 - Stable credential home removes per-instance isolation by design; sign-out deletes all instances' creds.
