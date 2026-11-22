@@ -1240,6 +1240,8 @@ export class DesktopIpcBridge extends EventEmitter {
     if (!input.agentId || !/^[a-zA-Z0-9_-]+$/.test(input.agentId)) {
       throw new Error(`Invalid agentId: ${input.agentId}`);
     }
+    const agent = await this.agentStore.getAgent(input.agentId);
+    if (!agent) throw new Error(`Unknown agent: ${input.agentId}`);
     const expectedBase = path.resolve(path.join(this.baseDir, 'sessions'));
     const resolvedTarget = path.resolve(path.join(expectedBase, input.targetSessionId));
     if (!resolvedTarget.startsWith(expectedBase)) {

@@ -75,12 +75,13 @@ test("recordDelegatedResult dedupes by (sourceSessionId, childSessionId)", async
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-delegated-"));
   try {
     const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
-    const targetSessionId = "bot_agent_delegated_ab12cd34";
+    const agent = await bridge.createAgent({ name: "Delegated", role: "Researcher", systemPrompt: "x" });
+    const targetSessionId = "bot_" + agent.id;
     const first = {
       targetSessionId,
       sourceSessionId: "parent-session",
       childSessionId: "child-A",
-      agentId: "agent_delegated_ab12cd34",
+      agentId: agent.id,
       content: "delegated answer A",
     };
     await bridge.recordDelegatedResult(first);
@@ -99,9 +100,30 @@ test("recordDelegatedResult dedupes by (sourceSessionId, childSessionId)", async
       assert.deepStrictEqual(Object.keys(rec.data).sort(),
         ["agentId", "at", "childSessionId", "content", "sourceSessionId"]);
       assert.strictEqual(rec.data.sourceSessionId, "parent-session");
-      assert.strictEqual(rec.data.agentId, "agent_delegated_ab12cd34");
+      assert.strictEqual(rec.data.agentId, agent.id);
       assert.strictEqual(typeof rec.data.at, "number");
     }
+  } finally {
+    rmTmp(tmpDir);
+  }
+});
+
+test("recordDelegatedResult rejects unknown agents before writing", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-delegated-unknown-"));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    await assert.rejects(
+      () => bridge.recordDelegatedResult({
+        targetSessionId: "bot_agent_x",
+        sourceSessionId: "parent",
+        childSessionId: "sub_x",
+        agentId: "agent_missing",
+        content: "x",
+      }),
+      /Unknown agent/,
+    );
+    assert.strictEqual(fs.existsSync(path.join(tmpDir, "sessions", "bot_agent_x")), false,
+      "an unknown agent must not create a target session log");
   } finally {
     rmTmp(tmpDir);
   }
