@@ -12,7 +12,7 @@ const STALE_MS = 120_000;
  * end of file", SIGABRT). The lock is a mkdir mutex, so it works across processes.
  */
 export async function withElectronLock<T>(fn: () => Promise<T>): Promise<T> {
-  const deadline = Date.now() + 240_000;
+  const deadline = Date.now() + 600_000;
   for (;;) {
     try {
       fs.mkdirSync(LOCK_DIR);
@@ -26,9 +26,17 @@ export async function withElectronLock<T>(fn: () => Promise<T>): Promise<T> {
       await new Promise((r) => setTimeout(r, 100));
     }
   }
+  const heartbeat = setInterval(() => {
+    try {
+      const now = new Date();
+      fs.utimesSync(LOCK_DIR, now, now);
+    } catch { /* ignore if already released */ }
+  }, 5000);
+  heartbeat.unref?.();
   try {
     return await fn();
   } finally {
+    clearInterval(heartbeat);
     try { fs.rmdirSync(LOCK_DIR); } catch { /* already gone */ }
   }
 }

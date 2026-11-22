@@ -12,6 +12,16 @@ import type { Room, DiscussionResult, CreateRoomInput } from "../../src/shell/ro
 import type { Routine, CreateRoutineInput } from "../../src/shell/routines-model";
 import type { Skill, CreateSkillInput } from "../../src/shell/skills-model";
 import { persistToken } from "../../src/shell/auth-model";
+import type { RoomsData } from "./data/rooms";
+import type { RoutinesData } from "./data/routines";
+import type { SkillsData } from "./data/skills";
+import { roomsData } from "./data/rooms";
+import { routinesData } from "./data/routines";
+import { skillsData } from "./data/skills";
+
+export type { RoomsData, RoutinesData, SkillsData };
+export { roomsData, routinesData, skillsData };
+
 
 export type { SessionSummary, SessionRow, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent, Room, DiscussionResult, CreateRoomInput, Routine, CreateRoutineInput, Skill, CreateSkillInput };
 
@@ -65,7 +75,7 @@ export interface GrantedSkillData {
   [key: string]: unknown;
 }
 
-export interface ShellData {
+export interface CoreShellData {
   listSessions(): Promise<SessionSummary[]>;
   deleteSession(id: string): Promise<void>;
   listMissions(): Promise<MissionSummary[]>;
@@ -107,25 +117,12 @@ export interface ShellData {
   /** Fires when the server reports an unauthenticated session (401 / auth_required event). */
   onAuthRequired(callback: () => void): () => void;
 
-  // Phase 5 Row 13: Multi-Agent Collaborative Rooms
-  getRooms(): Promise<Room[]>;
-  createRoom(payload: CreateRoomInput): Promise<Room>;
-  conveneDiscussion(roomId: string, topic: string): Promise<DiscussionResult>;
-
-  // Phase 5 Row 14: Scheduled Background Routines
-  getRoutines(): Promise<Routine[]>;
-  createRoutine(payload: CreateRoutineInput): Promise<Routine>;
-  setRoutineEnabled(routineId: string, isEnabled: boolean): Promise<Routine>;
-  triggerRoutine(routineId: string): Promise<unknown>;
-  deleteRoutine(routineId: string): Promise<void>;
-
-  // Phase 5 Row 15: Modular Recipe Skills
-  getSkills(category?: string): Promise<Skill[]>;
-  createSkill(payload: CreateSkillInput): Promise<Skill>;
-  deleteSkill(skillId: string): Promise<void>;
 }
 
-export function windowBridgeData(): ShellData {
+export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData;
+
+export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
+  const b = bridge ?? (typeof window !== "undefined" ? (window as any).opensand : undefined);
   return {
     async listSessions(): Promise<SessionSummary[]> {
       if (typeof window !== "undefined" && (window as any).__testSessions !== undefined) {
@@ -472,226 +469,8 @@ export function windowBridgeData(): ShellData {
       return () => unsubs.forEach((u) => u());
     },
 
-    async getRooms(): Promise<Room[]> {
-      if (typeof window !== "undefined" && (window as any).__testRooms !== undefined) {
-        return (window as any).__testRooms;
-      }
-      const bridge = (window as any).opensand;
-      if (bridge?.getRooms) {
-        try {
-          const res = await bridge.getRooms();
-          if (Array.isArray(res)) return res;
-        } catch {
-          // fall through to the HTTP route
-        }
-      }
-      try {
-        const res = await fetch("/api/rooms");
-        if (res.ok) {
-          const data = await res.json();
-          return Array.isArray(data) ? data : [];
-        }
-      } catch {
-        // Fallback when the fetch route is not available
-      }
-      return [];
-    },
-
-    async createRoom(payload: CreateRoomInput): Promise<Room> {
-      const bridge = (window as any).opensand;
-      if (bridge?.createRoom) {
-        try {
-          return await bridge.createRoom(payload);
-        } catch {
-          // fall through to the HTTP route
-        }
-      }
-      const res = await fetch("/api/rooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Could not create room (HTTP ${res.status})`);
-      return data as Room;
-    },
-
-    async conveneDiscussion(roomId: string, topic: string): Promise<DiscussionResult> {
-      const bridge = (window as any).opensand;
-      if (bridge?.runRoomDiscussion) {
-        try {
-          return await bridge.runRoomDiscussion(roomId, topic);
-        } catch {
-          // fall through to the HTTP route
-        }
-      }
-      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/discuss`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Could not start discussion (HTTP ${res.status})`);
-      return data as DiscussionResult;
-    },
-
-    async getRoutines(): Promise<Routine[]> {
-      if (typeof window !== "undefined" && (window as any).__testRoutines !== undefined) {
-        return (window as any).__testRoutines;
-      }
-      const bridge = (window as any).opensand;
-      if (bridge?.getRoutines) {
-        try {
-          const res = await bridge.getRoutines();
-          if (Array.isArray(res)) return res;
-        } catch {
-          // fall through to the HTTP route
-        }
-      }
-      try {
-        const res = await fetch("/api/routines");
-        if (res.ok) {
-          const data = await res.json();
-          return Array.isArray(data) ? data : [];
-        }
-      } catch {
-        // Fallback when the fetch route is not available
-      }
-      return [];
-    },
-
-    async createRoutine(payload: CreateRoutineInput): Promise<Routine> {
-      const bridge = (window as any).opensand;
-      if (bridge?.createRoutine) {
-        try {
-          return await bridge.createRoutine(payload);
-        } catch {
-          // fall through to the HTTP route
-        }
-      }
-      const res = await fetch("/api/routines", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Could not create routine (HTTP ${res.status})`);
-      return data as Routine;
-    },
-
-    async setRoutineEnabled(routineId: string, isEnabled: boolean): Promise<Routine> {
-      const bridge = (window as any).opensand;
-      if (bridge?.setRoutineEnabled) {
-        try {
-          return await bridge.setRoutineEnabled(routineId, isEnabled);
-        } catch {
-          // fall through to the HTTP route
-        }
-      }
-      // The desktop server registers PATCH here (legacy parity); POST is not a valid route.
-      const res = await fetch(`/api/routines/${encodeURIComponent(routineId)}/enabled`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isEnabled }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Could not update routine (HTTP ${res.status})`);
-      return data as Routine;
-    },
-
-    async triggerRoutine(routineId: string): Promise<unknown> {
-      const bridge = (window as any).opensand;
-      if (bridge?.triggerRoutine) {
-        try {
-          return await bridge.triggerRoutine(routineId);
-        } catch {
-          // fall through to the HTTP route
-        }
-      }
-      const res = await fetch(`/api/routines/${encodeURIComponent(routineId)}/trigger`, { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Could not run routine (HTTP ${res.status})`);
-      return data;
-    },
-
-    async deleteRoutine(routineId: string): Promise<void> {
-      const bridge = (window as any).opensand;
-      if (bridge?.deleteRoutine) {
-        try {
-          await bridge.deleteRoutine(routineId);
-          return;
-        } catch {
-          // fall through to the HTTP route
-        }
-      }
-      const res = await fetch(`/api/routines/${encodeURIComponent(routineId)}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error || `Could not delete routine (HTTP ${res.status})`);
-      }
-    },
-
-    async getSkills(category?: string): Promise<Skill[]> {
-      if (typeof window !== "undefined" && (window as any).__testSkills !== undefined) {
-        const list: Skill[] = (window as any).__testSkills;
-        return category ? list.filter((s) => s.category === category) : list;
-      }
-      const bridge = (window as any).opensand;
-      if (bridge?.getSkills) {
-        try {
-          const res = await bridge.getSkills(category);
-          if (Array.isArray(res)) return res;
-        } catch {
-          // fall through to the HTTP route
-        }
-      }
-      try {
-        const query = category ? `?category=${encodeURIComponent(category)}` : "";
-        const res = await fetch(`/api/skills${query}`);
-        if (res.ok) {
-          const data = await res.json();
-          return Array.isArray(data) ? data : [];
-        }
-      } catch {
-        // Fallback when the fetch route is not available
-      }
-      return [];
-    },
-
-    async createSkill(payload: CreateSkillInput): Promise<Skill> {
-      const bridge = (window as any).opensand;
-      if (bridge?.createSkill) {
-        try {
-          return await bridge.createSkill(payload);
-        } catch {
-          // fall through to the HTTP route
-        }
-      }
-      const res = await fetch("/api/skills", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Could not create skill (HTTP ${res.status})`);
-      return data as Skill;
-    },
-
-    async deleteSkill(skillId: string): Promise<void> {
-      const bridge = (window as any).opensand;
-      if (bridge?.deleteSkill) {
-        try {
-          await bridge.deleteSkill(skillId);
-          return;
-        } catch {
-          // fall through to the HTTP route
-        }
-      }
-      const res = await fetch(`/api/skills/${encodeURIComponent(skillId)}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error || `Could not delete skill (HTTP ${res.status})`);
-      }
-    },
+    ...roomsData(b, http),
+    ...routinesData(b, http),
+    ...skillsData(b, http),
   };
 }

@@ -315,3 +315,33 @@ export interface ModelRoleAssignment {
    - Mount Preact root inside `<div class="app-layout">`.
    - Migrate views one by one (`<Sidebar>` $ightarrow$ `<TimelineView>` $ightarrow$ `<MissionCenter>` $ightarrow$ `<InspectorPane>`).
    - Deprecate and delete `packages/desktop/renderer/app.js` once the final view is verified.
+
+---
+
+## 6. Adding a Screen
+
+To add a new screen or view without merge conflicts between parallel UI lanes:
+
+### 6.1 Files a New Screen Creates
+1. **Model**: `src/shell/<feature>-model.ts`
+   - Pure state machines, validation logic, formatters, and interfaces.
+   - Unit tests: `packages/desktop/test/<feature>-model.test.ts`.
+2. **Data Module**: `packages/desktop/renderer-next/src/data/<feature>.ts`
+   - Exports `<Feature>Data` interface and `<feature>Data(bridge, http)` factory.
+   - Wraps IPC bridge methods with fallback to HTTP routes.
+   - Re-exported via `packages/desktop/renderer-next/src/data.ts`.
+3. **View Component**: `packages/desktop/renderer-next/src/views/<Feature>View.tsx`
+   - Preact component taking `ViewProps` (`data`, `active`, `onSelect`, `refreshKey`).
+4. **Window Harness Tests**: `packages/desktop/test/<feature>-real-window.test.ts`
+   - Electron real-window integration test verifying UI states, modals, and layout.
+
+### 6.2 The Single Shared Line
+Register the new view in `packages/desktop/renderer-next/src/views/registry.ts`:
+```typescript
+export const VIEW_COMPONENTS: Partial<Record<ViewId, ComponentType<ViewProps>>> = {
+  // ... existing views
+  <feature>: <Feature>View,
+};
+```
+No changes to `Shell.tsx` are required.
+

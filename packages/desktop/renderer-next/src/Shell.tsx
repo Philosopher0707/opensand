@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ShellData, ToolApprovalRequest } from "./data";
 import { ChatList } from "./views/ChatList";
-import { RoomsView } from "./views/RoomsView";
-import { RoutinesView } from "./views/RoutinesView";
-import { SkillsView } from "./views/SkillsView";
+import { VIEW_COMPONENTS } from "./views/registry";
 import { MissionList } from "./views/MissionList";
 import { MissionTimeline } from "./views/MissionTimeline";
 import { MissionReceipt } from "./views/MissionReceipt";
@@ -715,35 +713,20 @@ export function Shell({ data }: ShellProps) {
             </div>
           )}
           </div>
-          {VIEW_IDS.filter((view) => view !== "chat").map((view) =>
-            view === "rooms" ? (
-              <RoomsView
-                key="rooms"
+          {VIEW_IDS.filter((view) => view !== "chat").map((view) => {
+            const Comp = VIEW_COMPONENTS[view];
+            return Comp ? (
+              <Comp
+                key={view}
                 data={data}
-                active={currentView === "rooms"}
-                onSelect={switchView}
-                refreshKey={dataRev}
-              />
-            ) : view === "routines" ? (
-              <RoutinesView
-                key="routines"
-                data={data}
-                active={currentView === "routines"}
-                onSelect={switchView}
-                refreshKey={dataRev}
-              />
-            ) : view === "skills" ? (
-              <SkillsView
-                key="skills"
-                data={data}
-                active={currentView === "skills"}
+                active={currentView === view}
                 onSelect={switchView}
                 refreshKey={dataRev}
               />
             ) : (
               <ViewPanel key={view} view={view} active={currentView === view} onSelect={switchView} />
-            )
-          )}
+            );
+          })}
         </section>
       </main>
       <Inspector
