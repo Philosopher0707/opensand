@@ -72,8 +72,9 @@ Baseline: `39a94f6`, branch `feat/agent-settings-ui`. `CONTEXT.md` section 7 is 
   `AUTH_PROVIDER_KINDS` set and derive auth capability from `providerRegistry` drivers.
 - `desktop-server.ts`: add `GET /api/providers/:kind/auth/state` returning `{signedIn, flowId}` from
   `getProviderAuthState(kind)`; keep existing start/cancel/sign-out/status routes.
-- Renderer: `model-picker.js` / `app.js` shows signed-in/out per provider from the state route and hides
-  the "sign in" hint when already signed in. No credential values reach the UI.
+- Renderer: `/api/providers` includes `signedIn` per auth-capable provider; `model-picker.js` / `app.js`
+  show signed-in/out from that field and hide the "sign in" hint when already signed in. The dedicated
+  state route remains for tests and direct polling. No credential values reach the UI.
 - Security note: with a stable home, `signOut()` `rmSync(home, {recursive:true,force:true})`
   (`device-auth.ts:197`) removes credentials for all instances of that provider — intended CLI-like
   behavior, documented in the spec and UI tooltip.
