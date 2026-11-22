@@ -24,6 +24,12 @@ export function openBotInspector({
   bot, anchor, loadSessions, onRename, onIdentity, onModel, onDelete, onOpenSession, onNewSession,
 } = {}) {
   close();
+  let busy = false;
+  function liveAnchor() {
+    const id = bot?.id;
+    if (!id) return document.querySelector('#botList .bot-rail-card:not([data-agent-id]) .btn-bot-inspect') ?? null;
+    return document.querySelector(`#botList .bot-rail-card[data-agent-id="${CSS.escape(String(id))}"] .btn-bot-inspect`) ?? null;
+  }
   returnFocus = anchor ?? null;
   root = el('div', 'inspector-backdrop');
   const popover = el('div', 'inspector-popover');
@@ -71,29 +77,33 @@ export function openBotInspector({
   popover.appendChild(sessions);
 
   async function run(fn) {
+    if (busy) return;
+    busy = true;
     try {
       error.hidden = true;
       await fn();
     } catch (err) {
       error.textContent = err?.message || 'Action failed';
       error.hidden = false;
+    } finally {
+      busy = false;
     }
   }
-  rename.onclick = () => run(async () => { await onRename?.(bot, input.value); close(); });
+  rename.onclick = () => run(async () => { await onRename?.(bot, input.value); returnFocus = liveAnchor() ?? returnFocus; close(); });
   // Dialog-opening callbacks must receive the ORIGINAL card button: closing the
   // inspector detaches its own buttons, giving getBoundingClientRect() zeros.
   // Only rename/delete keep the inspector open, so they are the callbacks whose
   // errors can be shown inline; dialog-opening callbacks are caught and logged.
   const replaceDialog = (callback) => {
     void Promise.resolve()
-      .then(() => { close(); return callback(anchor); })
+      .then(() => { const a = liveAnchor() ?? anchor; close(); return callback(a); })
       .catch((err) => console.error('[bot-inspector]', err));
   };
   identity.onclick = () => replaceDialog((a) => onIdentity?.(bot, a));
   model.onclick = () => replaceDialog((a) => onModel?.(bot, a));
   del.onclick = () => {
     if (!window.confirm(`Are you sure you want to delete bot "${bot?.name}"?`)) return;
-    void run(async () => { await onDelete?.(bot); close(); });
+    void run(async () => { await onDelete?.(bot); returnFocus = liveAnchor() ?? returnFocus; close(); });
   };
   newBtn.onclick = () => replaceDialog(() => onNewSession?.(bot));
 

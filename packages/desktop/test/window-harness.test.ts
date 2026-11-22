@@ -883,11 +883,12 @@ test("Real-Window Harness: inspector renames and deletes a bot", async (t) => {
     "    if (renamed === 'Renamed Alpha' && cardName === 'Renamed Alpha') break;",
     "    await new Promise((r) => setTimeout(r, 100));",
     "  }",
+    "  const focusAfterRename = document.activeElement?.classList?.contains('btn-bot-inspect') === true;",
     "  const sessionsBtn = document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_insp_b2\"] .btn-bot-inspect');",
     "  sessionsBtn.click();",
     "  await new Promise((r) => setTimeout(r, 150));",
     "  const betaSessionRows = document.querySelectorAll('.inspector-popover .inspector-session').length;",
-    "  return { cards, renamed, cardName, betaSessionRows };",
+    "  return { cards, renamed, cardName, focusAfterRename, betaSessionRows };",
     "})()",
   ].join("\n");
   try {
@@ -897,6 +898,7 @@ test("Real-Window Harness: inspector renames and deletes a bot", async (t) => {
     assert.strictEqual(v.cards, 2, `inspector must have manage + sessions cards (${JSON.stringify(v)})`);
     assert.strictEqual(v.renamed, "Renamed Alpha", `rename must persist via API (${JSON.stringify(v)})`);
     assert.strictEqual(v.cardName, "Renamed Alpha", `rail must show the new name (${JSON.stringify(v)})`);
+    assert.strictEqual(v.focusAfterRename, true, `focus must return to the re-rendered inspect button after rename (${JSON.stringify(v)})`);
     assert.strictEqual(v.betaSessionRows, 1, `a bot with no real sessions shows exactly one synthetic home row (${JSON.stringify(v)})`);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
