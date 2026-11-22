@@ -4,11 +4,12 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { withElectronLock } from "./electron-lock.js";
 import { hermeticElectronEnv, makeTempHome } from "./hermetic-env.js";
 
 const pkgRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const NAV_HELPER_URL = pathToFileURL(path.join(pkgRoot, "dist/test/helpers/navigate-view.js")).href;
 
 function skipReason(): string | undefined {
   if (process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
@@ -23,6 +24,8 @@ const RUNNER_SCRIPT = String.raw`
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+
+import { navigateToView } from "${NAV_HELPER_URL}";
 
 const shotDir = process.env.OPENSAND_ROUTINES_SHOT_DIR || "";
 const TIMEOUT_MS = Number(process.env.OPENSAND_ROUTINES_TIMEOUT_MS || 120000);
@@ -74,8 +77,7 @@ app.on("browser-window-created", (_e, w) => {
   w.webContents.on("did-finish-load", async () => {
     try {
       await wait("document.querySelector('#routinesCardGrid') && document.body.classList.contains('is-electron')");
-      await js("window.location.hash = '#routines'");
-      await wait("document.querySelector('#viewRoutines') && !document.querySelector('#viewRoutines').classList.contains('hidden')");
+      await navigateToView({ js, sleep }, "#routines", "#viewRoutines");
       await wait("!document.querySelector('#routinesCardGrid .routines-loading')");
 
       // 1. Fresh state: the grid renders the empty state and no cards.

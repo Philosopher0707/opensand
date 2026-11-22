@@ -20,6 +20,7 @@ make_workspace() {
   # and lint-brief ones fail on demand so the wiring in verify.sh is tested.
   printf '#!/usr/bin/env bash\nexit 0\n' > "$dir/scripts/check-scripts-catalog.sh"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$dir/scripts/check-doc-links.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$dir/scripts/check-real-window-nav.sh"
   printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../.lessons-stale" ]] && { echo "FAIL: docs/lessons/INDEX.md is stale. Run: bash scripts/lessons-index.sh" >&2; exit 1; }\nexit 0\n' > "$dir/scripts/lessons-index.sh"
   printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../.lint-brief-fail" ]] && { echo "FAIL: docs/brief-template.md missing sections: Goal" >&2; exit 1; }\nexit 0\n' > "$dir/scripts/lint-brief.sh"
   printf '# Bot brief template\n\nGoal: the outcome.\n\nDone when: the finish line.\n\nScope: what may be touched.\n\nReport back with: the proof.\n' > "$dir/docs/brief-template.md"

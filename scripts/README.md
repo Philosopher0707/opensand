@@ -15,6 +15,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `bench-first-token.ts` | Benchmark engine model time-to-first-token | Manual performance testing | None |
 | `check-doc-links.sh` | Check that local markdown links under `docs/` resolve to real files | `scripts/verify.sh`, CI | `check-doc-links-selftest.sh` |
 | `check-doc-links-selftest.sh` | Hermetic selftest for the docs link checker | Pre-commit / verification | Self |
+| `check-real-window-nav.sh` | Fail if a real-window test assigns location.hash directly; navigation must go through the shared bounded re-dispatch helper | `scripts/verify.sh`, CI | None |
 | `check-scripts-catalog.sh` | Validate completeness of `scripts/README.md` and selftests | `scripts/verify.sh`, CI | `check-scripts-catalog-selftest.sh` |
 | `check-scripts-catalog-selftest.sh` | Hermetic selftest for scripts catalog checker | Pre-commit / verification | Self |
 | `clean-disk.sh` | Safe disk reclamation of merged/clean scratch worktrees and caches; reports the Data volume (`/System/Volumes/Data`) with per-target estimates | Manual / low disk space in release | `clean-disk-selftest.sh` |
@@ -99,6 +100,13 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
 - **Trigger**: Pre-commit hook, test verification.
+
+### `check-real-window-nav.sh`
+- **Purpose**: Fail with file and line when any `*-real-window.test.ts` assigns location.hash directly. The one-shot change is lost when the view's hashchange subscriber mounts a tick after the DOM appears; runners must call the shared navigateToView helper, which re-dispatches with a bounded retry until the target view is visible. `REAL_WINDOW_TEST_DIR` overrides the scanned directory.
+- **Usage**: `scripts/check-real-window-nav.sh`
+- **Exit Codes**: `0` no direct assignments, `1` a direct assignment was found, `2` test directory missing.
+- **Selftest**: None (mutation proof recorded in docs/lessons).
+- **Trigger**: `scripts/verify.sh`, CI.
 
 ### `check-scripts-catalog.sh`
 - **Purpose**: Ensure all scripts in `scripts/` are documented in `README.md`, no nonexistent scripts are cataloged, and all gate/release scripts have selftests.
