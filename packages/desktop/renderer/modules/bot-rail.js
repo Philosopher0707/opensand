@@ -251,7 +251,8 @@ export function createBotRail(options = {}) {
     async render() {
       const agents = await getAgents?.();
       lastAgents = Array.isArray(agents) ? agents : [];
-      const loaded = await getSessions?.();
+      let loaded = [];
+      try { loaded = await getSessions?.(); } catch { loaded = []; }
       sessions = Array.isArray(loaded) ? loaded : [];
       let changed = false;
       for (const id of expandedIds) {

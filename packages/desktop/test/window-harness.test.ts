@@ -387,7 +387,11 @@ test("Real-Window Harness: per-pane bot selection routes sends and status", asyn
     "  const statusFirst = { alpha: card(window.__parallelState.getPanes()[0].agentId)?.dataset.status, active: card(activeAgentId)?.dataset.status };",
     "  window.__railState.emit({ type: 'session_started', sessionId: paneState[1].sessionId });",
     "  const statusSecond = { beta: card(window.__parallelState.getPanes()[1].agentId)?.dataset.status, active: card(activeAgentId)?.dataset.status };",
-    "  return { activeAgentId, options, optionCount: selectOpts.length, selectValues, paneState, sends, statusFirst, statusSecond };",
+    "  window.__railState.emit({ type: 'session_started', sessionId: 'bot_' + activeAgentId });",
+    "  const activeStatusBefore = card(activeAgentId)?.dataset.status;",
+    `  window.__railState.emit({ type: 'turn_complete', sessionId: paneState[0].sessionId });`,
+    `  const statusAfterComplete = { alpha: card(${JSON.stringify(alpha)})?.dataset.status, active: card(activeAgentId)?.dataset.status };`,
+    "  return { activeAgentId, options, optionCount: selectOpts.length, selectValues, paneState, sends, statusFirst, statusSecond, activeStatusBefore, statusAfterComplete };",
     "})()",
   ].join("\n");
 
@@ -414,6 +418,56 @@ test("Real-Window Harness: per-pane bot selection routes sends and status", asyn
     assert.notStrictEqual(v.statusFirst.active, "busy", `active bot card must stay untouched (${JSON.stringify(v)})`);
     assert.strictEqual(v.statusSecond.beta, "busy", `second pane session_started must busy beta (${JSON.stringify(v)})`);
     assert.notStrictEqual(v.statusSecond.active, "busy", `active bot card must stay untouched after both panes (${JSON.stringify(v)})`);
+    assert.strictEqual(v.activeStatusBefore, "busy", `active bot must be busy before pane completion (${JSON.stringify(v)})`);
+    assert.strictEqual(v.statusAfterComplete.alpha, "active", `pane turn_complete must clear its own bot's busy status (${JSON.stringify(v)})`);
+    assert.strictEqual(v.statusAfterComplete.active, "busy", `pane completion must not spuriously clear the active bot's status (${JSON.stringify(v)})`);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test("Real-Window Harness: completion status follows the session owner, not the active bot", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-status-owner-home-"));
+  const agentPath = path.join(tmpHome, ".opensand", "agents");
+  fs.mkdirSync(agentPath, { recursive: true });
+  const now = Date.now();
+  const owner = "agent_status_owner_ab12cd34";
+  const active = "agent_status_active_ab12cd34";
+  for (const [id, name, createdAt] of [
+    [owner, "Owner", now + 2000],
+    [active, "Active", now + 1000],
+  ] as Array<[string, string, number]>) {
+    fs.writeFileSync(path.join(agentPath, `${id}.json`), JSON.stringify({
+      id, name, role: "Worker", systemPrompt: "Work.", kind: "AGENT",
+      model: "default", provider: "global", createdAt, updatedAt: createdAt,
+    }), "utf8");
+  }
+
+  const script = [
+    "(async () => {",
+    "  await new Promise((r) => setTimeout(r, 350));",
+    `  const card = (id) => document.querySelector('#botList .bot-rail-card[data-agent-id="' + id + '"]');`,
+    `  card(${JSON.stringify(active)})?.click();`,
+    "  await new Promise((r) => setTimeout(r, 200));",
+    `  const activeAgentId = window.__railState.getActive().activeAgentId;`,
+    `  window.__railState.emit({ type: 'session_started', sessionId: ${JSON.stringify('bot_' + owner)} });`,
+    "  window.__railState.emit({ type: 'session_started', sessionId: 'bot_' + activeAgentId });",
+    `  const before = { owner: card(${JSON.stringify(owner)})?.dataset.status, active: card(activeAgentId)?.dataset.status };`,
+    `  window.__railState.emit({ type: 'turn_complete', sessionId: ${JSON.stringify('bot_' + owner)} });`,
+    `  const after = { owner: card(${JSON.stringify(owner)})?.dataset.status, active: card(activeAgentId)?.dataset.status };`,
+    "  return { activeAgentId, before, after };",
+    "})()",
+  ].join("\n");
+
+  try {
+    const r = await runHarness("default", { home: tmpHome, interactScript: script });
+    if (r.skipped) { t.skip(r.skipped); return; }
+    const v = r.interactResult || {};
+    assert.strictEqual(v.activeAgentId, active, `active bot must be the selected bot (${JSON.stringify(v)})`);
+    assert.strictEqual(v.before.owner, "busy", `session_started must busy the owner bot (${JSON.stringify(v)})`);
+    assert.strictEqual(v.before.active, "busy", `session_started must busy the active bot (${JSON.stringify(v)})`);
+    assert.strictEqual(v.after.owner, "active", `turn_complete must clear the session owner's busy status (${JSON.stringify(v)})`);
+    assert.strictEqual(v.after.active, "busy", `turn_complete must not clear the active bot's status (${JSON.stringify(v)})`);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }

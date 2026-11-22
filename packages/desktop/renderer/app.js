@@ -1305,7 +1305,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (agentIdForSession.has(sessionId)) return agentIdForSession.get(sessionId);
     const bot = sessionId.match(/^bot_(agent_[A-Za-z0-9_]+)$/);
     if (bot) return bot[1];
-    const child = sessionId.match(/^sub_agent_(.+)_(\d{10,})$/);
+    const child = sessionId.match(/^(sub_agent_[A-Za-z0-9_]+?)_\d{10,}$/);
     if (child) return child[1];
     return sessionAgentMeta.get(sessionId) || null;
   }
@@ -1361,6 +1361,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (activeAgentId === b.id) {
       activeAgentId = null;
       badgeActiveBot.textContent = 'No chief chosen';
+    }
+    if (chiefAgentId === b.id) {
+      chiefAgentId = null;
+      if (badgeActiveBot && !activeAgentId) badgeActiveBot.textContent = 'No chief chosen';
     }
     await refreshBots();
     refreshTokenBadge();
@@ -2527,6 +2531,10 @@ document.addEventListener('DOMContentLoaded', async () => {
               if (activeAgentId === a.id) {
                 activeAgentId = null;
                 badgeActiveBot.textContent = 'No chief chosen';
+              }
+              if (chiefAgentId === a.id) {
+                chiefAgentId = null;
+                if (badgeActiveBot && !activeAgentId) badgeActiveBot.textContent = 'No chief chosen';
               }
               refreshBots();
               refreshTokenBadge();
@@ -5304,7 +5312,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (event.type === 'session_started') setBotCardStatus(getAgentIdForSession(event.sessionId), 'busy');
     if (['turn_complete', 'turn_cancelled', 'error'].includes(event.type)) {
-      setBotCardStatus(activeAgentId, 'active');
+      const ownerId = getAgentIdForSession(event.sessionId);
+      if (ownerId) setBotCardStatus(ownerId, 'active');
     }
     // The board owns its panes' events while it is visible; the chat view must
     // not append a background session's tokens to its single open message.
