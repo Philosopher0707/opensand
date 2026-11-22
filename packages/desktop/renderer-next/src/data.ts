@@ -9,9 +9,10 @@ import type { TimelineForkResult } from "../../src/shell/mission-fork-model";
 import type { ToolApprovalRequest } from "../../src/shell/inbox-model";
 import type { TurnEvent } from "../../src/shell/quick-capture-model";
 import type { Room, DiscussionResult, CreateRoomInput } from "../../src/shell/rooms-model";
+import type { Routine, CreateRoutineInput } from "../../src/shell/routines-model";
 import { persistToken } from "../../src/shell/auth-model";
 
-export type { SessionSummary, SessionRow, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent, Room, DiscussionResult, CreateRoomInput };
+export type { SessionSummary, SessionRow, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent, Room, DiscussionResult, CreateRoomInput, Routine, CreateRoutineInput };
 
 /** sessionStorage can be blocked in a restricted page; keep the token in memory then. */
 function authStorage() {
@@ -109,6 +110,13 @@ export interface ShellData {
   getRooms(): Promise<Room[]>;
   createRoom(payload: CreateRoomInput): Promise<Room>;
   conveneDiscussion(roomId: string, topic: string): Promise<DiscussionResult>;
+
+  // Phase 5 Row 14: Scheduled Background Routines
+  getRoutines(): Promise<Routine[]>;
+  createRoutine(payload: CreateRoutineInput): Promise<Routine>;
+  setRoutineEnabled(routineId: string, isEnabled: boolean): Promise<Routine>;
+  triggerRoutine(routineId: string): Promise<unknown>;
+  deleteRoutine(routineId: string): Promise<void>;
 }
 
 export function windowBridgeData(): ShellData {
@@ -519,6 +527,102 @@ export function windowBridgeData(): ShellData {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || `Could not start discussion (HTTP ${res.status})`);
       return data as DiscussionResult;
+    },
+
+    async getRoutines(): Promise<Routine[]> {
+      if (typeof window !== "undefined" && (window as any).__testRoutines !== undefined) {
+        return (window as any).__testRoutines;
+      }
+      const bridge = (window as any).opensand;
+      if (bridge?.getRoutines) {
+        try {
+          const res = await bridge.getRoutines();
+          if (Array.isArray(res)) return res;
+        } catch {
+          // fall through to the HTTP route
+        }
+      }
+      try {
+        const res = await fetch("/api/routines");
+        if (res.ok) {
+          const data = await res.json();
+          return Array.isArray(data) ? data : [];
+        }
+      } catch {
+        // Fallback when the fetch route is not available
+      }
+      return [];
+    },
+
+    async createRoutine(payload: CreateRoutineInput): Promise<Routine> {
+      const bridge = (window as any).opensand;
+      if (bridge?.createRoutine) {
+        try {
+          return await bridge.createRoutine(payload);
+        } catch {
+          // fall through to the HTTP route
+        }
+      }
+      const res = await fetch("/api/routines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `Could not create routine (HTTP ${res.status})`);
+      return data as Routine;
+    },
+
+    async setRoutineEnabled(routineId: string, isEnabled: boolean): Promise<Routine> {
+      const bridge = (window as any).opensand;
+      if (bridge?.setRoutineEnabled) {
+        try {
+          return await bridge.setRoutineEnabled(routineId, isEnabled);
+        } catch {
+          // fall through to the HTTP route
+        }
+      }
+      // The desktop server registers PATCH here (legacy parity); POST is not a valid route.
+      const res = await fetch(`/api/routines/${encodeURIComponent(routineId)}/enabled`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isEnabled }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `Could not update routine (HTTP ${res.status})`);
+      return data as Routine;
+    },
+
+    async triggerRoutine(routineId: string): Promise<unknown> {
+      const bridge = (window as any).opensand;
+      if (bridge?.triggerRoutine) {
+        try {
+          return await bridge.triggerRoutine(routineId);
+        } catch {
+          // fall through to the HTTP route
+        }
+      }
+      const res = await fetch(`/api/routines/${encodeURIComponent(routineId)}/trigger`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `Could not run routine (HTTP ${res.status})`);
+      return data;
+    },
+
+    async deleteRoutine(routineId: string): Promise<void> {
+      const bridge = (window as any).opensand;
+      if (bridge?.deleteRoutine) {
+        try {
+          await bridge.deleteRoutine(routineId);
+          return;
+        } catch {
+          // fall through to the HTTP route
+        }
+      }
+      const res = await fetch(`/api/routines/${encodeURIComponent(routineId)}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Could not delete routine (HTTP ${res.status})`);
+      }
     },
   };
 }
