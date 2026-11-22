@@ -829,3 +829,64 @@
 .btn-toggle-canvas {
   margin-right: 6px;
 }
+
+/* Phase 5 Row 6: Detail Inspector Panel Styles */
+.btn-toggle-detail {
+  gap: 4px;
+}
+
+.btn-toggle-detail.active {
+  background: var(--bg-hover, rgba(128, 128, 128, 0.25));
+  color: var(--accent, #3b82f6);
+}
+
+.detail-panel {
+  box-sizing: border-box;
+}
+
+.detail-panel.hidden {
+  display: none !important;
+}
+
+.detail-body {
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.detail-prompt-preview,
+.detail-memory-item {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.detail-skills-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.detail-skill-chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1024px) {
+  .detail-panel {
+    width: 320px;
+    min-width: 280px;
+  }
+}
+
+@media (max-width: 900px) {
+  .detail-panel {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 320px;
+    z-index: 100;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4);
+  }
+}

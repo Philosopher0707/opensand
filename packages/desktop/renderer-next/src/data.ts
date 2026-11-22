@@ -1,9 +1,10 @@
+// Shell data layer: wraps window.opensand and HTTP endpoints so components stay testable without a real bridge.
 import type { SessionSummary } from "../../src/shell/session-list-model";
 import type { MissionSummary } from "../../src/shell/mission-list-model";
 import type { RawTimelineEvent } from "../../src/shell/mission-timeline-model";
-import type { FileDiffView } from "../../src/shell/mission-diff-model";
 import type { ReceiptView } from "../../src/shell/mission-receipt-model";
-import type { RestoreResult, PreviewRestoreResult } from "../../src/shell/mission-restore-model";
+import type { FileDiffView } from "../../src/shell/mission-diff-model";
+import type { PreviewRestoreResult, RestoreResult } from "../../src/shell/mission-restore-model";
 import type { TimelineForkResult } from "../../src/shell/mission-fork-model";
 import type { ToolApprovalRequest } from "../../src/shell/inbox-model";
 import type { TurnEvent } from "../../src/shell/quick-capture-model";
@@ -15,6 +16,39 @@ export interface LoadedSessionData {
   transcript?: string;
   agentId?: string;
   roomId?: string;
+  [key: string]: unknown;
+}
+
+export interface TokenTelemetryData {
+  estimatedTokens?: number;
+  maxContextTokens?: number;
+  pct?: number;
+  [key: string]: unknown;
+}
+
+export interface AgentPersonaData {
+  id: string;
+  name: string;
+  role?: string;
+  model?: string;
+  systemPrompt?: string;
+  kind?: string;
+  avatar?: string;
+  [key: string]: unknown;
+}
+
+export interface CognitiveMemoryData {
+  id?: string;
+  content?: string;
+  fact?: string;
+  rule?: string;
+  [key: string]: unknown;
+}
+
+export interface GrantedSkillData {
+  id: string;
+  name?: string;
+  description?: string;
   [key: string]: unknown;
 }
 
@@ -40,6 +74,14 @@ export interface ShellData {
   onTurnEvent?(callback: (event: TurnEvent) => void): () => void;
   /** Loads historical session data (events, transcript, agentId). */
   loadSession?(sessionId: string): Promise<LoadedSessionData | any>;
+
+  // Phase 5 Row 6: Detail Inspector Queries & Controls
+  getTokenTelemetry?(agentId?: string, sessionId?: string): Promise<TokenTelemetryData | null>;
+  getAgents?(): Promise<AgentPersonaData[]>;
+  listMemories?(filter?: { agentId?: string; sessionId?: string; query?: string }): Promise<CognitiveMemoryData[]>;
+  listSkills?(): Promise<GrantedSkillData[]>;
+  exportAgentTemplate?(id: string): Promise<unknown>;
+  clearAllSessions?(): Promise<void>;
 }
 
 export function windowBridgeData(): ShellData {
@@ -186,6 +228,136 @@ export function windowBridgeData(): ShellData {
         return null;
       }
       return bridge.loadSession(sessionId);
+    },
+
+    async getTokenTelemetry(agentId?: string, sessionId?: string): Promise<TokenTelemetryData | null> {
+      if (typeof window !== "undefined" && (window as any).__testTokenTelemetry !== undefined) {
+        return (window as any).__testTokenTelemetry;
+      }
+      const bridge = (window as any).opensand;
+      if (bridge?.getTokenTelemetry) {
+        try {
+          const res = await bridge.getTokenTelemetry(agentId, sessionId);
+          if (res) return res;
+        } catch {
+          // ignore and fall through
+        }
+      }
+      try {
+        const params = new URLSearchParams();
+        if (agentId) params.set("agentId", agentId);
+        if (sessionId) params.set("sessionId", sessionId);
+        const qs = params.toString() ? `?${params.toString()}` : "";
+        const res = await fetch(`/api/tokens${qs}`);
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch {
+        // Fallback when fetch route is not available
+      }
+      return null;
+    },
+
+    async getAgents(): Promise<AgentPersonaData[]> {
+      if (typeof window !== "undefined" && (window as any).__testAgents !== undefined) {
+        return (window as any).__testAgents;
+      }
+      const bridge = (window as any).opensand;
+      if (bridge?.getAgents) {
+        try {
+          const res = await bridge.getAgents();
+          if (Array.isArray(res)) return res;
+        } catch {
+          // ignore and fall through
+        }
+      }
+      try {
+        const res = await fetch("/api/agents");
+        if (res.ok) {
+          const data = await res.json();
+          return Array.isArray(data) ? data : [];
+        }
+      } catch {
+        // Fallback when fetch route is not available
+      }
+      return [];
+    },
+
+    async listMemories(filter?: { agentId?: string; sessionId?: string; query?: string }): Promise<CognitiveMemoryData[]> {
+      if (typeof window !== "undefined" && (window as any).__testMemories !== undefined) {
+        return (window as any).__testMemories;
+      }
+      const bridge = (window as any).opensand;
+      if (bridge?.listMemories) {
+        try {
+          const res = await bridge.listMemories(filter);
+          if (Array.isArray(res)) return res;
+        } catch {
+          // ignore and fall through
+        }
+      }
+      try {
+        const res = await fetch("/api/memories");
+        if (res.ok) {
+          const data = await res.json();
+          return Array.isArray(data) ? data : [];
+        }
+      } catch {
+        // Fallback when fetch route is not available
+      }
+      return [];
+    },
+
+    async listSkills(): Promise<GrantedSkillData[]> {
+      if (typeof window !== "undefined" && (window as any).__testSkills !== undefined) {
+        return (window as any).__testSkills;
+      }
+      const bridge = (window as any).opensand;
+      if (bridge?.listSkills) {
+        try {
+          const res = await bridge.listSkills();
+          if (Array.isArray(res)) return res;
+        } catch {
+          // ignore and fall through
+        }
+      }
+      try {
+        const res = await fetch("/api/skills");
+        if (res.ok) {
+          const data = await res.json();
+          return Array.isArray(data) ? data : [];
+        }
+      } catch {
+        // Fallback when fetch route is not available
+      }
+      return [];
+    },
+
+    async exportAgentTemplate(agentId: string): Promise<unknown> {
+      const bridge = (window as any).opensand;
+      if (bridge?.exportAgentTemplate) {
+        try {
+          return await bridge.exportAgentTemplate(agentId);
+        } catch {
+          // ignore and fall through
+        }
+      }
+      try {
+        const res = await fetch(`/api/templates/${encodeURIComponent(agentId)}`);
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch {
+        // Fallback when fetch route is not available
+      }
+      return null;
+    },
+
+    async clearAllSessions(): Promise<void> {
+      const bridge = (window as any).opensand;
+      if (bridge?.clearAllSessions) {
+        await bridge.clearAllSessions();
+      }
     },
   };
 }
