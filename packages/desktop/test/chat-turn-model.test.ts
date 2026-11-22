@@ -98,7 +98,6 @@ test("events for another session are dropped, and each bridge type maps to its a
     type: "failed",
     message: "bad",
   });
-  assert.strictEqual(chatEventAction({ type: "thought", data: { message: "x" } }, null), null);
 });
 
 test("load action hydrates session messages and resets status to idle", () => {
@@ -149,7 +148,7 @@ test("reconstructSessionMessages extracts turns from jsonl events", () => {
   const messages = reconstructSessionMessages({ events });
   assert.deepStrictEqual(messages, [
     { role: "user", text: "Hello world" },
-    { role: "assistant", text: "Hi there!" },
+    { role: "assistant", text: "Hi there!", thought: "thinking deep" },
   ]);
 });
 
@@ -168,4 +167,83 @@ test("reconstructSessionMessages handles empty, null, or malformed session data 
   assert.deepStrictEqual(reconstructSessionMessages({}), []);
   assert.deepStrictEqual(reconstructSessionMessages({ events: [] }), []);
   assert.deepStrictEqual(reconstructSessionMessages({ transcript: "" }), []);
+});
+
+test("chatEventAction maps thought and tool events", () => {
+  // Thought event
+  assert.deepStrictEqual(
+    chatEventAction({ type: "thought", data: { thought: "pondering problem" } }, null),
+    { type: "thought", text: "pondering problem" }
+  );
+  assert.deepStrictEqual(
+    chatEventAction({ type: "thought_delta", text: "step 1" }, null),
+    { type: "thought", text: "step 1" }
+  );
+
+  // Tool call event
+  assert.deepStrictEqual(
+    chatEventAction(
+      { type: "tool_call", data: { name: "exec_command", args: { cmd: "echo hi" } } },
+      null
+    ),
+    {
+      type: "tool_call",
+      tool: { name: "exec_command", args: { cmd: "echo hi" }, status: "running" },
+    }
+  );
+
+  // Tool result event
+  assert.deepStrictEqual(
+    chatEventAction(
+      { type: "tool_result", data: { name: "exec_command", result: "hi\n" } },
+      null
+    ),
+    {
+      type: "tool_result",
+      tool: { name: "exec_command", result: "hi\n", status: "done" },
+    }
+  );
+});
+
+test("a turn accumulates thought blocks and tracks tool call execution in message parts", () => {
+  const s = run(
+    { type: "start", query: "run a command" },
+    { type: "sent", sessionId: "s2" },
+    { type: "thought", text: "First, check the directory." },
+    {
+      type: "tool_call",
+      tool: { id: "tc-1", name: "exec_command", args: { cmd: "ls" }, status: "running" },
+    },
+    {
+      type: "tool_result",
+      tool: { id: "tc-1", name: "exec_command", result: "file1.txt\nfile2.txt", status: "done" },
+    },
+    { type: "delta", text: "I found 2 files." },
+    { type: "complete" }
+  );
+
+  assert.strictEqual(s.status, "done");
+  const assistant = s.messages[1];
+  assert.strictEqual(assistant.text, "I found 2 files.");
+  assert.strictEqual(assistant.thought, "First, check the directory.");
+  assert.deepStrictEqual(assistant.toolCalls, [
+    {
+      id: "tc-1",
+      name: "exec_command",
+      args: { cmd: "ls" },
+      status: "done",
+      result: "file1.txt\nfile2.txt",
+    },
+  ]);
+});
+
+test("streaming text with inline <think> tags extracts thought into structured field", () => {
+  const s = run(
+    { type: "start", query: "solve problem" },
+    { type: "delta", text: "<think>Let me calculate 2+2=4</think>The answer is 4." },
+    { type: "complete" }
+  );
+  assert.strictEqual(s.status, "done");
+  assert.strictEqual(s.messages[1].text, "The answer is 4.");
+  assert.strictEqual(s.messages[1].thought, "Let me calculate 2+2=4");
 });

@@ -174,3 +174,244 @@
 .chat-view .input-panel { flex: none; padding: 0 24px 20px; }
 @media (max-width: 600px) { .chat-view .chat-container, .chat-view .input-panel { padding-left: 12px; padding-right: 12px; } .chat-status { padding-left: 12px; padding-right: 12px; } }
 
+
+/* Thought accordion: details/summary collapsible */
+.thought-accordion {
+  margin: 8px 0;
+  border-left: 2px solid var(--accent, #d97706);
+  padding-left: 10px;
+}
+.thought-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  user-select: none;
+  padding: 3px 0;
+  transition: color 0.15s ease;
+}
+.thought-header:hover {
+  color: var(--text-main, #eee);
+}
+.thought-header::-webkit-details-marker {
+  display: none;
+}
+.thought-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.thought-label {
+  font-weight: 500;
+}
+.thought-streaming .thought-label {
+  color: var(--accent, #d97706);
+}
+.thought-body {
+  margin-top: 6px;
+  padding: 8px 12px;
+  background-color: var(--bg-code, rgba(0, 0, 0, 0.25));
+  border: 1px solid var(--border-color-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-sm, 4px);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--text-muted, #aaa);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  max-height: 260px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+/* Tool Execution Cards */
+.tool-cards-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  width: 100%;
+  min-width: 0;
+}
+.tool-line {
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-sm, 6px);
+  background-color: var(--bg-card, rgba(255, 255, 255, 0.03));
+  overflow: hidden;
+  transition: all 0.2s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+.tool-line-header {
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  transition: background-color 0.15s ease;
+  min-width: 0;
+}
+.tool-line-header::-webkit-details-marker {
+  display: none;
+}
+.tool-line-header:hover {
+  background-color: var(--bg-card-hover, rgba(255, 255, 255, 0.06));
+}
+.tool-line-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.tool-line-label {
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--text-main, #eee);
+  flex-shrink: 0;
+}
+.tool-line-detail {
+  color: var(--text-muted, #888);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.tool-line-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.tool-line-badge.badge-running {
+  background: var(--warning-soft, rgba(245, 158, 11, 0.15));
+  color: var(--warning, #f59e0b);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.tool-line-badge.badge-done {
+  background: var(--success-soft, rgba(16, 185, 129, 0.15));
+  color: var(--success, #10b981);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.tool-line-badge.badge-error {
+  background: var(--danger-soft, rgba(239, 68, 68, 0.15));
+  color: var(--danger, #ef4444);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.tool-line-details {
+  border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  background-color: var(--bg-code, rgba(0, 0, 0, 0.25));
+  padding: 8px 12px;
+  font-size: 11px;
+  overflow-x: auto;
+}
+.tool-details-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  font-weight: 500;
+}
+.tool-details-pre {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--text-code, #ddd);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Markdown and code block formatting */
+.chat-markdown h2, .chat-markdown h3, .chat-markdown h4, .chat-markdown h5 {
+  margin: 10px 0 6px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.chat-markdown h2 { font-size: 16px; }
+.chat-markdown h3 { font-size: 15px; }
+.chat-markdown h4 { font-size: 14px; }
+.chat-markdown h5 { font-size: 13px; }
+.chat-markdown p {
+  margin: 6px 0;
+  line-height: 1.5;
+}
+.chat-markdown ul, .chat-markdown ol {
+  margin: 6px 0 6px 20px;
+  padding: 0;
+}
+.chat-markdown li {
+  margin: 3px 0;
+  line-height: 1.4;
+}
+.chat-markdown a {
+  color: var(--accent, #3b82f6);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.chat-markdown blockquote {
+  margin: 8px 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--border-color, rgba(255, 255, 255, 0.2));
+  color: var(--text-muted, #888);
+}
+.chat-markdown code {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  background-color: var(--bg-code, rgba(0, 0, 0, 0.25));
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.code-block-wrapper {
+  margin: 10px 0;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-sm, 6px);
+  background-color: var(--bg-code, rgba(0, 0, 0, 0.3));
+  overflow: hidden;
+  max-width: 100%;
+}
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  background-color: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--border-color-subtle, rgba(255, 255, 255, 0.08));
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-muted, #888);
+}
+.code-block-wrapper pre {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.code-block-wrapper pre code {
+  background: transparent;
+  padding: 0;
+}
+.btn-copy-code {
+  background: transparent;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-copy-code:hover {
+  color: var(--text-main, #eee);
+  border-color: var(--text-muted, #888);
+}

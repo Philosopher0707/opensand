@@ -1,5 +1,7 @@
-// Chat view: message feed, status announcement and prompt composer.
-// Thin view over useChatTurn; the state machine lives in chat-turn-model.ts.
+// packages/desktop/renderer-next/src/views/Chat.tsx
+// Chat view: message feed, markdown rendering, collapsible thought accordions,
+// structured tool execution cards, status announcement and prompt composer.
+
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import type { ShellData } from "../data";
 import {
@@ -8,12 +10,13 @@ import {
   chatTurnReducer,
   isChatBusy,
   reconstructSessionMessages,
-  type ChatAction,
   type ChatMessage,
   type ChatTurnAction,
   type ChatTurnState,
+  type ToolCallItem,
 } from "../../../src/shell/chat-turn-model";
 import type { TurnEvent } from "../../../src/shell/quick-capture-model";
+import { renderMarkdown } from "./chat-markdown";
 
 export interface ChatTurnController {
   state: ChatTurnState;
@@ -75,7 +78,6 @@ export function useChatTurn(data: ShellData, selectedSessionId?: string | null):
 
   const stop = () => {
     if (data.cancelTurn) Promise.resolve(data.cancelTurn()).catch(() => {});
-    // The engine also sends turn_cancelled; this ends the turn even when it does not.
     dispatch({ type: "stopped" });
   };
 
@@ -111,7 +113,7 @@ function statusText(state: ChatTurnState): string {
 function screenState(state: ChatTurnState): "loading" | "empty" | "ready" | "error" {
   if (state.status === "error") return "error";
   if (state.messages.length === 0) return "empty";
-  if (isChatBusy(state.status) && !state.messages[state.messages.length - 1]?.text) return "loading";
+  if (isChatBusy(state.status) && !state.messages[state.messages.length - 1]?.text && !state.messages[state.messages.length - 1]?.thought) return "loading";
   return "ready";
 }
 
@@ -129,16 +131,137 @@ function Avatar({ role }: { role: ChatMessage["role"] }) {
   );
 }
 
-export function ChatMessageRow({ message }: { message: ChatMessage }) {
+export function inferToolIcon(name: string): string {
+  const n = (name || "").toLowerCase();
+  if (n.includes("exec") || n.includes("bash") || n.includes("command") || n.includes("shell") || n.includes("terminal")) return "⚡";
+  if (n.includes("read") || n.includes("view") || n.includes("cat")) return "📄";
+  if (n.includes("write") || n.includes("edit") || n.includes("create") || n.includes("save")) return "✏️";
+  if (n.includes("search") || n.includes("find") || n.includes("grep")) return "🔍";
+  if (n.includes("browser") || n.includes("web") || n.includes("fetch") || n.includes("curl") || n.includes("http")) return "🌐";
+  if (n.includes("agent") || n.includes("subagent") || n.includes("delegate")) return "🤖";
+  if (n.includes("git")) return "🌿";
+  return "🔧";
+}
+
+export function extractToolDetail(args: any): string {
+  if (!args) return "";
+  if (typeof args === "string") return args.slice(0, 80);
+  if (args.command || args.cmd) return String(args.command || args.cmd).slice(0, 80);
+  if (args.path || args.file || args.filename) return String(args.path || args.file || args.filename).slice(0, 80);
+  if (args.query || args.prompt) return String(args.query || args.prompt).slice(0, 80);
+  const keys = Object.keys(args);
+  if (keys.length > 0) {
+    const firstVal = args[keys[0]];
+    const valStr = typeof firstVal === "object" ? JSON.stringify(firstVal) : String(firstVal);
+    return `${keys[0]}: ${valStr}`.slice(0, 80);
+  }
+  return "";
+}
+
+export function ThoughtAccordion({ thought, isStreaming }: { thought?: string; isStreaming?: boolean }) {
+  if (!thought || !thought.trim()) return null;
+  const trimmed = thought.trim();
+  const words = trimmed.split(/\s+/).filter(Boolean).length;
+  const label = isStreaming ? `Thinking (${words} words)…` : `Thought process (${words} words)`;
+  return (
+    <details class={`thought-accordion ${isStreaming ? "thought-streaming" : ""}`} open={Boolean(isStreaming)}>
+      <summary class="thought-header">
+        <span class="thought-icon" aria-hidden="true">💭</span>
+        <span class="thought-label">{label}</span>
+      </summary>
+      <div class="thought-body">{trimmed}</div>
+    </details>
+  );
+}
+
+export function ToolCard({ tool }: { tool: ToolCallItem }) {
+  const isRunning = tool.status === "running";
+  const isError = tool.status === "error";
+  const badgeText = isRunning ? "Running" : isError ? "Failed" : "Done";
+  const badgeClass = isRunning ? "badge-running" : isError ? "badge-error" : "badge-done";
+  const icon = inferToolIcon(tool.name);
+
+  let formattedArgs = "";
+  if (tool.args) {
+    if (typeof tool.args === "string") {
+      formattedArgs = tool.args;
+    } else {
+      try {
+        formattedArgs = JSON.stringify(tool.args, null, 2);
+      } catch {
+        formattedArgs = String(tool.args);
+      }
+    }
+  }
+
+  let formattedResult = "";
+  if (tool.result !== undefined && tool.result !== null) {
+    formattedResult = typeof tool.result === "string" ? tool.result : JSON.stringify(tool.result, null, 2);
+  }
+
+  const detail = extractToolDetail(tool.args);
+
+  return (
+    <details class={`tool-line ${isRunning ? "tool-line-running" : ""}`}>
+      <summary class="tool-line-header">
+        <span class="tool-line-icon" aria-hidden="true">{icon}</span>
+        <span class="tool-line-label">{tool.name}</span>
+        {detail ? <span class="tool-line-detail" title={detail}>{detail}</span> : null}
+        <span class={`tool-line-badge ${badgeClass}`}>{badgeText}</span>
+      </summary>
+      <div class="tool-line-details">
+        {formattedArgs ? (
+          <>
+            <div class="tool-details-header">Parameters:</div>
+            <pre class="tool-details-pre">{formattedArgs}</pre>
+          </>
+        ) : null}
+        {formattedResult ? (
+          <>
+            <div class="tool-details-header" style="margin-top: 8px;">Result:</div>
+            <pre class="tool-details-pre tool-result-pre">{formattedResult}</pre>
+          </>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
+export function ChatMessageRow({
+  message,
+  isLastAssistant,
+  turnBusy,
+}: {
+  message: ChatMessage;
+  isLastAssistant?: boolean;
+  turnBusy?: boolean;
+}) {
   const assistant = message.role === "assistant";
+  const isStreaming = assistant && Boolean(isLastAssistant && turnBusy);
+
   return (
     <div class={`message ${assistant ? "message-assistant" : "message-user"}`}>
       <Avatar role={message.role} />
       <div class="message-body">
+        {assistant && message.thought ? (
+          <ThoughtAccordion thought={message.thought} isStreaming={isStreaming && !message.text} />
+        ) : null}
+        {assistant && message.toolCalls && message.toolCalls.length > 0 ? (
+          <div class="tool-cards-container">
+            {message.toolCalls.map((tc, idx) => (
+              <ToolCard key={tc.id || idx} tool={tc} />
+            ))}
+          </div>
+        ) : null}
         {message.text ? (
-          <div class="message-content chat-text">{message.text}</div>
+          <div
+            class="message-content chat-text chat-markdown"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(message.text) }}
+          />
         ) : (
-          assistant && <span class="chat-thinking">Thinking…</span>
+          assistant && !message.thought && (!message.toolCalls || message.toolCalls.length === 0) && (
+            <span class="chat-thinking">Thinking…</span>
+          )
         )}
         {message.error && <div class="chat-turn-error">Error: {message.error}</div>}
         {message.note && <div class="chat-turn-note">{message.note}</div>}
@@ -203,6 +326,19 @@ export function Chat({ chat, selectedSessionId, data }: ChatProps) {
     if (lastUser && !busy) chat.send(lastUser.text);
   };
 
+  // Delegated copy handler for code blocks
+  const handleContainerClick = (e: MouseEvent) => {
+    const target = (e.target as HTMLElement).closest(".btn-copy-code") as HTMLButtonElement | null;
+    if (!target) return;
+    const code = target.getAttribute("data-code") || target.closest(".code-block-wrapper")?.querySelector("code")?.textContent || "";
+    if (code && navigator.clipboard) {
+      navigator.clipboard.writeText(code).then(() => {
+        target.textContent = "Copied!";
+        setTimeout(() => { target.textContent = "Copy"; }, 1500);
+      }).catch(() => {});
+    }
+  };
+
   return (
     <div
       class="chat-view"
@@ -212,7 +348,13 @@ export function Chat({ chat, selectedSessionId, data }: ChatProps) {
       aria-labelledby="chat-heading"
     >
       <h2 class="chat-heading" id="chat-heading">Chat</h2>
-      <div class="chat-container" id="messageFeed" aria-label="Conversation" ref={feedRef}>
+      <div
+        class="chat-container"
+        id="messageFeed"
+        aria-label="Conversation"
+        ref={feedRef}
+        onClick={handleContainerClick}
+      >
         {state.messages.length === 0 ? (
           <p class="chat-empty" role="status">
             Ask OpenSand to inspect this workspace, run a command or explain a file. The answer streams
@@ -221,7 +363,12 @@ export function Chat({ chat, selectedSessionId, data }: ChatProps) {
         ) : (
           <div class="message-feed" role="list" aria-label="Messages">
             {state.messages.map((m, i) => (
-              <ChatMessageRow key={i} message={m} />
+              <ChatMessageRow
+                key={i}
+                message={m}
+                isLastAssistant={m.role === "assistant" && i === state.messages.length - 1}
+                turnBusy={busy}
+              />
             ))}
           </div>
         )}
