@@ -255,6 +255,33 @@ else
   fail "mutation test: mutant brief with injected TODO was not rejected: $MUTANT_LINT_OUT (exit ${MUTANT_LINT_STATUS:-0})"
 fi
 
+# 11. Real repository verification: Row 18 lists GET/POST/DELETE /api/attachments and Row 19 lists /api/agents, /api/tasks, /api/templates
+unset OPENSAND_INVENTORY_FILE OPENSAND_DESKTOP_SERVER_FILE OPENSAND_APP_FILE OPENSAND_HTML_FILE
+OUT_ROW18="$TMP_DIR/row18.md"
+OUT_ROW19="$TMP_DIR/row19.md"
+
+run_cmd 18 --out "$OUT_ROW18"
+if [[ "$LAST_STATUS" -ne 0 ]]; then
+  fail "row 18 brief generation failed (exit $LAST_STATUS): $LAST_OUT"
+elif grep -qF "GET /api/attachments" "$OUT_ROW18" && \
+     grep -qF "POST /api/attachments" "$OUT_ROW18" && \
+     grep -qF "DELETE /api/attachments/:id" "$OUT_ROW18"; then
+  pass "Row 18 still lists GET/POST/DELETE /api/attachments"
+else
+  fail "Row 18 missing expected attachment routes in $OUT_ROW18"
+fi
+
+run_cmd 19 --out "$OUT_ROW19"
+if [[ "$LAST_STATUS" -ne 0 ]]; then
+  fail "row 19 brief generation failed (exit $LAST_STATUS): $LAST_OUT"
+elif grep -qF "/api/agents" "$OUT_ROW19" && \
+     grep -qF "/api/templates" "$OUT_ROW19" && \
+     grep -qF "/api/tasks" "$OUT_ROW19"; then
+  pass "Row 19 lists /api/agents and /api/templates routes"
+else
+  fail "Row 19 missing expected routes in $OUT_ROW19"
+fi
+
 if [[ "$FAILED" -ne 0 ]]; then
   echo "FAIL: brief-row selftest failed" >&2
   exit 1

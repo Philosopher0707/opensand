@@ -125,17 +125,61 @@ feature_title = bold_match.group(1) if bold_match else feature_raw.split()[0]
 slug = feature_title.split()[0].lower()
 pascal_name = slug.capitalize()
 
-stems = [slug, slug.capitalize(), pascal_name]
-if slug.endswith("ies"):
-    stems.extend([slug[:-3] + "y", (slug[:-3] + "y").capitalize()])
-elif slug.endswith("s"):
-    stems.extend([slug[:-1], (slug[:-1]).capitalize()])
+title_words = [w for w in re.findall(r'[a-zA-Z0-9]+', feature_title) if w.lower() not in ('and', 'or', 'the', 'of', 'in', 'on', 'with', 'for', 'view')]
+extra_words = re.findall(r'(?:view|create|export|import|add|stage)([A-Z][a-zA-Z0-9]*?)(?:Modal)?\b', html_lines_invent)
+all_words = title_words + [w for w in extra_words if len(w) > 2]
+
+stems = []
+seen_stems = set()
+for w in all_words:
+    candidates = [w, w.lower(), w.capitalize()]
+    if w.lower().endswith("ies"):
+        candidates.extend([w.lower()[:-3] + "y", (w.lower()[:-3] + "y").capitalize()])
+    elif w.lower().endswith("s"):
+        candidates.extend([w.lower()[:-1], (w.lower()[:-1]).capitalize()])
+    for c in candidates:
+        if c not in seen_stems:
+            seen_stems.add(c)
+            stems.append(c)
 
 # Read app.js if present
 app_lines = []
 if os.path.isfile(app_path):
     with open(app_path, 'r', encoding='utf-8') as f:
         app_lines = f.readlines()
+
+client_methods = {}
+current_m = None
+m_lines = []
+for i, line in enumerate(app_lines):
+    if i > 800:
+        break
+    m = re.match(r"^\s*(?:async\s+)?([a-zA-Z0-9_]+)\s*\([^)]*\)\s*\{", line)
+    if m and not line.strip().startswith("if") and not line.strip().startswith("function"):
+        if current_m:
+            client_methods[current_m] = "".join(m_lines)
+        current_m = m.group(1)
+        m_lines = [line]
+    elif current_m:
+        m_lines.append(line)
+if current_m:
+    client_methods[current_m] = "".join(m_lines)
+
+helper_functions = {}
+for m in re.finditer(r"async\s+function\s+([a-zA-Z0-9_]+)\s*\([^)]*\)\s*\{([^}]*)\}", "".join(app_lines)):
+    helper_functions[m.group(1)] = m.group(2)
+
+def extract_fetches_from_block(block):
+    results = []
+    for m in re.finditer(r"fetch\(\s*([`'\"])(/api/[^`'\"]*)\1([^)]*)\)", block, re.DOTALL):
+        url = m.group(2)
+        rest = m.group(3)
+        method = "GET"
+        mm = re.search(r"method\s*:\s*['\"]([A-Z]+)['\"]", rest)
+        if mm:
+            method = mm.group(1)
+        results.append((method, url))
+    return results
 
 ctrl_start = None
 ctrl_end = None
@@ -148,6 +192,8 @@ create_end = None
 api_prefixes_from_app = set([f"api/{slug}"])
 for s in stems:
     api_prefixes_from_app.add(f"api/{s.lower()}")
+
+row_blocks = []
 
 if app_lines:
     # 1. Controller block
@@ -171,6 +217,7 @@ if app_lines:
             ctrl_end = len(app_lines)
 
         ctrl_block = "".join(app_lines[ctrl_start-1:ctrl_end])
+        row_blocks.append(ctrl_block)
         for p in re.findall(r"/api/([a-zA-Z0-9_\-]+)", ctrl_block):
             api_prefixes_from_app.add(f"api/{p}")
 
@@ -191,6 +238,7 @@ if app_lines:
             api_end = len(app_lines)
 
         api_block = "".join(app_lines[api_start-1:api_end])
+        row_blocks.append(api_block)
         for p in re.findall(r"/api/([a-zA-Z0-9_\-]+)", api_block):
             api_prefixes_from_app.add(f"api/{p}")
 
@@ -209,6 +257,8 @@ if app_lines:
                 break
         if not create_end:
             create_end = len(app_lines)
+        create_block = "".join(app_lines[create_start-1:create_end])
+        row_blocks.append(create_block)
 
 legacy_app_parts = []
 if api_start and api_end:
@@ -281,6 +331,18 @@ if html_lines:
                 modal_element_ids[modal] = re.findall(r'id=["\']([^"\']+)["\']', m_block)
                 break
 
+    # Also grab modal event handlers in app_lines
+    for modal in sorted(modal_candidates):
+        for i, line in enumerate(app_lines):
+            if modal in line and ('onclick' in line or 'addEventListener' in line or '.classList' in line or 'if (' in line):
+                h_start = max(0, i - 1)
+                h_end = min(len(app_lines), i + 25)
+                for j in range(h_start + 1, h_end):
+                    if re.match(r"^\s*//\s*(?:---|===|[A-Z])", app_lines[j]):
+                        h_end = j
+                        break
+                row_blocks.append("".join(app_lines[h_start:h_end]))
+
 legacy_html_parts = []
 if view_line:
     legacy_html_parts.append(f"`#{view_id or ('view' + pascal_name)}` L{view_line}")
@@ -291,6 +353,22 @@ if legacy_html_parts:
     legacy_html_summary = ", ".join(legacy_html_parts)
 else:
     legacy_html_summary = html_lines_invent
+
+combined_text = "\n".join(row_blocks)
+client_calls = set(re.findall(r"client\.([a-zA-Z0-9_]+)\(", combined_text))
+for fn_name, fn_body in helper_functions.items():
+    if f"{fn_name}(" in combined_text:
+        for c in re.findall(r"client\.([a-zA-Z0-9_]+)\(", fn_body):
+            client_calls.add(c)
+
+used_fetches = list(extract_fetches_from_block(combined_text))
+for c in client_calls:
+    if c in client_methods:
+        used_fetches.extend(extract_fetches_from_block(client_methods[c]))
+
+for _, uf_url in used_fetches:
+    for p in re.findall(r"/api/([a-zA-Z0-9_\-]+)", uf_url):
+        api_prefixes_from_app.add(f"api/{p}")
 
 # Server routes scanning
 with open(server_path, 'r', encoding='utf-8') as f:
@@ -310,29 +388,58 @@ for i, line in enumerate(server_lines):
             continue
         method = method_match.group(1)
 
+        eq_m = re.search(r"pathname\s*===\s*['\"]([^'\"]+)['\"]", line)
+        sw_m = re.search(r"pathname\.startsWith\(['\"]([^'\"]+)['\"]\)", line)
+        ew_m = re.search(r"pathname\.endsWith\(['\"]([^'\"]+)['\"]\)", line)
+
         path = None
         for back in range(1, 4):
             if i - back >= 0:
                 prev_line = server_lines[i - back]
                 cm = comment_pattern.search(prev_line)
-                if cm and any(pref in cm.group(1) for pref in api_prefixes_from_app):
-                    path = cm.group(1)
-                    break
-        if not path:
-            eq_m = re.search(r"pathname\s*===\s*['\"]([^'\"]+)['\"]", line)
-            if eq_m and any(pref in eq_m.group(1) for pref in api_prefixes_from_app):
-                path = eq_m.group(1)
-            else:
-                sw_m = re.search(r"pathname\.startsWith\(['\"]([^'\"]+)['\"]\)", line)
-                if sw_m and any(pref in sw_m.group(1) for pref in api_prefixes_from_app):
-                    path = sw_m.group(1)
-                    if path.endswith('/'):
-                        path = path + ':id'
-                    ew_m = re.search(r"pathname\.endsWith\(['\"]([^'\"]+)['\"]\)", line)
-                    if ew_m:
-                        path = path + ew_m.group(1)
+                if cm:
+                    cand_path = cm.group(1)
+                    if (eq_m and eq_m.group(1) in cand_path) or (sw_m and sw_m.group(1).rstrip('/') in cand_path):
+                        path = cand_path
+                        break
 
         if not path:
+            if eq_m:
+                path = eq_m.group(1)
+            elif sw_m:
+                path = sw_m.group(1)
+                if path.endswith('/'):
+                    path = path + ':id'
+                if ew_m:
+                    path = path + ew_m.group(1)
+
+        if not path:
+            continue
+
+        matched = False
+        if used_fetches:
+            for fetch_method, fetch_url in used_fetches:
+                clean_fetch_url = re.sub(r"\$\{[^}]+\}", ":id", fetch_url).split('?')[0]
+                clean_fetch_url_param = re.sub(r"\$\{[^}]+\}", ":param", fetch_url).split('?')[0]
+
+                if eq_m and eq_m.group(1) == fetch_url.split('?')[0]:
+                    matched = True
+                    break
+                if sw_m:
+                    sw_prefix = sw_m.group(1)
+                    if fetch_url.startswith(sw_prefix) or clean_fetch_url.startswith(sw_prefix) or clean_fetch_url_param.startswith(sw_prefix):
+                        if ew_m:
+                            if fetch_url.endswith(ew_m.group(1)):
+                                matched = True
+                                break
+                        else:
+                            matched = True
+                            break
+        else:
+            if any(pref in (path or "") for pref in api_prefixes_from_app):
+                matched = True
+
+        if not matched:
             continue
 
         validation = None

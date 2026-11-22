@@ -1,0 +1,5 @@
+# Extract screen server routes through client methods and normalized template paths
+
+- **Trap:** `scripts/brief-row.sh` failed to identify server routes for complex multi-screen rows like Row 19 (Bots and templates), printing `(None registered in desktop-server.ts)` despite the screen requiring `/api/agents`, `/api/tasks`, and `/api/templates`.
+- **Root Cause:** Route discovery assumed every screen's controller directly contained literal `/api/<slug>` strings and matched controller sections using only the first word of the feature title. In reality, screens call client methods (`client.createAgent`, `client.getTasks`, `client.exportAgentTemplate`), titles can have multiple keywords (`Bots and templates`), and client fetch URLs often use template literals (`/api/templates/${...}`) matching `pathname.startsWith(...)` server routes.
+- **Rule:** In `scripts/brief-row.sh`, expand stems across all feature title words and modal names, resolve all `client.<method>` invocations to their underlying `fetch(...)` endpoints, and match server routes against both exact paths and parameterized startsWith prefixes.
