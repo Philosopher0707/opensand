@@ -890,3 +890,257 @@
     box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4);
   }
 }
+
+/* ==========================================================================
+   Phase 5 Row 7: Composer Extras
+   - Staged attachments strip & preview chips
+   - Drag-and-drop hover state
+   - Quick prompt chips strip
+   - Autocomplete trigger popover (/, @, #)
+   - Attachment trigger button
+   ========================================================================== */
+
+/* Quick Prompt Chips */
+.prompt-chips-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  max-width: 900px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.prompt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--bg-card, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.25));
+  border-radius: 16px;
+  color: var(--text-main, inherit);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prompt-chip:hover {
+  background: var(--bg-card-hover, rgba(255, 255, 255, 0.08));
+  border-color: var(--accent, #3b82f6);
+  color: var(--accent, #3b82f6);
+}
+
+.prompt-chip-icon {
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.prompt-chip-title {
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Staged Attachment Strip */
+.attachment-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color-subtle, rgba(128, 128, 128, 0.15));
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card-hover, rgba(128, 128, 128, 0.12));
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.25));
+  border-radius: 6px;
+  padding: 4px 8px;
+  max-width: 240px;
+  font-size: 12px;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+
+.attachment-chip:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.attachment-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border-color-subtle, rgba(128, 128, 128, 0.15));
+}
+
+.attachment-chip-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.attachment-chip-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.attachment-chip-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: var(--text-main, inherit);
+  line-height: 1.2;
+}
+
+.attachment-chip-size {
+  font-size: 10px;
+  color: var(--text-muted, #888);
+}
+
+.btn-remove-attachment {
+  background: transparent;
+  border: none;
+  color: var(--text-faint, #666);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 3px;
+  transition: color 0.15s ease;
+}
+
+.btn-remove-attachment:hover {
+  color: var(--danger, #ef4444);
+}
+
+/* Drag and Drop Hover on Composer */
+.input-wrapper.drag-over {
+  border-color: var(--accent, #3b82f6) !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35) !important;
+  background: rgba(59, 130, 246, 0.05) !important;
+}
+
+/* Autocomplete Trigger Popover */
+.trigger-popover {
+  margin: 0 0 8px 0;
+  background: var(--bg-card, #1e1e24);
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.25));
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.trigger-popover-header {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border-color-subtle, rgba(128, 128, 128, 0.15));
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.trigger-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 2px 4px;
+  transition: background 0.12s ease;
+  box-sizing: border-box;
+}
+
+.trigger-item:hover,
+.trigger-item.active {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+.trigger-item.active .trigger-item-title {
+  color: var(--accent, #3b82f6);
+}
+
+.trigger-item-icon {
+  font-size: 15px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.trigger-item-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.trigger-item-title {
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--text-main, inherit);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trigger-item-desc {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trigger-item-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-input, rgba(0, 0, 0, 0.25));
+  color: var(--text-faint, #aaa);
+  border: 1px solid var(--border-color-subtle, rgba(128, 128, 128, 0.15));
+  flex-shrink: 0;
+}
+
+.btn-attach {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.25));
+  color: var(--text-main, inherit);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-attach:hover {
+  background: var(--bg-card-hover, rgba(128, 128, 128, 0.12));
+  border-color: var(--accent, #3b82f6);
+}

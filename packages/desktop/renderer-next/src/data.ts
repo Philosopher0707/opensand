@@ -82,6 +82,11 @@ export interface ShellData {
   listSkills?(): Promise<GrantedSkillData[]>;
   exportAgentTemplate?(id: string): Promise<unknown>;
   clearAllSessions?(): Promise<void>;
+
+  // Phase 5 Row 7: Composer Extras
+  stageAttachment?(filePath: string): Promise<{ id: string } | null>;
+  listAttachments?(): Promise<any[]>;
+  deleteAttachment?(id: string): Promise<void>;
 }
 
 export function windowBridgeData(): ShellData {
@@ -357,6 +362,29 @@ export function windowBridgeData(): ShellData {
       const bridge = (window as any).opensand;
       if (bridge?.clearAllSessions) {
         await bridge.clearAllSessions();
+      }
+    },
+
+    async stageAttachment(filePath: string): Promise<{ id: string } | null> {
+      const bridge = (window as any).opensand;
+      if (bridge?.stageAttachment) {
+        return await bridge.stageAttachment(filePath);
+      }
+      return null;
+    },
+
+    async listAttachments(): Promise<any[]> {
+      const bridge = (window as any).opensand;
+      if (bridge?.listAttachments) {
+        return await bridge.listAttachments();
+      }
+      return [];
+    },
+
+    async deleteAttachment(id: string): Promise<void> {
+      const bridge = (window as any).opensand;
+      if (bridge?.deleteAttachment) {
+        await bridge.deleteAttachment(id);
       }
     },
   };

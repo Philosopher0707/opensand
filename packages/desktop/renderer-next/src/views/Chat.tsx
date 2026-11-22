@@ -18,6 +18,21 @@ import {
 import type { ArtifactItem } from "../../../src/shell/canvas-model";
 import type { TurnEvent } from "../../../src/shell/quick-capture-model";
 import { renderMarkdown } from "./chat-markdown";
+import {
+  DEFAULT_PROMPT_CHIPS,
+  DEFAULT_SLASH_COMMANDS,
+  applyPromptChip,
+  composePromptWithAttachments,
+  detectTrigger,
+  filterSlashCommands,
+  formatBytes,
+  getFileCategory,
+  insertTriggerSelection,
+  type PromptChip,
+  type SlashCommand,
+  type StagedAttachment,
+  type TriggerMatch,
+} from "../../../src/shell/composer-model";
 
 export interface ChatTurnController {
   state: ChatTurnState;
@@ -363,8 +378,118 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
   const busy = isChatBusy(state.status);
   const view = screenState(state);
   const [draft, setDraft] = useState("");
+  const [stagedAttachments, setStagedAttachments] = useState<StagedAttachment[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  // Autocomplete / Slash trigger state
+  const [triggerMatch, setTriggerMatch] = useState<TriggerMatch | null>(null);
+  const [triggerActiveIndex, setTriggerActiveIndex] = useState(0);
+  const [triggerItems, setTriggerItems] = useState<SlashCommand[]>([]);
+
   const feedRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Dismiss trigger popover when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(e.target as Node) &&
+        e.target !== inputRef.current
+      ) {
+        setTriggerMatch(null);
+        setTriggerItems([]);
+      }
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, []);
+
+  const addFilesToStaged = async (files: File[]) => {
+    if (!files || files.length === 0) return;
+    const newItems: StagedAttachment[] = [];
+    for (const f of files) {
+      const isImg = f.type ? f.type.startsWith("image/") : /\.(png|jpe?g|gif|webp|svg)$/i.test(f.name);
+      let previewUrl: string | null = null;
+      if (isImg && typeof URL !== "undefined" && URL.createObjectURL) {
+        try {
+          previewUrl = URL.createObjectURL(f);
+        } catch {}
+      }
+      const item: StagedAttachment = {
+        name: f.name,
+        size: f.size,
+        type: f.type || "application/octet-stream",
+        localPath: (f as any).path || f.name,
+        previewUrl,
+        serverId: null,
+      };
+      if (data?.stageAttachment) {
+        try {
+          const res = await data.stageAttachment(item.localPath || item.name);
+          if (res && res.id) item.serverId = res.id;
+        } catch {}
+      }
+      newItems.push(item);
+    }
+    setStagedAttachments((prev) => [...prev, ...newItems]);
+  };
+
+  const removeAttachment = (index: number) => {
+    setStagedAttachments((prev) => {
+      const next = [...prev];
+      const removed = next.splice(index, 1)[0];
+      if (removed?.previewUrl && typeof URL !== "undefined" && URL.revokeObjectURL) {
+        try { URL.revokeObjectURL(removed.previewUrl); } catch {}
+      }
+      if (removed?.serverId && data?.deleteAttachment) {
+        data.deleteAttachment(removed.serverId).catch(() => {});
+      }
+      return next;
+    });
+  };
+
+  const updateTriggerSuggestions = (text: string, caretPos: number) => {
+    const match = detectTrigger(text, caretPos);
+    if (!match) {
+      setTriggerMatch(null);
+      setTriggerItems([]);
+      setTriggerActiveIndex(0);
+      return;
+    }
+    setTriggerMatch(match);
+    if (match.triggerChar === "/") {
+      const filtered = filterSlashCommands(DEFAULT_SLASH_COMMANDS, match.query);
+      setTriggerItems(filtered);
+      setTriggerActiveIndex(0);
+    } else {
+      setTriggerItems([]);
+      setTriggerActiveIndex(0);
+    }
+  };
+
+  const selectTriggerSuggestion = (item: SlashCommand) => {
+    if (!triggerMatch || !inputRef.current) return;
+    const caret = inputRef.current.selectionStart || draft.length;
+    const { newText, newCaretPos } = insertTriggerSelection(
+      draft,
+      triggerMatch.startPos,
+      caret,
+      item.title
+    );
+    setDraft(newText);
+    setTriggerMatch(null);
+    setTriggerItems([]);
+    setTriggerActiveIndex(0);
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        inputRef.current.setSelectionRange(newCaretPos, newCaretPos);
+      }
+    }, 0);
+  };
 
   // When selectedSessionId is passed or changed, call data.loadSession(sessionId) and dispatch loaded messages
   useEffect(() => {
@@ -396,9 +521,14 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
   }, [state.messages]);
 
   const submit = () => {
-    if (busy || !draft.trim()) return;
-    chat.send(draft);
+    if (busy || (!draft.trim() && stagedAttachments.length === 0)) return;
+    const finalPrompt = composePromptWithAttachments(draft, stagedAttachments);
+    if (!finalPrompt) return;
+    chat.send(finalPrompt);
     setDraft("");
+    setStagedAttachments([]);
+    setTriggerMatch(null);
+    setTriggerItems([]);
     if (inputRef.current) inputRef.current.style.height = "auto";
   };
 
@@ -485,14 +615,124 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
         )}
       </div>
       <footer class="input-panel">
-        <div class="input-wrapper">
+        <div class="prompt-chips-strip" role="toolbar" aria-label="Quick prompts">
+          {DEFAULT_PROMPT_CHIPS.map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              class="prompt-chip"
+              data-query={chip.query}
+              title={chip.desc}
+              onClick={() => {
+                setDraft((prev) => applyPromptChip(prev, chip.query));
+                if (inputRef.current) inputRef.current.focus();
+              }}
+            >
+              {chip.icon && <span class="prompt-chip-icon" aria-hidden="true">{chip.icon}</span>}
+              <span class="prompt-chip-title">{chip.title}</span>
+            </button>
+          ))}
+        </div>
+
+        <div
+          class={`input-wrapper ${isDragOver ? "drag-over" : ""}`}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            setIsDragOver(true);
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragOver(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              setIsDragOver(false);
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDragOver(false);
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              addFilesToStaged(Array.from(e.dataTransfer.files));
+            }
+          }}
+        >
+          {/* Autocomplete Trigger Popover */}
+          {triggerMatch && triggerItems.length > 0 && (
+            <div
+              id="triggerPopover"
+              ref={popoverRef}
+              class="trigger-popover"
+              role="listbox"
+              aria-label="Suggestions"
+            >
+              <div class="trigger-popover-header">
+                {triggerMatch.triggerChar === "/" ? "Skills & Slash Commands" : "Suggestions"}
+              </div>
+              {triggerItems.map((item, idx) => (
+                <div
+                  key={item.title}
+                  role="option"
+                  aria-selected={idx === triggerActiveIndex}
+                  class={`trigger-item ${idx === triggerActiveIndex ? "active" : ""}`}
+                  onClick={() => selectTriggerSuggestion(item)}
+                  onMouseEnter={() => setTriggerActiveIndex(idx)}
+                >
+                  <span class="trigger-item-icon" aria-hidden="true">{item.icon}</span>
+                  <div class="trigger-item-meta">
+                    <span class="trigger-item-title">{item.title}</span>
+                    <span class="trigger-item-desc">{item.desc}</span>
+                  </div>
+                  <span class="trigger-item-tag">{item.tag}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Staged Attachments Strip */}
+          {stagedAttachments.length > 0 && (
+            <div id="attachmentStrip" class="attachment-strip" role="list" aria-label="Staged Attachments">
+              {stagedAttachments.map((att, idx) => {
+                const cat = getFileCategory(att.name, att.type);
+                return (
+                  <div key={idx} class="attachment-chip" role="listitem">
+                    {att.previewUrl ? (
+                      <img src={att.previewUrl} class="attachment-thumb" alt={att.name} />
+                    ) : (
+                      <span class="attachment-chip-icon" aria-hidden="true">
+                        {cat === "image" ? "🖼️" : cat === "code" ? "📄" : "📎"}
+                      </span>
+                    )}
+                    <div class="attachment-chip-meta">
+                      <span class="attachment-chip-name" title={att.name}>{att.name}</span>
+                      <span class="attachment-chip-size">{formatBytes(att.size)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      class="btn-remove-attachment"
+                      title="Remove attachment"
+                      aria-label={`Remove ${att.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeAttachment(idx);
+                      }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <div class="input-textarea-row">
             <textarea
               id="promptInput"
               ref={inputRef}
               rows={1}
               value={draft}
-              placeholder="Ask OpenSand…"
+              placeholder="Ask OpenSand…   / skills   ·   @ bots   ·   # files"
               aria-label="Message OpenSand"
               disabled={!chat.available}
               onInput={(e) => {
@@ -500,8 +740,32 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
                 setDraft(el.value);
                 el.style.height = "auto";
                 el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+                updateTriggerSuggestions(el.value, el.selectionStart || el.value.length);
               }}
               onKeyDown={(e) => {
+                if (triggerMatch && triggerItems.length > 0) {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setTriggerActiveIndex((prev) => (prev + 1) % triggerItems.length);
+                    return;
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setTriggerActiveIndex((prev) => (prev - 1 + triggerItems.length) % triggerItems.length);
+                    return;
+                  }
+                  if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault();
+                    selectTriggerSuggestion(triggerItems[triggerActiveIndex]);
+                    return;
+                  }
+                  if (e.key === "Escape" || e.key === "Esc") {
+                    e.preventDefault();
+                    setTriggerMatch(null);
+                    setTriggerItems([]);
+                    return;
+                  }
+                }
                 // Enter sends; Shift+Enter keeps the newline.
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -512,6 +776,27 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
           </div>
           <div class="input-actions-bar">
             <div class="input-actions-left">
+              <button
+                id="btnAttachFile"
+                class="btn-attach"
+                type="button"
+                title="Attach file or screenshot"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <span aria-hidden="true">📎</span> <span>Attach</span>
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                id="fileAttachmentInput"
+                class="hidden"
+                multiple
+                onChange={(e) => {
+                  const files = Array.from((e.target as HTMLInputElement).files || []);
+                  if (files.length > 0) addFilesToStaged(files);
+                  (e.target as HTMLInputElement).value = "";
+                }}
+              />
               <span class="badge badge-model">Local agent</span>
             </div>
             <div class="input-actions-right">
@@ -519,7 +804,7 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
                 id="btnSend"
                 type="button"
                 class="btn btn-primary btn-sm"
-                disabled={busy || !chat.available || !draft.trim()}
+                disabled={busy || !chat.available || (!draft.trim() && stagedAttachments.length === 0)}
                 title={busy ? "Wait for this answer, or press Stop" : "Send (Enter)"}
                 onClick={submit}
               >
