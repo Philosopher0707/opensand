@@ -14,6 +14,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BRIEF_ROW="${BRIEF_ROW_SCRIPT:-$SCRIPT_DIR/brief-row.sh}"
 LINT="${LINT_BRIEF_SCRIPT:-$SCRIPT_DIR/lint-brief.sh}"
 
@@ -256,7 +257,11 @@ else
 fi
 
 # 11. Real repository verification: Row 18 lists GET/POST/DELETE /api/attachments and Row 19 lists /api/agents, /api/tasks, /api/templates
-unset OPENSAND_INVENTORY_FILE OPENSAND_DESKTOP_SERVER_FILE OPENSAND_APP_FILE OPENSAND_HTML_FILE
+unset OPENSAND_DESKTOP_SERVER_FILE OPENSAND_APP_FILE OPENSAND_HTML_FILE
+REAL_INVENTORY_FIXTURE="$TMP_DIR/real-phase5-inventory.md"
+# In case rows 18 or 19 were marked done as development progresses, unmark them in our test fixture so brief-row does not exit 3 on done rows
+sed -E 's/(\|( 18 | 19 )\|.*\|) done \|/\1  \|/' "$ROOT/docs/design/phase5-view-inventory.md" > "$REAL_INVENTORY_FIXTURE"
+export OPENSAND_INVENTORY_FILE="$REAL_INVENTORY_FIXTURE"
 OUT_ROW18="$TMP_DIR/row18.md"
 OUT_ROW19="$TMP_DIR/row19.md"
 
