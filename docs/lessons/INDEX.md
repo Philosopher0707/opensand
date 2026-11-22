@@ -80,6 +80,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-22 · [Detail Inspector keyboard shortcut handlers and idempotent dismissal state](2026-11-22-detail-inspector-keyboard-shortcuts-and-closure-state.md)
 - 2026-11-22 · [Headless test loop restoring fake document in inner finally drops global on subsequent iterations](2026-11-22-fake-dom-test-loop-document-restore.md)
 - 2026-11-22 · [Placeholder underscores in token extraction corrupt markdown substitution](2026-11-22-markdown-placeholder-underscores-corrupt-substitution.md)
+- 2026-11-22 · [Preact effects can be deferred in the Electron renderer: read live state in shortcuts, not from an effect closure](2026-11-22-preact-effect-deferral-in-electron-real-window.md)
 - 2026-11-22 · [Real-window test running stateful component interactions inside viewport size loops inherits prior state](2026-11-22-real-window-stateful-interactions-across-viewport-sizes.md)
 - 2026-11-22 · [Session list hermetic state dir, unread badges, and reload persistence](2026-11-22-session-list-hermetic-state-dir-and-unread-badges.md)
 - 2026-11-22 · [Streaming delta reducer retained stale raw buffer on non-think deltas](2026-11-22-streaming-delta-buffer-stale-retention.md)

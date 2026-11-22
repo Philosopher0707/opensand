@@ -47,17 +47,18 @@ test("navigation-model: footer groups match the legacy view mapping", () => {
   assert.strictEqual(byId.templates.view, "templates");
 });
 
-test("navigation-model: grouped views belong to exactly one group; sentinel is deep-link only", () => {
+test("navigation-model: grouped views belong to exactly one group; sentinel and settings are deep-link only", () => {
   assert.strictEqual(groupForView("chat"), null, "chat has no subnav group");
   // Legacy app.js has no footer button or subnav tab for sentinel; it is reachable by deep link.
   assert.strictEqual(groupForView("sentinel"), null, "sentinel is not in a footer group");
+  assert.strictEqual(groupForView("settings"), null, "settings is opened from the account popup");
   for (const group of NAV_GROUPS) {
     for (const tab of group.tabs) {
       assert.strictEqual(groupForView(tab.view), group, `${tab.view} belongs to ${group.id}`);
     }
   }
   for (const view of VIEW_IDS) {
-    if (view === "chat" || view === "sentinel") continue;
+    if (view === "chat" || view === "sentinel" || view === "settings") continue;
     assert.ok(groupForView(view), `${view} should belong to a group`);
   }
 });
