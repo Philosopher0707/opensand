@@ -15,6 +15,7 @@ import {
   type ChatTurnState,
   type ToolCallItem,
 } from "../../../src/shell/chat-turn-model";
+import type { ArtifactItem } from "../../../src/shell/canvas-model";
 import type { TurnEvent } from "../../../src/shell/quick-capture-model";
 import { renderMarkdown } from "./chat-markdown";
 
@@ -158,6 +159,35 @@ export function extractToolDetail(args: any): string {
   return "";
 }
 
+export function extractFileFromTool(tool: ToolCallItem): { path: string; title: string; content: string; language: string } | null {
+  const args = typeof tool.args === "object" && tool.args !== null ? tool.args : {};
+  const filePath = args.path || args.file || args.filename || args.target_file || args.absolute_path || "";
+  let content = args.content || args.code || args.code_content;
+  if (!content && tool.result) {
+    if (typeof tool.result === "string") {
+      content = tool.result;
+    } else if (typeof tool.result === "object" && tool.result !== null) {
+      content = tool.result.content || tool.result.output || JSON.stringify(tool.result, null, 2);
+    }
+  }
+  const name = (tool.name || "").toLowerCase();
+  const isFileTool =
+    name.includes("file") ||
+    name.includes("read") ||
+    name.includes("write") ||
+    name.includes("edit") ||
+    Boolean(filePath);
+
+  if (isFileTool && (filePath || content)) {
+    const p = String(filePath || `${tool.name}-output.txt`);
+    const title = p.split("/").pop() || p;
+    const c = typeof content === "string" ? content : (tool.result ? String(tool.result) : "");
+    const ext = title.includes(".") ? title.split(".").pop()! : "text";
+    return { path: p, title, content: c, language: ext };
+  }
+  return null;
+}
+
 export function ThoughtAccordion({ thought, isStreaming }: { thought?: string; isStreaming?: boolean }) {
   if (!thought || !thought.trim()) return null;
   const trimmed = thought.trim();
@@ -174,12 +204,19 @@ export function ThoughtAccordion({ thought, isStreaming }: { thought?: string; i
   );
 }
 
-export function ToolCard({ tool }: { tool: ToolCallItem }) {
+export function ToolCard({
+  tool,
+  onOpenArtifact,
+}: {
+  tool: ToolCallItem;
+  onOpenArtifact?: (artifact: Partial<ArtifactItem> & { title: string; content: string }) => void;
+}) {
   const isRunning = tool.status === "running";
   const isError = tool.status === "error";
   const badgeText = isRunning ? "Running" : isError ? "Failed" : "Done";
   const badgeClass = isRunning ? "badge-running" : isError ? "badge-error" : "badge-done";
   const icon = inferToolIcon(tool.name);
+  const fileInfo = extractFileFromTool(tool);
 
   let formattedArgs = "";
   if (tool.args) {
@@ -207,6 +244,26 @@ export function ToolCard({ tool }: { tool: ToolCallItem }) {
         <span class="tool-line-icon" aria-hidden="true">{icon}</span>
         <span class="tool-line-label">{tool.name}</span>
         {detail ? <span class="tool-line-detail" title={detail}>{detail}</span> : null}
+        {fileInfo && onOpenArtifact && (
+          <button
+            type="button"
+            class="btn btn-sm btn-open-canvas"
+            title="Open in Canvas"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onOpenArtifact({
+                id: fileInfo.path,
+                title: fileInfo.title,
+                filePath: fileInfo.path,
+                language: fileInfo.language,
+                content: fileInfo.content,
+              });
+            }}
+          >
+            Open in Canvas
+          </button>
+        )}
         <span class={`tool-line-badge ${badgeClass}`}>{badgeText}</span>
       </summary>
       <div class="tool-line-details">
@@ -222,6 +279,28 @@ export function ToolCard({ tool }: { tool: ToolCallItem }) {
             <pre class="tool-details-pre tool-result-pre">{formattedResult}</pre>
           </>
         ) : null}
+        {fileInfo && onOpenArtifact && (
+          <div style="margin-top: 8px;">
+            <button
+              type="button"
+              class="btn btn-sm btn-open-canvas"
+              title="Open in Canvas"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onOpenArtifact({
+                  id: fileInfo.path,
+                  title: fileInfo.title,
+                  filePath: fileInfo.path,
+                  language: fileInfo.language,
+                  content: fileInfo.content,
+                });
+              }}
+            >
+              Open in Canvas
+            </button>
+          </div>
+        )}
       </div>
     </details>
   );
@@ -231,10 +310,12 @@ export function ChatMessageRow({
   message,
   isLastAssistant,
   turnBusy,
+  onOpenArtifact,
 }: {
   message: ChatMessage;
   isLastAssistant?: boolean;
   turnBusy?: boolean;
+  onOpenArtifact?: (artifact: Partial<ArtifactItem> & { title: string; content: string }) => void;
 }) {
   const assistant = message.role === "assistant";
   const isStreaming = assistant && Boolean(isLastAssistant && turnBusy);
@@ -249,7 +330,7 @@ export function ChatMessageRow({
         {assistant && message.toolCalls && message.toolCalls.length > 0 ? (
           <div class="tool-cards-container">
             {message.toolCalls.map((tc, idx) => (
-              <ToolCard key={tc.id || idx} tool={tc} />
+              <ToolCard key={tc.id || idx} tool={tc} onOpenArtifact={onOpenArtifact} />
             ))}
           </div>
         ) : null}
@@ -274,9 +355,10 @@ export interface ChatProps {
   chat: ChatTurnController;
   selectedSessionId?: string | null;
   data?: ShellData;
+  onOpenArtifact?: (artifact: Partial<ArtifactItem> & { title: string; content: string }) => void;
 }
 
-export function Chat({ chat, selectedSessionId, data }: ChatProps) {
+export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProps) {
   const { state } = chat;
   const busy = isChatBusy(state.status);
   const view = screenState(state);
@@ -326,16 +408,35 @@ export function Chat({ chat, selectedSessionId, data }: ChatProps) {
     if (lastUser && !busy) chat.send(lastUser.text);
   };
 
-  // Delegated copy handler for code blocks
+  // Delegated click handler for code blocks (Copy + Open in Canvas)
   const handleContainerClick = (e: MouseEvent) => {
     const target = (e.target as HTMLElement).closest(".btn-copy-code") as HTMLButtonElement | null;
-    if (!target) return;
-    const code = target.getAttribute("data-code") || target.closest(".code-block-wrapper")?.querySelector("code")?.textContent || "";
-    if (code && navigator.clipboard) {
-      navigator.clipboard.writeText(code).then(() => {
-        target.textContent = "Copied!";
-        setTimeout(() => { target.textContent = "Copy"; }, 1500);
-      }).catch(() => {});
+    if (target) {
+      const code = target.getAttribute("data-code") || target.closest(".code-block-wrapper")?.querySelector("code")?.textContent || "";
+      if (code && navigator.clipboard) {
+        navigator.clipboard.writeText(code).then(() => {
+          target.textContent = "Copied!";
+          setTimeout(() => { target.textContent = "Copy"; }, 1500);
+        }).catch(() => {});
+      }
+      return;
+    }
+
+    const canvasBtn = (e.target as HTMLElement).closest(".btn-open-canvas") as HTMLButtonElement | null;
+    if (canvasBtn && onOpenArtifact) {
+      const codeWrapper = canvasBtn.closest(".code-block-wrapper");
+      if (codeWrapper) {
+        const code = canvasBtn.getAttribute("data-code") || codeWrapper.querySelector("code")?.textContent || "";
+        const lang = canvasBtn.getAttribute("data-lang") || "text";
+        const title = canvasBtn.getAttribute("data-title") || `Snippet.${lang === "text" ? "txt" : lang}`;
+        onOpenArtifact({
+          id: title,
+          title,
+          language: lang,
+          content: code,
+        });
+        return;
+      }
     }
   };
 
@@ -368,6 +469,7 @@ export function Chat({ chat, selectedSessionId, data }: ChatProps) {
                 message={m}
                 isLastAssistant={m.role === "assistant" && i === state.messages.length - 1}
                 turnBusy={busy}
+                onOpenArtifact={onOpenArtifact}
               />
             ))}
           </div>

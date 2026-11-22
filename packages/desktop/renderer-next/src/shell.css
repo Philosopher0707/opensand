@@ -415,3 +415,417 @@
   color: var(--text-main, #eee);
   border-color: var(--text-muted, #888);
 }
+
+/* ==========================================================================
+   Phase 5 Row 5: Artifact Canvas Split View & Responsive Styles
+   ========================================================================== */
+
+.chat-canvas-split {
+  display: flex;
+  flex-direction: row;
+  align-self: stretch;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-split-pane {
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-canvas-split.canvas-closed .chat-split-pane {
+  flex: 1 1 100%;
+}
+
+.canvas-split-pane {
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+}
+
+.chat-canvas-split.canvas-closed .canvas-split-pane {
+  display: none !important;
+}
+
+/* Canvas Container */
+.canvas-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-main, #0b0d11);
+}
+
+.canvas-container.hidden {
+  display: none !important;
+}
+
+/* Canvas Tabs / Strip */
+.canvas-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  padding: 0 4px;
+  flex-shrink: 0;
+  scrollbar-width: thin;
+  min-width: 0;
+}
+
+.canvas-file-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  max-width: 180px;
+  min-width: 0;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  border-right: 1px solid var(--border-color-subtle, rgba(255, 255, 255, 0.05));
+  user-select: none;
+  position: relative;
+  transition: background 0.12s ease, color 0.12s ease;
+  flex-shrink: 0;
+}
+
+.canvas-file-tab:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main, #eee);
+}
+
+.canvas-file-tab.active {
+  background: var(--bg-card, #161b22);
+  color: var(--text-main, #eee);
+  font-weight: 500;
+}
+
+.canvas-file-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: var(--accent, #3b82f6);
+}
+
+.canvas-file-tab-icon {
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.canvas-file-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.canvas-file-tab-close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  opacity: 0.6;
+  flex-shrink: 0;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+.canvas-file-tab-close:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Canvas Header */
+.canvas-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.canvas-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.canvas-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.canvas-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main, #eee);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.badge-canvas {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent, #3b82f6);
+  border-radius: var(--radius-sm, 4px);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.canvas-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.canvas-tab-group {
+  display: flex;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm, 4px);
+  padding: 2px;
+  gap: 2px;
+}
+
+.canvas-tab {
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #888);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.canvas-tab:hover {
+  color: var(--text-main, #eee);
+}
+
+.canvas-tab.active {
+  background: var(--bg-card, #161b22);
+  color: var(--text-main, #eee);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.btn-canvas-action,
+.btn-copy-canvas {
+  background: transparent;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  color: var(--text-muted, #888);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-canvas-action:hover,
+.btn-copy-canvas:hover {
+  color: var(--text-main, #eee);
+  border-color: var(--text-muted, #888);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.btn-close-canvas {
+  background: transparent;
+  border: none;
+  font-weight: bold;
+  font-size: 13px;
+  padding: 3px 7px;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  border-radius: var(--radius-sm, 4px);
+  transition: all 0.15s ease;
+}
+
+.btn-close-canvas:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Canvas Body */
+.canvas-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-main, #0b0d11);
+}
+
+.canvas-pane {
+  flex: 1;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+
+/* Code Pane with Synchronized Line Numbers */
+.canvas-code-pane {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  overflow: auto;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.canvas-line-numbers {
+  padding: 14px 10px 14px 14px;
+  text-align: right;
+  color: var(--text-muted, #666);
+  opacity: 0.6;
+  user-select: none;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre;
+  border-right: 1px solid var(--border-color-subtle, rgba(255, 255, 255, 0.08));
+  min-height: 100%;
+  background: var(--bg-code, rgba(0, 0, 0, 0.25));
+  flex-shrink: 0;
+}
+
+.canvas-code-pre {
+  margin: 0;
+  padding: 14px 16px;
+  flex: 1 0 auto;
+  min-height: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  background: transparent;
+}
+
+.canvas-code-content {
+  font-family: inherit;
+  white-space: pre;
+  color: var(--text-code, #e2e8f0);
+}
+
+/* Preview Pane */
+.canvas-preview-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: #ffffff;
+  overflow: auto;
+}
+
+.canvas-preview-iframe {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #ffffff;
+}
+
+.canvas-markdown-preview {
+  padding: 18px 24px;
+  background: var(--bg-card, #161b22);
+  color: var(--text-main, #eee);
+  overflow-y: auto;
+  height: 100%;
+  line-height: 1.6;
+  box-sizing: border-box;
+}
+
+/* Diff Viewer */
+.canvas-diff-pane {
+  background: var(--bg-main, #0b0d11);
+  overflow: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  padding: 14px 16px;
+}
+
+.canvas-diff-pre {
+  margin: 0;
+  white-space: pre;
+  color: var(--text-code, #e2e8f0);
+}
+
+/* Open in Canvas Buttons */
+.code-block-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-open-canvas {
+  background: transparent;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  border-radius: var(--radius-sm, 4px);
+  padding: 2px 7px;
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-open-canvas:hover {
+  color: var(--accent, #3b82f6);
+  border-color: var(--accent, #3b82f6);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.tool-line-header .btn-open-canvas {
+  margin-left: auto;
+  margin-right: 6px;
+}
+
+.btn-toggle-canvas {
+  margin-right: 6px;
+}

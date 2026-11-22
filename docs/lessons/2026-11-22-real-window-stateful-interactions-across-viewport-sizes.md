@@ -1,0 +1,5 @@
+# Real-window test running stateful component interactions inside viewport size loops inherits prior state
+
+- **Trap:** In `packages/desktop/test/canvas-real-window.test.ts`, verifying canvas tab operations across multiple window sizes (`[960, 740]`, `[1920, 1080]`) by running stateful tab-creation steps inside the size loop caused the second iteration to inherit tabs created during the first iteration. The wait predicate expecting `document.querySelectorAll('#canvasTabStrip .canvas-file-tab').length === 1` timed out because the second run opened a tab on top of the surviving first-run tab.
+- **Root Cause:** A running Electron `BrowserWindow` retains live in-memory component and DOM state across `win.setContentSize(...)` calls. Running sequential user interactions inside an outer loop over window sizes without resetting state causes accumulative side-effects.
+- **Rule:** In Electron real-window tests verifying responsive layout across multiple window dimensions, separate state mutation flows (e.g. tab creation, switching, deletion) from viewport resize assertions, or cleanly reset UI state between dimensions.
