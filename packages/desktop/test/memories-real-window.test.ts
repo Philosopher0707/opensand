@@ -4,13 +4,14 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { EventEmitter } from "node:events";
 import { withElectronLock } from "./electron-lock.js";
 import { hermeticElectronEnv, makeTempHome } from "./hermetic-env.js";
 import { DesktopServer } from "../src/desktop-server.js";
 
 const pkgRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const NAV_HELPER_URL = pathToFileURL(path.join(pkgRoot, "dist/test/helpers/navigate-view.js")).href;
 
 // Mock classes for DesktopServer testing
 class MockIncomingMessage extends EventEmitter {
@@ -121,6 +122,8 @@ import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 
+import { navigateToView } from "${NAV_HELPER_URL}";
+
 const shotDir = process.env.OPENSAND_MEMORIES_SHOT_DIR || "";
 const TIMEOUT_MS = Number(process.env.OPENSAND_MEMORIES_TIMEOUT_MS || 180000);
 const timeout = setTimeout(() => { console.error("[runner] timeout"); app.quit(); process.exit(1); }, TIMEOUT_MS);
@@ -180,8 +183,7 @@ app.on("browser-window-created", (_e, w) => {
   w.webContents.on("did-finish-load", async () => {
     try {
       await wait("document.querySelector('#skillsCardGrid') && document.body.classList.contains('is-electron')");
-      await js("window.location.hash = '#memories'");
-      await wait("document.querySelector('#viewMemories') && !document.querySelector('#viewMemories').classList.contains('hidden')");
+      await navigateToView({ js, sleep }, "#memories", "#viewMemories");
       await wait("!document.querySelector('#memoriesGrid .memories-loading')");
 
       // 1. Initial empty states
