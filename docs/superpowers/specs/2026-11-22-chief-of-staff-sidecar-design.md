@@ -2,7 +2,7 @@
 
 Date: 2026-11-22
 Status: approved by owner in conversation after evidence-led design review
-Baseline: `13e4753` on `feat/agent-settings-ui`. `CONTEXT.md` section 6 is the running phase log and must be updated after every phase.
+Baseline: `d15b291` on `feat/agent-settings-ui`. `CONTEXT.md` section 6 is the running phase log and must be updated after every phase.
 
 ## Goal
 
