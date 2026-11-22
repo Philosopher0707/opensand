@@ -96,3 +96,4 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-22 · [Worktree dependencies copied from another branch have stale workspace links](2026-11-22-worktree-donor-node-modules-stale-links.md)
 - 2026-11-22 · [The zero-test guard must not read only the last phase of a multi-phase runner](2026-11-22-zero-test-guard-reads-last-phase.md)
 - 2026-11-23 · [Brief helper scripts may exist only on origin/main](2026-11-23-brief-scripts-may-be-branch-local.md)
+- 2026-11-23 · [A one-shot hash change loses the view switch, and a plain child kill leaves Electron descendants alive](2026-11-23-real-window-hash-race-and-process-group-kill.md)

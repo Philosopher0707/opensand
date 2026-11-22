@@ -25,7 +25,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 const shotDir = process.env.OPENSAND_SKILLS_SHOT_DIR || "";
-const TIMEOUT_MS = Number(process.env.OPENSAND_SKILLS_TIMEOUT_MS || 180000);
+// Stay under the desktop-test 120 s ceiling so a stall reports its own logs instead of being
+// killed by the suite with no diagnostic.
+const TIMEOUT_MS = Number(process.env.OPENSAND_SKILLS_TIMEOUT_MS || 90000);
 const timeout = setTimeout(() => { console.error("[runner] timeout"); app.quit(); process.exit(1); }, TIMEOUT_MS);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let win;
@@ -38,7 +40,8 @@ const setArea = (sel, value) => nativeSet(sel, "HTMLTextAreaElement", value, "in
 async function shot(label) {
   if (!shotDir) return;
   fs.mkdirSync(shotDir, { recursive: true });
-  await js("new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))");
+  // A disposed/throttled frame can leave this promise pending forever, which reads as a hang.
+  await js("new Promise((r) => { const done = () => r(true); requestAnimationFrame(() => requestAnimationFrame(done)); setTimeout(done, 2000); })");
   await sleep(250);
   fs.writeFileSync(path.join(shotDir, label + ".png"), (await win.webContents.capturePage()).toPNG());
 }
@@ -81,7 +84,13 @@ app.on("browser-window-created", (_e, w) => {
   w.webContents.on("did-finish-load", async () => {
     try {
       await wait("document.querySelector('#skillsCardGrid') && document.body.classList.contains('is-electron')");
-      await js("window.location.hash = '#skills'");
+      // The hashchange subscriber mounts a tick after the grid appears; re-dispatch until the
+      // view actually switches, or one lost event stalls the run on the next wait.
+      for (let i = 0; i < 50; i++) {
+        if (await js("Boolean(document.querySelector('#viewSkills') && !document.querySelector('#viewSkills').classList.contains('hidden'))")) break;
+        await js("window.location.hash = '#skills'; window.dispatchEvent(new Event('hashchange'));");
+        await sleep(100);
+      }
       await wait("document.querySelector('#viewSkills') && !document.querySelector('#viewSkills').classList.contains('hidden')");
       await wait("!document.querySelector('#skillsCardGrid .skills-loading')");
 
@@ -233,10 +242,21 @@ test("Preact skills view, creation, preview and deletion at 960x740 and 1920x108
       });
       child.stdout.on("data", (d) => { stdout += d.toString(); });
       child.stderr.on("data", (d) => { stderr += d.toString(); });
-      child.on("error", (err) => { stderr += String(err); });
       return new Promise<number>((resolve) => {
-        const watchdog = setTimeout(() => { child.kill("SIGKILL"); resolve(124); }, 180_000);
-        child.on("close", (c) => { clearTimeout(watchdog); resolve(c ?? 0); });
+        let done = false;
+        let watchdog: NodeJS.Timeout;
+        const settle = (code: number) => {
+          if (done) return;
+          done = true;
+          clearTimeout(watchdog);
+          resolve(code);
+        };
+        watchdog = setTimeout(() => { child.kill("SIGKILL"); settle(124); }, 180_000);
+        // Electron helpers inherit the stdio pipes and can outlive the main process, so "close"
+        // may never fire. Resolve shortly after "exit" and let stdout drain in the meantime.
+        child.on("exit", (c) => setTimeout(() => settle(c ?? 0), 250));
+        child.on("close", (c) => settle(c ?? 0));
+        child.on("error", (err) => { stderr += String(err); settle(1); });
       });
     });
 
