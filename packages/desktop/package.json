@@ -15,7 +15,7 @@
     "build": "tsc -b && vite build",
     "build:tsc": "tsc -b",
     "build:vite": "vite build",
-    "test": "node --test dist/test/**/*.test.js",
+    "test": "node ../../scripts/desktop-test.js",
     "dev": "electron .",
     "start": "node dist/src/desktop-server.js"
   },

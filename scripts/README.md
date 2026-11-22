@@ -35,6 +35,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `lint-brief-selftest.sh` | Hermetic selftest for the brief linter | Pre-commit / verification | Self |
 | `brief-row.sh` | Draft Phase 5 row briefs directly from inventory, server routes and base SHA | Bot handoff, Phase 5 row planning | `brief-row-selftest.sh` |
 | `brief-row-selftest.sh` | Hermetic selftest for the brief row generator | Pre-commit / verification | Self |
+| `desktop-test.js` | Desktop test runner: non-real-window files in parallel, then one process per real-window file with per-file duration and a 120 s per-file ceiling that fails by name | `packages/desktop` test script (`pnpm --filter @opensand/desktop test`) | `desktop-test-selftest.js` |
+| `desktop-test-selftest.js` | Hermetic selftest for `desktop-test.js` using fake test files: phase order, per-file duration log, and a slow file failing by name | Pre-commit / verification | Self |
 | `phase7-e2e.sh` | Phase 7 S5 end-to-end check: routes.json + stats fixture into a temp `OPENSAND_HOME`, a 3-attempt tournament against the local HTTP stub, worktree/attempts-root assertions, receipt rows vs log records one-to-one, a stats fixture that moves the ladder start with the `mesh.route.selected` record to prove it, and the CLI verbs (`mission reconcile`, `mission attempt restore`) | Phase 7 S5 verification | `mutation-probe.sh` (via) |
 
 | `opensand-completion.bash` | Bash tab completion definitions | User shell environment | None |
