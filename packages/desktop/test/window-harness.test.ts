@@ -884,11 +884,31 @@ test("Real-Window Harness: inspector renames and deletes a bot", async (t) => {
     "    await new Promise((r) => setTimeout(r, 100));",
     "  }",
     "  const focusAfterRename = document.activeElement?.classList?.contains('btn-bot-inspect') === true;",
+    "  const alphaCard = document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_insp_a1\"]');",
+    "  alphaCard.querySelector('.btn-bot-inspect').click();",
+    "  await new Promise((r) => setTimeout(r, 150));",
+    "  const alphaSessionRows = [...document.querySelectorAll('.inspector-popover .inspector-session')];",
+    "  const alphaSessionLabels = alphaSessionRows.map((r) => r.textContent);",
+    "  alphaSessionRows[0]?.click();",
+    "  await new Promise((r) => setTimeout(r, 250));",
+    "  const openedSession = window.__railState.getActive().currentSessionId;",
     "  const sessionsBtn = document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_insp_b2\"] .btn-bot-inspect');",
     "  sessionsBtn.click();",
     "  await new Promise((r) => setTimeout(r, 150));",
     "  const betaSessionRows = document.querySelectorAll('.inspector-popover .inspector-session').length;",
-    "  return { cards, renamed, cardName, focusAfterRename, betaSessionRows };",
+    "  window.confirm = () => true;",
+    "  const betaDialog = document.querySelector('.inspector-popover');",
+    "  betaDialog.querySelector('.inspector-delete').click();",
+    "  let betaGone = false;",
+    "  let betaCardGone = false;",
+    "  for (let i = 0; i < 20; i++) {",
+    "    const remaining = await (await fetch('/api/agents')).json();",
+    "    betaGone = !(remaining || []).some((a) => a.id === 'agent_insp_b2');",
+    "    betaCardGone = !document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_insp_b2\"]');",
+    "    if (betaGone && betaCardGone) break;",
+    "    await new Promise((r) => setTimeout(r, 100));",
+    "  }",
+    "  return { cards, renamed, cardName, focusAfterRename, alphaSessionRowCount: alphaSessionRows.length, alphaSessionLabels, openedSession, betaSessionRows, betaGone, betaCardGone };",
     "})()",
   ].join("\n");
   try {
@@ -899,7 +919,12 @@ test("Real-Window Harness: inspector renames and deletes a bot", async (t) => {
     assert.strictEqual(v.renamed, "Renamed Alpha", `rename must persist via API (${JSON.stringify(v)})`);
     assert.strictEqual(v.cardName, "Renamed Alpha", `rail must show the new name (${JSON.stringify(v)})`);
     assert.strictEqual(v.focusAfterRename, true, `focus must return to the re-rendered inspect button after rename (${JSON.stringify(v)})`);
+    assert.strictEqual(v.alphaSessionRowCount, 1, `one bot home session must be listed once (${JSON.stringify(v)})`);
+    assert.match(String(v.alphaSessionLabels[0]), /bot-home-history/, `the REAL session row must be listed, not the synthetic home (${JSON.stringify(v)})`);
+    assert.strictEqual(v.openedSession, "bot_agent_insp_a1", `clicking a session must open it (${JSON.stringify(v)})`);
     assert.strictEqual(v.betaSessionRows, 1, `a bot with no real sessions shows exactly one synthetic home row (${JSON.stringify(v)})`);
+    assert.strictEqual(v.betaGone, true, `delete must remove the agent from the API (${JSON.stringify(v)})`);
+    assert.strictEqual(v.betaCardGone, true, `delete must remove the rail card (${JSON.stringify(v)})`);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
