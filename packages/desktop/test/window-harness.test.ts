@@ -698,6 +698,7 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     "    searchToggle: !!document.getElementById('btnBotSearch'),",
     "    newButton: !!document.getElementById('btnBotNew'),",
     "    moreButton: !!document.getElementById('btnBotShowMore'),",
+    "    layout: (() => { const sc = getComputedStyle(section); const rc = getComputedStyle(list); return { display: sc.display, overflow: sc.overflow, railOverflow: rc.overflowY, railMinHeight: rc.minHeight }; })(),",
     "  };",
     "})()",
   ].join("\n");
@@ -711,6 +712,9 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     assert.strictEqual(v.sectionNotInView, true, `Bots section must not be inside a switchable view (${JSON.stringify(v)})`);
     assert.strictEqual(v.sameNode, true, `view switches must not replace #botList (${JSON.stringify(v)})`);
     assert.strictEqual(v.visible, true, `Bots section must be visible in chat view (${JSON.stringify(v)})`);
+    assert.strictEqual(v.layout.display, 'flex', `bot section must be a flex column (${JSON.stringify(v)})`);
+    assert.strictEqual(v.layout.overflow, 'hidden', `bot section must clip overflow (${JSON.stringify(v)})`);
+    assert.strictEqual(v.layout.railOverflow, 'auto', `bot rail must be the scroll container (${JSON.stringify(v)})`);
     assert.strictEqual(v.searchToggle, true, `search toggle must exist (${JSON.stringify(v)})`);
     assert.strictEqual(v.newButton, true, `new-bot button must exist (${JSON.stringify(v)})`);
     assert.strictEqual(v.moreButton, true, `show-more button must exist (${JSON.stringify(v)})`);

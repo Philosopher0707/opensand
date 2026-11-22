@@ -4401,6 +4401,7 @@ textarea#promptInput {
 
 /* ---- Bots section in the sidebar spine (Orca-style) --------------------- */
 .bot-sidecar {
+  display: flex; flex-direction: column; overflow: hidden;
   flex: 0 1 auto; min-height: 0; padding: 6px 4px 8px;
   border-bottom: 1px solid var(--border-color);
 }
@@ -4413,7 +4414,7 @@ textarea#promptInput {
 .bot-sidecar-more { display: block; width: calc(100% - 8px); margin: 4px 4px 0; padding: 4px 6px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font-size: 11px; cursor: pointer; }
 .bot-sidecar-more:hover { background: var(--bg-hover); color: var(--text-main); }
 
-.bot-rail { display: flex; flex-direction: column; gap: 3px; min-height: 0; overflow-y: auto; }
+.bot-rail { display: flex; flex-direction: column; gap: 3px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .bot-rail-card {
   position: relative; min-width: 0; display: flex; align-items: center; gap: 8px;
   padding: 5px 8px; border: 1px solid var(--border-color);
