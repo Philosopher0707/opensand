@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Shape lint for bot briefs: every brief must name Goal, Done when, Scope and Report back.
-# Checks section presence, not the quality of what is written under them.
+# Shape lint for bot briefs: every brief must name Goal, Done when, Scope and Report back,
+# and contain no unresolved "TODO" markers.
 # Usage: scripts/lint-brief.sh <brief.md> [...]   ('-' reads stdin)
-# Exit 0 all briefs well-shaped, 1 a section missing, 2 bad usage / unreadable file.
+# Exit 0 all briefs well-shaped and TODO-free, 1 a section missing or TODO present, 2 bad usage / unreadable file.
 set -uo pipefail
 
 LABELS=("Goal" "Done when" "Scope" "Report back")
@@ -48,6 +48,12 @@ lint_one() {
     echo "FAIL: $file missing sections: $missing"
     return 1
   fi
+
+  if grep -q "TODO" <<<"$text"; then
+    echo "FAIL: $file contains unresolved TODO"
+    return 1
+  fi
+
   echo "PASS: $file has Goal, Done when, Scope, Report back"
   return 0
 }
