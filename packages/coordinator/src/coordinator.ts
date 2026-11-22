@@ -22,6 +22,7 @@ import {
 import { TranscriptManager } from "./transcript-manager.js";
 import { EVENT } from "./event-projections.js";
 import { buildSystemPrompt, SystemPromptContext } from "./system-prompt.js";
+import { RulesLoader } from "./rules-loader.js";
 import { VaultStore } from "./vault-store.js";
 import { McpManager } from "./mcp-manager.js";
 import { LifecycleHooks, HookDispatcher } from "./hooks.js";
@@ -38,6 +39,7 @@ export interface CoordinatorOptions {
   llmClient: UniversalLLMClient;
   daemon: LocalExecDaemon;
   sessionId?: string;
+  rulesLoader?: RulesLoader;
   systemPromptContext?: SystemPromptContext;
   allowedTools?: string[];
   toolScopeMode?: "core" | "auto" | "all";
@@ -87,6 +89,9 @@ export class AgentCoordinator {
   public readonly vaultStore?: VaultStore;
   public readonly hookDispatcher: HookDispatcher;
   public readonly mcpManager?: McpManager;
+  public readonly rulesLoader?: RulesLoader;
+  private systemPromptContext: SystemPromptContext;
+  private baseUserInstructions?: string;
   public readonly workspaceDir: string;
   public readonly sandboxProfile?: "read-only" | "workspace-write" | "full";
   public readonly agentName?: string;
@@ -129,8 +134,22 @@ export class AgentCoordinator {
     this.workspaceDir = options.workspaceDir ?? options.workspaceRoot ?? process.cwd();
     this.scopedWorkspaceRoot = this.sandboxProfile ? this.workspaceDir : undefined;
 
+    this.rulesLoader = options.rulesLoader;
+    this.systemPromptContext = { ...(options.systemPromptContext ?? {}) };
+    let baseInstructions = this.systemPromptContext.userInstructions;
+    if (this.rulesLoader?.globalRules && baseInstructions?.endsWith(this.rulesLoader.globalRules)) {
+      baseInstructions = baseInstructions.slice(0, -this.rulesLoader.globalRules.length).trimEnd();
+    }
+    this.baseUserInstructions = baseInstructions;
+    if (!this.systemPromptContext.rulesContext && this.rulesLoader?.rulesContext) {
+      this.systemPromptContext.rulesContext = this.rulesLoader.rulesContext;
+    }
+    if (this.rulesLoader?.globalRules && !this.systemPromptContext.userInstructions?.includes(this.rulesLoader.globalRules)) {
+      this.systemPromptContext.userInstructions = [this.baseUserInstructions, this.rulesLoader.globalRules].filter(Boolean).join("\n\n") || undefined;
+    }
+
     // Initialize system message
-    const systemPrompt = buildSystemPrompt(options.systemPromptContext);
+    const systemPrompt = buildSystemPrompt(this.systemPromptContext);
     this.messages.push({
       role: "system",
       content: systemPrompt,
@@ -202,6 +221,19 @@ export class AgentCoordinator {
   }
 
   async runTurn(userQuery: string, signal?: AbortSignal): Promise<string> {
+    if (this.rulesLoader?.refresh()) {
+      const globalRules = this.rulesLoader.globalRules;
+      const userInstructions = [this.baseUserInstructions, globalRules].filter(Boolean).join("\n\n") || undefined;
+      this.systemPromptContext = {
+        ...this.systemPromptContext,
+        userInstructions,
+        rulesContext: this.rulesLoader.rulesContext || undefined,
+      };
+      if (this.messages.length > 0 && this.messages[0].role === "system") {
+        this.messages[0].content = buildSystemPrompt(this.systemPromptContext);
+      }
+    }
+
     if (!this.initialized) {
       this.initialized = true;
 
