@@ -1695,3 +1695,63 @@
   #createSkillModal, #skillPreviewModal { padding: 8px; }
   .skills-view-container { padding: 16px; }
 }
+
+/* vault view */
+.vault-view-container { box-sizing: border-box; max-width: 100%; }
+.vault-view-container .dashboard-header { flex-wrap: wrap; gap: 12px; }
+.vault-header-actions { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.vault-header-actions button { flex: none; }
+.vault-section-title { margin: 20px 0 8px; font-size: 15px; overflow-wrap: anywhere; }
+.vault-view-container .card-grid { min-width: 0; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
+.vault-view-container .dashboard-card { min-width: 0; }
+.vault-view-container .card-title,
+.vault-view-container .card-desc,
+.vault-view-container .card-meta { min-width: 0; overflow-wrap: anywhere; }
+.vault-view-container .card-footer { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.vault-view-container .btn-del-sec,
+.vault-view-container .btn-del-cred { color: var(--danger, #dc2626); }
+.vault-value-mask {
+  font: 13px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+}
+.vault-empty, .vault-loading {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 40px 12px;
+  overflow-wrap: anywhere;
+}
+.vault-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--danger, #dc2626);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.vault-form-error { color: var(--danger, #dc2626); font-size: 12px; overflow-wrap: anywhere; }
+#addSecretModal, #addCredentialModal { padding: 16px; box-sizing: border-box; }
+#addSecretModal .modal-card,
+#addCredentialModal .modal-card {
+  width: 100%;
+  max-width: 620px;
+  box-sizing: border-box;
+  margin: 0 auto;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+#addSecretModal .modal-header,
+#addSecretModal .modal-body,
+#addSecretModal .modal-actions,
+#addCredentialModal .modal-header,
+#addCredentialModal .modal-body,
+#addCredentialModal .modal-actions { min-width: 0; }
+#addSecretModal .modal-header h3,
+#addCredentialModal .modal-header h3 { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  #addSecretModal, #addCredentialModal { padding: 8px; }
+  .vault-view-container { padding: 16px; }
+}
