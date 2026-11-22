@@ -45,7 +45,8 @@ export type ChatTurnAction =
   | { type: "approval" }
   | { type: "complete"; response?: string }
   | { type: "stopped" }
-  | { type: "unavailable" };
+  | { type: "unavailable" }
+  | { type: "load"; sessionId: string; messages: ChatMessage[] };
 
 export function isChatBusy(status: ChatTurnStatus): boolean {
   return status === "sending" || status === "waiting" || status === "streaming";
@@ -60,7 +61,7 @@ function updateAssistant(state: ChatTurnState, change: (m: ChatMessage) => ChatM
   return messages;
 }
 
-export function chatTurnReducer(state: ChatTurnState, action: ChatTurnAction): ChatTurnState {
+export function chatTurnReducer(state: ChatTurnState = INITIAL_CHAT_TURN, action: ChatTurnAction): ChatTurnState {
   switch (action.type) {
     case "start": {
       // A second send while a turn runs is ignored; the composer disables Send then.
@@ -114,6 +115,12 @@ export function chatTurnReducer(state: ChatTurnState, action: ChatTurnAction): C
       };
     case "unavailable":
       return { ...INITIAL_CHAT_TURN, status: "unavailable" };
+    case "load":
+      return {
+        ...INITIAL_CHAT_TURN,
+        sessionId: action.sessionId,
+        messages: action.messages || [],
+      };
   }
 }
 
@@ -139,4 +146,90 @@ export function chatEventAction(event: TurnEvent, sessionId: string | null): Cha
     return { type: "failed", message: event.data?.message || event.message || "Unknown error occurred" };
   }
   return null;
+}
+
+/** Parses transcript text using <user_query> delimiters or fallback to single assistant answer. */
+export function parseTranscriptText(transcriptText: string): ChatMessage[] {
+  if (!transcriptText || typeof transcriptText !== "string") return [];
+  const turns: ChatMessage[] = [];
+  const userQueryRegex = /<user_query>([\s\S]*?)<\/user_query>/gi;
+  let match: RegExpExecArray | null;
+  const queries: Array<{ query: string; startIndex: number; endIndex: number }> = [];
+
+  while ((match = userQueryRegex.exec(transcriptText)) !== null) {
+    queries.push({
+      query: match[1].trim(),
+      startIndex: match.index,
+      endIndex: userQueryRegex.lastIndex,
+    });
+  }
+
+  if (queries.length === 0) {
+    const trimmed = transcriptText.trim();
+    return trimmed ? [{ role: "assistant", text: trimmed }] : [];
+  }
+
+  for (let i = 0; i < queries.length; i++) {
+    const q = queries[i];
+    turns.push({ role: "user", text: q.query });
+
+    const assistantStart = q.endIndex;
+    const assistantEnd =
+      i + 1 < queries.length ? queries[i + 1].startIndex : transcriptText.length;
+    let assistantSection = transcriptText.slice(assistantStart, assistantEnd).trim();
+    assistantSection = assistantSection.replace(/^assistant:\s*/i, "").trim();
+
+    if (assistantSection) {
+      turns.push({ role: "assistant", text: assistantSection });
+    }
+  }
+
+  return turns;
+}
+
+/** Reconstructs ChatMessage items from stored session events or transcript fallback. */
+export function reconstructSessionMessages(
+  sessionData:
+    | { events?: unknown[]; transcript?: string; [key: string]: any }
+    | unknown[]
+    | null
+    | undefined,
+): ChatMessage[] {
+  if (!sessionData) return [];
+
+  const rawEvents: unknown[] = Array.isArray(sessionData)
+    ? sessionData
+    : Array.isArray(sessionData.events)
+      ? sessionData.events
+      : [];
+
+  const transcriptText =
+    !Array.isArray(sessionData) && typeof sessionData.transcript === "string"
+      ? sessionData.transcript
+      : "";
+
+  if (rawEvents.length === 0 && transcriptText) {
+    return parseTranscriptText(transcriptText);
+  }
+
+  const messages: ChatMessage[] = [];
+  for (const ev of rawEvents) {
+    if (!ev || typeof ev !== "object") continue;
+    const item = ev as Record<string, any>;
+    if (item.role === "user") {
+      const text = String(item.text ?? item.content ?? "").trim();
+      messages.push({ role: "user", text });
+    } else if (item.role === "assistant") {
+      let text = String(item.text ?? item.content ?? "");
+      text = text.replace(/<(?:thinking|think)>[\s\S]*?<\/(?:thinking|think)>/gi, "").trim();
+      messages.push({
+        role: "assistant",
+        text,
+        ...(item.note ? { note: String(item.note) } : {}),
+        ...(item.error ? { error: String(item.error) } : {}),
+      });
+    }
+  }
+
+  return messages;
 }

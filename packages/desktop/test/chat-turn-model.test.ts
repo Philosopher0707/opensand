@@ -5,6 +5,8 @@ import {
   chatEventAction,
   chatTurnReducer,
   isChatBusy,
+  reconstructSessionMessages,
+  type ChatMessage,
   type ChatTurnState,
 } from "../src/shell/chat-turn-model.js";
 
@@ -97,4 +99,73 @@ test("events for another session are dropped, and each bridge type maps to its a
     message: "bad",
   });
   assert.strictEqual(chatEventAction({ type: "thought", data: { message: "x" } }, null), null);
+});
+
+test("load action hydrates session messages and resets status to idle", () => {
+  const loadedMessages: ChatMessage[] = [
+    { role: "user", text: "What is 2+2?" },
+    { role: "assistant", text: "4" },
+  ];
+  // 1. From INITIAL_CHAT_TURN
+  const s1 = chatTurnReducer(INITIAL_CHAT_TURN, {
+    type: "load",
+    sessionId: "sess-history-1",
+    messages: loadedMessages,
+  });
+  assert.strictEqual(s1.status, "idle");
+  assert.strictEqual(s1.sessionId, "sess-history-1");
+  assert.strictEqual(s1.error, "");
+  assert.deepStrictEqual(s1.messages, loadedMessages);
+
+  // 2. From busy / error state, load resets status to idle and clears error
+  const busyState = run(
+    { type: "start", query: "something" },
+    { type: "failed", message: "network timeout" },
+  );
+  assert.strictEqual(busyState.status, "error");
+  const s2 = chatTurnReducer(busyState, {
+    type: "load",
+    sessionId: "sess-history-2",
+    messages: loadedMessages,
+  });
+  assert.strictEqual(s2.status, "idle");
+  assert.strictEqual(s2.sessionId, "sess-history-2");
+  assert.strictEqual(s2.error, "");
+  assert.deepStrictEqual(s2.messages, loadedMessages);
+
+  // 3. New turn after load keeps loaded messages and appends new query
+  const s3 = chatTurnReducer(s2, { type: "start", query: "next question" });
+  assert.strictEqual(s3.status, "sending");
+  assert.strictEqual(s3.messages.length, 4);
+  assert.strictEqual(s3.messages[2].role, "user");
+  assert.strictEqual(s3.messages[2].text, "next question");
+});
+
+test("reconstructSessionMessages extracts turns from jsonl events", () => {
+  const events = [
+    { role: "user", content: "Hello world" },
+    { role: "assistant", content: "<think>thinking deep</think>Hi there!" },
+  ];
+  const messages = reconstructSessionMessages({ events });
+  assert.deepStrictEqual(messages, [
+    { role: "user", text: "Hello world" },
+    { role: "assistant", text: "Hi there!" },
+  ]);
+});
+
+test("reconstructSessionMessages falls back to transcript text", () => {
+  const transcript = "<user_query>\nWhat is the capital of France?\n</user_query>\nassistant:\nParis\n";
+  const messages = reconstructSessionMessages({ transcript });
+  assert.deepStrictEqual(messages, [
+    { role: "user", text: "What is the capital of France?" },
+    { role: "assistant", text: "Paris" },
+  ]);
+});
+
+test("reconstructSessionMessages handles empty, null, or malformed session data safely", () => {
+  assert.deepStrictEqual(reconstructSessionMessages(null), []);
+  assert.deepStrictEqual(reconstructSessionMessages(undefined), []);
+  assert.deepStrictEqual(reconstructSessionMessages({}), []);
+  assert.deepStrictEqual(reconstructSessionMessages({ events: [] }), []);
+  assert.deepStrictEqual(reconstructSessionMessages({ transcript: "" }), []);
 });
