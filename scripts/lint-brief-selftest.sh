@@ -74,12 +74,20 @@ Scope: scripts/ only.
 EOF
 : > "$TMP_DIR/empty.md"
 
+cat > "$TMP_DIR/has-todo.md" <<'EOF'
+Goal: fix it.
+Done when: CI green.
+Scope: TODO: need scope details.
+Report back: PR number.
+EOF
+
 expect 0 "PASS" "colon-style brief passes" "$TMP_DIR/valid.md"
 expect 0 "PASS" "markdown-heading brief passes" "$TMP_DIR/valid-headings.md"
 expect 1 "missing sections: Goal" "missing Goal is caught" "$TMP_DIR/no-goal.md"
 expect 1 "Done when" "missing Done when is caught" "$TMP_DIR/no-done.md"
 expect 1 "missing sections: Scope" "missing Scope is caught" "$TMP_DIR/no-scope.md"
 expect 1 "Report back" "missing Report back is caught" "$TMP_DIR/no-report.md"
+expect 1 "contains unresolved TODO" "brief with TODO is rejected" "$TMP_DIR/has-todo.md"
 run_lint "$TMP_DIR/empty.md"
 if [[ "$LAST_STATUS" -eq 1 ]] && grep -qF "Goal" <<<"$LAST_OUT" && grep -qF "Report back" <<<"$LAST_OUT"; then
   pass "empty brief names all four missing sections"
@@ -98,6 +106,12 @@ if [[ "$LAST_STATUS" -eq 1 ]] && grep -qF "Scope" <<<"$LAST_OUT"; then
   pass "bad brief on stdin fails"
 else
   fail "bad brief on stdin (exit $LAST_STATUS): $LAST_OUT"
+fi
+LAST_OUT="$(cat "$TMP_DIR/has-todo.md" | "$LINT" - 2>&1)"; LAST_STATUS=$?
+if [[ "$LAST_STATUS" -eq 1 ]] && grep -qF "contains unresolved TODO" <<<"$LAST_OUT"; then
+  pass "brief with TODO on stdin fails"
+else
+  fail "brief with TODO on stdin (exit $LAST_STATUS): $LAST_OUT"
 fi
 
 if [[ "$FAILED" -ne 0 ]]; then
