@@ -53,7 +53,7 @@ test("chief settings persist, validate and invalidate coordinators", async () =>
 it("chiefOnly tools bypass computerUse only with chiefDelegation", async () => {
   const daemon = new LocalExecDaemon();
   daemon.tools.registerCustomTool({
-    definition: { name: "probe_chief_tool", description: "probe", parameters: { type: "object", properties: {} } },
+    definition: { type: "function", function: { name: "probe_chief_tool", description: "probe", parameters: { type: "object", properties: {} } } },
     handler: async () => ({ ok: true }),
     requiresGate: "computerUse",
     chiefOnly: true,
@@ -84,7 +84,11 @@ if (!chiefBypass && custom.requiresGate === "computerUse" && context?.permission
 if (custom.requiresGate === "deviceTools" && context?.permissionGates && !context.permissionGates.deviceToolsAllowed) { /* unchanged */ }
 ```
 Do not alter the deviceTools check or any other tool path.
-- [ ] **Step 6:** `ipc-bridge.ts`: define `const CHIEF_TOOLS = ['delegate_to_agent', 'await_agent'] as const;`. In `createSessionCoordinator()`: set `chiefDelegation: agentId === this.settings.chiefOfStaffAgentId`. When chief, union `CHIEF_TOOLS` into `effectiveAllowedTools`. When not chief and `agent.allowedTools` is undefined, set `effectiveAllowedTools` to all currently resolved tool names minus `CHIEF_TOOLS` (so "no whitelist" cannot imply access). Pass `chiefInstructions` from a new small constant in the bridge when chief.
+- [ ] **Step 6:** `ipc-bridge.ts`: define `const CHIEF_TOOLS = ['delegate_to_agent', 'await_agent'] as const;`. In `createSessionCoordinator()`: set `chiefDelegation: agentId === this.settings.chiefOfStaffAgentId`. When chief, union `CHIEF_TOOLS` into `effectiveAllowedTools`. When not chief and `agent.allowedTools` is undefined, set `effectiveAllowedTools` to all currently resolved tool names minus `CHIEF_TOOLS` (so "no whitelist" cannot imply access). Define in the bridge:
+```ts
+const CHIEF_INSTRUCTIONS = 'You are the user\'s chief of staff. Delegate specialist work via delegate_to_agent. For parallel fan-out use background:true and collect results with await_agent. Never claim to have done delegated work yourself; report which bot did what.';
+```
+and pass it as `chiefInstructions` when chief.
 - [ ] **Step 7:** Run build + tests; all green.
 
 ### Task 3: Renderer chief picker + boot
@@ -141,7 +145,7 @@ This is the canonical markup: a `<div role="button" tabindex="0">` row with a re
 ### Task 6: Pane agent selector
 **Files:** `renderer/modules/parallel-board.js`, `app.js`, `index.html`, harness test
 - [ ] **Step 1:** `initParallelBoard` options gain `getAgents` and `registerSessionAgent(sessionId, agentId)` (writes the `getAgentIdForSession` cache in app.js). Change signature to `createPane(sessionId, agentId = null)` — keep the existing first argument `sessionId` (`parallel-board.js:49`, callers at `:200,213-214`) unchanged. Store `pane.agentId = agentId`; render `<select class="pane-agent">` with an option per agent (plus "No bot"/none), `change` handler sets `pane.agentId` and calls `registerSessionAgent(pane.sessionId, pane.agentId)`.
-- [ ] **Step 2:** `send()` uses `pane.agentId` (not global `getAgentId()`) in `client.sendQuery`; call `registerSessionAgent(pane.sessionId, pane.agentId)` before send. `broadcast()` iterates panes using each `pane.agentId`. New panes pick an agent not already used, cycling.
+- [ ] **Step 2:** In `app.js` the `initParallelBoard({...})` call site (`:6240-6244`) must pass `getAgents: () => client.getAgents()` and `registerSessionAgent`. `initParallelBoard` caches the agents list (refresh it when the Parallel view opens) and picks a new pane's agent with `const used = new Set(panes.map((p) => p.agentId)); const next = agents.find((a) => !used.has(a.id)) || agents[panes.length % agents.length] || null; createPane(sessionId, next?.id ?? null);`. `send()` uses `pane.agentId` (not global `getAgentId()`) in `client.sendQuery`; call `registerSessionAgent(pane.sessionId, pane.agentId)` before send. `broadcast()` iterates panes using each `pane.agentId`.
 - [ ] **Step 3:** `app.js`: implement `agentIdForSession` Map; `getAgentIdForSession(id)` checks Map then `bot_`/`sub_agent_` inference then `getSessions()` meta. Replace `setBotCardStatus(activeAgentId,'busy')` at `:5167` with `setBotCardStatus(getAgentIdForSession(event.sessionId),'busy')`.
 - [ ] **Step 4:** Harness: open Parallel view, create two panes, select different agents, send from each, assert both panes carry different `agentId` and events attributed to their own sessions; assert no global-agent leakage.
 - [ ] **Step 5:** Run build + tests; commit P3; update `CONTEXT.md` Phase 3 log and commit.
@@ -152,15 +156,15 @@ This is the canonical markup: a `<div role="button" tabindex="0">` row with a re
 
 ### Task 7: Durable delegated results
 **Files:** `packages/desktop/src/ipc-bridge.ts`, `preload.cts`, `main.ts`, `desktop-server.ts`, `renderer/app.js`, `renderer/modules/session-buffers.js`, harness test
-- [ ] **Step 1:** `ipc-bridge.ts`: import `TranscriptManager` from `@opensand/coordinator`; add `recordDelegatedResult({targetSessionId, sourceSessionId, childSessionId, agentId, content})`. Validate ids with the existing regex/path-traversal helper. Read existing events via the same event loader used by `loadSession` (`ipc-bridge.ts:1182-1227`) and scan for `kind === 'delegated_result'` with matching `(sourceSessionId, childSessionId)`; if present, return without writing. Otherwise:
+- [ ] **Step 1:** `ipc-bridge.ts`: import `TranscriptManager` from `@opensand/coordinator`; add `recordDelegatedResult({targetSessionId, sourceSessionId, childSessionId, agentId, content})`. Validate ids with the existing regex/path-traversal helper. Read `path.join(this.baseDir, 'sessions', targetSessionId, 'event-log.jsonl')` using the same file-read/JSON-parse pattern as `ipc-bridge.ts:536-551` (which reads the event log; `loadSession` at `:1182-1227` reads `transcript.jsonl` chat lines and is **not** suitable). Scan parsed records for `kind === 'delegated_result'` with matching `(sourceSessionId, childSessionId)`; if present, return without writing. Otherwise:
 ```ts
 const tm = new TranscriptManager(targetSessionId, path.join(this.baseDir, 'sessions'));
 await tm.recordEvent('delegated_result', { sourceSessionId, childSessionId, agentId, content, at: Date.now() });
 ```
 `recordEvent(kind, data)` takes the kind **first** (`transcript-manager.ts:154`, constructor `(sessionId, customBaseDir?)` at `:119`); there is no `this.transcriptManager` on the bridge.
 - [ ] **Step 2:** Wire `opensand:recordDelegatedResult` in preload/main and `POST /api/sessions/:id/delegated-result` in desktop-server; renderer `ApiClient.recordDelegatedResult(...)`.
-- [ ] **Step 3:** `app.js` delegation handler (`~5141-5166`): on child `turn_completed`, call `client.recordDelegatedResult({targetSessionId:'bot_'+targetId, sourceSessionId:event.sessionId, childSessionId: event.subagent?.sessionId || `hash-${createHash('sha256').update(finalContent).digest('hex')}`, agentId:targetId, content:finalContent})`. Append to buffer with `dedupeKey = sourceSessionId+'|'+childSessionId`. Extend `sessionBuffers.append(sessionId, message)` to accept `message.dedupeKey`; `drain(sessionId, knownKeys = new Set())` skips messages whose key is in `knownKeys`.
-- [ ] **Step 4:** `selectSession()` passes loaded `delegated_result` keys into `drain()`. `reconstructDialogueTurns()` renders `delegated_result` events as assistant messages with a `delegated` marker. Parent compact line becomes a button that calls `selectBotSession('bot_'+targetId, {id:targetId,name:event.subagent.agentName})`.
+- [ ] **Step 3:** `app.js` delegation handler (`~5141-5166`): on child `turn_completed`, call `client.recordDelegatedResult({targetSessionId:'bot_'+targetId, sourceSessionId:event.sessionId, childSessionId: await (async () => { if (event.subagent?.sessionId) return event.subagent.sessionId; const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(finalContent)); return `hash-${[...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')}`; })(), agentId:targetId, content:finalContent})`. Web Crypto is available in the renderer; `createHash` is not (nodeIntegration false, `main.ts:124-126`). Append to buffer with `dedupeKey = sourceSessionId+'|'+childSessionId`. Extend `sessionBuffers.append(sessionId, message)` to accept `message.dedupeKey`; `drain(sessionId, knownKeys = new Set())` skips messages whose key is in `knownKeys`.
+- [ ] **Step 4:** `loadSession()` (`ipc-bridge.ts:1182-1227`) must also parse the target session's `event-log.jsonl` and include `kind === 'delegated_result'` records in its returned `events` array (or a dedicated `delegatedResults` field), otherwise a reload cannot show them. `selectSession()` passes those loaded keys into `drain()`. `reconstructDialogueTurns()` renders `delegated_result` events as assistant messages with a `delegated` marker. Parent compact line becomes a button that calls `selectBotSession('bot_'+targetId, {id:targetId,name:event.subagent.agentName})`.
 - [ ] **Step 5:** Harness: two background fan-out results from one parent persist; reload shows both once; compact reference opens target; no duplicates; hidden bots' Show-more unread still works.
 - [ ] **Step 6:** Run build + tests; commit P4; update `CONTEXT.md` Phase 4 log and commit.
 
