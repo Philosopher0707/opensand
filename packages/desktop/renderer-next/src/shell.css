@@ -1755,3 +1755,47 @@
   #addSecretModal, #addCredentialModal { padding: 8px; }
   .vault-view-container { padding: 16px; }
 }
+
+/* memories view */
+.memories-view-container .dashboard-header { flex-wrap: wrap; }
+#btnOpenAddMemory { flex: none; }
+.memories-view-container .card-grid { min-width: 0; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
+.memories-view-container .dashboard-card { min-width: 0; }
+.memories-view-container .card-desc,
+.memories-view-container .card-meta { min-width: 0; overflow-wrap: anywhere; }
+.memories-view-container .card-footer { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.memories-view-container .btn-forget-mem { color: var(--danger, #dc2626); }
+.memories-empty, .memories-loading {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 12px;
+  overflow-wrap: anywhere;
+}
+.memories-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--danger, #dc2626);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.memories-form-error { color: var(--danger, #dc2626); font-size: 12px; overflow-wrap: anywhere; margin-top: 8px; }
+#addMemoryModal { padding: 16px; box-sizing: border-box; }
+#addMemoryModal .modal-card {
+  width: 100%;
+  max-width: 620px;
+  box-sizing: border-box;
+  margin: 0 auto;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+#addMemoryModal .modal-header,
+#addMemoryModal .modal-body,
+#addMemoryModal .modal-actions { min-width: 0; }
+#addMemoryModal .modal-header h3 { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  #addMemoryModal { padding: 8px; }
+  .memories-view-container { padding: 16px; }
+}

@@ -21,9 +21,11 @@ import { roomsData } from "./data/rooms";
 import { routinesData } from "./data/routines";
 import { skillsData } from "./data/skills";
 import { vaultData } from "./data/vault";
+import type { MemoriesData } from "./data/memories";
+import { memoriesData } from "./data/memories";
 
-export type { RoomsData, RoutinesData, SkillsData, VaultData };
-export { roomsData, routinesData, skillsData, vaultData };
+export type { RoomsData, RoutinesData, SkillsData, VaultData, MemoriesData };
+export { roomsData, routinesData, skillsData, vaultData, memoriesData };
 
 
 export type { SessionSummary, SessionRow, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent, Room, DiscussionResult, CreateRoomInput, Routine, CreateRoutineInput, Skill, CreateSkillInput, VaultSecret, VaultCredential, SecretInput, CredentialInput };
@@ -122,7 +124,7 @@ export interface CoreShellData {
 
 }
 
-export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & VaultData;
+export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & VaultData & MemoriesData;
 
 export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
   const b = bridge ?? (typeof window !== "undefined" ? (window as any).opensand : undefined);
@@ -476,5 +478,6 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
     ...routinesData(b, http),
     ...skillsData(b, http),
     ...vaultData(b, http),
+    ...memoriesData(b, http),
   };
 }
