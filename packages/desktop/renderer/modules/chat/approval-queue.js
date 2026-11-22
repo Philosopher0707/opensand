@@ -27,7 +27,13 @@ export function createApprovalQueue({ pendingApprovals, client }) {
       card.appendChild(pre);
       const actions = document.createElement('div');
       actions.className = 'approval-card-actions';
+      const hideAlways = req.effect === 'shell_outside' ||
+        req.effect === 'control' ||
+        req.effect === 'spend' ||
+        req.effect === 'self' ||
+        Boolean(req.tainted);
       for (const [label, action, cls] of [['Approve Once', 'approve_once', 'btn-primary'], ['Always Allow', 'always_allow', 'btn-secondary'], ['Reject', 'reject', 'btn-ghost']]) {
+        if (action === 'always_allow' && hideAlways) continue;
         const b = document.createElement('button');
         b.className = `btn btn-sm ${cls}`;
         b.textContent = label;

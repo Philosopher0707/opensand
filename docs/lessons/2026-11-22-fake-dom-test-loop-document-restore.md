@@ -1,0 +1,5 @@
+# Headless test loop restoring fake document in inner finally drops global on subsequent iterations
+
+- **Trap:** In `packages/desktop/test/approval-queue.test.ts`, parameterized tests checking multiple effects (`control`, `spend`, `self`) iterated through effects inside a single test, calling `installDocument()` once before the loop and `restore()` inside an inner `finally` block per iteration. The first iteration succeeded, but calling `restore()` deleted `globalThis.document`, causing subsequent iterations to crash with `TypeError: Cannot read properties of undefined (reading 'getElementById')`.
+- **Root Cause:** In headless DOM testing where global document is mocked and restored, placing `restore()` inside a loop's `finally` block prematurely uninstalls the fake DOM environment before subsequent iterations execute.
+- **Rule:** When parameterized assertions run inside a single test with a global environment stub (`document`, `window`), wrap the entire iteration loop in the outer `try ... finally { restore(); }`, or explicitly re-install the environment per iteration.

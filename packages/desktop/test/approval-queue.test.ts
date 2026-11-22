@@ -119,3 +119,82 @@ test('approval card - a failed approveTool keeps the card and its buttons', asyn
     restore();
   }
 });
+
+test('approval card - hides "Always Allow" for shell_outside', async () => {
+  const { createApprovalQueue } = await loadQueueModule();
+  const { queue, restore } = installDocument();
+  const pendingApprovals = new Map([
+    ['appr-outside', { toolName: 'exec_command', args: { unsandboxed: true }, effect: 'shell_outside', epoch: 1 }],
+  ]);
+  const client = { approveTool: async () => ({ success: true }) };
+  try {
+    const api = createApprovalQueue({ pendingApprovals, client });
+    api.render();
+    const renderedButtons = buttons(queue.children[0]);
+    const labels = renderedButtons.map((b) => b.textContent);
+    assert.deepStrictEqual(labels, ['Approve Once', 'Reject']);
+    assert.strictEqual(renderedButtons.find((b) => b.textContent === 'Always Allow'), undefined);
+  } finally {
+    restore();
+  }
+});
+
+test('approval card - hides "Always Allow" for hard-stop effects (control, spend, self)', async () => {
+  const { createApprovalQueue } = await loadQueueModule();
+  const { queue, restore } = installDocument();
+  const hardStops = ['control', 'spend', 'self'] as const;
+  try {
+    for (const effect of hardStops) {
+      const pendingApprovals = new Map([
+        [`appr-${effect}`, { toolName: `tool_${effect}`, args: {}, effect, epoch: 1 }],
+      ]);
+      const client = { approveTool: async () => ({ success: true }) };
+      const api = createApprovalQueue({ pendingApprovals, client });
+      api.render();
+      const renderedButtons = buttons(queue.children[0]);
+      const labels = renderedButtons.map((b) => b.textContent);
+      assert.deepStrictEqual(labels, ['Approve Once', 'Reject'], `effect "${effect}" must hide Always Allow`);
+    }
+  } finally {
+    restore();
+  }
+});
+
+test('approval card - hides "Always Allow" when tainted is true', async () => {
+  const { createApprovalQueue } = await loadQueueModule();
+  const { queue, restore } = installDocument();
+  const pendingApprovals = new Map([
+    ['appr-tainted', { toolName: 'exec_command', args: { cmd: 'ls' }, effect: 'shell', tainted: true, epoch: 1 }],
+  ]);
+  const client = { approveTool: async () => ({ success: true }) };
+  try {
+    const api = createApprovalQueue({ pendingApprovals, client });
+    api.render();
+    const renderedButtons = buttons(queue.children[0]);
+    const labels = renderedButtons.map((b) => b.textContent);
+    assert.deepStrictEqual(labels, ['Approve Once', 'Reject']);
+  } finally {
+    restore();
+  }
+});
+
+test('approval card - shows "Always Allow" for standard safe effects', async () => {
+  const { createApprovalQueue } = await loadQueueModule();
+  const { queue, restore } = installDocument();
+  const safeEffects = ['read', 'edit', 'shell', 'delegate', 'engine_run', undefined];
+  try {
+    for (const effect of safeEffects) {
+      const pendingApprovals = new Map([
+        ['appr-safe', { toolName: 'tool_safe', args: {}, effect, epoch: 1 }],
+      ]);
+      const client = { approveTool: async () => ({ success: true }) };
+      const api = createApprovalQueue({ pendingApprovals, client });
+      api.render();
+      const renderedButtons = buttons(queue.children[0]);
+      const labels = renderedButtons.map((b) => b.textContent);
+      assert.deepStrictEqual(labels, ['Approve Once', 'Always Allow', 'Reject'], `effect "${effect}" should show Always Allow`);
+    }
+  } finally {
+    restore();
+  }
+});

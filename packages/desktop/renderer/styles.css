@@ -888,6 +888,19 @@ body.is-electron .sidebar.collapsed ~ .main-panel .topbar {
   background-color: rgba(16, 185, 129, 0.08);
 }
 
+.badge-info,
+.badge-accent {
+  color: var(--accent);
+  border-color: rgba(59, 130, 246, 0.3);
+  background-color: var(--accent-soft);
+}
+
+.badge-warning {
+  color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.3);
+  background-color: var(--warning-soft);
+}
+
 .badge-tokens {
   cursor: pointer;
   background: rgba(59, 130, 246, 0.15);
@@ -4253,6 +4266,13 @@ textarea#promptInput {
 }
 
 [data-theme="light"] .badge-model {
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  border-color: rgba(37, 99, 235, 0.22);
+}
+
+[data-theme="light"] .badge-info,
+[data-theme="light"] .badge-accent {
   background: rgba(37, 99, 235, 0.08);
   color: #1d4ed8;
   border-color: rgba(37, 99, 235, 0.22);
