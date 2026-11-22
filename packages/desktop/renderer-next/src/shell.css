@@ -1580,3 +1580,55 @@
   #createRoomModal, #conveneDiscussionModal { padding: 8px; }
   .rooms-view-container { padding: 16px; }
 }
+
+/* Phase 5 Row 14: Scheduled Background Routines. Same containment rules as Row 13 so the
+   grid, cards and the create modal stay inside the frame at 960x740 and 1920x1080. */
+.routines-view-container { box-sizing: border-box; max-width: 100%; }
+.routines-view-container .dashboard-header { flex-wrap: wrap; }
+#btnOpenCreateRoutine { flex: none; }
+.routines-view-container .card-grid { min-width: 0; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
+.routines-view-container .dashboard-card { min-width: 0; }
+.routines-view-container .card-desc,
+.routines-view-container .card-meta { min-width: 0; overflow-wrap: anywhere; }
+.routines-empty, .routines-loading {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 12px;
+  overflow-wrap: anywhere;
+}
+.routines-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--danger, #dc2626);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.routines-view-container .badge-danger {
+  color: var(--danger, #dc2626);
+  border-color: rgba(220, 38, 38, 0.3);
+  background-color: rgba(220, 38, 38, 0.08);
+}
+.routine-actions { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.routines-view-container .btn-del-routine { color: var(--danger, #dc2626); }
+.btn-trigger:disabled { opacity: .7; cursor: not-allowed; }
+#createRoutineModal { padding: 16px; box-sizing: border-box; }
+#createRoutineModal .modal-card {
+  width: 100%;
+  max-width: 600px;
+  box-sizing: border-box;
+  margin: 0 auto;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+#createRoutineModal .modal-header,
+#createRoutineModal .modal-body,
+#createRoutineModal .modal-actions { min-width: 0; }
+#createRoutineModal .modal-header h3 { margin: 0; overflow-wrap: anywhere; }
+.routine-form-error { color: var(--danger, #dc2626); font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  #createRoutineModal { padding: 8px; }
+  .routines-view-container { padding: 16px; }
+}

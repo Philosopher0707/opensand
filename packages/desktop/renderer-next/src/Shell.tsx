@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { ShellData, ToolApprovalRequest } from "./data";
 import { ChatList } from "./views/ChatList";
 import { RoomsView } from "./views/RoomsView";
+import { RoutinesView } from "./views/RoutinesView";
 import { MissionList } from "./views/MissionList";
 import { MissionTimeline } from "./views/MissionTimeline";
 import { MissionReceipt } from "./views/MissionReceipt";
@@ -719,6 +720,14 @@ export function Shell({ data }: ShellProps) {
                 key="rooms"
                 data={data}
                 active={currentView === "rooms"}
+                onSelect={switchView}
+                refreshKey={dataRev}
+              />
+            ) : view === "routines" ? (
+              <RoutinesView
+                key="routines"
+                data={data}
+                active={currentView === "routines"}
                 onSelect={switchView}
                 refreshKey={dataRev}
               />
