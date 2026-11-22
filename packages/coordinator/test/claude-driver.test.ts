@@ -98,4 +98,37 @@ describe("ClaudeDriver", () => {
     await instance.adapter.stopAll();
     await instance.dispose();
   });
+
+  it("passes the framework prompt once via --system-prompt and never repeats it in user turns", { timeout: 15_000 }, async () => {
+    const systemText = "You are OpenSand, a test framework prompt.";
+    const sysArgvLog = path.join(tmpDir, "sys-argv.jsonl");
+    const sysMsgLog = path.join(tmpDir, "sys-msg.jsonl");
+    const instance = await ClaudeDriver.create({
+      instanceId: "claude-sysprompt",
+      displayName: "System Prompt Test",
+      environment: { ARGV_LOG: sysArgvLog, MSG_LOG: sysMsgLog },
+      enabled: true,
+      config: ClaudeDriver.decodeConfig({ cli, fullAuto: true }),
+    });
+
+    await instance.adapter.sendTurn({ threadId: "thread-sys", text: "first", system: systemText });
+    await instance.adapter.sendTurn({ threadId: "thread-sys", text: "second", system: systemText });
+
+    const argv = await readJsonl(sysArgvLog) as string[][];
+    assert.equal(argv.length, 1, "prompt flag is passed on the first spawn only");
+    const flagIndex = argv[0].indexOf("--system-prompt");
+    assert.ok(flagIndex >= 0, "first spawn must pass --system-prompt");
+    assert.equal(argv[0][flagIndex + 1], systemText);
+    assert.ok(argv[0].includes("--permission-mode") && argv[0].includes("bypassPermissions"));
+
+    const messages = await readJsonl(sysMsgLog) as Array<{ message: { content: string } }>;
+    assert.equal(messages.length, 2);
+    assert.equal(messages[0].message.content, "first");
+    assert.equal(messages[1].message.content, "second");
+    assert.equal(messages.filter((m) => m.message.content.includes(systemText)).length, 0,
+      "framework prompt must not be duplicated into user text");
+
+    await instance.adapter.stopAll();
+    await instance.dispose();
+  });
 });

@@ -34,6 +34,8 @@ interface ClaudeSession {
   sessionId: string | null;
   lastUsedAt: number;
   lastText: string;
+  /** True when the framework prompt was delivered via --system-prompt on spawn. */
+  usedSystemPromptFlag: boolean;
   pendingTurn: {
     resolve: (value: unknown) => void;
     reject: (error: Error) => void;
@@ -154,6 +156,9 @@ export function createClaudeInstance(
 
   const spawnSession = (threadId: string, turn: SendTurnInput): ClaudeSession => {
     const resumeId = typeof turn.resumeCursor === "string" && !turn.sessionReset ? turn.resumeCursor : null;
+    // Snapshot semantics: --system-prompt seeds this CLI session on first spawn;
+    // later turns rely on the CLI's retained context instead of repeating it.
+    const systemPromptArgs = turn.system ? ["--system-prompt", turn.system] : [];
     const args = [
       "-p",
       "--output-format", "stream-json",
@@ -162,6 +167,7 @@ export function createClaudeInstance(
       "--include-partial-messages",
       "--permission-mode", permissionMode(turn, config.fullAuto),
       ...(resumeId ? ["--resume", resumeId] : ["--session-id", randomUUID()]),
+      ...systemPromptArgs,
     ];
     const env = { ...process.env, ...input.environment };
     const child = spawn(config.cli, args, {
@@ -175,6 +181,7 @@ export function createClaudeInstance(
       sessionId: resumeId,
       lastUsedAt: Date.now(),
       lastText: "",
+      usedSystemPromptFlag: systemPromptArgs.length > 0,
       pendingTurn: null,
       stopped: false,
     };
@@ -231,9 +238,11 @@ export function createClaudeInstance(
       };
     });
 
-    const content = turn.system
-      ? `${turn.system}\n\n${turn.text}`
-      : turn.text;
+    let content = turn.text;
+    if (!session.usedSystemPromptFlag && turn.system) {
+      // Fallback for CLIs without --system-prompt: concatenate into the user turn.
+      content = `${turn.system}\n\n${turn.text}`;
+    }
     const prompt = `${JSON.stringify({ type: "user", message: { role: "user", content } })}\n`;
     const stdin = session.child.stdin;
     if (!stdin) throw new Error(`${options.driverKind}: child stdin is not writable`);

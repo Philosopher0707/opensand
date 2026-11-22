@@ -275,6 +275,7 @@ export function createAcpInstance<Config extends AcpConfig>(
       };
     });
 
+    // ACP has no protocol system channel: concatenate the framework prompt into the user text.
     const text = turn.system ? `${turn.system}\n\n${turn.text}` : turn.text;
     let result: { stopReason?: string; usage?: Record<string, number> };
     try {

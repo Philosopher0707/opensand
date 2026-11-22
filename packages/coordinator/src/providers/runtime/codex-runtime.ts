@@ -254,6 +254,7 @@ export function createCodexInstance(
       };
     });
 
+    // Codex app-server has no protocol system channel: concatenate into the user text.
     const text = turn.system ? `${turn.system}\n\n${turn.text}` : turn.text;
     let started: { turn?: { id?: string } };
     try {

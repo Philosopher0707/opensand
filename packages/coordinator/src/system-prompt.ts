@@ -11,6 +11,8 @@ export interface SystemPromptContext {
   agentName?: string;
   agentRole?: string;
   chiefInstructions?: string;
+  /** 'full' (default) claims the app tool loop; 'none' for CLI agents that own their tools. */
+  toolClaim?: 'full' | 'none';
 }
 
 export function buildSystemPrompt(context: SystemPromptContext = {}): string {
@@ -25,6 +27,16 @@ export function buildSystemPrompt(context: SystemPromptContext = {}): string {
   const personaBoundary = context.agentName
     ? '\n## Persona Boundary\nThe identity above is authoritative for this session. The instructions below define this bot\'s voice, role and constraints and take precedence over generic OpenSand defaults where they conflict.'
     : '';
+  const toolsSection = context.toolClaim === 'none' ? '' : `
+## Tools Available
+You have access to tools for terminal execution, file inspection, file editing, and subagent orchestration.
+Use tools proactively when information from the environment is needed.
+
+If a needed tool is not visible, call \`discover_tools\` first — it lists every
+registered tool with the capabilities it belongs to (tasks, memory, vault,
+skills, routines, rooms, sentinel, attachments, templates, vision, discovery).
+The tools you declare there become available in the next step. Do not guess
+tool names; discover them.`;
 
   return `${identity}
 You operate directly on the user's local machine with high rigor, precision, and tool-driven ground truth.
@@ -55,16 +67,7 @@ watching the work happen in real time.
 - When a tool returns something surprising, say so in one line before deciding the
   next step.
 - Your final message is the answer; intermediate narration is the progress log.
-
-## Tools Available
-You have access to tools for terminal execution, file inspection, file editing, and subagent orchestration.
-Use tools proactively when information from the environment is needed.
-
-If a needed tool is not visible, call \`discover_tools\` first — it lists every
-registered tool with the capabilities it belongs to (tasks, memory, vault,
-skills, routines, rooms, sentinel, attachments, templates, vision, discovery).
-The tools you declare there become available in the next step. Do not guess
-tool names; discover them.
+${toolsSection}
 ${context.skillsContext ? `\n${context.skillsContext}\n` : ""}${context.memoryContext ? `\n## Stored User & Team Memories\n${context.memoryContext}\n` : ""}${context.learnedRules ? `\n## Continuous Learned User Guidelines\n${context.learnedRules}\n` : ""}${personaBoundary}${context.chiefInstructions ? `\n## Delegation Protocol\n${context.chiefInstructions}` : ""}${context.userInstructions ? `\n## User Custom Instructions\n${context.userInstructions}` : ""}
 `.trim();
 }

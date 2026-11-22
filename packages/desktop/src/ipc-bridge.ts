@@ -69,6 +69,7 @@ import {
   GalleryQueryOptions,
   buildToolDiscoverySummary,
   createDriverLlmClient,
+  driverKindForProvider,
   providerRegistry,
   resolveRoleAllowedTools,
   recommendToolScopeMode,
@@ -692,6 +693,13 @@ export class DesktopIpcBridge extends EventEmitter {
       effectiveAllowedTools = base.filter((name) => !CHIEF_TOOLS.includes(name as (typeof CHIEF_TOOLS)[number]));
     }
 
+    // CLI agents run their own tool loop, so the framework prompt must not
+    // claim the app's tools for them.
+    const driverKind = providerRegistry.hasDriver(targetProvider)
+      ? targetProvider
+      : driverKindForProvider(targetProvider);
+    const isCliDriver = driverKind ? providerRegistry.getDriver(driverKind)?.metadata.cli === true : false;
+
     // Route API-backed providers (OpenRouter, Anthropic) through the registered
     // driver so config validation, timeouts and retries come from the driver.
     // Local / OpenAI-compatible endpoints keep the existing client path.
@@ -758,6 +766,7 @@ export class DesktopIpcBridge extends EventEmitter {
       ...(effectiveAllowedTools ? { allowedTools: effectiveAllowedTools } : {}),
       ...(toolScopeMode ? { toolScopeMode } : {}),
       chiefDelegation: isChief,
+      toolClaim: isCliDriver ? 'none' : 'full',
       systemPromptContext: {
         userInstructions: customInstructions,
         learnedRules,

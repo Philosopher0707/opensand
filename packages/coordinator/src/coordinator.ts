@@ -52,6 +52,8 @@ export interface CoordinatorOptions {
   subagentDepth?: number;
   /** Scoped delegation authority for the user-chosen chief of staff. */
   chiefDelegation?: boolean;
+  /** 'none' for CLI agents that own their tools inside the CLI process. */
+  toolClaim?: 'full' | 'none';
   mcpManager?: McpManager;
 }
 
@@ -100,7 +102,7 @@ export class AgentCoordinator {
     this.workspaceDir = options.workspaceDir ?? options.workspaceRoot ?? process.cwd();
 
     // Initialize system message
-    const systemPrompt = buildSystemPrompt(options.systemPromptContext);
+    const systemPrompt = buildSystemPrompt({ ...options.systemPromptContext, toolClaim: options.toolClaim });
     this.messages.push({
       role: "system",
       content: systemPrompt,

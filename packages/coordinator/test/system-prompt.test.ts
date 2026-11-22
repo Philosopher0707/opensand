@@ -53,4 +53,14 @@ describe("SystemPrompt", () => {
     assert.doesNotMatch(plain, /## Delegation Protocol/);
     assert.match(plain, /You are Coder — Engineer/);
   });
+
+  it("claims tools only for full-tool agents, not CLI agents", () => {
+    const cli = buildSystemPrompt({ toolClaim: 'none' });
+    assert.doesNotMatch(cli, /## Tools Available/);
+    assert.doesNotMatch(cli, /discover_tools/);
+    assert.match(cli, /## Core Operating Principles/);
+
+    assert.match(buildSystemPrompt({ toolClaim: 'full' }), /## Tools Available/);
+    assert.match(buildSystemPrompt(), /## Tools Available/);
+  });
 });
