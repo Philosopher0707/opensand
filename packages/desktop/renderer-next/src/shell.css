@@ -1493,3 +1493,90 @@
   #authModal { padding: 8px; }
   #authModal .modal-card { padding: 16px; }
 }
+
+/* Phase 5 Row 13: Multi-Agent Collaborative Rooms. renderer/styles.css owns the palette
+   and the base .dashboard-/.card-/.modal- geometry; these rules keep the new view,
+   its cards and both modals inside the frame down to the 960px window. */
+.rooms-view-container { box-sizing: border-box; max-width: 100%; }
+.rooms-view-container .dashboard-header { flex-wrap: wrap; }
+#btnOpenCreateRoom { flex: none; }
+.rooms-view-container .card-grid { min-width: 0; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
+.rooms-view-container .dashboard-card { min-width: 0; }
+.rooms-view-container .card-desc,
+.rooms-view-container .card-meta { min-width: 0; overflow-wrap: anywhere; }
+.rooms-empty, .rooms-loading {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 12px;
+  overflow-wrap: anywhere;
+}
+.rooms-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--danger, #dc2626);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+#createRoomModal, #conveneDiscussionModal { padding: 16px; box-sizing: border-box; }
+#createRoomModal .modal-card,
+#conveneDiscussionModal .modal-card {
+  width: 100%;
+  max-width: 600px;
+  box-sizing: border-box;
+  margin: 0 auto;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+#createRoomModal .modal-header,
+#createRoomModal .modal-body,
+#createRoomModal .modal-actions,
+#conveneDiscussionModal .modal-header,
+#conveneDiscussionModal .modal-body,
+#conveneDiscussionModal .modal-actions { min-width: 0; }
+#createRoomModal .modal-header h3,
+#conveneDiscussionModal .modal-header h3 { margin: 0; overflow-wrap: anywhere; }
+.room-member-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 140px;
+  overflow-y: auto;
+  min-width: 0;
+}
+.room-member-option { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; min-width: 0; }
+.room-member-option span { min-width: 0; overflow-wrap: anywhere; }
+.room-form-error { color: var(--danger, #dc2626); font-size: 12px; overflow-wrap: anywhere; }
+.discussion-live-results { margin-top: 14px; min-width: 0; }
+.discussion-feed { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; min-width: 0; }
+.discussion-turn {
+  border-left: 3px solid var(--accent, #4c8dff);
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: var(--bg-hover, rgba(128, 128, 128, 0.1));
+  font-size: 12px;
+  line-height: 1.5;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.turn-author { font-weight: 600; margin-bottom: 2px; }
+.discussion-consensus-title { margin-top: 12px; }
+.consensus-box {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.35));
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  min-width: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+#btnStartDiscussion:disabled { opacity: .7; cursor: not-allowed; }
+@media (max-width: 600px) {
+  #createRoomModal, #conveneDiscussionModal { padding: 8px; }
+  .rooms-view-container { padding: 16px; }
+}
