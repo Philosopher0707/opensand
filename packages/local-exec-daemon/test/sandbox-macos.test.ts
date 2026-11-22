@@ -45,14 +45,14 @@ describe(
     it("generates valid TinyScheme profiles for all profiles and network options", () => {
       const ws = "/tmp/sandbox_ws_dummy";
 
-      // 1. workspace-write (default)
+      // 1. workspace-write (default: network on by default)
       const wsProfile = generateMacosSandboxProfile({
         workspaceRoot: ws,
         profile: "workspace-write",
       });
       assert.match(wsProfile, /\(version 1\)/);
       assert.match(wsProfile, /\(allow default\)/);
-      assert.match(wsProfile, /\(deny network\*\)/);
+      assert.ok(!wsProfile.includes("(deny network*)"), "network should be on by default");
       assert.match(wsProfile, /\(deny file-read\* \(subpath ".*\.ssh"\)\)/);
       assert.match(wsProfile, /\(deny file-read\* \(subpath ".*\.opensand\/vault"\)\)/);
       assert.match(wsProfile, /\(deny file-read\* \(literal ".*\.bashrc"\)\)/);
@@ -69,29 +69,30 @@ describe(
       assert.match(roProfile, /\(deny file-write\*\)/);
       assert.ok(!roProfile.includes(`(allow file-write* (subpath "${ws}")`));
       assert.match(roProfile, /\(allow file-write\* \(literal "\/dev\/null"\)/);
+      assert.ok(!roProfile.includes("(deny network*)"), "network on by default in read-only");
 
-      // 3. full (default allowNetwork: false -> (deny network*))
+      // 3. full (default allowNetwork: true)
       const fullProfile = generateMacosSandboxProfile({
         workspaceRoot: ws,
         profile: "full",
       });
-      assert.equal(fullProfile.trim(), "(version 1)\n(allow default)\n(deny network*)");
+      assert.equal(fullProfile.trim(), "(version 1)\n(allow default)");
 
-      // 4. full with allowNetwork: true
-      const fullNetProfile = generateMacosSandboxProfile({
+      // 4. full with allowNetwork: false
+      const fullNoNetProfile = generateMacosSandboxProfile({
         workspaceRoot: ws,
         profile: "full",
-        allowNetwork: true,
+        allowNetwork: false,
       });
-      assert.equal(fullNetProfile.trim(), "(version 1)\n(allow default)");
+      assert.equal(fullNoNetProfile.trim(), "(version 1)\n(allow default)\n(deny network*)");
 
-      // 5. workspace-write with allowNetwork: true
-      const netProfile = generateMacosSandboxProfile({
+      // 5. workspace-write with allowNetwork: false (denied on taint/unattended)
+      const noNetProfile = generateMacosSandboxProfile({
         workspaceRoot: ws,
         profile: "workspace-write",
-        allowNetwork: true,
+        allowNetwork: false,
       });
-      assert.ok(!netProfile.includes("(deny network*)"));
+      assert.match(noNetProfile, /\(deny network\*\)/);
     });
 
     it("fails when writing outside the workspace (Test 1)", async () => {

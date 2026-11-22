@@ -164,7 +164,7 @@ describe("bubblewrap containment", { skip: skip || false }, () => {
     }
   });
 
-  it("network is cut by default", async () => {
+  it("network is cut when allowNetwork: false", async () => {
     const fx = makeFixture();
     try {
       const res = await runCommandOperation({
@@ -174,6 +174,7 @@ describe("bubblewrap containment", { skip: skip || false }, () => {
         homeDir: fx.home,
         tempDir: fx.tempDir,
         sandboxProfile: "workspace-write",
+        allowNetwork: false,
       });
       assert.notEqual(res.exitCode, 0, "outbound connection must fail without allowNetwork");
     } finally {

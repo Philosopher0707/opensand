@@ -75,6 +75,10 @@ import {
   FolderTrustStore,
   resolveSandboxProfile,
   type TrustLevel,
+  approvalModeOf,
+  autoAllows,
+  effectOf,
+  type ApprovalMode,
 } from '@opensand/shared';
 import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSummary, DesktopEvent, ToolDiscoverySummary } from './types.js';
 
@@ -92,6 +96,12 @@ export interface IpcBridgeOptions {
 function defaultWorkspaceDir(): string {
   const cwd = path.resolve(process.cwd());
   return path.dirname(cwd) === cwd ? os.homedir() : cwd;
+}
+
+
+function isUntrustedSource(toolName: string, effect?: string): boolean {
+  if (effect === "network" || effect === "browser" || effect === "external") return true;
+  return /^(web_fetch|web_search|http_probe|browser_|mcp__|connector_)/.test(toolName);
 }
 
 export class DesktopIpcBridge extends EventEmitter {
@@ -135,6 +145,15 @@ export class DesktopIpcBridge extends EventEmitter {
   private pendingFolderTrust = new Map<string, Promise<TrustLevel>>();
   private currentSessionId: string | null = null;
   private activeAbortController: AbortController | null = null;
+  private tainted: boolean = false;
+
+  public isTainted(): boolean {
+    return this.tainted;
+  }
+
+  public setTainted(tainted: boolean): void {
+    this.tainted = tainted;
+  }
 
   constructor(options: IpcBridgeOptions = {}) {
     super();
@@ -150,6 +169,7 @@ export class DesktopIpcBridge extends EventEmitter {
       apiKey: 'none',
       autoApprove: false,
       autoApprovePersistent: false,
+      approvalMode: 'ask',
       provider: 'openai',
       theme: 'dark',
       ...options.defaultSettings,
@@ -324,6 +344,11 @@ export class DesktopIpcBridge extends EventEmitter {
     context?: any
   ): Promise<any> {
     await this.ensureDaemon();
+    const toolDef = this.daemon.getToolDefinition(name);
+    const effect = effectOf(toolDef, args);
+    if (isUntrustedSource(name, effect)) {
+      this.tainted = true;
+    }
     return this.daemon.executeTool(name, args, context);
   }
 
@@ -464,6 +489,9 @@ export class DesktopIpcBridge extends EventEmitter {
       ...(subagent ? { subagent } : {}),
     };
     this.emit('event', event);
+    if (type !== 'error' || this.listenerCount('error') > 0) {
+      this.emit(type, data);
+    }
   }
 
   public getCoordinator(): AgentCoordinator | null {
@@ -626,7 +654,7 @@ export class DesktopIpcBridge extends EventEmitter {
         skillsContext,
       },
       onApprovalRequired: async (req: ApprovalRequest) => {
-        return this.requestUserApproval(req.toolName, req.arguments, req.reason);
+        return this.requestUserApproval(req.toolName, req.arguments, req.reason, req);
       },
       onEvent: (event: TurnEvent) => {
         this.dispatchTurnEvent(event);
@@ -691,6 +719,7 @@ export class DesktopIpcBridge extends EventEmitter {
     this.activeAbortController?.abort();
     const abortController = new AbortController();
     this.activeAbortController = abortController;
+    this.tainted = false;
 
     // Run query asynchronously
     coordinator.runTurn(query, abortController.signal)
@@ -723,7 +752,12 @@ export class DesktopIpcBridge extends EventEmitter {
     return { success: true, cancelled: true };
   }
 
-  public async requestUserApproval(toolName: string, args: Record<string, unknown>, reason?: string): Promise<boolean> {
+  public async requestUserApproval(
+    toolName: string,
+    args: Record<string, unknown>,
+    reason?: string,
+    reqExtra?: { effect?: string; sandboxed?: boolean; note?: string }
+  ): Promise<boolean> {
     if (this.daemon && !this.daemon.running && !this.backgroundDaemonStart) {
       const start: Promise<void> = this.ensureDaemon().then(
         () => {},
@@ -733,6 +767,31 @@ export class DesktopIpcBridge extends EventEmitter {
       });
       this.backgroundDaemonStart = start;
     }
+
+    const toolDef = this.daemon?.getToolDefinition(toolName);
+    const effect = reqExtra?.effect ?? effectOf(toolDef, args);
+    const sandboxed = reqExtra?.sandboxed ?? (args.unsandboxed !== true);
+    let note = reqExtra?.note;
+
+    // Taint note for shell requests following web/connector reads
+    if (!note && this.tainted && (effect === 'shell' || effect === 'shell_outside' || toolName === 'exec_command')) {
+      note = 'Web content was read earlier in this run. Check this command is what you asked for, not something a page suggested.';
+    }
+
+    const mode = approvalModeOf(undefined, this.settings);
+    const reqForCheck = {
+      name: toolName,
+      effect,
+      sandboxed,
+      note,
+      args,
+    };
+
+    // Evaluate autoAllows first: auto-allowed requests proceed without creating a prompt card
+    if (autoAllows(mode, reqForCheck)) {
+      return true;
+    }
+
     let mustPrompt = false;
 
     // Safety Ceiling: Destructive shell commands (rm -rf /, raw disks, fork bombs) must never auto-approve
@@ -770,13 +829,16 @@ export class DesktopIpcBridge extends EventEmitter {
     }
 
     const approvalId = `appr-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+    const displayReason = note ? (reason ? `${reason} (${note})` : note) : reason;
     const request: ToolApprovalRequest = {
       approvalId,
       toolName,
       args,
-      ...(reason ? { reason } : {}),
+      ...(displayReason ? { reason: displayReason } : {}),
       timestamp: Date.now(),
       epoch: this.grantsStore.getEpochSync(),
+      effect,
+      note,
     };
 
     return new Promise<boolean>((resolve) => {
@@ -894,6 +956,11 @@ export class DesktopIpcBridge extends EventEmitter {
       await this.grantsStore.withEpoch(decision?.epoch, (content) => {
         if (decision.action !== 'always_allow') return;
         if (pending.request.toolName === 'exec_command' && typeof pending.request.args.command === 'string') {
+          const effect = pending.request.effect ?? effectOf(this.daemon?.getToolDefinition(pending.request.toolName), pending.request.args);
+          // Never allow always on shell_outside
+          if (effect === 'shell_outside') {
+            return;
+          }
           const cmd = pending.request.args.command.trim();
           // Disallow blanket allowlisting of dangerous shell interpreters or high-privilege binaries
           const DANGEROUS_GENERIC_BINARIES = new Set([
@@ -908,6 +975,7 @@ export class DesktopIpcBridge extends EventEmitter {
           const scope = DANGEROUS_GENERIC_BINARIES.has(binary) ? cmd : `${binary} *`;
           content.grants.push(GrantsStore.newGrant({
             tool: 'exec_command',
+            effect: effect || 'shell',
             scope,
             lifetime: 'always',
           }, content));

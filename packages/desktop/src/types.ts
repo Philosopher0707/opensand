@@ -14,6 +14,8 @@ export interface ToolApprovalRequest {
   timestamp: number;
   /** Grants epoch the request was created at; the answer must echo it. */
   epoch: number;
+  effect?: string;
+  note?: string;
 }
 
 export interface ToolDiscoverySummary {

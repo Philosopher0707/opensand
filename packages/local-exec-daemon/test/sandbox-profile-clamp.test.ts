@@ -191,7 +191,7 @@ describe("model input cannot widen the sandbox", () => {
         await new ToolRegistry().dispatch(
           "exec_command",
           { command: `curl -sS -m 3 -o /dev/null http://127.0.0.1:${port}/net`, allowNetwork: true },
-          { workspaceRoot: ws, sandboxProfile: "read-only" },
+          { workspaceRoot: ws, sandboxProfile: "read-only", allowNetwork: false },
         );
         assert.equal(hits.length, 0);
       } finally {

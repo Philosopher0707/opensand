@@ -154,6 +154,10 @@ export class LocalExecDaemon {
     return this.tools.getDefinitions();
   }
 
+  getToolDefinition(name: string): ToolDefinition | undefined {
+    return this.tools.getDefinition(name);
+  }
+
   /**
    * Register a custom tool into this daemon.
    */

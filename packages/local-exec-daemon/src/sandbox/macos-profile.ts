@@ -80,7 +80,7 @@ export function generateMacosSandboxProfile(options: GenerateMacosSandboxProfile
     homeDir = os.homedir(),
     tempDir,
     profile = "workspace-write",
-    allowNetwork = false,
+    allowNetwork = true,
   } = options;
 
   if (profile === "full") {
@@ -93,8 +93,8 @@ export function generateMacosSandboxProfile(options: GenerateMacosSandboxProfile
 
   const lines: string[] = ["(version 1)", "(allow default)"];
 
-  // Network access: disabled by default unless explicitly allowed
-  if (!allowNetwork) {
+  // Network access: on by default; deny only if explicitly false
+  if (allowNetwork === false) {
     lines.push("(deny network*)");
   }
 

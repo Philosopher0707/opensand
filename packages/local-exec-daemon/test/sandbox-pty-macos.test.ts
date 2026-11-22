@@ -130,7 +130,7 @@ describe(
       }
     });
 
-    it("5. network cut by default", async () => {
+    it("5. network cut when allowNetwork: false", async () => {
       const fx = makeFixture();
       try {
         const session = new PtySession({
@@ -140,6 +140,7 @@ describe(
           homeDir: fx.home,
           tempDir: fx.tempDir,
           sandboxProfile: "workspace-write",
+          allowNetwork: false,
         });
         const snapshot = await session.waitForExit(10000);
         assert.notEqual(snapshot.exitCode, 0, "outbound connection must fail without allowNetwork");

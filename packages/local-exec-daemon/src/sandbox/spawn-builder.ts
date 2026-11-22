@@ -60,7 +60,7 @@ export function buildSandboxedSpawn(
     workspaceRoot,
     homeDir,
     tempDir,
-    allowNetwork,
+    allowNetwork = true,
     customProfileString,
     useInfoFd = false,
     platform = process.platform,
