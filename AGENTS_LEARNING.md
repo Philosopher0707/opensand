@@ -243,6 +243,12 @@
 * **Cause:** A workspace package's local build does not rebuild sibling packages' dist; TypeScript project references resolved to stale declarations.
 * **Rule now:** After any change in `shared/` or `coordinator/`, run `pnpm run build` from the **workspace root**, then run the tests. Never debug a "missing field" type error before checking the dependency's dist timestamp.
 
+### 11.20 Navigation chrome must live in the shell, and overflow hides state
+* **Date:** 2026-11-22
+* **What happened:** The first bot rail was mounted inside a switchable view panel, so it vanished from every other view. Porting the Orca pattern meant relocating the single `#botList` node into the sidebar shell. Two follow-on bugs appeared: a cached runtime status Map gave every previously active bot a sticky green dot, and the new 6-row overflow hid delegated cards so their unread badge had no DOM target.
+* **Cause:** State cached for rendering convenience outlived the selection that produced it; adding an overflow cap changed which children exist without changing where unread/status is surfaced.
+* **Rule:** Keep persistent navigation in the app shell, not inside a view panel. If a cached status is re-applied on re-render, scope it to the condition that produced it (active selection) or it becomes stale. When list rows are virtualized/capped, aggregate hidden-row state onto the overflow control (`Show N more · M new`) — a badge on a non-existent node is not a notification. A flex child only becomes a scroll container when it is itself a flex column with `overflow:hidden` and the child has `flex:1 1 auto; min-height:0`; verify with computed layout, not CSS reading.
+
 ### 11.19 A buffered event has exactly one rendering destination
 * **Date:** 2026-11-22
 * **What happened:** Building the bot sidecar, the delegated-turn handler initially appended both streamed `text_delta` fragments and the consolidated `turn_completed.finalContent` to the per-session buffer; opening the bot rendered both. Then, when the target session was open, final text was written both live and to the buffer — a later re-select duplicated it. Also, `renderInto()` cleared the feed and wiped real persisted history for sessions that had both.
