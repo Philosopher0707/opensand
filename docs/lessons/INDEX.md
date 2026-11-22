@@ -75,6 +75,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [A worktree's node_modules can be symlinked from a merged sibling on a full disk](2026-11-19-worktree-node-modules-on-full-disk.md)
 - 2026-11-19 · [A worktree's node_modules symlink resolves workspace packages into the donor worktree](2026-11-19-worktree-node-modules-resolve-into-donor-worktree.md)
 - 2026-11-19 · [Check a block's real boundaries before wrapping it in a new branch](2026-11-19-wrap-branch-read-real-boundaries.md)
+- 2026-11-22 · [Detail Inspector keyboard shortcut handlers and idempotent dismissal state](2026-11-22-detail-inspector-keyboard-shortcuts-and-closure-state.md)
 - 2026-11-22 · [Headless test loop restoring fake document in inner finally drops global on subsequent iterations](2026-11-22-fake-dom-test-loop-document-restore.md)
 - 2026-11-22 · [Placeholder underscores in token extraction corrupt markdown substitution](2026-11-22-markdown-placeholder-underscores-corrupt-substitution.md)
 - 2026-11-22 · [Real-window test running stateful component interactions inside viewport size loops inherits prior state](2026-11-22-real-window-stateful-interactions-across-viewport-sizes.md)

@@ -65,7 +65,7 @@ describe("CliConfig", () => {
   });
 
   it("defaults to standard environment", () => {
-    const config = parseCliArgs([]);
+    const config = parseCliArgs([], "/dev/null");
 
     assert.ok(config.endpoint);
     assert.ok(config.model);

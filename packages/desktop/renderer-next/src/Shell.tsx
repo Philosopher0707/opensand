@@ -1,7 +1,4 @@
-// Shell frame for the Preact renderer: sidebar + main area only. Views are
-// ported in later slices. Class names and ids match renderer/index.html so the
-// shared styles.css (traffic-light clearance, drag regions) applies unchanged.
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import type { ShellData, ToolApprovalRequest } from "./data";
 import { ChatList } from "./views/ChatList";
 import { MissionList } from "./views/MissionList";
@@ -12,6 +9,7 @@ import { ApprovalDecisionButtons } from "../../src/shell/inbox-component";
 import { QuickCaptureButton, QuickCaptureOutput, useQuickCapture } from "./views/QuickCapture";
 import { Chat, useChatTurn } from "./views/Chat";
 import { Canvas } from "./views/Canvas";
+import { Inspector } from "./views/Inspector";
 import {
   closeCanvas,
   closeTab,
@@ -31,12 +29,48 @@ export function Shell({ data }: ShellProps) {
   const [missionId, setMissionId] = useState<string | null>(null);
   const [selectedApproval, setSelectedApproval] = useState<ToolApprovalRequest | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [approvalsRev, setApprovalsRev] = useState(0);
   const [canvasState, setCanvasState] = useState<CanvasState>(createInitialCanvasState());
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   const capture = useQuickCapture(data);
   // The chat turn lives at the shell level so opening an approval detail does not drop it.
   const chat = useChatTurn(data, selectedSessionId);
+
+  useEffect(() => {
+    if (!selectedSessionId || !data.loadSession) {
+      setActiveAgentId(null);
+      return;
+    }
+    let cancelled = false;
+    data
+      .loadSession(selectedSessionId)
+      .then((res) => {
+        if (cancelled || !res) return;
+        if (res.agentId) {
+          setActiveAgentId(res.agentId);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSessionId, data]);
+
+  // Keyboard shortcuts: Esc to close detail inspector, Cmd/Ctrl+I to toggle
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Esc") {
+        setIsDetailOpen(false);
+      } else if ((e.metaKey || e.ctrlKey) && (e.key === "i" || e.key === "I")) {
+        e.preventDefault();
+        setIsDetailOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const handleSelectMission = (id: string) => {
     setSelectedApproval(null);
@@ -153,6 +187,17 @@ export function Shell({ data }: ShellProps) {
               </button>
             )}
             <QuickCaptureButton capture={capture} />
+            <button
+              id="btnToggleDetail"
+              type="button"
+              class={`btn btn-sm btn-ghost btn-toggle-detail ${isDetailOpen ? "active" : ""}`}
+              title="Toggle Details (Cmd+I)"
+              aria-label="Toggle Details"
+              aria-expanded={isDetailOpen}
+              onClick={() => setIsDetailOpen((prev) => !prev)}
+            >
+              ℹ️ Details
+            </button>
           </div>
         </header>
         <QuickCaptureOutput capture={capture} />
@@ -222,6 +267,16 @@ export function Shell({ data }: ShellProps) {
           )}
         </section>
       </main>
+      <Inspector
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        data={data}
+        activeAgentId={activeAgentId}
+        currentSessionId={selectedSessionId}
+        onClearSession={() => {
+          setSelectedSessionId(null);
+        }}
+      />
     </div>
   );
 }
