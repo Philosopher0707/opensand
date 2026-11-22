@@ -171,6 +171,27 @@ if [[ -n "$BUMP_PR_NUM" ]]; then
     if [[ "$DRY_RUN" -eq 1 ]]; then
       echo "DRY RUN: would run 'scripts/pr-gate.sh $BUMP_PR_NUM'"
     else
+      # Main can move while the bump PR's CI runs; that is a recoverable stale base,
+      # not a gate failure. Update the PR here so CI re-runs and resume on the next call.
+      STALE_BASE=0
+      if BASE_JSON=$(gh pr view "$BUMP_PR_NUM" --json baseRefOid 2>/dev/null); then
+        BASE_OID=$(node -e '
+          try {
+            console.log(JSON.parse(process.argv[1]).baseRefOid || "");
+          } catch { process.exit(0); }
+        ' "$BASE_JSON")
+        if [[ -n "$BASE_OID" ]] && REMOTE_MAIN=$(git ls-remote origin refs/heads/main 2>/dev/null | awk '{print $1}'); then
+          if [[ -n "$REMOTE_MAIN" && "$BASE_OID" != "$REMOTE_MAIN" ]]; then
+            STALE_BASE=1
+          fi
+        fi
+      fi
+      if [[ "$STALE_BASE" -eq 1 ]]; then
+        echo "Bump PR #$BUMP_PR_NUM base is behind origin/main; running 'gh pr update-branch $BUMP_PR_NUM --rebase'..."
+        gh pr update-branch "$BUMP_PR_NUM" --rebase
+        echo "PASS: updated bump PR #$BUMP_PR_NUM base; CI is re-running. Re-run scripts/release.sh $VERSION later."
+        exit 3
+      fi
       echo "Running scripts/pr-gate.sh $BUMP_PR_NUM..."
       GATE_STATUS=0
       bash "$PR_GATE_SCRIPT" "$BUMP_PR_NUM" || GATE_STATUS=$?
