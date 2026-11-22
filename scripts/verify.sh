@@ -135,8 +135,10 @@ for pkg_json in packages/*/package.json; do
   echo "verify: checking zero-test package guard for $pkg_name..."
   ts_srcs=$(find "$pkg_dir/src" -name "*.ts" 2>/dev/null || true)
   if [[ -n "$ts_srcs" ]]; then
-    # Node 26 prints "ℹ tests 39"; Node 22 (CI) prints "# tests 39".
-    test_count=$(grep -E "(#|ℹ) (tests|pass) [0-9]+" "$log" | awk '{print $NF}' | tail -n 1 || true)
+    # Node 26 prints "ℹ tests 39"; Node 22 (CI) prints "# tests 39". A multi-phase runner's last
+    # phase can be all skipped ("# pass 0" on Linux, where real-window tests have no display),
+    # so take the largest count rather than the last one or a healthy package reads as zero.
+    test_count=$(grep -E "(#|ℹ) (tests|pass) [0-9]+" "$log" | awk '{print $NF}' | sort -nr | head -n 1 || true)
     if [[ -z "$test_count" || "$test_count" -le 0 ]]; then
       echo "verify error: Package $pkg_name has TypeScript sources in src/ but reported 0 tests!" >&2
       echo "verify error: Log directory: $LOG_DIR" >&2
