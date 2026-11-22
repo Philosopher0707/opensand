@@ -1305,7 +1305,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (agentIdForSession.has(sessionId)) return agentIdForSession.get(sessionId);
     const bot = sessionId.match(/^bot_(agent_[A-Za-z0-9_]+)$/);
     if (bot) return bot[1];
-    const child = sessionId.match(/^(sub_agent_[A-Za-z0-9_]+?)_\d{10,}$/);
+    const child = sessionId.match(/^sub_(agent_[A-Za-z0-9_]+)_\d{10,}$/);
     if (child) return child[1];
     return sessionAgentMeta.get(sessionId) || null;
   }
