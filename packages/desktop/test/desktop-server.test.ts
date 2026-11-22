@@ -839,3 +839,82 @@ test('DesktopServer - exposes read-only pending approvals and live tool discover
     await closeThenRemove([server?.getBridge()], tmpDir);
   }
 });
+
+test('DesktopServer - drives the routines routes through the real handler', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-server-routines-'));
+  let server: DesktopServer | undefined;
+  try {
+    server = new DesktopServer({ baseDir: tmpDir });
+    MockIncomingMessage.defaultToken = server.getAuthToken();
+
+    // Minimal fake at the bridge boundary only; handleRequest and route matching stay real.
+    const bridge = server.getBridge() as any;
+    let routines: any[] = [];
+    const calls: string[] = [];
+    bridge.listRoutines = async () => { calls.push('list'); return routines.slice(); };
+    bridge.createRoutine = async (input: any) => {
+      calls.push(`create:${input.name}`);
+      const routine = { id: 'routine-1', enabled: false, ...input };
+      routines = [routine];
+      return routine;
+    };
+    bridge.setRoutineEnabled = async (id: string, enabled: boolean) => {
+      calls.push(`enabled:${id}:${enabled}`);
+      routines = routines.map((r) => (r.id === id ? { ...r, enabled } : r));
+      return routines[0];
+    };
+    bridge.triggerRoutine = async (id: string) => {
+      calls.push(`trigger:${id}`);
+      return { routine: routines[0], result: 'ok', status: 'success' };
+    };
+    bridge.deleteRoutine = async (id: string) => {
+      calls.push(`delete:${id}`);
+      const existed = routines.some((r) => r.id === id);
+      routines = [];
+      return existed;
+    };
+
+    const drive = async (method: string, url: string, body?: any) => {
+      const req = new MockIncomingMessage(method, url);
+      const res = new MockServerResponse();
+      const pending = (server as any).handleRequest(req, res);
+      if (body !== undefined) req.emit('data', Buffer.from(JSON.stringify(body)));
+      req.emit('end');
+      await pending;
+      return res;
+    };
+
+    const listed = await drive('GET', '/api/routines');
+    assert.strictEqual(listed.statusCode, 200);
+    assert.deepStrictEqual(JSON.parse(listed.body), []);
+
+    const created = await drive('POST', '/api/routines', { name: 'nightly', prompt: 'check builds', scheduleType: 'cron' });
+    assert.strictEqual(created.statusCode, 201);
+    assert.strictEqual(JSON.parse(created.body).id, 'routine-1');
+
+    const enabled = await drive('PATCH', '/api/routines/routine-1/enabled', { isEnabled: true });
+    assert.strictEqual(enabled.statusCode, 200);
+    assert.strictEqual(JSON.parse(enabled.body).enabled, true);
+
+    const triggered = await drive('POST', '/api/routines/routine-1/trigger');
+    assert.strictEqual(triggered.statusCode, 200);
+    assert.strictEqual(JSON.parse(triggered.body).status, 'success');
+
+    const deleted = await drive('DELETE', '/api/routines/routine-1');
+    assert.strictEqual(deleted.statusCode, 200);
+    assert.deepStrictEqual(JSON.parse(deleted.body), { success: true });
+
+    const afterDelete = await drive('GET', '/api/routines');
+    assert.deepStrictEqual(JSON.parse(afterDelete.body), []);
+
+    // The enable route is PATCH; POST on the same path must not reach the fake bridge.
+    const before = calls.length;
+    const wrongVerb = await drive('POST', '/api/routines/routine-1/enabled', { isEnabled: true });
+    assert.strictEqual(wrongVerb.statusCode, 404);
+    assert.strictEqual(calls.length, before);
+
+    assert.deepStrictEqual(calls, ['list', 'create:nightly', 'enabled:routine-1:true', 'trigger:routine-1', 'delete:routine-1', 'list']);
+  } finally {
+    await closeThenRemove([server?.getBridge()], tmpDir);
+  }
+});
