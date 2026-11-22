@@ -8,8 +8,18 @@ import type { PreviewRestoreResult, RestoreResult } from "../../src/shell/missio
 import type { TimelineForkResult } from "../../src/shell/mission-fork-model";
 import type { ToolApprovalRequest } from "../../src/shell/inbox-model";
 import type { TurnEvent } from "../../src/shell/quick-capture-model";
+import { persistToken } from "../../src/shell/auth-model";
 
 export type { SessionSummary, SessionRow, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent };
+
+/** sessionStorage can be blocked in a restricted page; keep the token in memory then. */
+function authStorage() {
+  try {
+    return typeof window === "undefined" ? null : window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
 
 export interface LoadedSessionData {
   events?: unknown[];
@@ -87,6 +97,12 @@ export interface ShellData {
   stageAttachment?(filePath: string): Promise<{ id: string } | null>;
   listAttachments?(): Promise<any[]>;
   deleteAttachment?(id: string): Promise<void>;
+
+  // Phase 5 Row 12: Auth modal and token exchange
+  /** Exchange a server token for a session cookie and remember it for later requests. */
+  authenticate(token: string): Promise<any>;
+  /** Fires when the server reports an unauthenticated session (401 / auth_required event). */
+  onAuthRequired(callback: () => void): () => void;
 }
 
 export function windowBridgeData(): ShellData {
@@ -394,6 +410,46 @@ export function windowBridgeData(): ShellData {
       if (bridge?.deleteAttachment) {
         await bridge.deleteAttachment(id);
       }
+    },
+
+    async authenticate(token: string): Promise<any> {
+      const bridge = (window as any).opensand;
+      let result: any;
+      if (bridge?.authenticate) {
+        result = await bridge.authenticate(token);
+      } else {
+        const res = await fetch("/api/auth/token-exchange", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(payload?.error || `Authentication failed (HTTP ${res.status})`);
+        }
+        result = payload;
+      }
+      persistToken(authStorage(), token);
+      return result;
+    },
+
+    onAuthRequired(callback: () => void): () => void {
+      const bridge = (window as any).opensand;
+      const unsubs: Array<() => void> = [];
+      if (bridge?.onEvent) {
+        const unsub = bridge.onEvent((event: any) => {
+          if (event?.type === "auth_required" || event?.type === "unauthorized" || event?.kind === "auth") {
+            callback();
+          }
+        });
+        unsubs.push(unsub);
+      }
+      if (typeof window !== "undefined") {
+        const handler = () => callback();
+        window.addEventListener("opensand:auth_required", handler);
+        unsubs.push(() => window.removeEventListener("opensand:auth_required", handler));
+      }
+      return () => unsubs.forEach((u) => u());
     },
   };
 }

@@ -42,6 +42,19 @@ import {
   type Theme,
 } from "../../src/shell/account-model";
 import { isChatBusy } from "../../src/shell/chat-turn-model";
+import {
+  authFailed,
+  authStarted,
+  authSucceeded,
+  closeAuthModal,
+  createInitialAuthState,
+  isAuthSubmitKey,
+  normalizeToken,
+  openAuthModal,
+  setAuthInput,
+  validateToken,
+  type AuthState,
+} from "../../src/shell/auth-model";
 
 export const SESSION_KEY = "opensand-session-id";
 
@@ -49,6 +62,14 @@ export const SESSION_KEY = "opensand-session-id";
 function shellStorage() {
   try {
     return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function sessionAuthStorage() {
+  try {
+    return typeof window === "undefined" ? null : window.sessionStorage;
   } catch {
     return null;
   }
@@ -119,8 +140,11 @@ export function Shell({ data }: ShellProps) {
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readSidebarCollapsed(shellStorage()));
   const [isAccountPopupOpen, setAccountPopupOpen] = useState(false);
+  const [authState, setAuthState] = useState<AuthState>(() => createInitialAuthState(sessionAuthStorage()));
+  const [dataRev, setDataRev] = useState(0);
 
   const didRestoreRef = useRef(false);
+  const authInputRef = useRef<HTMLInputElement>(null);
 
   const capture = useQuickCapture(data);
   // The chat turn lives at the shell level so opening an approval detail does not drop it.
@@ -278,6 +302,34 @@ export function Shell({ data }: ShellProps) {
     };
   }, []);
 
+  // A 401 from the server (or an auth_required bridge event) opens the token modal.
+  useEffect(() => {
+    if (!data.onAuthRequired) return;
+    return data.onAuthRequired(() => setAuthState((prev) => openAuthModal(prev)));
+  }, [data]);
+
+  useEffect(() => {
+    if (authState.isOpen) authInputRef.current?.focus();
+  }, [authState.isOpen]);
+
+  const handleAuthSubmit = async () => {
+    const error = validateToken(authState.input);
+    if (error) {
+      setAuthState((prev) => authFailed(prev, error));
+      return;
+    }
+    const token = normalizeToken(authState.input);
+    setAuthState((prev) => authStarted(prev));
+    try {
+      await data.authenticate(token);
+      setAuthState((prev) => authSucceeded(prev, token, sessionAuthStorage()));
+      setDataRev((n) => n + 1);
+      setApprovalsRev((n) => n + 1);
+    } catch (err) {
+      setAuthState((prev) => authFailed(prev, err instanceof Error ? err.message : String(err)));
+    }
+  };
+
   const switchView = (view: ViewId) => {
     setCurrentView(view);
     const hash = viewHash(view);
@@ -422,10 +474,11 @@ export function Shell({ data }: ShellProps) {
           />
         </div>
         <div id="missionList" class="mission-list-section">
-          <MissionList data={data} onSelect={handleSelectMission} />
+          <MissionList key={dataRev} data={data} onSelect={handleSelectMission} />
         </div>
         <div id="sessionList" class="session-list" role="list" aria-label="Sessions">
           <ChatList
+            key={dataRev}
             data={data}
             selectedSessionId={selectedSessionId}
             onSelectSession={handleSelectSession}
@@ -677,6 +730,64 @@ export function Shell({ data }: ShellProps) {
           } catch {}
         }}
       />
+      <div
+        id="authModal"
+        class={`modal-overlay${authState.isOpen ? "" : " hidden"}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="authModalTitle"
+      >
+        <div class="modal-card auth-modal-card" style="max-width: 480px;">
+          <div class="modal-header">
+            <span class="modal-alert-icon" aria-hidden="true">🔐</span>
+            <h3 id="authModalTitle">Authentication Required</h3>
+          </div>
+          <div class="modal-body">
+            <p class="auth-modal-copy">
+              The OpenSand server requires a session authentication token. Copy your token from
+              <code> ~/.opensand/server.token </code> or your terminal launch output.
+            </p>
+            <div class="form-group">
+              <label for="serverAuthTokenInput">Server Authentication Token</label>
+              <input
+                ref={authInputRef}
+                type="password"
+                id="serverAuthTokenInput"
+                class="form-control"
+                placeholder="Paste 64-character token"
+                autocomplete="off"
+                value={authState.input}
+                onInput={(e) => setAuthState((prev) => setAuthInput(prev, (e.currentTarget as HTMLInputElement).value))}
+                onKeyDown={(e) => {
+                  if (!isAuthSubmitKey(e)) return;
+                  e.preventDefault();
+                  void handleAuthSubmit();
+                }}
+              />
+              <div
+                id="authErrorMsg"
+                class="auth-error-msg"
+                style={{ color: "var(--danger)", fontSize: "12px", marginTop: "6px", display: authState.error ? "block" : "none" }}
+                role={authState.error ? "alert" : undefined}
+              >
+                {authState.error ?? ""}
+              </div>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button
+              id="btnSubmitAuthToken"
+              type="button"
+              class="btn btn-primary"
+              style="width: 100%;"
+              disabled={authState.status === "submitting"}
+              onClick={() => void handleAuthSubmit()}
+            >
+              {authState.status === "submitting" ? "Authenticating..." : "Connect & Authenticate"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

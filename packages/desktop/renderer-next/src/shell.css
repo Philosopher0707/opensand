@@ -1471,3 +1471,25 @@
 #btnToggleTheme:focus-visible,
 #btnToggleSidebar:focus-visible,
 #btnCollapseSidebar:focus-visible { outline: 2px solid var(--accent, #4c8dff); outline-offset: -2px; }
+
+/* Phase 5 Row 12: auth modal. renderer/styles.css owns the palette and the base
+   .modal-* geometry; these rules keep the token card inside the frame down to 960px. */
+#authModal { padding: 16px; box-sizing: border-box; }
+#authModal .modal-card { width: 100%; max-width: 480px; box-sizing: border-box; margin: 0 auto; }
+#authModal .modal-header,
+#authModal .modal-body,
+#authModal .modal-actions { min-width: 0; }
+#authModal .modal-header { justify-content: center; gap: 10px; }
+#authModal .modal-header h3 { margin: 0; }
+.auth-modal-copy { margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.5; overflow-wrap: anywhere; }
+.auth-modal-copy code { overflow-wrap: anywhere; }
+#authModal .form-group { margin: 12px 0 0; }
+#serverAuthTokenInput { min-width: 0; width: 100%; box-sizing: border-box; }
+.auth-error-msg { overflow-wrap: anywhere; }
+#btnSubmitAuthToken:disabled { opacity: .7; cursor: not-allowed; }
+#serverAuthTokenInput:focus-visible,
+#btnSubmitAuthToken:focus-visible { outline: 2px solid var(--accent, #4c8dff); outline-offset: 2px; }
+@media (max-width: 600px) {
+  #authModal { padding: 8px; }
+  #authModal .modal-card { padding: 16px; }
+}
