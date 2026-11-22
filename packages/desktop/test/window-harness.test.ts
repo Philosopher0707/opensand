@@ -364,7 +364,9 @@ test("Real-Window Harness: Preact shell frame seeded sessions & search (960x740 
     if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
 
     assertShellFrame(r.res960, r.res1920);
-    assert.strictEqual(r.res960.hasViewChat, false, "Preact shell must not be the legacy DOM");
+    assert.strictEqual(r.res960.hasViewChat, true, "Preact shell mounts the chat view panel (#viewChat)");
+    assert.strictEqual(r.res960.hasChatContainer, false, "Preact shell must not be the legacy DOM");
+    assert.strictEqual(r.res960.hasSidebarFooter, true, "sidebar footer navigation present");
 
     // (a) three seeded sessions -> 3 rows, titles in mtime-descending order, 200-char truncated to 40 chars
     assert.strictEqual(r.res960.sessionRows, 3, "Expected 3 session rows at 960x740");
