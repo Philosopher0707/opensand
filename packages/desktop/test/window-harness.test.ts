@@ -743,6 +743,25 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     "  input.value = '';",
     "  input.dispatchEvent(new Event('input', { bubbles: true }));",
     "  const statusAfterFilter = document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_railbot_ab12cd34\"]')?.dataset.status;",
+    "  const searchFlow = await (async () => {",
+    "    const toggle = document.getElementById('btnBotSearch');",
+    "    const input = document.getElementById('botSidecarSearch');",
+    "    toggle.click();",
+    "    const opened = !document.getElementById('botSearchWrap').classList.contains('hidden')",
+    "      && document.activeElement === input",
+    "      && toggle.getAttribute('aria-expanded') === 'true';",
+    "    input.value = 'cto';",
+    "    input.dispatchEvent(new Event('input', { bubbles: true }));",
+    "    const narrowed = document.querySelectorAll('#botList .bot-rail-card').length;",
+    "    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));",
+    "    return {",
+    "      opened,",
+    "      narrowed,",
+    "      closed: document.getElementById('botSearchWrap').classList.contains('hidden'),",
+    "      focusReturned: document.activeElement === toggle,",
+    "      restored: document.querySelectorAll('#botList .bot-rail-card').length,",
+    "    };",
+    "  })();",
     "  return {",
     "    chatVisible,",
     "    inSection: section?.contains(list) === true,",
@@ -756,7 +775,7 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     "    layout: (() => { const sc = getComputedStyle(section); const rc = getComputedStyle(list); return { display: sc.display, overflow: sc.overflow, railOverflow: rc.overflowY, railMinHeight: rc.minHeight }; })(),",
     "    filteredCount, filterClearedCount, moreLabel, moreVisible, expanded, afterRefresh, moreLabelAfter, nextFocused,",
     "    keyboardSelect: { agent: kb.activeAgentId, session: kb.currentSessionId },",
-    "    statusAfterEmit, statusAfterFilter,",
+    "    statusAfterEmit, statusAfterFilter, searchFlow,",
     "  };",
     "})()",
   ].join("\n");
@@ -787,6 +806,10 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     assert.strictEqual(v.keyboardSelect.session, 'bot_agent_railbot_ab12cd34', `Enter must open the bot_ session (${JSON.stringify(v)})`);
     assert.strictEqual(v.statusAfterEmit, 'busy', `session_started must mark the bot card busy (${JSON.stringify(v)})`);
     assert.strictEqual(v.statusAfterFilter, 'busy', `runtime status must survive a filter re-render (${JSON.stringify(v)})`);
+    assert.strictEqual(v.searchFlow.opened, true, `search toggle must open and focus the input (${JSON.stringify(v)})`);
+    assert.strictEqual(v.searchFlow.closed, true, `Escape must close search (${JSON.stringify(v)})`);
+    assert.strictEqual(v.searchFlow.focusReturned, true, `Escape must return focus to the toggle (${JSON.stringify(v)})`);
+    assert.strictEqual(v.searchFlow.restored > v.searchFlow.narrowed, true, `closing search must restore all cards (${JSON.stringify(v)})`);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }

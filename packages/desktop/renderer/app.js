@@ -1353,6 +1353,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btnBotShowMore')?.addEventListener('click', () => {
     botRail.setExpanded(!botRail.isExpanded());
   });
+  // Bot section controls: one open-state path, no stale toggle state.
+  const botSearchWrap = document.getElementById('botSearchWrap');
+  const botSearchInput = document.getElementById('botSidecarSearch');
+  const botSearchToggle = document.getElementById('btnBotSearch');
+  function setSearchOpen(open) {
+    botSearchWrap.classList.toggle('hidden', !open);
+    botSearchToggle.setAttribute('aria-expanded', String(open));
+    if (open) {
+      botSearchInput.focus();
+    } else {
+      botSearchInput.value = '';
+      botRail.applyFilter('');
+      botSearchToggle.focus();
+    }
+  }
+  botSearchToggle?.addEventListener('click', () => setSearchOpen(botSearchWrap.classList.contains('hidden')));
+  botSearchInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); setSearchOpen(false); }
+  });
+  document.getElementById('btnBotNew')?.addEventListener('click', () => {
+    document.getElementById('btnOpenCreateBot')?.click();
+  });
   window.__railState = {
     buffers: sessionBuffers,
     getActive: () => ({ currentSessionId, activeAgentId }),
