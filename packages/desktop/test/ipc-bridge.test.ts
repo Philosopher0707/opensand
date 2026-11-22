@@ -678,6 +678,38 @@ test('DesktopIpcBridge - autoApprove safety ceiling enforces prompt on dangerous
   }
 });
 
+test('DesktopIpcBridge - forcePrompt still emits approval_required when autoApprove is on', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-force-prompt-'));
+  try {
+    const bridge = new DesktopIpcBridge({
+      baseDir: tmpDir,
+      defaultSettings: { model: 'test-model', autoApprove: true },
+    });
+    let prompted = 0;
+    bridge.on('event', (evt) => {
+      if (evt.type === 'approval_required' && evt.data?.toolName === 'provider_permission') prompted++;
+    });
+
+    const pending = bridge.requestUserApproval(
+      'provider_permission',
+      { threadId: 't1', requestId: '1' },
+      'CLI agent requests permission to continue',
+      'sess-1',
+      true, // forcePrompt
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    assert.strictEqual(prompted, 1, 'forced prompt must reach the approval UI despite autoApprove');
+
+    const approvals = (bridge as any).activeApprovals as Map<string, any>;
+    const [approvalId] = Array.from(approvals.keys());
+    assert.ok(approvalId);
+    await bridge.approveTool(approvalId, { action: 'approve_once' });
+    assert.strictEqual(await pending, true);
+  } finally {
+    rmTmp(tmpDir);
+  }
+});
+
 test('DesktopIpcBridge - lists pending approvals as isolated copies and removes them after approval', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-pending-'));
   try {

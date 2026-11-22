@@ -27,6 +27,8 @@ export interface DriverLlmClientInput {
   onEngineSession?: (info: { threadId: string; sessionId: string }) => void;
   /** Forward adapter events (tool/permission/reasoning) to the owning session. */
   onDriverEvent?: (event: unknown) => void;
+  /** Resolve a CLI permission request; absence or errors fail closed. */
+  onPermissionRequest?: (req: { threadId: string; requestId: string; method?: string; options?: unknown }) => Promise<{ behavior: 'allow' | 'reject' }>;
   /** Called with the registry instance id for CLI drivers, which outlive client creation. */
   onInstance?: (instanceId: string) => void;
 }
@@ -61,15 +63,37 @@ function createTextStreamShim(
   input: DriverLlmClientInput,
 ): LlmStreamClient {
   const threadId = input.threadId || `chat_${randomUUID()}`;
-  if (input.onEngineSession || input.onDriverEvent) {
-    instance.adapter.onEvent((event: unknown) => {
-      const e = event as { type?: string; sessionId?: unknown };
-      if (e.type === 'session.started' && typeof e.sessionId === 'string') {
-        input.onEngineSession?.({ threadId, sessionId: e.sessionId });
-      }
-      input.onDriverEvent?.(event);
-    });
-  }
+  instance.adapter.onEvent((event: unknown) => {
+    const e = event as { type?: string; sessionId?: unknown };
+    if (e.type === 'session.started' && typeof e.sessionId === 'string') {
+      input.onEngineSession?.({ threadId, sessionId: e.sessionId });
+    }
+    if (e.type === 'permission.request') {
+      const req = e as { threadId?: string; requestId?: string; method?: string; options?: unknown };
+      const requestThreadId = typeof req.threadId === 'string' ? req.threadId : threadId;
+      const requestId = String(req.requestId ?? '');
+      void (async () => {
+        let behavior: 'allow' | 'reject' = 'reject';
+        try {
+          const decision = await input.onPermissionRequest?.({
+            threadId: requestThreadId,
+            requestId,
+            method: req.method,
+            options: req.options,
+          });
+          if (decision?.behavior === 'allow') behavior = 'allow';
+        } catch (error) {
+          console.error('[provider-llm] onPermissionRequest failed; rejecting', error);
+        }
+        try {
+          await instance.adapter.respondToRequest(requestThreadId, requestId, { behavior });
+        } catch (error) {
+          console.error('[provider-llm] respondToRequest failed', error);
+        }
+      })();
+    }
+    input.onDriverEvent?.(event);
+  });
   return {
     model,
     async streamCompletion(messages: ChatMessage[], _tools, signal) {

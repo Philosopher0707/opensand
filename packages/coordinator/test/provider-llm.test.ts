@@ -200,4 +200,153 @@ describe("provider-llm production bridge", () => {
     ]);
     await providerRegistry.disposeAll();
   });
+
+  it("round-trips CLI permission requests through onPermissionRequest", async () => {
+    let emit: (event: unknown) => void = () => {};
+    const decisions: Array<{ threadId: string; requestId: string; decision: unknown }> = [];
+    const seenRequests: Array<{ threadId: string; requestId: string; method?: string; options?: unknown }> = [];
+    const models = { default: "fake-1", options: [{ id: "fake-1", label: "Fake" }] };
+    const fake: ProviderDriver = {
+      driverKind: "fake-perm-driver",
+      metadata: { displayName: "Fake Perm", access: "custom" },
+      models,
+      decodeConfig: (raw) => raw,
+      defaultConfig: () => ({}),
+      async create(input) {
+        return {
+          instanceId: input.instanceId,
+          driverKind: "fake-perm-driver",
+          displayName: input.displayName,
+          enabled: input.enabled,
+          models,
+          adapter: {
+            provider: "fake-perm-driver",
+            capabilities: {},
+            async sendTurn() { return { text: "ok", toolCalls: [] }; },
+            steer: () => Promise.resolve(),
+            interruptTurn: () => Promise.resolve(),
+            async respondToRequest(threadId, requestId, decision) {
+              decisions.push({ threadId, requestId, decision });
+              return "allowed-once";
+            },
+            hasSession: () => false,
+            enginePid: () => undefined,
+            stopAll: () => Promise.resolve(),
+            onEvent: (listener) => { emit = listener; return () => {}; },
+          },
+          snapshot: async () => ({
+            instanceId: input.instanceId,
+            driverKind: "fake-perm-driver",
+            enabled: input.enabled,
+          }),
+          dispose: () => Promise.resolve(),
+        };
+      },
+    };
+    providerRegistry.register(fake);
+    const client = await createDriverLlmClient({
+      provider: "fake-perm-driver",
+      endpoint: "",
+      model: "fake-1",
+      apiKey: "",
+      threadId: "t1",
+      onPermissionRequest: async (req) => {
+        seenRequests.push(req);
+        return { behavior: req.requestId === "1" ? "allow" : "reject" };
+      },
+    });
+    assert.ok(client);
+    const { stream } = await client.streamCompletion([{ role: "user", content: "hi" }]);
+    for await (const _chunk of stream) { /* drain */ }
+
+    emit({ type: "permission.request", threadId: "t1", requestId: "1", options: [{ kind: "allow" }] });
+    emit({ type: "permission.request", threadId: "t1", requestId: "2", method: "exec", options: [] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.deepStrictEqual(seenRequests.map((r) => r.requestId), ["1", "2"]);
+    assert.deepStrictEqual(decisions, [
+      { threadId: "t1", requestId: "1", decision: { behavior: "allow" } },
+      { threadId: "t1", requestId: "2", decision: { behavior: "reject" } },
+    ]);
+    await providerRegistry.disposeAll();
+  });
+
+  it("fails closed on CLI permissions when no callback exists or the callback throws", async () => {
+    let emit: (event: unknown) => void = () => {};
+    const decisions: Array<{ threadId: string; requestId: string; decision: unknown }> = [];
+    const models = { default: "fake-1", options: [{ id: "fake-1", label: "Fake" }] };
+    const fake: ProviderDriver = {
+      driverKind: "fake-failclosed-driver",
+      metadata: { displayName: "Fake Fail Closed", access: "custom" },
+      models,
+      decodeConfig: (raw) => raw,
+      defaultConfig: () => ({}),
+      async create(input) {
+        return {
+          instanceId: input.instanceId,
+          driverKind: "fake-failclosed-driver",
+          displayName: input.displayName,
+          enabled: input.enabled,
+          models,
+          adapter: {
+            provider: "fake-failclosed-driver",
+            capabilities: {},
+            async sendTurn() { return { text: "ok", toolCalls: [] }; },
+            steer: () => Promise.resolve(),
+            interruptTurn: () => Promise.resolve(),
+            async respondToRequest(threadId, requestId, decision) {
+              decisions.push({ threadId, requestId, decision });
+              return "rejected";
+            },
+            hasSession: () => false,
+            enginePid: () => undefined,
+            stopAll: () => Promise.resolve(),
+            onEvent: (listener) => { emit = listener; return () => {}; },
+          },
+          snapshot: async () => ({
+            instanceId: input.instanceId,
+            driverKind: "fake-failclosed-driver",
+            enabled: input.enabled,
+          }),
+          dispose: () => Promise.resolve(),
+        };
+      },
+    };
+    providerRegistry.register(fake);
+
+    // No onPermissionRequest at all: still reject.
+    const client = await createDriverLlmClient({
+      provider: "fake-failclosed-driver",
+      endpoint: "",
+      model: "fake-1",
+      apiKey: "",
+      threadId: "t1",
+    });
+    assert.ok(client);
+    const { stream } = await client.streamCompletion([{ role: "user", content: "hi" }]);
+    for await (const _chunk of stream) { /* drain */ }
+    emit({ type: "permission.request", threadId: "t1", requestId: "absent" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Callback throws: reject, never approve.
+    const throwing = await createDriverLlmClient({
+      provider: "fake-failclosed-driver",
+      endpoint: "",
+      model: "fake-1",
+      apiKey: "",
+      threadId: "t2",
+      onPermissionRequest: async () => { throw new Error("approval UI down"); },
+    });
+    assert.ok(throwing);
+    const { stream: stream2 } = await throwing.streamCompletion([{ role: "user", content: "hi" }]);
+    for await (const _chunk of stream2) { /* drain */ }
+    emit({ type: "permission.request", threadId: "t2", requestId: "threw" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.deepStrictEqual(decisions, [
+      { threadId: "t1", requestId: "absent", decision: { behavior: "reject" } },
+      { threadId: "t2", requestId: "threw", decision: { behavior: "reject" } },
+    ]);
+    await providerRegistry.disposeAll();
+  });
 });

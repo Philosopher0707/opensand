@@ -709,6 +709,15 @@ export class DesktopIpcBridge extends EventEmitter {
         });
       },
       onDriverEvent: (event) => this.dispatchDriverEvent(activeSessionId, event),
+      onPermissionRequest: async (req) => {
+        const ok = await this.requestUserApproval(
+          'provider_permission', { ...req },
+          'CLI agent requests permission to continue',
+          activeSessionId,
+          true // forcePrompt
+        );
+        return { behavior: ok ? 'allow' : 'reject' };
+      },
     });
     const llmClient = driverClient ?? new UniversalLLMClient({
       baseUrl: targetEndpoint,
@@ -961,6 +970,7 @@ export class DesktopIpcBridge extends EventEmitter {
     args: Record<string, unknown>,
     reason?: string,
     sessionId?: string,
+    forcePrompt?: boolean,
   ): Promise<boolean> {
     if (this.daemon && !this.daemon.running) {
       this.ensureDaemon().catch(() => {});
@@ -987,7 +997,7 @@ export class DesktopIpcBridge extends EventEmitter {
       }
     }
 
-    if (this.settings.autoApprove && !mustPrompt) {
+    if (this.settings.autoApprove && !mustPrompt && !forcePrompt) {
       return true;
     }
 
