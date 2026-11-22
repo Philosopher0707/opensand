@@ -31,4 +31,17 @@ describe("SystemPrompt", () => {
     assert.match(prompt, /one short, plain sentence/);
     assert.match(prompt, /what you are\s+about to do and why/);
   });
+
+  it("buildSystemPrompt gives an agent an authoritative identity", () => {
+    const prompt = buildSystemPrompt({
+      workspaceDir: "/tmp/ws",
+      agentName: "Security Sentinel",
+      agentRole: "Security reviewer",
+      userInstructions: "Always cite the exact file and line.",
+    });
+    assert.match(prompt, /^You are Security Sentinel — Security reviewer, a specialist bot operating inside OpenSand\./);
+    assert.match(prompt, /## Persona Boundary/);
+    assert.match(prompt, /## User Custom Instructions/);
+    assert.doesNotMatch(prompt.split("\n")[0], /You are OpenSand/);
+  });
 });

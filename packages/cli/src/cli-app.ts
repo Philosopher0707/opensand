@@ -411,6 +411,8 @@ Examples:
         userInstructions: instructions,
         learnedRules,
         memoryContext,
+        agentName: activeAgent?.name,
+        agentRole: activeAgent?.role,
       },
       onApprovalRequired: async (req) => {
         if (config.autoApprove) return true;

@@ -8,6 +8,8 @@ export interface SystemPromptContext {
   skillsContext?: string;
   platform?: string;
   shell?: string;
+  agentName?: string;
+  agentRole?: string;
 }
 
 export function buildSystemPrompt(context: SystemPromptContext = {}): string {
@@ -16,7 +18,14 @@ export function buildSystemPrompt(context: SystemPromptContext = {}): string {
   const shell = context.shell ?? (process.env.SHELL || "/bin/bash");
   const dateStr = new Date().toISOString().slice(0, 10);
 
-  return `You are OpenSand, an autonomous AI coding and systems engineering assistant.
+  const identity = context.agentName
+    ? `You are ${context.agentName}${context.agentRole ? ` — ${context.agentRole}` : ''}, a specialist bot operating inside OpenSand.`
+    : 'You are OpenSand, an autonomous AI coding and systems engineering assistant.';
+  const personaBoundary = context.agentName
+    ? '\n## Persona Boundary\nThe identity above is authoritative for this session. The instructions below define this bot\'s voice, role and constraints and take precedence over generic OpenSand defaults where they conflict.'
+    : '';
+
+  return `${identity}
 You operate directly on the user's local machine with high rigor, precision, and tool-driven ground truth.
 
 ## Environment & Context
@@ -55,6 +64,6 @@ registered tool with the capabilities it belongs to (tasks, memory, vault,
 skills, routines, rooms, sentinel, attachments, templates, vision, discovery).
 The tools you declare there become available in the next step. Do not guess
 tool names; discover them.
-${context.skillsContext ? `\n${context.skillsContext}\n` : ""}${context.memoryContext ? `\n## Stored User & Team Memories\n${context.memoryContext}\n` : ""}${context.learnedRules ? `\n## Continuous Learned User Guidelines\n${context.learnedRules}\n` : ""}${context.userInstructions ? `\n## User Custom Instructions\n${context.userInstructions}` : ""}
+${context.skillsContext ? `\n${context.skillsContext}\n` : ""}${context.memoryContext ? `\n## Stored User & Team Memories\n${context.memoryContext}\n` : ""}${context.learnedRules ? `\n## Continuous Learned User Guidelines\n${context.learnedRules}\n` : ""}${personaBoundary}${context.userInstructions ? `\n## User Custom Instructions\n${context.userInstructions}` : ""}
 `.trim();
 }

@@ -571,7 +571,7 @@ export class DesktopIpcBridge extends EventEmitter {
       const previous = this.readSessionMeta(sessionId);
       const meta: Record<string, unknown> = {
         sessionId,
-        agentId: agentId ?? null,
+        agentId: this.inferAgentIdFromSessionId(sessionId) ?? agentId ?? previous.agentId ?? null,
         model: model ?? this.settings.model,
         createdAt: new Date().toISOString(),
         ...(previous.title ? { title: previous.title } : {}),
@@ -586,13 +586,11 @@ export class DesktopIpcBridge extends EventEmitter {
     }
   }
 
-  /**
-   * Infer the owning agent for legacy `sub_agent_<agentId>_<ts>` session
-   * ids created by delegate_to_agent (see orchestrator-tools).
-   */
   private inferAgentIdFromSessionId(sessionId: string): string | undefined {
-    const m = sessionId.match(/^sub_agent_(.+)_(\d{10,})$/);
-    return m ? m[1] : undefined;
+    const child = sessionId.match(/^sub_agent_(.+)_(\d{10,})$/);
+    if (child) return child[1];
+    const bot = sessionId.match(/^bot_(agent_[A-Za-z0-9_]+)$/);
+    return bot ? bot[1] : undefined;
   }
 
   public async createSessionCoordinator(sessionId?: string, agentId?: string): Promise<AgentCoordinator> {
@@ -631,9 +629,10 @@ export class DesktopIpcBridge extends EventEmitter {
     let customInstructions: string | undefined;
     let effectiveAllowedTools: string[] | undefined;
     let toolScopeMode: 'core' | 'all' | 'auto' | undefined;
+    let agent: AgentRecord | undefined;
 
     if (agentId) {
-      const agent = await this.agentStore.getAgent(agentId);
+      agent = await this.agentStore.getAgent(agentId) ?? undefined;
       if (agent) {
         if (agent.model && agent.model !== 'default') targetModel = agent.model;
         if (agent.endpoint) targetEndpoint = agent.endpoint;
@@ -710,6 +709,8 @@ export class DesktopIpcBridge extends EventEmitter {
         learnedRules,
         memoryContext,
         skillsContext,
+        agentName: agent?.name,
+        agentRole: agent?.role,
       },
       onApprovalRequired: async (req: ApprovalRequest) => {
         return this.requestUserApproval(req.toolName, req.arguments, req.reason, activeSessionId);
@@ -1033,6 +1034,7 @@ export class DesktopIpcBridge extends EventEmitter {
   public async deleteAgent(id: string): Promise<boolean> {
     const agent = await this.agentStore.getAgent(id);
     if (!agent) return false;
+    this.invalidateAgentCoordinators(id);
     if (agent.kind === 'ROOM' && typeof agent.metadata?.roomId === 'string') {
       return this.roomManager.deleteRoom(agent.metadata.roomId);
     }

@@ -485,6 +485,8 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           learnedRules: await habitExtractor.getLearnedRulesMarkdown(),
           memoryContext: await memoryStore.getPromptMemoryContext(agent.id),
           skillsContext: await skillStore.formatSkillsPrompt(agent.id).catch(() => ""),
+          agentName: agent.name,
+          agentRole: agent.role,
         },
         // Stream the child turn's events up to the parent's delegation
         // sink (threaded through tool context by the turn loop). Best-effort:

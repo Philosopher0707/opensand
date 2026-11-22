@@ -55,6 +55,55 @@ test('DesktopIpcBridge - manages settings and persistent config', () => {
   }
 });
 
+test("loadSession infers the owning bot agent from a bot_<id> session id", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-bot-infer-"));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    const id = "agent_infer_me_ab12cd34";
+    const sessionId = `bot_${id}`;
+    const dir = path.join(tmpDir, "sessions", sessionId);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "meta.json"), JSON.stringify({ sessionId, agentId: null }), "utf8");
+    const loaded = await bridge.loadSession(sessionId);
+    assert.strictEqual(loaded.agentId, id);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("deleteAgent invalidates cached coordinators", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-bot-delete-"));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    const agent = await bridge.createAgent({ name: "Delete Me", role: "Tester", systemPrompt: "x" });
+    const sessionId = `bot_${agent.id}`;
+    const before = await bridge.createSessionCoordinator(sessionId, agent.id);
+    await bridge.deleteAgent(agent.id);
+    const after = await bridge.createSessionCoordinator(sessionId, agent.id);
+    assert.notStrictEqual(after, before, "a deleted agent must not keep its cached coordinator");
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("a bot_ session meta self-heals its agentId on the next turn", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-bot-backfill-"));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    const agent = await bridge.createAgent({ name: "Backfill", role: "Tester", systemPrompt: "x" });
+    const sessionId = `bot_${agent.id}`;
+    const dir = path.join(tmpDir, "sessions", sessionId);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "meta.json"), JSON.stringify({ sessionId, agentId: null }), "utf8");
+    // No agentId argument: inference from bot_<id> must be the only source.
+    await bridge.createSessionCoordinator(sessionId);
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8"));
+    assert.strictEqual(meta.agentId, agent.id);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('DesktopIpcBridge - handles approval resolutions and standing allowlist', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-appr-'));
 
