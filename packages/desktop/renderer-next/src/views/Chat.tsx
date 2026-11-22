@@ -63,7 +63,11 @@ export function useChatTurn(data: ShellData, selectedSessionId?: string | null):
   }, [data]);
 
   useEffect(() => {
-    if (!selectedSessionId || !data.loadSession) return;
+    if (!selectedSessionId) {
+      dispatch({ type: "load", sessionId: "", messages: [] });
+      return;
+    }
+    if (!data.loadSession) return;
     let cancelled = false;
     data.loadSession(selectedSessionId).then((res) => {
       if (cancelled || !res) return;

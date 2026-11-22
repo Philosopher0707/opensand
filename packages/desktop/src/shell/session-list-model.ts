@@ -2,6 +2,7 @@ export interface SessionSummary {
   id: string;
   title?: string;
   messageCount?: number;
+  unreadCount?: number;
   createdAt?: string;
   updatedAt?: string;
   agentId?: string;
@@ -15,6 +16,7 @@ export interface SessionRow {
   snippet: string;
   avatar: string;
   active: boolean;
+  unreadCount?: number;
 }
 
 export interface EmptyStateInfo {
@@ -63,6 +65,7 @@ export function toRow(summary: SessionSummary, now: number, activeId?: string | 
     snippet,
     avatar,
     active,
+    ...(summary.unreadCount !== undefined ? { unreadCount: summary.unreadCount } : {}),
   };
 }
 

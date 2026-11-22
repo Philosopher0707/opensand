@@ -254,6 +254,7 @@ export interface SessionSummary {
   createdAt: string;
   updatedAt: string;
   messageCount: number;
+  unreadCount?: number;
   agentId?: string;
   roomId?: string;
 }

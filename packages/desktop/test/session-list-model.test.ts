@@ -108,3 +108,15 @@ test("session-list-model: relativeTime formats seconds, minutes, days and handle
   assert.strictEqual(relativeTime(null, fixedNow), "");
   assert.strictEqual(relativeTime(undefined, fixedNow), "");
 });
+
+test("session-list-model: toRow handles unreadCount", () => {
+  const now = 1700000000000;
+  const rowWithUnread = toRow({ id: "s1", title: "Chat", unreadCount: 5 }, now);
+  assert.strictEqual(rowWithUnread.unreadCount, 5);
+
+  const rowWithoutUnread = toRow({ id: "s2", title: "Chat" }, now);
+  assert.strictEqual(rowWithoutUnread.unreadCount, undefined);
+
+  const rowZeroUnread = toRow({ id: "s3", title: "Chat", unreadCount: 0 }, now);
+  assert.strictEqual(rowZeroUnread.unreadCount, 0);
+});

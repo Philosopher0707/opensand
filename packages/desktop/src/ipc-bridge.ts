@@ -507,8 +507,8 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   /** Read sessions/<id>/meta.json written at coordinator creation. */
-  private readSessionMeta(sessionId: string): { agentId?: string; roomId?: string; title?: string } {
-    const result: { agentId?: string; roomId?: string; title?: string } = {};
+  private readSessionMeta(sessionId: string): { agentId?: string; roomId?: string; title?: string; unreadCount?: number } {
+    const result: { agentId?: string; roomId?: string; title?: string; unreadCount?: number } = {};
     const sessDir = path.join(this.baseDir, 'sessions', sessionId);
     const metaPath = path.join(sessDir, 'meta.json');
 
@@ -519,6 +519,7 @@ export class DesktopIpcBridge extends EventEmitter {
         if (typeof meta.agentId === 'string') result.agentId = meta.agentId;
         if (typeof meta.roomId === 'string') result.roomId = meta.roomId;
         if (typeof meta.title === 'string') result.title = meta.title;
+        if (typeof (meta as any).unreadCount === 'number') result.unreadCount = (meta as any).unreadCount;
       } catch {
         // Fall through
       }
@@ -1095,7 +1096,7 @@ export class DesktopIpcBridge extends EventEmitter {
         }
 
         const stat = fs.statSync(sessDir);
-        const { agentId, roomId, title: metaTitle } = this.readSessionMeta(ent.name);
+        const { agentId, roomId, title: metaTitle, unreadCount } = this.readSessionMeta(ent.name);
         if (metaTitle) title = metaTitle;
         summaries.push({
           id: ent.name,
@@ -1103,6 +1104,7 @@ export class DesktopIpcBridge extends EventEmitter {
           createdAt: stat.birthtime.toISOString(),
           updatedAt: stat.mtime.toISOString(),
           messageCount,
+          unreadCount,
           agentId: agentId ?? this.inferAgentIdFromSessionId(ent.name),
           roomId,
         });
@@ -1117,6 +1119,7 @@ export class DesktopIpcBridge extends EventEmitter {
     transcript: string;
     agentId?: string;
     roomId?: string;
+    title?: string;
   }> {
     if (!sessionId || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
       throw new Error(`Invalid sessionId: ${sessionId}`);
@@ -1150,7 +1153,7 @@ export class DesktopIpcBridge extends EventEmitter {
     }
 
     this.currentSessionId = sessionId;
-    const { agentId, roomId } = this.readSessionMeta(sessionId);
+    const { agentId, roomId, title: metaTitle } = this.readSessionMeta(sessionId);
     const inferredAgentId = agentId ?? this.inferAgentIdFromSessionId(sessionId);
     if (inferredAgentId) {
       this.activeAgentId = inferredAgentId;
@@ -1159,7 +1162,7 @@ export class DesktopIpcBridge extends EventEmitter {
       this.coordinator = null;
     }
 
-    return { events, transcript, agentId: inferredAgentId, roomId };
+    return { events, transcript, agentId: inferredAgentId, roomId, title: metaTitle };
   }
 
   async renameSession(sessionId: string, newTitle: string): Promise<boolean> {

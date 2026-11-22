@@ -1,5 +1,5 @@
 // Shell data layer: wraps window.opensand and HTTP endpoints so components stay testable without a real bridge.
-import type { SessionSummary } from "../../src/shell/session-list-model";
+import type { SessionSummary, SessionRow } from "../../src/shell/session-list-model";
 import type { MissionSummary } from "../../src/shell/mission-list-model";
 import type { RawTimelineEvent } from "../../src/shell/mission-timeline-model";
 import type { ReceiptView } from "../../src/shell/mission-receipt-model";
@@ -9,7 +9,7 @@ import type { TimelineForkResult } from "../../src/shell/mission-fork-model";
 import type { ToolApprovalRequest } from "../../src/shell/inbox-model";
 import type { TurnEvent } from "../../src/shell/quick-capture-model";
 
-export type { SessionSummary, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent };
+export type { SessionSummary, SessionRow, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent };
 
 export interface LoadedSessionData {
   events?: unknown[];
@@ -92,6 +92,9 @@ export interface ShellData {
 export function windowBridgeData(): ShellData {
   return {
     async listSessions(): Promise<SessionSummary[]> {
+      if (typeof window !== "undefined" && (window as any).__testSessions !== undefined) {
+        return (window as any).__testSessions;
+      }
       const bridge = (window as any).opensand;
       if (!bridge?.getSessions) {
         return [];

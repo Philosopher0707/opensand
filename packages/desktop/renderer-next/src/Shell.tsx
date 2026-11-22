@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { ShellData, ToolApprovalRequest } from "./data";
 import { ChatList } from "./views/ChatList";
 import { MissionList } from "./views/MissionList";
@@ -20,6 +20,8 @@ import {
   type CanvasState,
 } from "../../src/shell/canvas-model";
 
+export const SESSION_KEY = "opensand-session-id";
+
 export interface ShellProps {
   data: ShellData;
 }
@@ -28,14 +30,73 @@ export function Shell({ data }: ShellProps) {
   const [missionId, setMissionId] = useState<string | null>(null);
   const [selectedApproval, setSelectedApproval] = useState<ToolApprovalRequest | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [sessionTitles, setSessionTitles] = useState<Record<string, string>>({});
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [approvalsRev, setApprovalsRev] = useState(0);
   const [canvasState, setCanvasState] = useState<CanvasState>(createInitialCanvasState());
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
+  const didRestoreRef = useRef(false);
+
   const capture = useQuickCapture(data);
   // The chat turn lives at the shell level so opening an approval detail does not drop it.
   const chat = useChatTurn(data, selectedSessionId);
+
+  // Restore saved session from localStorage validated against live sessions
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let savedId: string | null = null;
+      try {
+        savedId = localStorage.getItem(SESSION_KEY);
+      } catch {}
+
+      try {
+        const live = await data.listSessions();
+        if (cancelled) return;
+        const list = Array.isArray(live) ? live : [];
+        const titleMap: Record<string, string> = {};
+        for (const s of list) {
+          if (s.id && s.title) titleMap[s.id] = s.title;
+        }
+        setSessionTitles((prev) => ({ ...prev, ...titleMap }));
+
+        if (savedId) {
+          const matching = list.find((s) => s.id === savedId);
+          if (matching) {
+            setSelectedSessionId(matching.id);
+          } else {
+            try {
+              localStorage.removeItem(SESSION_KEY);
+            } catch {}
+          }
+        }
+      } catch {
+        if (savedId) {
+          try {
+            localStorage.removeItem(SESSION_KEY);
+          } catch {}
+        }
+      } finally {
+        didRestoreRef.current = true;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [data]);
+
+  // Persist selectedSessionId to localStorage across updates
+  useEffect(() => {
+    if (!didRestoreRef.current) return;
+    try {
+      if (selectedSessionId) {
+        localStorage.setItem(SESSION_KEY, selectedSessionId);
+      } else {
+        localStorage.removeItem(SESSION_KEY);
+      }
+    } catch {}
+  }, [selectedSessionId]);
 
   useEffect(() => {
     if (!selectedSessionId || !data.loadSession) {
@@ -49,6 +110,9 @@ export function Shell({ data }: ShellProps) {
         if (cancelled || !res) return;
         if (res.agentId) {
           setActiveAgentId(res.agentId);
+        }
+        if (res.title) {
+          setSessionTitles((prev) => ({ ...prev, [selectedSessionId]: res.title }));
         }
       })
       .catch(() => {});
@@ -80,10 +144,13 @@ export function Shell({ data }: ShellProps) {
     setSelectedApproval(appr);
   };
 
-  const handleSelectSession = (id: string) => {
+  const handleSelectSession = (id: string, title?: string) => {
     setMissionId(null);
     setSelectedApproval(null);
     setSelectedSessionId(id);
+    if (title) {
+      setSessionTitles((prev) => ({ ...prev, [id]: title }));
+    }
   };
 
   const handleOpenArtifact = (art: Partial<ArtifactItem> & { title: string; content: string }) => {
@@ -107,6 +174,9 @@ export function Shell({ data }: ShellProps) {
   };
 
   const hasCanvasOpen = canvasState.isOpen && canvasState.artifacts.length > 0;
+  const activeSessionTitle = selectedSessionId
+    ? (sessionTitles[selectedSessionId] || selectedSessionId)
+    : "New Session";
 
   return (
     <div class="app-layout">
@@ -122,6 +192,9 @@ export function Shell({ data }: ShellProps) {
               setMissionId(null);
               setSelectedApproval(null);
               setSelectedSessionId(null);
+              try {
+                localStorage.removeItem(SESSION_KEY);
+              } catch {}
             }}
           >
             <div class="brand-avatar">
@@ -154,6 +227,14 @@ export function Shell({ data }: ShellProps) {
             data={data}
             selectedSessionId={selectedSessionId}
             onSelectSession={handleSelectSession}
+            onDeleteSession={(deletedId) => {
+              if (selectedSessionId === deletedId) {
+                setSelectedSessionId(null);
+                try {
+                  localStorage.removeItem(SESSION_KEY);
+                } catch {}
+              }
+            }}
           />
         </div>
         <div class="sidebar-footer">
@@ -164,8 +245,8 @@ export function Shell({ data }: ShellProps) {
         <header class="topbar">
           <div class="topbar-left">
             <h1 class="view-header-title" id="viewHeaderTitle">Home</h1>
-            <span class="active-session-title" id="activeSessionTitle">
-              {selectedSessionId || "New Session"}
+            <span class="active-session-title" id="activeSessionTitle" title={activeSessionTitle}>
+              {activeSessionTitle}
             </span>
           </div>
           <div class="topbar-actions">
@@ -286,6 +367,9 @@ export function Shell({ data }: ShellProps) {
         currentSessionId={selectedSessionId}
         onClearSession={() => {
           setSelectedSessionId(null);
+          try {
+            localStorage.removeItem(SESSION_KEY);
+          } catch {}
         }}
       />
     </div>
