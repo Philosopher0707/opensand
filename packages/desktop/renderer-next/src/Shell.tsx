@@ -3,6 +3,7 @@ import type { ShellData, ToolApprovalRequest } from "./data";
 import { ChatList } from "./views/ChatList";
 import { RoomsView } from "./views/RoomsView";
 import { RoutinesView } from "./views/RoutinesView";
+import { SkillsView } from "./views/SkillsView";
 import { MissionList } from "./views/MissionList";
 import { MissionTimeline } from "./views/MissionTimeline";
 import { MissionReceipt } from "./views/MissionReceipt";
@@ -728,6 +729,14 @@ export function Shell({ data }: ShellProps) {
                 key="routines"
                 data={data}
                 active={currentView === "routines"}
+                onSelect={switchView}
+                refreshKey={dataRev}
+              />
+            ) : view === "skills" ? (
+              <SkillsView
+                key="skills"
+                data={data}
+                active={currentView === "skills"}
                 onSelect={switchView}
                 refreshKey={dataRev}
               />
