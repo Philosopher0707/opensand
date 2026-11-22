@@ -14,11 +14,13 @@ export function createSessionBuffers() {
     get(sessionId) {
       return [...(buffers.get(sessionId) ?? [])];
     },
-    drain(sessionId) {
+    drain(sessionId, knownKeys = new Set()) {
       const list = buffers.get(sessionId) ?? [];
       buffers.delete(sessionId);
       unread.delete(sessionId);
-      return [...list];
+      // A buffered result already rendered from the persisted event log must not
+      // be appended a second time when the session is reopened.
+      return [...list].filter((m) => !m.dedupeKey || !knownKeys.has(m.dedupeKey));
     },
     hasUnread(sessionId) { return unread.has(sessionId); },
     clear(sessionId) {

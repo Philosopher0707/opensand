@@ -204,6 +204,17 @@ export class DesktopApp {
       return this.bridge.loadSession(sessionId);
     });
 
+    ipcMain.handle('opensand:recordDelegatedResult', async (_: any, payload: {
+      targetSessionId: string;
+      sourceSessionId: string;
+      childSessionId: string;
+      agentId: string;
+      content: string;
+    }) => {
+      await this.bridge.recordDelegatedResult(payload);
+      return { success: true };
+    });
+
     ipcMain.handle('opensand:deleteSession', async (_: any, { sessionId }: { sessionId: string }) => {
       return this.bridge.deleteSession(sessionId);
     });

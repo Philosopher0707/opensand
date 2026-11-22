@@ -71,6 +71,42 @@ test("loadSession infers the owning bot agent from a bot_<id> session id", async
   }
 });
 
+test("recordDelegatedResult dedupes by (sourceSessionId, childSessionId)", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-delegated-"));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    const targetSessionId = "bot_agent_delegated_ab12cd34";
+    const first = {
+      targetSessionId,
+      sourceSessionId: "parent-session",
+      childSessionId: "child-A",
+      agentId: "agent_delegated_ab12cd34",
+      content: "delegated answer A",
+    };
+    await bridge.recordDelegatedResult(first);
+    await bridge.recordDelegatedResult(first); // same pair — must be ignored
+    await bridge.recordDelegatedResult({ ...first, childSessionId: "child-B", content: "delegated answer B" });
+
+    const logPath = path.join(tmpDir, "sessions", targetSessionId, "event-log.jsonl");
+    const records = fs.readFileSync(logPath, "utf8").split("\n").filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((ev) => ev.kind === "delegated_result");
+
+    assert.strictEqual(records.length, 2, "exactly one record per distinct (source, child) pair");
+    assert.deepStrictEqual(records.map((r) => r.data.childSessionId).sort(), ["child-A", "child-B"]);
+    assert.deepStrictEqual(records.map((r) => r.data.content).sort(), ["delegated answer A", "delegated answer B"]);
+    for (const rec of records) {
+      assert.deepStrictEqual(Object.keys(rec.data).sort(),
+        ["agentId", "at", "childSessionId", "content", "sourceSessionId"]);
+      assert.strictEqual(rec.data.sourceSessionId, "parent-session");
+      assert.strictEqual(rec.data.agentId, "agent_delegated_ab12cd34");
+      assert.strictEqual(typeof rec.data.at, "number");
+    }
+  } finally {
+    rmTmp(tmpDir);
+  }
+});
+
 test("deleteAgent invalidates cached coordinators", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-bot-delete-"));
   try {

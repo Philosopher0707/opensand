@@ -753,6 +753,85 @@ test("Real-Window Harness: per-bot rail state exposes active session and agent",
   }
 });
 
+test("Real-Window Harness: delegated results persist and reload without double render", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-delegated-home-"));
+  const agentPath = path.join(tmpHome, ".opensand", "agents");
+  fs.mkdirSync(agentPath, { recursive: true });
+  const targetId = "agent_delegated_ab12cd34";
+  const now = Date.now();
+  fs.writeFileSync(path.join(agentPath, `${targetId}.json`), JSON.stringify({
+    id: targetId,
+    name: "Delegate Bot",
+    role: "Research Assistant",
+    systemPrompt: "You delegate.",
+    kind: "AGENT",
+    model: "bot-model",
+    provider: "openrouter",
+    endpoint: "https://openrouter.ai/api/v1",
+    allowedTools: [],
+    createdAt: now,
+    updatedAt: now,
+  }), "utf8");
+  seedSessions(tmpHome, [{ id: `bot_${targetId}`, firstLine: "persisted-delegated-history" }]);
+
+  const script = [
+    "(async () => {",
+    "  await new Promise((r) => setTimeout(r, 350));",
+    "  const s = window.__railState;",
+    "  const parent = s.getActive().currentSessionId || 'parent-session';",
+    "  for (const [childId, text] of [['child-A', 'DELEGATED_RESULT_A'], ['child-B', 'DELEGATED_RESULT_B']]) {",
+    "    s.emit({ type: 'subagent', sessionId: parent, subagent: { agentId: '" + targetId + "', agentName: 'Delegate Bot', sessionId: childId }, data: { event: { type: 'turn_completed', finalContent: text } } });",
+    "  }",
+    // Let the async Web Crypto hash + IPC persistence finish before reloading.
+    "  await new Promise((r) => setTimeout(r, 400));",
+    "  const loaded = await s.loadSession('bot_" + targetId + "');",
+    "  const delegated = (loaded.events || []).filter((e) => e.delegated);",
+    "  const beforeOpen = {",
+    "    count: delegated.length,",
+    "    keys: delegated.map((e) => Object.keys(e).sort().join(',')),",
+    "    dedupeKeys: delegated.map((e) => e.dedupeKey),",
+    "    contents: delegated.map((e) => e.content),",
+    "  };",
+    // Opening the bot session must render both results from the event log and
+    // skip the buffered copies (knownKeys), so each appears exactly once.
+    "  const card = document.querySelector('#botList .bot-rail-card[data-agent-id=\"" + targetId + "\"]');",
+    "  if (card) card.click();",
+    "  await new Promise((r) => setTimeout(r, 300));",
+    "  const feed = document.getElementById('messageFeed').textContent;",
+    "  return {",
+    "    ...beforeOpen,",
+    "    hasCard: !!card,",
+    "    feedA: feed.split('DELEGATED_RESULT_A').length - 1,",
+    "    feedB: feed.split('DELEGATED_RESULT_B').length - 1,",
+    "    feedPersisted: feed.includes('persisted-delegated-history'),",
+    "    markers: document.querySelectorAll('#messageFeed .message-delegated-marker').length,",
+    "    bufferedAfterOpen: s.buffers.get('bot_" + targetId + "').length,",
+    "  };",
+    "})()",
+  ].join("\n");
+
+  try {
+    const r = await runHarness("default", { home: tmpHome, interactScript: script });
+    if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
+    const v = r.interactResult || {};
+    assert.strictEqual(v.hasCard, true, `target bot card must exist (${JSON.stringify(v)})`);
+    assert.strictEqual(v.count, 2, `both delegated results must survive a fresh loadSession (${JSON.stringify(v)})`);
+    assert.deepStrictEqual((v.contents || []).sort(), ["DELEGATED_RESULT_A", "DELEGATED_RESULT_B"]);
+    assert.ok(v.keys && v.keys.every((k: string) => k === 'content,dedupeKey,delegated,role,timestamp'),
+      `delegated events carry the expected keys (${JSON.stringify(v)})`);
+    assert.strictEqual(new Set(v.dedupeKeys).size, 2, "distinct children must have distinct dedupe keys");
+    assert.ok((v.dedupeKeys || []).every((k: string) => k.includes('|child-')),
+      `dedupe keys encode the child session id (${JSON.stringify(v)})`);
+    assert.strictEqual(v.feedA, 1, `delegated result A must render exactly once (${JSON.stringify(v)})`);
+    assert.strictEqual(v.feedB, 1, `delegated result B must render exactly once (${JSON.stringify(v)})`);
+    assert.strictEqual(v.feedPersisted, true, `persisted bot history must still render (${JSON.stringify(v)})`);
+    assert.ok(v.markers >= 1, `delegated messages must be visibly marked in the feed (${JSON.stringify(v)})`);
+    assert.strictEqual(v.bufferedAfterOpen, 0, `buffered copies must be drained (${JSON.stringify(v)})`);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test("Real-Window Harness: bot roster lives in a persistent sidebar section", async (t) => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-sidebar-bots-home-"));
   const agentPath = path.join(tmpHome, ".opensand", "agents");

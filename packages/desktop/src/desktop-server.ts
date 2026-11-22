@@ -505,6 +505,33 @@ export class DesktopServer {
       return;
     }
 
+    // API: POST /api/sessions/:id/delegated-result (durable child turn result)
+    if (pathname.startsWith('/api/sessions/') && pathname.endsWith('/delegated-result') && req.method === 'POST') {
+      const rawId = pathname.slice('/api/sessions/'.length, -('/delegated-result'.length));
+      const sessionId = decodeURIComponent(rawId);
+      if (!isValidId(sessionId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid sessionId format' }));
+        return;
+      }
+      const body = await this.readJsonBody(req);
+      if (!body.sourceSessionId || !body.childSessionId || !body.agentId || typeof body.content !== 'string') {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing or invalid delegated result fields' }));
+        return;
+      }
+      await this.bridge.recordDelegatedResult({
+        targetSessionId: sessionId,
+        sourceSessionId: String(body.sourceSessionId),
+        childSessionId: String(body.childSessionId),
+        agentId: String(body.agentId),
+        content: body.content,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
+      return;
+    }
+
     // API: PATCH /api/sessions/:id (Rename session)
     if (pathname.startsWith('/api/sessions/') && req.method === 'PATCH') {
       const sessionId = decodeURIComponent(pathname.replace('/api/sessions/', ''));

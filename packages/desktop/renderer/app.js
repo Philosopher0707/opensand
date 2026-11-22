@@ -237,6 +237,18 @@ class OpenSandClient {
     return data;
   }
 
+  async recordDelegatedResult(input) {
+    if (this.isElectron && window.opensand?.recordDelegatedResult) {
+      return window.opensand.recordDelegatedResult(input);
+    }
+    const res = await fetch(`/api/sessions/${encodeURIComponent(input.targetSessionId)}/delegated-result`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    return res.json().catch(() => ({ success: false }));
+  }
+
   async deleteSession(sessionId) {
     if (this.isElectron && window.opensand?.deleteSession) {
       return window.opensand.deleteSession(sessionId);
@@ -1475,6 +1487,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     getChiefAgentId: () => chiefAgentId,
     emit: (event) => client.dispatch(event),
     refresh: () => refreshBots(),
+    loadSession: (id) => client.loadSession(id),
   };
 
   // Restore saved session + bot (validated against live lists in boot)
@@ -4209,6 +4222,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           };
         }
         if (!currentAssistantTurn.blocks) currentAssistantTurn.blocks = [];
+        if (ev.delegated) currentAssistantTurn.delegated = true;
 
         let content = ev.content || '';
         if (content) {
@@ -4306,8 +4320,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     messageFeed.innerHTML = '';
     welcomeBanner.classList.add('hidden');
 
+    let knownKeys = new Set();
     try {
       const sessionData = await client.loadSession(sessionId);
+      const loadedEvents = Array.isArray(sessionData?.events) ? sessionData.events : [];
+      knownKeys = new Set(loadedEvents.filter((e) => e && e.dedupeKey).map((e) => e.dedupeKey));
       const restoredAgentId = sessionData?.agentId || null;
       if (restoredAgentId && restoredAgentId !== activeAgentId) {
         const liveAgents = await client.getAgents().catch(() => []);
@@ -4320,7 +4337,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       const turns = reconstructDialogueTurns(sessionData);
       for (const turn of turns) {
-        appendMessage(turn.role, turn.content, turn.toolCalls, turn.thought, turn.timestamp, turn.blocks);
+        appendMessage(turn.role, turn.content, turn.toolCalls, turn.thought, turn.timestamp, turn.blocks, undefined, turn.delegated);
       }
       smartScrollToBottom(true);
     } catch (err) {
@@ -4330,7 +4347,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Append buffered delegated turns on top of any persisted history so mixed
     // sessions keep both, and drain them so they are shown exactly once.
     if (sessionId) {
-      for (const message of sessionBuffers.drain(sessionId)) messageFeed.appendChild(renderMessage(message));
+      for (const message of sessionBuffers.drain(sessionId, knownKeys)) messageFeed.appendChild(renderMessage(message));
       setBotCardBadge(activeAgentId, null);
     }
     refreshSessions();
@@ -4417,7 +4434,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // can append the resulting node into the feed exactly once.
   function renderMessage(message) {
     const scratch = document.createElement('div');
-    appendMessage(message.role || 'assistant', message.content || '', [], '', null, null, scratch);
+    appendMessage(message.role || 'assistant', message.content || '', [], '', null, null, scratch, message.delegated);
     return scratch.firstElementChild;
   }
 
@@ -4425,7 +4442,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     appendMessage('assistant', text);
   }
 
-  function appendMessage(role, content = '', toolCalls = [], thought = '', timestamp = null, blocks = null, targetFeed = messageFeed) {
+  function appendMessage(role, content = '', toolCalls = [], thought = '', timestamp = null, blocks = null, targetFeed = messageFeed, delegated = false) {
     welcomeBanner.classList.add('hidden');
     const msgDiv = document.createElement('div');
     msgDiv.className = `message message-${role}`;
@@ -4516,6 +4533,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
     body.appendChild(actionsEl);
+
+    if (delegated) {
+      const badge = document.createElement('span');
+      badge.className = 'message-delegated-marker';
+      badge.textContent = 'delegated';
+      badge.title = 'Result from a delegated sub-agent';
+      badge.style.cssText = 'display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;margin-bottom:6px;border:1px solid var(--accent);border-radius:999px;color:var(--accent);';
+      body.insertBefore(badge, body.firstChild);
+    }
 
     msgDiv.appendChild(avatar);
     msgDiv.appendChild(body);
@@ -5204,8 +5230,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const lastToolArgs = new Map();
 
+  // Persist a delegated answer into the target bot's own event log. Kept off the
+  // synchronous event path so UI updates never wait on Web Crypto or IPC.
+  async function persistDelegatedResult(event, child, targetId, targetSessionId) {
+    const finalContent = child.finalContent;
+    const sourceSessionId = event.sessionId || 'default';
+    const childSessionId = event.subagent?.sessionId || await (async () => {
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(finalContent));
+      return 'hash-' + [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    })();
+    const dedupeKey = sourceSessionId + '|' + childSessionId;
+    // Tag the buffered copy so selectSession can skip it once the persisted
+    // result has been rendered from the event log (no double render).
+    const buffered = sessionBuffers.get(targetSessionId).find((m) => m.content === finalContent && !m.dedupeKey);
+    if (buffered) buffered.dedupeKey = dedupeKey;
+    await client.recordDelegatedResult({
+      targetSessionId,
+      sourceSessionId,
+      childSessionId,
+      agentId: targetId,
+      content: finalContent,
+    });
+  }
+
   // Real-time Event Stream Handling
-  client.onEvent((event) => {
+  client.onEvent(async (event) => {
     // Delegated turns belong to the child bot's own session, not the parent's.
     // Handle them before the view/session filters so background bots still
     // receive their output even while another session or view is open.
@@ -5215,20 +5264,32 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Buffer only the consolidated final text. Buffering text_delta fragments
       // as well would render each fragment plus the full answer again on drain.
       if (child.type === 'turn_completed' && child.finalContent) {
-        if (currentSessionId === 'bot_' + targetId) {
+        const targetSessionId = 'bot_' + targetId;
+        if (currentSessionId === targetSessionId) {
           // Target is open: render the answer live only. Buffering it too would
           // make a later selectSession drain the same text into the feed twice.
-          sessionBuffers.clear('bot_' + targetId);
+          sessionBuffers.clear(targetSessionId);
           appendToFeed(child.finalContent);
         } else {
-          sessionBuffers.append('bot_' + targetId, { role: 'assistant', content: child.finalContent });
+          sessionBuffers.append(targetSessionId, { role: 'assistant', content: child.finalContent, delegated: true });
         }
+        void persistDelegatedResult(event, child, targetId, targetSessionId).catch(() => {});
       }
       // An open target shows output live and needs no unread badge; a background
       // target gets the badge (also rehydrated from the buffer's unread state).
       setBotCardBadge(targetId, currentSessionId === 'bot_' + targetId ? null : 'delegated');
       if (currentSessionId !== event.sessionId) return;
-      appendToFeed('↳ delegated to ' + (event.subagent?.agentName || 'bot'));
+      // Compact parent reference opens the child bot's own session.
+      const ref = document.createElement('button');
+      ref.type = 'button';
+      ref.className = 'btn-delegated-open';
+      ref.textContent = '↳ delegated to ' + (event.subagent?.agentName || 'bot');
+      ref.style.cssText = 'border:0;background:transparent;color:var(--accent);cursor:pointer;padding:0;font:inherit;text-decoration:underline;';
+      ref.addEventListener('click', () => {
+        if (targetId) selectBotSession('bot_' + targetId, { id: targetId, name: event.subagent?.agentName || targetId });
+      });
+      const refMsg = appendMessage('assistant');
+      refMsg.body.insertBefore(ref, refMsg.actionsEl);
       return;
     }
     if (event.type === 'session_started') setBotCardStatus(getAgentIdForSession(event.sessionId), 'busy');

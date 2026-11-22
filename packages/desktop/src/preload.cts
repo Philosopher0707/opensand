@@ -36,6 +36,13 @@ try {
         ipcRenderer.invoke('opensand:getSessions'),
       loadSession: (sessionId: string) =>
         ipcRenderer.invoke('opensand:loadSession', { sessionId }),
+      recordDelegatedResult: (payload: {
+        targetSessionId: string;
+        sourceSessionId: string;
+        childSessionId: string;
+        agentId: string;
+        content: string;
+      }) => ipcRenderer.invoke('opensand:recordDelegatedResult', payload),
       deleteSession: (sessionId: string) =>
         ipcRenderer.invoke('opensand:deleteSession', { sessionId }),
       clearAllSessions: () =>

@@ -12,6 +12,7 @@ import {
   AgentCoordinator,
   UniversalLLMClient,
   TurnEvent,
+  TranscriptManager,
   ApprovalRequest,
   McpManager,
   registerOrchestratorTools,
@@ -1225,6 +1226,53 @@ export class DesktopIpcBridge extends EventEmitter {
     return summaries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
+  /** Persist a child bot's completed turn into the target bot's own event log. */
+  public async recordDelegatedResult(input: {
+    targetSessionId: string;
+    sourceSessionId: string;
+    childSessionId: string;
+    agentId: string;
+    content: string;
+  }): Promise<void> {
+    if (!input.targetSessionId || !/^[a-zA-Z0-9_-]+$/.test(input.targetSessionId)) {
+      throw new Error(`Invalid sessionId: ${input.targetSessionId}`);
+    }
+    if (!input.agentId || !/^[a-zA-Z0-9_-]+$/.test(input.agentId)) {
+      throw new Error(`Invalid agentId: ${input.agentId}`);
+    }
+    const expectedBase = path.resolve(path.join(this.baseDir, 'sessions'));
+    const resolvedTarget = path.resolve(path.join(expectedBase, input.targetSessionId));
+    if (!resolvedTarget.startsWith(expectedBase)) {
+      throw new Error('Path traversal detected');
+    }
+
+    const logPath = path.join(resolvedTarget, 'event-log.jsonl');
+    if (fs.existsSync(logPath)) {
+      const seen = fs.readFileSync(logPath, 'utf8').split('\n').filter(Boolean)
+        .map((line) => {
+          try {
+            return JSON.parse(line);
+          } catch {
+            return null;
+          }
+        })
+        .filter((ev) => ev?.kind === 'delegated_result');
+      if (seen.some((ev) => ev.data?.sourceSessionId === input.sourceSessionId
+        && ev.data?.childSessionId === input.childSessionId)) {
+        return;
+      }
+    }
+
+    const tm = new TranscriptManager(input.targetSessionId, expectedBase);
+    await tm.recordEvent('delegated_result', {
+      sourceSessionId: input.sourceSessionId,
+      childSessionId: input.childSessionId,
+      agentId: input.agentId,
+      content: input.content,
+      at: Date.now(),
+    });
+  }
+
   public async loadSession(sessionId: string): Promise<{
     events: unknown[];
     transcript: string;
@@ -1260,6 +1308,28 @@ export class DesktopIpcBridge extends EventEmitter {
 
     if (fs.existsSync(txtPath)) {
       transcript = fs.readFileSync(txtPath, 'utf8');
+    }
+
+    // Durable delegated results live in event-log.jsonl, not transcript.jsonl.
+    const logPath = path.join(sessionDir, 'event-log.jsonl');
+    if (fs.existsSync(logPath)) {
+      const lines = fs.readFileSync(logPath, 'utf8').trim().split('\n').filter(Boolean);
+      for (const line of lines) {
+        try {
+          const ev = JSON.parse(line);
+          if (ev.kind === 'delegated_result' && ev.data) {
+            events.push({
+              role: 'assistant',
+              content: ev.data.content,
+              delegated: true,
+              dedupeKey: `${ev.data.sourceSessionId}|${ev.data.childSessionId}`,
+              timestamp: ev.data.at,
+            });
+          }
+        } catch {
+          // Skip invalid lines
+        }
+      }
     }
 
     this.currentSessionId = sessionId;

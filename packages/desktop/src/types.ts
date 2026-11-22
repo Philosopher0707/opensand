@@ -40,6 +40,13 @@ export interface OpenSandBridgeApi {
   ensureDaemon?: () => Promise<any>;
   getSessions: () => Promise<SessionSummary[]>;
   loadSession: (sessionId: string) => Promise<{ events: unknown[]; transcript: string; agentId?: string; roomId?: string }>;
+  recordDelegatedResult?: (input: {
+    targetSessionId: string;
+    sourceSessionId: string;
+    childSessionId: string;
+    agentId: string;
+    content: string;
+  }) => Promise<{ success: boolean }>;
   deleteSession?: (sessionId: string) => Promise<{ success: boolean }>;
   clearAllSessions?: () => Promise<{ success: boolean; count: number }>;
   deleteAgent?: (id: string) => Promise<boolean>;
