@@ -10,9 +10,10 @@ import type { ToolApprovalRequest } from "../../src/shell/inbox-model";
 import type { TurnEvent } from "../../src/shell/quick-capture-model";
 import type { Room, DiscussionResult, CreateRoomInput } from "../../src/shell/rooms-model";
 import type { Routine, CreateRoutineInput } from "../../src/shell/routines-model";
+import type { Skill, CreateSkillInput } from "../../src/shell/skills-model";
 import { persistToken } from "../../src/shell/auth-model";
 
-export type { SessionSummary, SessionRow, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent, Room, DiscussionResult, CreateRoomInput, Routine, CreateRoutineInput };
+export type { SessionSummary, SessionRow, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent, Room, DiscussionResult, CreateRoomInput, Routine, CreateRoutineInput, Skill, CreateSkillInput };
 
 /** sessionStorage can be blocked in a restricted page; keep the token in memory then. */
 function authStorage() {
@@ -117,6 +118,11 @@ export interface ShellData {
   setRoutineEnabled(routineId: string, isEnabled: boolean): Promise<Routine>;
   triggerRoutine(routineId: string): Promise<unknown>;
   deleteRoutine(routineId: string): Promise<void>;
+
+  // Phase 5 Row 15: Modular Recipe Skills
+  getSkills(category?: string): Promise<Skill[]>;
+  createSkill(payload: CreateSkillInput): Promise<Skill>;
+  deleteSkill(skillId: string): Promise<void>;
 }
 
 export function windowBridgeData(): ShellData {
@@ -622,6 +628,69 @@ export function windowBridgeData(): ShellData {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error || `Could not delete routine (HTTP ${res.status})`);
+      }
+    },
+
+    async getSkills(category?: string): Promise<Skill[]> {
+      if (typeof window !== "undefined" && (window as any).__testSkills !== undefined) {
+        const list: Skill[] = (window as any).__testSkills;
+        return category ? list.filter((s) => s.category === category) : list;
+      }
+      const bridge = (window as any).opensand;
+      if (bridge?.getSkills) {
+        try {
+          const res = await bridge.getSkills(category);
+          if (Array.isArray(res)) return res;
+        } catch {
+          // fall through to the HTTP route
+        }
+      }
+      try {
+        const query = category ? `?category=${encodeURIComponent(category)}` : "";
+        const res = await fetch(`/api/skills${query}`);
+        if (res.ok) {
+          const data = await res.json();
+          return Array.isArray(data) ? data : [];
+        }
+      } catch {
+        // Fallback when the fetch route is not available
+      }
+      return [];
+    },
+
+    async createSkill(payload: CreateSkillInput): Promise<Skill> {
+      const bridge = (window as any).opensand;
+      if (bridge?.createSkill) {
+        try {
+          return await bridge.createSkill(payload);
+        } catch {
+          // fall through to the HTTP route
+        }
+      }
+      const res = await fetch("/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `Could not create skill (HTTP ${res.status})`);
+      return data as Skill;
+    },
+
+    async deleteSkill(skillId: string): Promise<void> {
+      const bridge = (window as any).opensand;
+      if (bridge?.deleteSkill) {
+        try {
+          await bridge.deleteSkill(skillId);
+          return;
+        } catch {
+          // fall through to the HTTP route
+        }
+      }
+      const res = await fetch(`/api/skills/${encodeURIComponent(skillId)}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Could not delete skill (HTTP ${res.status})`);
       }
     },
   };
