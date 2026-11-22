@@ -1435,3 +1435,39 @@
   outline: 2px solid var(--accent, #4c8dff);
   outline-offset: -2px;
 }
+
+/* Phase 5 Row 11: account menu, theme, sidebar collapse and shortcuts.
+   renderer/styles.css owns the palette and base geometry; these rules keep the two
+   extra topbar controls and the popup inside the frame down to the 960px window. */
+.topbar { min-width: 0; overflow: hidden; }
+.topbar-actions { flex-shrink: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.topbar-actions::-webkit-scrollbar { display: none; }
+.topbar-status-group { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.topbar-status-group #btnToggleTheme { display: inline-flex; align-items: center; justify-content: center; }
+.topbar-status-group #btnToggleTheme svg { width: 15px; height: 15px; flex: none; }
+@media (max-width: 1180px) { .topbar .active-session-title { display: none; } }
+
+/* The base stylesheet animates the sidebar to zero width; hide its children too so
+   nothing inside can force a minimum width while the collapse transition runs. */
+.sidebar.collapsed .sidebar-header-actions,
+.sidebar.collapsed .inbox-section,
+.sidebar.collapsed .mission-list-section,
+.sidebar.collapsed .session-list,
+.sidebar.collapsed .sidebar-footer { visibility: hidden; }
+.btn-toggle-sidebar { flex-shrink: 0; }
+.btn-toggle-sidebar.active { color: var(--accent, #4c8dff); }
+#btnCollapseSidebar { flex: none; }
+
+/* Account popup: anchored to the footer row, never wider than the sidebar itself.
+   The backdrop catches outside clicks; the account box sits above it so the trigger
+   and popup items remain clickable. */
+.account-popup-backdrop { position: fixed; inset: 0; z-index: 999; background: transparent; }
+.sidebar-account-box { position: relative; z-index: 1000; min-width: 0; flex-shrink: 0; }
+.account-btn, .account-popup-item { min-width: 0; }
+.account-popup { max-width: 100%; box-sizing: border-box; }
+.popup-divider { flex: none; }
+.account-btn:focus-visible,
+.account-popup-item:focus-visible,
+#btnToggleTheme:focus-visible,
+#btnToggleSidebar:focus-visible,
+#btnCollapseSidebar:focus-visible { outline: 2px solid var(--accent, #4c8dff); outline-offset: -2px; }

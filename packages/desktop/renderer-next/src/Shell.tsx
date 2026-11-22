@@ -30,8 +30,29 @@ import {
   viewPanelId,
   type ViewId,
 } from "../../src/shell/navigation-model";
+import {
+  classifyShortcut,
+  nextSidebarCollapsed,
+  persistSidebarCollapsed,
+  persistTheme,
+  readSidebarCollapsed,
+  readTheme,
+  resolveEscapeTarget,
+  toggleTheme,
+  type Theme,
+} from "../../src/shell/account-model";
+import { isChatBusy } from "../../src/shell/chat-turn-model";
 
 export const SESSION_KEY = "opensand-session-id";
+
+/** localStorage can be blocked (or absent in a non-browser render); fall back to no persistence. */
+function shellStorage() {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
 
 export interface ShellProps {
   data: ShellData;
@@ -89,6 +110,15 @@ export function Shell({ data }: ShellProps) {
   const [currentView, setCurrentView] = useState<ViewId>(() =>
     parseViewFromLocation(window.location.search, window.location.hash)
   );
+  const [theme, setTheme] = useState<Theme>(() => {
+    let prefersDark = false;
+    try {
+      prefersDark = Boolean(window.matchMedia?.("(prefers-color-scheme: dark)").matches);
+    } catch {}
+    return readTheme(shellStorage(), prefersDark);
+  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readSidebarCollapsed(shellStorage()));
+  const [isAccountPopupOpen, setAccountPopupOpen] = useState(false);
 
   const didRestoreRef = useRef(false);
 
@@ -175,15 +205,61 @@ export function Shell({ data }: ShellProps) {
     };
   }, [selectedSessionId, data]);
 
-  // Keyboard shortcuts: Esc to close detail inspector, Cmd/Ctrl+I to toggle
+  // Theme and sidebar state are mirrored to the document/localStorage so the shell keeps
+  // the legacy keys and looks identical after a reload.
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    persistTheme(shellStorage(), theme);
+  }, [theme]);
+
+  useEffect(() => {
+    persistSidebarCollapsed(shellStorage(), sidebarCollapsed);
+  }, [sidebarCollapsed]);
+
+  // Global shortcuts: Cmd/Ctrl+B sidebar, +I details, +Shift+A canvas, Esc closes the topmost layer.
+  // The listener is installed once; a render-time ref keeps the Esc precedence in sync even when
+  // effect callbacks are deferred by the renderer.
+  const shortcutStateRef = useRef({
+    accountPopupOpen: false,
+    canvasOpen: false,
+    detailOpen: false,
+    turnBusy: false,
+    sidebarCollapsed: false,
+  });
+  shortcutStateRef.current = {
+    accountPopupOpen: isAccountPopupOpen,
+    canvasOpen: canvasState.isOpen,
+    detailOpen: isDetailOpen,
+    turnBusy: isChatBusy(chat.state.status),
+    sidebarCollapsed,
+  };
+  const stopTurnRef = useRef(chat.stop);
+  stopTurnRef.current = chat.stop;
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "Esc") {
-        setIsDetailOpen(false);
-      } else if ((e.metaKey || e.ctrlKey) && (e.key === "i" || e.key === "I")) {
+      const action = classifyShortcut(e);
+      if (!action) return;
+      if (action === "escape") {
+        const target = resolveEscapeTarget({
+          ...shortcutStateRef.current,
+          isFullscreen: Boolean(document.fullscreenElement),
+        });
+        if (target === "none") return;
         e.preventDefault();
-        setIsDetailOpen((prev) => !prev);
+        if (target === "account-popup") setAccountPopupOpen(false);
+        else if (target === "exit-fullscreen") void document.exitFullscreen?.();
+        else if (target === "canvas") setCanvasState((prev) => closeCanvas(prev));
+        else if (target === "detail") setIsDetailOpen(false);
+        else stopTurnRef.current();
+        return;
       }
+      e.preventDefault();
+      if (action === "toggle-sidebar") {
+        const next = nextSidebarCollapsed(shortcutStateRef.current.sidebarCollapsed);
+        setSidebarCollapsed(next);
+        persistSidebarCollapsed(shellStorage(), next);
+      } else if (action === "toggle-detail") setIsDetailOpen((prev) => !prev);
+      else setCanvasState((prev) => ({ ...prev, isOpen: !prev.isOpen }));
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -206,6 +282,37 @@ export function Shell({ data }: ShellProps) {
     setCurrentView(view);
     const hash = viewHash(view);
     if (window.location.hash !== hash) window.location.hash = hash;
+  };
+
+  const handleToggleTheme = () => {
+    const next = toggleTheme(theme);
+    setTheme(next);
+    document.documentElement.setAttribute("data-theme", next);
+    persistTheme(shellStorage(), next);
+  };
+  const handleToggleSidebar = (force?: boolean) => {
+    const next = nextSidebarCollapsed(sidebarCollapsed, force);
+    setSidebarCollapsed(next);
+    persistSidebarCollapsed(shellStorage(), next);
+  };
+
+  const handleAccountAction = (action: "sentinel" | "settings" | "theme" | "clear") => {
+    setAccountPopupOpen(false);
+    if (action === "sentinel" || action === "settings") {
+      switchView(action);
+    } else if (action === "theme") {
+      handleToggleTheme();
+    } else {
+      void (async () => {
+        try {
+          await data.clearAllSessions?.();
+        } catch {}
+        setSelectedSessionId(null);
+        try {
+          localStorage.removeItem(SESSION_KEY);
+        } catch {}
+      })();
+    }
   };
 
   const handleSelectMission = (id: string) => {
@@ -256,7 +363,10 @@ export function Shell({ data }: ShellProps) {
 
   return (
     <div class="app-layout">
-      <aside class="sidebar">
+      {isAccountPopupOpen && (
+        <div class="account-popup-backdrop" aria-hidden="true" onClick={() => setAccountPopupOpen(false)} />
+      )}
+      <aside class={`sidebar${sidebarCollapsed ? " collapsed" : ""}`}>
         <div class="sidebar-header">
           <div
             class="brand"
@@ -283,6 +393,21 @@ export function Shell({ data }: ShellProps) {
               <span class="brand-title">OpenSand</span>
               <span class="status-indicator">Ready</span>
             </div>
+          </div>
+          <div class="sidebar-header-actions">
+            <button
+              id="btnCollapseSidebar"
+              type="button"
+              class="btn-icon-ghost"
+              aria-label="Collapse sidebar"
+              title="Collapse Sidebar (Cmd+B)"
+              onClick={() => handleToggleSidebar(true)}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <line x1="9" y1="3" x2="9" y2="21" />
+              </svg>
+            </button>
           </div>
         </div>
         <div id="inboxSection" class="inbox-section">
@@ -334,12 +459,59 @@ export function Shell({ data }: ShellProps) {
               );
             })}
           </nav>
+          <div class="sidebar-account-box">
+            <button
+              id="accountMenuTrigger"
+              type="button"
+              class="account-btn"
+              aria-haspopup="true"
+              aria-expanded={isAccountPopupOpen}
+              title="Account & Preferences"
+              onClick={(e) => {
+                e.stopPropagation();
+                setAccountPopupOpen((prev) => !prev);
+              }}
+            >
+              <div class="user-avatar-initials" id="userAvatarInitials">P</div>
+              <span class="account-name" id="userAccountName">Phil</span>
+              <span class="account-dots">⋯</span>
+            </button>
+            <div id="accountPopup" class={`account-popup${isAccountPopupOpen ? "" : " hidden"}`}>
+              <button id="btnMenuSentinel" type="button" class="account-popup-item" onClick={() => handleAccountAction("sentinel")}>
+                <span class="popup-icon" aria-hidden="true">🛡️</span><span>Admin / Sentinel</span>
+              </button>
+              <button id="btnMenuSettings" type="button" class="account-popup-item" onClick={() => handleAccountAction("settings")}>
+                <span class="popup-icon" aria-hidden="true">⚙️</span><span>Settings</span>
+              </button>
+              <button id="btnMenuToggleTheme" type="button" class="account-popup-item" onClick={() => handleAccountAction("theme")}>
+                <span class="popup-icon" aria-hidden="true">🌙</span><span>Toggle Theme</span>
+              </button>
+              <div class="popup-divider"></div>
+              <button id="btnMenuClearSessions" type="button" class="account-popup-item danger" onClick={() => handleAccountAction("clear")}>
+                <span class="popup-icon" aria-hidden="true">🗑️</span><span>Clear History</span>
+              </button>
+            </div>
+          </div>
+          <button id="btnSettings" type="button" class="hidden" aria-hidden="true" tabIndex={-1} />
           <span class="shell-note">Preact shell (preview)</span>
         </div>
       </aside>
       <main class="main-panel">
         <header class="topbar">
           <div class="topbar-left">
+            <button
+              id="btnToggleSidebar"
+              type="button"
+              class={`btn-icon-ghost btn-toggle-sidebar${sidebarCollapsed ? " active" : ""}`}
+              aria-label="Toggle sidebar"
+              title={sidebarCollapsed ? "Expand Sidebar (Cmd+B)" : "Collapse Sidebar (Cmd+B)"}
+              onClick={() => handleToggleSidebar()}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <line x1="9" y1="3" x2="9" y2="21" />
+              </svg>
+            </button>
             {currentView !== "chat" && (
               <button
                 id="btnBackToChat"
@@ -384,6 +556,27 @@ export function Shell({ data }: ShellProps) {
               onClick={() => setIsDetailOpen((prev) => !prev)}
             >
               ℹ️ Details
+            </button>
+          </div>
+          <div class="topbar-status-group">
+            <button
+              id="btnToggleTheme"
+              type="button"
+              class="btn btn-icon-sm"
+              title={theme === "dark" ? "Switch to Light Theme" : "Switch to Dark Theme"}
+              aria-label="Toggle light or dark theme"
+              onClick={handleToggleTheme}
+            >
+              {theme === "dark" ? (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+                </svg>
+              ) : (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+                </svg>
+              )}
             </button>
           </div>
         </header>
@@ -445,7 +638,7 @@ export function Shell({ data }: ShellProps) {
               <MissionReceipt data={data} missionId={missionId} />
             </div>
           ) : (
-            <div class={`chat-canvas-split ${hasCanvasOpen ? "canvas-open" : "canvas-closed"}`}>
+            <div class={`chat-canvas-split ${hasCanvasOpen ? "canvas-open" : "canvas-closed"}`} data-canvas-open={canvasState.isOpen}>
               <div class="chat-split-pane">
                 <Chat
                   chat={chat}

@@ -15,7 +15,8 @@ export type ViewId =
   | "graphs"
   | "boundaries"
   | "webhooks"
-  | "connectors";
+  | "connectors"
+  | "settings";
 
 export const VIEW_IDS: readonly ViewId[] = [
   "chat",
@@ -32,6 +33,7 @@ export const VIEW_IDS: readonly ViewId[] = [
   "boundaries",
   "webhooks",
   "connectors",
+  "settings",
 ];
 
 export const VIEW_TITLES: Record<ViewId, string> = {
@@ -49,6 +51,7 @@ export const VIEW_TITLES: Record<ViewId, string> = {
   boundaries: "Fail-Closed Policy Boundaries",
   webhooks: "Inbound Proactive Webhooks",
   connectors: "3rd-Party App OAuth Connectors",
+  settings: "Settings",
 };
 
 export type NavGroupId = "templates" | "capabilities" | "connections";
