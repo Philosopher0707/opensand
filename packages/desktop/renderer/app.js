@@ -1363,16 +1363,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     onDelete: botDeleteHandler,
     onOpenSession: (id, b) => selectBotSession(id, b),
     onNewSession: (b) => selectBotSession('bot_' + b.id, b),
+    isChief: bot.id === chiefAgentId,
+    onSetChief: async (b, set) => {
+      await client.updateSettings({ chiefOfStaffAgentId: set ? b.id : null });
+      await refreshSettings();
+      await refreshBots();
+      badgeActiveBot.textContent = set ? b.name : 'No chief chosen';
+    },
   });
   const botRail = createBotRail({
     buffers: sessionBuffers,
     getAgents: () => client.getAgents(),
+    getSessions: () => client.getSessions(),
     getActiveAgentId: () => activeAgentId,
     getChiefAgentId: () => chiefAgentId,
     onIdentity: botIdentityHandler,
     onModel: botModelHandler,
     onDelete: botDeleteHandler,
     onInspect: botInspectHandler,
+    onOpenSession: (id, bot) => selectBotSession(id, bot),
+    onDeleteSession: async (id) => {
+      if (!window.confirm('Delete this conversation? This cannot be undone.')) return;
+      await client.deleteSession(id);
+      if (currentSessionId === id) startNewSession();
+      await refreshBots();
+      refreshSessions();
+    },
+    onNewSession: (bot) => selectBotSession('bot_' + bot.id, bot),
     onSelect: (bot) => {
       activeAgentId = bot?.id || null;
       void selectSession(bot ? 'bot_' + bot.id : null);
@@ -1990,7 +2007,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function refreshSessions(filterQuery = '') {
     const loaded = await client.getSessions();
-    const sessions = Array.isArray(loaded) ? loaded : [];
+    // Bot-owned sessions live under their bot in the rail; only orphans of
+    // deleted bots and stand-alone conversations stay in the global roster.
+    const grouped = botRail.getGroupedSessionIds();
+    const sessions = (Array.isArray(loaded) ? loaded : []).filter((s) => !grouped.has(s.id));
     sessionList.innerHTML = '';
 
     const query = filterQuery || (conversationSearchInput ? conversationSearchInput.value.trim().toLowerCase() : '');

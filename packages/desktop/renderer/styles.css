@@ -4441,6 +4441,54 @@ textarea#promptInput {
 .bot-sidecar .bot-model-chip { display: none; }
 .bot-rail-empty { padding: 8px 7px; font-size: 11.5px; color: var(--text-muted); }
 .bot-rail-card .bot-model-chip { max-width: 100%; }
+
+/* ---- Nested bot session tree --------------------------------------------- */
+.bot-tree-item { display: flex; flex-wrap: wrap; align-items: center; column-gap: 2px; min-width: 0; }
+.bot-tree-item > .bot-rail-card { flex: 1 1 auto; min-width: 0; }
+.bot-tree-toggle {
+  flex: none; width: 16px; height: 26px; padding: 0; border: 0;
+  display: grid; place-items: center; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.bot-tree-toggle:hover { color: var(--text-main); background: var(--bg-hover); }
+.bot-tree-chevron { width: 12px; height: 12px; transition: transform 150ms var(--ease-out); }
+.bot-tree-toggle[aria-expanded="false"] .bot-tree-chevron { transform: rotate(-90deg); }
+.bot-session-group {
+  flex: 1 1 100%; display: flex; flex-direction: column; gap: 2px;
+  margin: 2px 0 4px 19px; padding-left: 8px;
+  border-left: 1px solid var(--border-color);
+}
+.bot-session-group[hidden] { display: none; }
+.bot-session-row {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  padding: 3px 5px; border-radius: var(--radius-sm);
+  color: var(--text-main); font-size: 11px; cursor: pointer;
+}
+.bot-session-row:hover { background: var(--bg-hover); }
+.bot-session-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.bot-session-title { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bot-session-meta { flex: 0 1 auto; min-width: 0; color: var(--text-muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bot-session-row .btn-delete-session {
+  opacity: 1; flex: none; border: 0; background: transparent;
+  color: var(--text-muted); cursor: pointer; padding: 0 3px;
+  font-size: 14px; line-height: 1;
+}
+.bot-session-row .btn-delete-session:hover { color: var(--danger); }
+.bot-session-new {
+  align-self: flex-start; margin-top: 2px; padding: 3px 6px;
+  border: 1px dashed var(--border-color); border-radius: var(--radius-sm);
+  background: transparent; color: var(--accent); font-size: 10.5px; cursor: pointer;
+}
+.bot-session-new:hover { background: var(--bg-hover); }
+.bot-chief-badge {
+  align-self: flex-start; margin-top: 2px; padding: 0 5px;
+  border: 1px solid var(--accent); border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 9px; font-weight: 700; white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bot-tree-chevron { transition: none; }
+}
 .btn-bot-identity {
   border: 0; background: transparent; cursor: pointer; padding: 2px; flex: none;
   font-size: 11px; line-height: 1; opacity: 0;

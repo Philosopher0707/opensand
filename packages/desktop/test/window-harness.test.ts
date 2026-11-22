@@ -391,9 +391,9 @@ test("Real-Window Harness: bot card provider chip and model picker", async (t) =
     if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
     const result = r.interactResult || {};
     assert.ok((result.subs || []).some((c: string) => c.includes('openrouter')), `bot card must show provider in its sub-line (${JSON.stringify(result)})`);
-    assert.ok(result.avatars >= 2, `every bot card needs an avatar (${JSON.stringify(result)})`);
+    assert.strictEqual(result.avatars, 1, `exactly one bot card (no Default Assistant row) (${JSON.stringify(result)})`);
     assert.ok((result.providerBadges || []).includes('O'), `bot card needs a provider badge (${JSON.stringify(result)})`);
-    assert.ok(result.statusDots >= 2, `bot card needs a status dot (${JSON.stringify(result)})`);
+    assert.strictEqual(result.statusDots, 1, `one bot card needs one status dot (${JSON.stringify(result)})`);
     assert.strictEqual(result.hasPicker, true, `clicking the bot model button must open the picker (${JSON.stringify(result)})`);
     assert.ok(result.railCount >= 3, `provider rail must be populated from the catalog (${JSON.stringify(result)})`);
     assert.ok((result.railGroups || []).length >= 1, `rail must group providers (${JSON.stringify(result)})`);
@@ -428,7 +428,7 @@ test("Real-Window Harness: bot settings editor saves provider and model", async 
     "(async () => {",
     "  await new Promise((r) => setTimeout(r, 350));",
     "  const rows = document.querySelectorAll('#botList .bot-item');",
-    "  rows[1]?.click();",
+    "  rows[0]?.click();",
     "  await new Promise((r) => setTimeout(r, 150));",
     "  document.getElementById('btnToggleDetail')?.click();",
     "  await new Promise((r) => setTimeout(r, 450));",
@@ -958,6 +958,143 @@ test("Real-Window Harness: inspector renames and deletes a bot", async (t) => {
     assert.strictEqual(v.betaSessionRows, 1, `a bot with no real sessions shows exactly one synthetic home row (${JSON.stringify(v)})`);
     assert.strictEqual(v.betaGone, true, `delete must remove the agent from the API (${JSON.stringify(v)})`);
     assert.strictEqual(v.betaCardGone, true, `delete must remove the rail card (${JSON.stringify(v)})`);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test("Real-Window Harness: nested bot tree, dedupe and inspector chief", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-tree-home-"));
+  const chiefId = "agent_tree_chief";
+  const workerId = "agent_tree_worker";
+  const opensandDir = path.join(tmpHome, ".opensand");
+  const agentPath = path.join(opensandDir, "agents");
+  fs.mkdirSync(agentPath, { recursive: true });
+  const now = Date.now();
+  for (const [id, name] of [[chiefId, "Chief Bot"], [workerId, "Worker Bot"]] as const) {
+    fs.writeFileSync(path.join(agentPath, `${id}.json`), JSON.stringify({
+      id, name, role: "Tester", systemPrompt: `You are ${name}.`, kind: "AGENT",
+      model: "default", provider: "global", createdAt: now, updatedAt: now,
+    }), "utf8");
+  }
+  fs.writeFileSync(path.join(opensandDir, "config.json"), JSON.stringify({
+    endpoint: "http://localhost:11434/v1/chat/completions",
+    model: "llama3.1",
+    apiKey: "none",
+    autoApprove: false,
+    provider: "openai",
+    theme: "dark",
+    chiefOfStaffAgentId: chiefId,
+  }), "utf8");
+  seedSessions(tmpHome, [
+    { id: `bot_${chiefId}`, firstLine: "chief home" },
+    { id: "sess_tree_chief", firstLine: "chief task" },
+    { id: `bot_${workerId}`, firstLine: "worker home" },
+    { id: "sess_tree_worker", firstLine: "worker task" },
+    { id: "sess_tree_orphan", firstLine: "orphan chat" },
+  ]);
+  for (const [session, agentId] of [["sess_tree_chief", chiefId], ["sess_tree_worker", workerId]] as const) {
+    fs.writeFileSync(path.join(opensandDir, "sessions", session, "meta.json"), JSON.stringify({ agentId }), "utf8");
+  }
+
+  const script = [
+    "(async () => {",
+    "  const wait = async (fn, ms = 4000) => { const start = Date.now(); while (Date.now() - start < ms) { const value = fn(); if (value) return value; await new Promise((r) => setTimeout(r, 50)); } return fn(); };",
+    "  await wait(() => document.querySelectorAll('#botList .bot-rail-card').length >= 2);",
+    "  const cardCount = document.querySelectorAll('#botList .bot-rail-card').length;",
+    "  const noDefaultCard = !document.querySelector('#botList .bot-rail-card:not([data-agent-id])');",
+    "  const toggleCount = document.querySelectorAll('#botList .bot-tree-toggle').length;",
+    "  const findCard = (id) => document.querySelector(`#botList .bot-rail-card[data-agent-id='${id}']`);",
+    "  const findGroup = (id) => findCard(id)?.parentElement.querySelector('.bot-session-group');",
+    "  const findToggle = (id) => findCard(id)?.parentElement.querySelector('.bot-tree-toggle');",
+    "  const chiefBadge = !!findCard('agent_tree_chief')?.querySelector('.bot-chief-badge');",
+    "  const beforeExpanded = findToggle('agent_tree_worker')?.getAttribute('aria-expanded');",
+    "  const beforeHidden = findGroup('agent_tree_worker')?.hidden;",
+    "  const beforeRows = findGroup('agent_tree_worker')?.querySelectorAll('.bot-session-row').length || 0;",
+    "  findToggle('agent_tree_worker')?.click();",
+    "  await new Promise((r) => setTimeout(r, 120));",
+    "  const afterExpanded = findToggle('agent_tree_worker')?.getAttribute('aria-expanded');",
+    "  const afterHidden = findGroup('agent_tree_worker')?.hidden;",
+    "  const rowIds = [...(findGroup('agent_tree_worker')?.querySelectorAll('.bot-session-row') || [])].map((r) => r.dataset.sessionId);",
+    "  const storedExpanded = localStorage.getItem('opensand-bot-tree-expanded');",
+    "  const targetRow = [...(findGroup('agent_tree_worker')?.querySelectorAll('.bot-session-row') || [])].find((r) => r.dataset.sessionId === 'sess_tree_worker');",
+    "  targetRow?.click();",
+    "  await new Promise((r) => setTimeout(r, 250));",
+    "  const activeAfterOpen = window.__railState.getActive();",
+    "  await window.__railState.refresh();",
+    "  await new Promise((r) => setTimeout(r, 100));",
+    "  const persistedExpanded = findToggle('agent_tree_worker')?.getAttribute('aria-expanded');",
+    "  const persistedHidden = findGroup('agent_tree_worker')?.hidden;",
+    "  const globalIds = [...document.querySelectorAll('#sessionList .session-channel-item .btn-delete-session')].map((b) => b.dataset.sessionId);",
+    "  window.confirm = () => true;",
+    "  const delBtn = findGroup('agent_tree_worker')?.querySelector('.btn-delete-session[data-session-id=\"sess_tree_worker\"]');",
+    "  delBtn?.click();",
+    "  let sessionGone = false;",
+    "  for (let i = 0; i < 30; i++) {",
+    "    const all = await (await fetch('/api/sessions')).json();",
+    "    sessionGone = !(all || []).some((s) => s.id === 'sess_tree_worker');",
+    "    if (sessionGone) break;",
+    "    await new Promise((r) => setTimeout(r, 100));",
+    "  }",
+    "  let rowAfterDelete = [];",
+    "  for (let i = 0; i < 30; i++) {",
+    "    rowAfterDelete = [...(findGroup('agent_tree_worker')?.querySelectorAll('.bot-session-row') || [])].map((r) => r.dataset.sessionId);",
+    "    if (!rowAfterDelete.includes('sess_tree_worker')) break;",
+    "    await new Promise((r) => setTimeout(r, 100));",
+    "  }",
+    "  findCard('agent_tree_chief')?.querySelector('.btn-bot-inspect')?.click();",
+    "  await new Promise((r) => setTimeout(r, 150));",
+    "  const chiefButtons = [...document.querySelectorAll('.inspector-popover .inspector-chief')].map((b) => b.textContent);",
+    "  const clearBtn = [...document.querySelectorAll('.inspector-popover .inspector-chief')].find((b) => b.textContent === 'Clear chief');",
+    "  clearBtn?.click();",
+    "  await new Promise((r) => setTimeout(r, 300));",
+    "  const stateAfterClear = window.__railState.getChiefAgentId();",
+    "  const badgeAfterClear = document.getElementById('badgeActiveBot').textContent;",
+    "  findCard('agent_tree_worker')?.querySelector('.btn-bot-inspect')?.click();",
+    "  await new Promise((r) => setTimeout(r, 150));",
+    "  const workerButtons = [...document.querySelectorAll('.inspector-popover .inspector-chief')].map((b) => b.textContent);",
+    "  const setBtn = [...document.querySelectorAll('.inspector-popover .inspector-chief')].find((b) => b.textContent === 'Set as chief');",
+    "  setBtn?.click();",
+    "  await new Promise((r) => setTimeout(r, 400));",
+    "  const stateAfterSet = window.__railState.getChiefAgentId();",
+    "  const workerChiefBadge = !!findCard('agent_tree_worker')?.querySelector('.bot-chief-badge');",
+    "  return { cardCount, noDefaultCard, toggleCount, chiefBadge, beforeExpanded, beforeHidden, beforeRows, afterExpanded, afterHidden, rowIds, storedExpanded, activeAfterOpen, persistedExpanded, persistedHidden, globalIds, sessionGone, rowAfterDelete, chiefButtons, stateAfterClear, badgeAfterClear, workerButtons, stateAfterSet, workerChiefBadge };",
+    "})()",
+  ].join("\n");
+  try {
+    const r = await runHarness("default", { home: tmpHome, interactScript: script });
+    if (r.skipped) { t.skip(r.skipped); return; }
+    const v = r.interactResult || {};
+    assert.strictEqual(v.cardCount, 2, `one card per bot, no default row (${JSON.stringify(v)})`);
+    assert.strictEqual(v.noDefaultCard, true, `no Default Assistant card must exist (${JSON.stringify(v)})`);
+    assert.strictEqual(v.toggleCount, 2, `one disclosure per bot (${JSON.stringify(v)})`);
+    assert.strictEqual(v.chiefBadge, true, `chief row must carry the ★ chief badge (${JSON.stringify(v)})`);
+    assert.strictEqual(v.beforeExpanded, "false", `disclosure starts collapsed (${JSON.stringify(v)})`);
+    assert.strictEqual(v.beforeHidden, true, `nested group starts hidden (${JSON.stringify(v)})`);
+    assert.strictEqual(v.beforeRows, 2, `worker homepage + one real session are nested even when hidden (${JSON.stringify(v)})`);
+    assert.strictEqual(v.afterExpanded, "true", `disclosure click flips aria-expanded (${JSON.stringify(v)})`);
+    assert.strictEqual(v.afterHidden, false, `disclosure click reveals the nested group (${JSON.stringify(v)})`);
+    assert.ok(v.rowIds.includes("bot_agent_tree_worker") && v.rowIds.includes("sess_tree_worker"), `nested rows must include the home and owned session (${JSON.stringify(v)})`);
+    assert.match(String(v.storedExpanded), /agent_tree_worker/, `expanded id must persist to localStorage (${JSON.stringify(v)})`);
+    assert.strictEqual(v.activeAfterOpen?.currentSessionId, "sess_tree_worker", `nested row must open that session (${JSON.stringify(v)})`);
+    assert.strictEqual(v.activeAfterOpen?.activeAgentId, workerId, `nested row must activate the owning bot (${JSON.stringify(v)})`);
+    assert.strictEqual(v.persistedExpanded, "true", `expanded state must survive refreshBots() (${JSON.stringify(v)})`);
+    assert.strictEqual(v.persistedHidden, false, `nested group must stay revealed after refreshBots() (${JSON.stringify(v)})`);
+    assert.strictEqual(v.globalIds.includes("sess_tree_worker"), false, `global roster must not duplicate bot-owned sessions (${JSON.stringify(v)})`);
+    assert.strictEqual(v.globalIds.includes("bot_agent_tree_worker"), false, `global roster must not duplicate the bot home session (${JSON.stringify(v)})`);
+    assert.strictEqual(v.globalIds.includes("sess_tree_orphan"), true, `orphan sessions must remain in the global roster (${JSON.stringify(v)})`);
+    assert.strictEqual(v.sessionGone, true, `nested delete must remove the session via the API (${JSON.stringify(v)})`);
+    assert.strictEqual(v.rowAfterDelete.includes("sess_tree_worker"), false, `nested delete must drop the row (${JSON.stringify(v)})`);
+    assert.ok(v.chiefButtons.includes("Clear chief"), `inspector of the chief must offer Clear chief (${JSON.stringify(v)})`);
+    assert.strictEqual(v.stateAfterClear ?? null, null, `Clear chief must reset the renderer's chief id (${JSON.stringify(v)})`);
+    assert.match(String(v.badgeAfterClear), /No chief chosen/, `clearing chief must reset the badge (${JSON.stringify(v)})`);
+    assert.ok(v.workerButtons.includes("Set as chief"), `inspector of a non-chief must offer Set as chief (${JSON.stringify(v)})`);
+    assert.strictEqual(v.stateAfterSet, workerId, `Set as chief must update the renderer's chief id (${JSON.stringify(v)})`);
+    assert.strictEqual(v.workerChiefBadge, true, `new chief must gain the badge without a reload (${JSON.stringify(v)})`);
+    // REST settings read a separate cached bridge instance, so verify the
+    // persisted file directly (the renderer's IPC state is asserted above).
+    const persisted = JSON.parse(fs.readFileSync(path.join(tmpHome, ".opensand", "config.json"), "utf8"));
+    assert.strictEqual(persisted.chiefOfStaffAgentId, workerId, `Set as chief must persist to config.json (${JSON.stringify(v)})`);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }

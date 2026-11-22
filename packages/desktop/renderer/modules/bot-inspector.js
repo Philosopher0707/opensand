@@ -22,6 +22,7 @@ function close() {
 
 export function openBotInspector({
   bot, anchor, loadSessions, onRename, onIdentity, onModel, onDelete, onOpenSession, onNewSession,
+  isChief, onSetChief,
 } = {}) {
   close();
   let busy = false;
@@ -63,7 +64,9 @@ export function openBotInspector({
   model.type = 'button';
   const del = el('button', 'inspector-delete', 'Delete bot');
   del.type = 'button';
-  actions.append(rename, cancel, identity, model, del);
+  const chief = el('button', 'inspector-chief', isChief ? 'Clear chief' : 'Set as chief');
+  chief.type = 'button';
+  actions.append(rename, cancel, identity, model, del, chief);
   manage.appendChild(actions);
   popover.appendChild(manage);
 
@@ -105,6 +108,7 @@ export function openBotInspector({
     if (!window.confirm(`Are you sure you want to delete bot "${bot?.name}"?`)) return;
     void run(async () => { await onDelete?.(bot); returnFocus = liveAnchor() ?? returnFocus; close(); });
   };
+  chief.onclick = () => void run(async () => { await onSetChief?.(bot, !isChief); close(); });
   newBtn.onclick = () => replaceDialog(() => onNewSession?.(bot));
 
   async function renderSessions() {
