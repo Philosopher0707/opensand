@@ -63,6 +63,7 @@ import {
   GalleryTemplateItem,
   GalleryQueryOptions,
   buildToolDiscoverySummary,
+  RulesLoader,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand, skillWriteNeedsGate, memoryWriteNeedsGate } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -639,6 +640,10 @@ export class DesktopIpcBridge extends EventEmitter {
       this.settings.maxContextTokens ??
       (await resolveModelContextWindow(targetModel, targetEndpoint, this.settings.apiKey));
 
+    const rulesLoader = new RulesLoader({ workspaceDir: folder });
+    const { globalRules, rulesContext } = rulesLoader.load();
+    const userInstructions = [customInstructions, globalRules].filter(Boolean).join('\n\n') || undefined;
+
     const coordinator = new AgentCoordinator({
       llmClient,
       daemon: this.daemon,
@@ -648,11 +653,13 @@ export class DesktopIpcBridge extends EventEmitter {
       workspaceDir: folder,
       sandboxProfile,
       maxContextTokens: maxTokens,
+      rulesLoader,
       systemPromptContext: {
-        userInstructions: customInstructions,
+        userInstructions,
         learnedRules,
         memoryContext,
         skillsContext,
+        rulesContext,
       },
       onApprovalRequired: async (req: ApprovalRequest) => {
         return this.requestUserApproval(req.toolName, req.arguments, req.reason, req);

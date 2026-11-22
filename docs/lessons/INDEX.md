@@ -91,5 +91,6 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-22 · [Session list hermetic state dir, unread badges, and reload persistence](2026-11-22-session-list-hermetic-state-dir-and-unread-badges.md)
 - 2026-11-22 · [Keep one stable Escape listener, and assert badges where you rendered them](2026-11-22-skills-esc-listener-and-badge-location.md)
 - 2026-11-22 · [Streaming delta reducer retained stale raw buffer on non-think deltas](2026-11-22-streaming-delta-buffer-stale-retention.md)
+- 2026-11-22 · [Untrusted origin sanitisation strips path slashes to underscores](2026-11-22-untrusted-origin-sanitisation-and-design-drifts.md)
 - 2026-11-22 · [A new view panel must beat the legacy `view-panel` rules, and absence assertions must be flipped](2026-11-22-view-panel-class-collision-and-stale-absence-assertions.md)
 - 2026-11-22 · [Worktree dependencies copied from another branch have stale workspace links](2026-11-22-worktree-donor-node-modules-stale-links.md)

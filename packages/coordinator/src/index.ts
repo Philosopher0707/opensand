@@ -36,3 +36,4 @@ export * from "./github-client.js";
 export * from "./provider-clients.js";
 
 export * from './errors.js';
+export * from "./rules-loader.js";

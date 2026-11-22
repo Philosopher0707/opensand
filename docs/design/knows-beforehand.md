@@ -475,6 +475,8 @@ Rules and lessons often begin as repository-specific quirks before proving to be
 
 Step 1 is self-contained, fully buildable immediately, and introduces zero regressions to existing coordinator flows.
 
+**Status (Step 1):** Complete — RulesLoader, split trust boundary, token budget shedding, turn refresh cache, and coordinator/CLI/Desktop prompt wiring implemented and verified.
+
 ### 7.1 Files to Change on `origin/main`
 
 | File | Line Anchors | Change Description |

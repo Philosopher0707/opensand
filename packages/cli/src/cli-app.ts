@@ -23,6 +23,7 @@ import {
   SessionLockedError,
   SessionLockHandle,
   loadSessionMetadata,
+  RulesLoader,
 } from "@opensand/coordinator";
 import { sigIntAction, formatResumeHint } from "./interrupt.js";
 import { matchSession, validateResumeEnvironment } from "./sessions.js";
@@ -436,6 +437,10 @@ Examples:
       apiKey: config.apiKey,
     });
 
+    const rulesLoader = new RulesLoader({ workspaceDir: trustedFolder });
+    const { globalRules, rulesContext } = rulesLoader.load();
+    const userInstructions = [instructions, globalRules].filter(Boolean).join("\n\n") || undefined;
+
     return new AgentCoordinator({
       sessionId: sessionIdOverride,
       llmClient,
@@ -443,10 +448,12 @@ Examples:
       workspaceDir: trustedFolder,
       sandboxProfile,
       allowedTools: activeAgent?.allowedTools,
+      rulesLoader,
       systemPromptContext: {
-        userInstructions: instructions,
+        userInstructions,
         learnedRules,
         memoryContext,
+        rulesContext,
       },
       onApprovalRequired: async (req) => {
         const isInteractive = Boolean(input.isTTY && output.isTTY);
