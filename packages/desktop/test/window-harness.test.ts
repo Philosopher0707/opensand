@@ -796,7 +796,11 @@ test("Real-Window Harness: delegated results persist and reload without double r
     // skip the buffered copies (knownKeys), so each appears exactly once.
     "  const card = document.querySelector('#botList .bot-rail-card[data-agent-id=\"" + targetId + "\"]');",
     "  if (card) card.click();",
-    "  await new Promise((r) => setTimeout(r, 300));",
+    // Poll for both discrete delegated markers rather than relying on a fixed sleep.
+    "  const deadline = Date.now() + 2000;",
+    "  while (Date.now() < deadline && document.querySelectorAll('#messageFeed .message-delegated-marker').length < 2) {",
+    "    await new Promise((r) => setTimeout(r, 50));",
+    "  }",
     "  const feed = document.getElementById('messageFeed').textContent;",
     "  return {",
     "    ...beforeOpen,",
@@ -825,7 +829,7 @@ test("Real-Window Harness: delegated results persist and reload without double r
     assert.strictEqual(v.feedA, 1, `delegated result A must render exactly once (${JSON.stringify(v)})`);
     assert.strictEqual(v.feedB, 1, `delegated result B must render exactly once (${JSON.stringify(v)})`);
     assert.strictEqual(v.feedPersisted, true, `persisted bot history must still render (${JSON.stringify(v)})`);
-    assert.ok(v.markers >= 1, `delegated messages must be visibly marked in the feed (${JSON.stringify(v)})`);
+    assert.strictEqual(v.markers, 2, `each delegated result must be a discrete, visibly marked message (${JSON.stringify(v)})`);
     assert.strictEqual(v.bufferedAfterOpen, 0, `buffered copies must be drained (${JSON.stringify(v)})`);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });

@@ -4211,6 +4211,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       if (ev.role === 'assistant') {
+        // A persisted delegated result is its own message; never fold it into
+        // preceding history or let its flag leak into the following turn.
+        if (ev.delegated && currentAssistantTurn) {
+          turns.push(currentAssistantTurn);
+          currentAssistantTurn = null;
+        }
         if (!currentAssistantTurn) {
           currentAssistantTurn = {
             role: 'assistant',
@@ -4251,6 +4257,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             callItems.push(item);
           }
           currentAssistantTurn.blocks.push({ type: 'tools', toolCalls: callItems });
+        }
+        if (ev.delegated && currentAssistantTurn) {
+          turns.push(currentAssistantTurn);
+          currentAssistantTurn = null;
         }
         continue;
       }
@@ -5254,7 +5264,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Real-time Event Stream Handling
-  client.onEvent(async (event) => {
+  client.onEvent((event) => {
     // Delegated turns belong to the child bot's own session, not the parent's.
     // Handle them before the view/session filters so background bots still
     // receive their output even while another session or view is open.

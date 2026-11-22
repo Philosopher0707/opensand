@@ -1258,7 +1258,11 @@ export class DesktopIpcBridge extends EventEmitter {
             return null;
           }
         })
-        .filter((ev) => ev?.kind === 'delegated_result');
+        .filter((ev) => ev?.kind === 'delegated_result'
+          && ev?.data
+          && typeof ev.data.content === 'string'
+          && typeof ev.data.sourceSessionId === 'string'
+          && typeof ev.data.childSessionId === 'string');
       if (seen.some((ev) => ev.data?.sourceSessionId === input.sourceSessionId
         && ev.data?.childSessionId === input.childSessionId)) {
         return;
@@ -1319,7 +1323,10 @@ export class DesktopIpcBridge extends EventEmitter {
       for (const line of lines) {
         try {
           const ev = JSON.parse(line);
-          if (ev.kind === 'delegated_result' && ev.data) {
+          if (ev.kind === 'delegated_result' && ev.data
+            && typeof ev.data.content === 'string'
+            && typeof ev.data.sourceSessionId === 'string'
+            && typeof ev.data.childSessionId === 'string') {
             events.push({
               role: 'assistant',
               content: ev.data.content,

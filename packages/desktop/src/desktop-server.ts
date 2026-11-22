@@ -514,19 +514,25 @@ export class DesktopServer {
         res.end(JSON.stringify({ error: 'Invalid sessionId format' }));
         return;
       }
-      const body = await this.readJsonBody(req);
-      if (!body.sourceSessionId || !body.childSessionId || !body.agentId || typeof body.content !== 'string') {
+      try {
+        const body = await this.readJsonBody(req);
+        if (!body.sourceSessionId || !body.childSessionId || !body.agentId || typeof body.content !== 'string') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing or invalid delegated result fields' }));
+          return;
+        }
+        await this.bridge.recordDelegatedResult({
+          targetSessionId: sessionId,
+          sourceSessionId: String(body.sourceSessionId),
+          childSessionId: String(body.childSessionId),
+          agentId: String(body.agentId),
+          content: body.content,
+        });
+      } catch (err: any) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Missing or invalid delegated result fields' }));
+        res.end(JSON.stringify({ error: err?.message || 'Failed to record delegated result' }));
         return;
       }
-      await this.bridge.recordDelegatedResult({
-        targetSessionId: sessionId,
-        sourceSessionId: String(body.sourceSessionId),
-        childSessionId: String(body.childSessionId),
-        agentId: String(body.agentId),
-        content: body.content,
-      });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true }));
       return;
