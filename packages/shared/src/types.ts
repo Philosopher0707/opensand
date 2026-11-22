@@ -692,6 +692,7 @@ export interface DesktopSettings {
   provider: string;
   theme: 'dark' | 'light' | 'system';
   maxContextTokens?: number;
+  chiefOfStaffAgentId?: string | null;
 }
 
 export interface SessionSummary {

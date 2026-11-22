@@ -45,7 +45,7 @@ export function setBotCardBadge(agentId, text) {
 }
 
 export function createBotRail(options = {}) {
-  const { buffers, getAgents, getActiveAgentId, onIdentity, onModel, onSelect, onDelete, onInspect } = options;
+  const { buffers, getAgents, getActiveAgentId, getChiefAgentId, onIdentity, onModel, onSelect, onDelete, onInspect } = options;
   const list = document.getElementById('botList');
   let lastAgents = [];
   let filter = '';
@@ -67,11 +67,11 @@ export function createBotRail(options = {}) {
     const model = bot?.model || 'default';
     const label = bot
       ? `${bot.name || ''} — ${provider} · ${model}`
-      : 'Default Assistant — global · default';
+      : 'No chief chosen — global · default';
     return `class="bot-rail-card bot-item ${active ? 'active' : ''}"
       ${id ? `data-agent-id="${id}"` : ''} data-status="${status}"
       role="button" tabindex="0" aria-current="${active}" aria-label="${escapeHtml(label)}"
-      title="${escapeHtml(bot?.role || bot?.name || 'Default Assistant')}"`;
+      title="${escapeHtml(bot?.role || bot?.name || 'No chief chosen')}"`;
   }
 
   function statusDot() {
@@ -82,7 +82,7 @@ export function createBotRail(options = {}) {
     if (!bot) {
       return `<div ${cardAttrs(null, activeId)}>
         <span class="bot-avatar-wrap"><span class="bot-avatar default-avatar">${uiIcon('bot')}</span>${statusDot()}</span>
-        <span class="bot-item-info"><span class="bot-item-name">Default Assistant</span>
+        <span class="bot-item-info"><span class="bot-item-name">No chief chosen</span>
           <span class="bot-item-sub">global · default</span></span>
       </div>`;
     }
@@ -176,7 +176,9 @@ export function createBotRail(options = {}) {
     const activeId = typeof getActiveAgentId === 'function' ? getActiveAgentId() : null;
     const matchesAll = lastAgents.filter(matches);
     const shown = filter.trim() ? matchesAll : (expanded ? matchesAll : matchesAll.slice(0, VISIBLE_LIMIT));
-    const defaultRow = filter.trim() && matchesAll.length === 0 ? '' : cardHtml(null, activeId);
+    // Once a chief is chosen there is no "Default Assistant" bot to route to.
+    const noDefault = (filter.trim() && matchesAll.length === 0) || Boolean(getChiefAgentId?.());
+    const defaultRow = noDefault ? '' : cardHtml(null, activeId);
     list.innerHTML = defaultRow + (shown.length
       ? shown.map((bot) => cardHtml(bot, activeId)).join('')
       : `<div class="bot-rail-empty">${filter.trim() ? 'No bots match' : 'No bots yet'}</div>`);

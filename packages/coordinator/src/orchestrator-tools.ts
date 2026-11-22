@@ -441,6 +441,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       },
     },
     requiresGate: "computerUse",
+    chiefOnly: true,
     handler: async (args, context) => {
       const agent = await store.getAgent(args.agent_id_or_name);
       if (!agent) {
@@ -626,6 +627,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         },
       },
     },
+    chiefOnly: true,
     handler: async (args) => {
       const entry = findDelegation(String(args.agent_id ?? ""));
       if (!entry) {

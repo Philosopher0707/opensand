@@ -823,28 +823,61 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
   }
 });
 
-test("Real-Window Harness: Default Assistant card clears session without load error", async (t) => {
-  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-default-card-home-"));
+test("Real-Window Harness: chosen chief routes on boot and opens the picker", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-chief-boot-home-"));
+  const chiefId = "agent_chief_ab12cd34";
+  const opensandDir = path.join(tmpHome, ".opensand");
+  const agentPath = path.join(opensandDir, "agents");
+  fs.mkdirSync(agentPath, { recursive: true });
+  const now = Date.now();
+  fs.writeFileSync(path.join(agentPath, `${chiefId}.json`), JSON.stringify({
+    id: chiefId, name: "Chief Bot", role: "Lead", systemPrompt: "lead",
+    kind: "AGENT", model: "default", provider: "global", createdAt: now, updatedAt: now,
+  }), "utf8");
+  fs.writeFileSync(path.join(opensandDir, "config.json"), JSON.stringify({
+    endpoint: "http://localhost:11434/v1/chat/completions",
+    model: "llama3.1",
+    apiKey: "none",
+    autoApprove: false,
+    provider: "openai",
+    theme: "dark",
+    chiefOfStaffAgentId: chiefId,
+  }), "utf8");
+
   const script = [
     "(async () => {",
-    "  await new Promise((r) => setTimeout(r, 350));",
-    "  const card = document.querySelector('#botList .bot-rail-card:not([data-agent-id])');",
-    "  card.click();",
-    "  await new Promise((r) => setTimeout(r, 250));",
-    "  return {",
-    "    feed: document.getElementById('messageFeed').textContent,",
-    "    active: window.__railState.getActive(),",
-    "    welcomeVisible: !document.getElementById('welcomeBanner').classList.contains('hidden'),",
-    "  };",
+    "  for (let i = 0; i < 40; i++) {",
+    "    const a = window.__railState?.getActive();",
+    "    if (a && a.activeAgentId === 'agent_chief_ab12cd34' && a.currentSessionId === 'bot_agent_chief_ab12cd34') break;",
+    "    await new Promise((r) => setTimeout(r, 100));",
+    "  }",
+    "  const defaultCard = !!document.querySelector('#botList .bot-rail-card:not([data-agent-id])');",
+    "  const active = window.__railState.getActive();",
+    "  const badge = document.getElementById('badgeActiveBot').textContent;",
+    "  const stateChief = window.__railState.getChiefAgentId();",
+    "  const chooseBtn = document.getElementById('btnChooseChief');",
+    "  chooseBtn?.click();",
+    "  await new Promise((r) => setTimeout(r, 200));",
+    "  const picker = document.querySelector('[role=\"dialog\"][aria-label=\"Choose chief of staff\"]');",
+    "  const pickerText = picker?.textContent || '';",
+    "  const clearButton = !!picker && Array.from(picker.querySelectorAll('button')).some((b) => b.textContent === 'No chief');",
+    "  picker?.remove();",
+    "  return { defaultCard, active, badge, stateChief, hasChoose: !!chooseBtn, hasPicker: !!picker, pickerText, clearButton };",
     "})()",
   ].join("\n");
   try {
     const r = await runHarness("default", { home: tmpHome, interactScript: script });
     if (r.skipped) { t.skip(r.skipped); return; }
     const v = r.interactResult || {};
-    assert.ok(!String(v.feed).includes('Error loading session:'), `default card must not show a session error (${JSON.stringify(v)})`);
-    assert.strictEqual(v.active?.currentSessionId, null, `default card must clear the session id (${JSON.stringify(v)})`);
-    assert.strictEqual(v.welcomeVisible, true, `default card must restore the welcome banner (${JSON.stringify(v)})`);
+    assert.strictEqual(v.defaultCard, false, `no Default Assistant card once a chief is chosen (${JSON.stringify(v)})`);
+    assert.strictEqual(v.active?.activeAgentId, chiefId, `boot must activate the chief (${JSON.stringify(v)})`);
+    assert.strictEqual(v.active?.currentSessionId, `bot_${chiefId}`, `boot must open the chief's bot_ session (${JSON.stringify(v)})`);
+    assert.match(String(v.badge), /Chief Bot/, `badge must show the chief's name (${JSON.stringify(v)})`);
+    assert.strictEqual(v.stateChief, chiefId, `renderer must expose the chosen chief (${JSON.stringify(v)})`);
+    assert.strictEqual(v.hasChoose, true, `Choose chief button must exist (${JSON.stringify(v)})`);
+    assert.strictEqual(v.hasPicker, true, `Choose chief button must open the picker dialog (${JSON.stringify(v)})`);
+    assert.match(String(v.pickerText), /Chief Bot/, `picker must list the chief by name (${JSON.stringify(v)})`);
+    assert.strictEqual(v.clearButton, true, `picker must offer No chief (${JSON.stringify(v)})`);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }

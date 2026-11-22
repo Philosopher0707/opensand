@@ -52,4 +52,21 @@ describe("Tool Resolution Gate", () => {
       `Found unregistered tools in CURATED_GALLERY_TEMPLATES:\n${unresolvableTemplateTools.join("\n")}`
     );
   });
+
+  it("chiefOnly tools bypass computerUse only with chiefDelegation", async () => {
+    const daemon = new LocalExecDaemon();
+    daemon.tools.registerCustomTool({
+      definition: { type: "function", function: { name: "probe_chief_tool", description: "probe", parameters: { type: "object", properties: {} } } },
+      handler: async () => ({ ok: true }),
+      requiresGate: "computerUse",
+      chiefOnly: true,
+    });
+    const gates = { computerUseAllowed: false, deviceToolsAllowed: false, standingAllowlist: [] };
+    const denied = await daemon.executeTool("probe_chief_tool", {}, { permissionGates: gates });
+    const allowed = await daemon.executeTool("probe_chief_tool", {}, { permissionGates: gates, chiefDelegation: true });
+    assert.strictEqual(denied.status, "permission_pending");
+    assert.strictEqual(allowed.status, "ok");
+    const other = await daemon.executeTool("exec_command", { command: "true" }, { permissionGates: gates, chiefDelegation: true });
+    assert.strictEqual(other.status, "permission_pending", "chiefDelegation must not open other custom tools");
+  });
 });

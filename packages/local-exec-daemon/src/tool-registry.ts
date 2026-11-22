@@ -37,6 +37,8 @@ export interface ToolExecutionContext {
    * killed when the user cancels the turn instead of running to its timeout.
    */
   signal?: AbortSignal;
+  /** Scoped delegation authority: only chief-only tools may bypass their gate. */
+  chiefDelegation?: boolean;
   /**
    * Subagent delegation context. Set by the turn loop so delegate_to_agent
    * can stream the child turn's events up to the UI and bound nesting depth.
@@ -57,6 +59,7 @@ export interface CustomToolRegistration {
   definition: ToolDefinition;
   handler: CustomToolHandler;
   requiresGate?: "computerUse" | "deviceTools";
+  chiefOnly?: boolean;
 }
 
 export const CORE_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
@@ -739,7 +742,8 @@ export class ToolRegistry {
       // 9. Custom Registered Tool
       const custom = this.customTools.get(name);
       if (custom) {
-        if (custom.requiresGate === "computerUse" && context?.permissionGates && !context.permissionGates.computerUseAllowed) {
+        const chiefBypass = custom.chiefOnly === true && context?.chiefDelegation === true;
+        if (!chiefBypass && custom.requiresGate === "computerUse" && context?.permissionGates && !context.permissionGates.computerUseAllowed) {
           return {
             status: "permission_pending",
             approvalId: context?.approvalId ?? `req-${Date.now()}`,

@@ -50,6 +50,8 @@ export interface CoordinatorOptions {
   workspaceRoot?: string;
   /** Delegation depth: how many delegate_to_agent hops above this coordinator. */
   subagentDepth?: number;
+  /** Scoped delegation authority for the user-chosen chief of staff. */
+  chiefDelegation?: boolean;
   mcpManager?: McpManager;
 }
 
@@ -74,6 +76,7 @@ export class AgentCoordinator {
   private eventListeners: Set<TurnEventListener> = new Set();
   private maxTurnIterations: number;
   private readonly subagentDepth: number;
+  private readonly chiefDelegation: boolean;
   private initialized = false;
 
   constructor(options: CoordinatorOptions) {
@@ -92,6 +95,7 @@ export class AgentCoordinator {
     }
     this.maxTurnIterations = options.maxTurnIterations ?? 150;
     this.subagentDepth = options.subagentDepth ?? 0;
+    this.chiefDelegation = options.chiefDelegation === true;
     this.mcpManager = options.mcpManager;
     this.workspaceDir = options.workspaceDir ?? options.workspaceRoot ?? process.cwd();
 
@@ -414,6 +418,7 @@ export class AgentCoordinator {
           return this.daemon.executeTool(item.tc.function.name, item.args, {
             approvalGranted: item.execution.approvalGranted,
             permissionGates: item.execution.gates,
+            chiefDelegation: this.chiefDelegation,
             subagent: this.buildDelegationContext(item.tc.function.name),
             signal,
           });
@@ -459,6 +464,7 @@ export class AgentCoordinator {
             const execResult = depthBlock ?? await this.daemon.executeTool(item.tc.function.name, item.args, {
               approvalGranted: item.execution.approvalGranted,
               permissionGates: item.execution.gates,
+              chiefDelegation: this.chiefDelegation,
               subagent: this.buildDelegationContext(item.tc.function.name),
               signal,
             });

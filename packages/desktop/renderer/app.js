@@ -11,6 +11,7 @@ import { createSessionBuffers } from './modules/session-buffers.js';
 import { createBotRail, setBotCardBadge, setBotCardStatus } from './modules/bot-rail.js';
 import { openBotIdentity, safeAvatarMarkup } from './modules/bot-identity.js';
 import { openBotInspector } from './modules/bot-inspector.js';
+import { openChiefPicker } from './modules/chief-picker.js';
 
 // Native title bar is hiddenInset on macOS; CSS keys traffic-light clearance off this.
 // Detected via userAgent for instant CSS styling, and via window.opensand for IPC bridge.
@@ -1275,6 +1276,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // State
   let currentSessionId = null;
   let activeAgentId = null;
+  let chiefAgentId = null;
   let turnBusy = false;
   let queuedQueries = [];
   let activeApprovalId = null;
@@ -1326,7 +1328,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await client.deleteAgent(b.id);
     if (activeAgentId === b.id) {
       activeAgentId = null;
-      badgeActiveBot.textContent = 'Default Assistant';
+      badgeActiveBot.textContent = 'No chief chosen';
     }
     await refreshBots();
     refreshTokenBadge();
@@ -1366,6 +1368,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     buffers: sessionBuffers,
     getAgents: () => client.getAgents(),
     getActiveAgentId: () => activeAgentId,
+    getChiefAgentId: () => chiefAgentId,
     onIdentity: botIdentityHandler,
     onModel: botModelHandler,
     onDelete: botDeleteHandler,
@@ -1373,7 +1376,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     onSelect: (bot) => {
       activeAgentId = bot?.id || null;
       void selectSession(bot ? 'bot_' + bot.id : null);
-      badgeActiveBot.textContent = bot ? bot.name : 'Default Assistant';
+      badgeActiveBot.textContent = bot ? bot.name : 'No chief chosen';
       persistAgent();
     },
   });
@@ -1407,9 +1410,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btnBotNew')?.addEventListener('click', () => {
     document.getElementById('btnOpenCreateBot')?.click();
   });
+  document.getElementById('btnChooseChief')?.addEventListener('click', async (event) => {
+    const agents = await client.getAgents().catch(() => []);
+    const applyChief = async (id) => {
+      await client.updateSettings({ chiefOfStaffAgentId: id });
+      chiefAgentId = id;
+      await refreshSettings();
+      await refreshBots();
+      const picked = (agents || []).find((a) => a.id === id);
+      if (badgeActiveBot) badgeActiveBot.textContent = picked ? picked.name : 'No chief chosen';
+    };
+    openChiefPicker({
+      agents,
+      currentId: chiefAgentId,
+      anchor: event.currentTarget,
+      onPick: (id) => void applyChief(id),
+      onClear: () => void applyChief(null),
+    });
+  });
   window.__railState = {
     buffers: sessionBuffers,
     getActive: () => ({ currentSessionId, activeAgentId }),
+    getChiefAgentId: () => chiefAgentId,
     emit: (event) => client.dispatch(event),
     refresh: () => refreshBots(),
   };
@@ -1584,7 +1606,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (detailBotRole) detailBotRole.textContent = 'Universal Clean-Room Coding Agent';
         if (detailBotModelCode) detailBotModelCode.textContent = badgeModel?.textContent || 'stealth/crouton-alpha';
         if (detailBotPromptPreview) {
-          detailBotPromptPreview.textContent = 'Default Assistant System Prompt:\nYou are OpenSand, a local-first, universal clean-room coding agent.\nAdhere strictly to AGENTS.md rules: ground before action, surgical edits, zero unverified assumptions, honest verification.';
+          detailBotPromptPreview.textContent = 'No chief chosen. System Prompt:\nYou are OpenSand, a local-first, universal clean-room coding agent.\nAdhere strictly to AGENTS.md rules: ground before action, surgical edits, zero unverified assumptions, honest verification.';
         }
       }
 
@@ -1781,6 +1803,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const s = await client.getSettings();
       const modelName = s.model || 'Default';
+      chiefAgentId = s.chiefOfStaffAgentId ?? null;
 
       if (badgeModel) {
         badgeModel.textContent = modelName;
@@ -2446,7 +2469,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               await client.deleteAgent(a.id);
               if (activeAgentId === a.id) {
                 activeAgentId = null;
-                badgeActiveBot.textContent = 'Default Assistant';
+                badgeActiveBot.textContent = 'No chief chosen';
               }
               refreshBots();
               refreshTokenBadge();
@@ -4755,7 +4778,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if (triggerChar === '@') {
       items.push({
         icon: '🤖',
-        title: '@Default Assistant',
+        title: '@No chief chosen',
         desc: 'Universal clean-room coding assistant',
         tag: 'Bot',
         agentId: null,
@@ -6209,16 +6232,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   await refreshSettings();
   await refreshBots();
+  const bootAgents = await client.getAgents().catch(() => []);
   // Validate persisted bot against live list
   if (activeAgentId) {
-    const liveAgents = await client.getAgents();
-    if (Array.isArray(liveAgents) && liveAgents.some((a) => a.id === activeAgentId)) {
-      const picked = liveAgents.find((a) => a.id === activeAgentId);
+    if (Array.isArray(bootAgents) && bootAgents.some((a) => a.id === activeAgentId)) {
+      const picked = bootAgents.find((a) => a.id === activeAgentId);
       badgeActiveBot.textContent = picked.name;
     } else {
       activeAgentId = null;
       localStorage.removeItem(AGENT_KEY);
     }
+  }
+  // A configured chief must still exist; drop a stale id once so boot cannot
+  // route the user to a bot that was deleted outside this window.
+  const bootChiefId = chiefAgentId;
+  const bootChief = bootChiefId && Array.isArray(bootAgents)
+    ? bootAgents.find((a) => a.id === bootChiefId) : null;
+  if (bootChiefId && !bootChief) {
+    await client.updateSettings({ chiefOfStaffAgentId: null });
+    chiefAgentId = null;
+    if (badgeActiveBot && !activeAgentId) badgeActiveBot.textContent = 'No chief chosen';
   }
   await refreshBots();
   await refreshTasks();
@@ -6232,6 +6265,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       currentSessionId = null;
       localStorage.removeItem(SESSION_KEY);
     }
+  }
+  // First run with a chief chosen: route straight to the chief's bot session.
+  if (bootChief && !currentSessionId && !activeAgentId) {
+    activeAgentId = bootChief.id;
+    currentSessionId = 'bot_' + bootChief.id;
+    if (badgeActiveBot) badgeActiveBot.textContent = bootChief.name;
+    await selectSession(currentSessionId);
+    persistAgent();
   }
   setTurnBusy(false);
   await refreshTokenBadge();

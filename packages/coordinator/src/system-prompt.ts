@@ -10,6 +10,7 @@ export interface SystemPromptContext {
   shell?: string;
   agentName?: string;
   agentRole?: string;
+  chiefInstructions?: string;
 }
 
 export function buildSystemPrompt(context: SystemPromptContext = {}): string {
@@ -64,6 +65,6 @@ registered tool with the capabilities it belongs to (tasks, memory, vault,
 skills, routines, rooms, sentinel, attachments, templates, vision, discovery).
 The tools you declare there become available in the next step. Do not guess
 tool names; discover them.
-${context.skillsContext ? `\n${context.skillsContext}\n` : ""}${context.memoryContext ? `\n## Stored User & Team Memories\n${context.memoryContext}\n` : ""}${context.learnedRules ? `\n## Continuous Learned User Guidelines\n${context.learnedRules}\n` : ""}${personaBoundary}${context.userInstructions ? `\n## User Custom Instructions\n${context.userInstructions}` : ""}
+${context.skillsContext ? `\n${context.skillsContext}\n` : ""}${context.memoryContext ? `\n## Stored User & Team Memories\n${context.memoryContext}\n` : ""}${context.learnedRules ? `\n## Continuous Learned User Guidelines\n${context.learnedRules}\n` : ""}${personaBoundary}${context.chiefInstructions ? `\n## Delegation Protocol\n${context.chiefInstructions}` : ""}${context.userInstructions ? `\n## User Custom Instructions\n${context.userInstructions}` : ""}
 `.trim();
 }

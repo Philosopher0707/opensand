@@ -44,4 +44,13 @@ describe("SystemPrompt", () => {
     assert.match(prompt, /## User Custom Instructions/);
     assert.doesNotMatch(prompt.split("\n")[0], /You are OpenSand/);
   });
+
+  it("adds a delegation protocol only for the chief", () => {
+    const chief = buildSystemPrompt({ agentName: "CTO Bot", agentRole: "Chief of Staff", chiefInstructions: "Delegate specialist work via delegate_to_agent." });
+    const plain = buildSystemPrompt({ agentName: "Coder", agentRole: "Engineer" });
+    assert.match(chief, /## Delegation Protocol/);
+    assert.match(chief, /Delegate specialist work via delegate_to_agent\./);
+    assert.doesNotMatch(plain, /## Delegation Protocol/);
+    assert.match(plain, /You are Coder — Engineer/);
+  });
 });

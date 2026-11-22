@@ -799,3 +799,34 @@ test("DesktopIpcBridge - ensureDaemon restores stopped and stale daemon automati
     rmTmp(tmpDir);
   }
 });
+
+test("chief settings persist, validate and invalidate coordinators", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-chief-settings-"));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    const a = await bridge.createAgent({ name: "Chief", role: "Lead", systemPrompt: "lead" });
+    await bridge.updateSettings({ chiefOfStaffAgentId: a.id });
+    assert.strictEqual((await bridge.getSettings()).chiefOfStaffAgentId, a.id);
+    const c1 = await bridge.createSessionCoordinator(`bot_${a.id}`, a.id);
+    await bridge.updateSettings({ chiefOfStaffAgentId: null });
+    const c2 = await bridge.createSessionCoordinator(`bot_${a.id}`, a.id);
+    assert.notStrictEqual(c2, c1, "changing chief must evict cached coordinators");
+    await assert.rejects(() => bridge.updateSettings({ chiefOfStaffAgentId: "agent_missing" }));
+
+    // Verified via AgentCoordinator.getActiveToolDefinitions(): the coordinator's
+    // public resolver filtered by its allowedTools whitelist.
+    await bridge.updateSettings({ chiefOfStaffAgentId: a.id });
+    const chiefCoord = await bridge.createSessionCoordinator(`bot_${a.id}`, a.id);
+    const plain = await bridge.createAgent({ name: "Plain", role: "Lead", systemPrompt: "x" });
+    const plainCoord = await bridge.createSessionCoordinator(`bot_${plain.id}`, plain.id);
+    const chiefTools = chiefCoord.getActiveToolDefinitions().map((d) => d.function.name);
+    const plainTools = plainCoord.getActiveToolDefinitions().map((d) => d.function.name);
+    assert.ok(chiefTools.includes("delegate_to_agent"), `chief must resolve delegate_to_agent (${JSON.stringify(chiefTools)})`);
+    assert.ok(chiefTools.includes("await_agent"), `chief must resolve await_agent (${JSON.stringify(chiefTools)})`);
+    assert.ok(!plainTools.includes("delegate_to_agent"), `non-chief must not resolve delegate_to_agent (${JSON.stringify(plainTools)})`);
+    assert.ok(!plainTools.includes("await_agent"), `non-chief must not resolve await_agent (${JSON.stringify(plainTools)})`);
+
+    await bridge.deleteAgent(a.id);
+    assert.strictEqual((await bridge.getSettings()).chiefOfStaffAgentId ?? null, null);
+  } finally { fs.rmSync(tmpDir, { recursive: true, force: true }); }
+});

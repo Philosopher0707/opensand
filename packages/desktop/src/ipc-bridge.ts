@@ -84,6 +84,9 @@ export interface IpcBridgeOptions {
   defaultSettings?: Partial<DesktopSettings>;
 }
 
+const CHIEF_TOOLS = ['delegate_to_agent', 'await_agent'] as const;
+const CHIEF_INSTRUCTIONS = 'You are the user\'s chief of staff. Delegate specialist work via delegate_to_agent. For parallel fan-out use background:true and collect results with await_agent. Never claim to have done delegated work yourself; report which bot did what.';
+
 export class DesktopIpcBridge extends EventEmitter {
   private baseDir: string;
   private configFile: string;
@@ -370,7 +373,25 @@ export class DesktopIpcBridge extends EventEmitter {
     return this.getSanitizedSettings();
   }
 
-  public updateSettings(partial: Partial<DesktopSettings>): DesktopSettings {
+  // A chief id is validated against the agent store before it is persisted.
+  // getAgent() is async, so only that path resolves as a Promise; every other
+  // settings update keeps the synchronous return existing callers rely on.
+  public updateSettings(partial: Partial<DesktopSettings> & { chiefOfStaffAgentId: string }): Promise<DesktopSettings>;
+  public updateSettings(partial: Partial<DesktopSettings> & { chiefOfStaffAgentId?: undefined | null }): DesktopSettings;
+  public updateSettings(partial: Partial<DesktopSettings>): DesktopSettings | Promise<DesktopSettings>;
+  public updateSettings(partial: Partial<DesktopSettings>): DesktopSettings | Promise<DesktopSettings> {
+    const requestedChief = partial.chiefOfStaffAgentId;
+    if (typeof requestedChief === 'string' && requestedChief.length > 0) {
+      return (async () => {
+        const chief = await this.agentStore.getAgent(requestedChief);
+        if (!chief) throw new Error(`Unknown chief of staff agent: ${requestedChief}`);
+        return this.applySettings(partial);
+      })();
+    }
+    return this.applySettings(partial);
+  }
+
+  private applySettings(partial: Partial<DesktopSettings>): DesktopSettings {
     // Empty string and masked placeholder both mean keep the stored key.
     if (partial.apiKey === '********' || partial.apiKey === '') {
       delete partial.apiKey;
@@ -383,12 +404,17 @@ export class DesktopIpcBridge extends EventEmitter {
       if (!/^https?:\/\//i.test(partial.endpoint)) delete partial.endpoint;
     }
 
+    const oldChief = this.settings.chiefOfStaffAgentId ?? null;
+    const newChief = partial.chiefOfStaffAgentId !== undefined ? (partial.chiefOfStaffAgentId ?? null) : oldChief;
+    const chiefChanged = partial.chiefOfStaffAgentId !== undefined && oldChief !== newChief;
+
     const modelChanged =
       (partial.model !== undefined && partial.model !== this.settings.model) ||
       (partial.endpoint !== undefined && partial.endpoint !== this.settings.endpoint) ||
       (partial.apiKey !== undefined && partial.apiKey !== this.settings.apiKey) ||
       (partial.provider !== undefined && partial.provider !== this.settings.provider) ||
-      (partial.maxContextTokens !== undefined && partial.maxContextTokens !== this.settings.maxContextTokens);
+      (partial.maxContextTokens !== undefined && partial.maxContextTokens !== this.settings.maxContextTokens) ||
+      chiefChanged;
 
     this.settings = { ...this.settings, ...partial };
     if (partial.apiKey !== undefined && partial.apiKey !== 'none') {
@@ -409,6 +435,12 @@ export class DesktopIpcBridge extends EventEmitter {
       for (const runtime of [...this.sessionRuntimes.values()]) runtime.abort?.abort();
       this.sessionRuntimes.clear();
       this.sessionAdmission.clear();
+    }
+    if (chiefChanged) {
+      // A chief change swaps the delegation authority on both the old and new
+      // agent's coordinators; neither may keep the previous tool set.
+      if (oldChief) this.invalidateAgentCoordinators(oldChief);
+      if (newChief) this.invalidateAgentCoordinators(newChief);
     }
     this.saveSettings();
     this.emitEvent('status', { settings: this.getSanitizedSettings() });
@@ -630,6 +662,7 @@ export class DesktopIpcBridge extends EventEmitter {
     let effectiveAllowedTools: string[] | undefined;
     let toolScopeMode: 'core' | 'all' | 'auto' | undefined;
     let agent: AgentRecord | undefined;
+    const isChief = !!agentId && agentId === this.settings.chiefOfStaffAgentId;
 
     if (agentId) {
       agent = await this.agentStore.getAgent(agentId) ?? undefined;
@@ -646,6 +679,15 @@ export class DesktopIpcBridge extends EventEmitter {
           allowedTools: effectiveAllowedTools,
         }) as typeof toolScopeMode;
       }
+    }
+
+    // Delegation authority is scoped to the user-chosen chief only: the chief
+    // gains the two orchestration tools, everyone else explicitly loses them.
+    const allToolNames = this.daemon.getToolDefinitions().map((d) => d.function.name);
+    if (isChief) {
+      effectiveAllowedTools = [...new Set([...(effectiveAllowedTools ?? allToolNames), ...CHIEF_TOOLS])];
+    } else if (agentId && !agent?.allowedTools) {
+      effectiveAllowedTools = allToolNames.filter((name) => !CHIEF_TOOLS.includes(name as (typeof CHIEF_TOOLS)[number]));
     }
 
     // Route API-backed providers (OpenRouter, Anthropic) through the registered
@@ -704,6 +746,7 @@ export class DesktopIpcBridge extends EventEmitter {
       maxContextTokens: maxTokens,
       ...(effectiveAllowedTools ? { allowedTools: effectiveAllowedTools } : {}),
       ...(toolScopeMode ? { toolScopeMode } : {}),
+      chiefDelegation: isChief,
       systemPromptContext: {
         userInstructions: customInstructions,
         learnedRules,
@@ -711,6 +754,7 @@ export class DesktopIpcBridge extends EventEmitter {
         skillsContext,
         agentName: agent?.name,
         agentRole: agent?.role,
+        ...(isChief ? { chiefInstructions: CHIEF_INSTRUCTIONS } : {}),
       },
       onApprovalRequired: async (req: ApprovalRequest) => {
         return this.requestUserApproval(req.toolName, req.arguments, req.reason, activeSessionId);
@@ -1035,6 +1079,9 @@ export class DesktopIpcBridge extends EventEmitter {
     const agent = await this.agentStore.getAgent(id);
     if (!agent) return false;
     this.invalidateAgentCoordinators(id);
+    if (this.settings.chiefOfStaffAgentId === id) {
+      this.updateSettings({ chiefOfStaffAgentId: null });
+    }
     if (agent.kind === 'ROOM' && typeof agent.metadata?.roomId === 'string') {
       return this.roomManager.deleteRoom(agent.metadata.roomId);
     }
