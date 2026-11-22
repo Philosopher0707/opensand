@@ -11,10 +11,17 @@ export interface ChatListProps {
   data: ShellData;
   now?: () => number;
   selectedSessionId?: string | null;
-  onSelectSession?: (id: string) => void;
+  onSelectSession?: (id: string, title?: string) => void;
+  onDeleteSession?: (id: string) => void;
 }
 
-export function ChatList({ data, now, selectedSessionId, onSelectSession }: ChatListProps) {
+export function ChatList({
+  data,
+  now,
+  selectedSessionId,
+  onSelectSession,
+  onDeleteSession,
+}: ChatListProps) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [query, setQuery] = useState("");
   const [activeId, setActiveId] = useState<string | null>(selectedSessionId ?? null);
@@ -22,6 +29,11 @@ export function ChatList({ data, now, selectedSessionId, onSelectSession }: Chat
   useEffect(() => {
     if (selectedSessionId !== undefined) {
       setActiveId(selectedSessionId);
+      if (selectedSessionId) {
+        setSessions((prev) =>
+          prev.map((s) => (s.id === selectedSessionId && s.unreadCount ? { ...s, unreadCount: 0 } : s)),
+        );
+      }
     }
   }, [selectedSessionId]);
 
@@ -36,23 +48,40 @@ export function ChatList({ data, now, selectedSessionId, onSelectSession }: Chat
 
   useEffect(() => {
     let mounted = true;
-    data.listSessions().then((res) => {
-      if (mounted) {
-        setSessions(Array.isArray(res) ? res : []);
-      }
-    }).catch(() => {
-      // Ignored
-    });
+    data
+      .listSessions()
+      .then((res) => {
+        if (mounted) {
+          setSessions(Array.isArray(res) ? res : []);
+        }
+      })
+      .catch(() => {
+        // Ignored
+      });
     return () => {
       mounted = false;
     };
   }, [data]);
+
+  const handleSelect = (row: SessionRow) => {
+    setActiveId(row.id);
+    if (row.unreadCount && row.unreadCount > 0) {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === row.id ? { ...s, unreadCount: 0 } : s)),
+      );
+    }
+    onSelectSession?.(row.id, row.title);
+  };
 
   const handleDelete = async (e: MouseEvent, row: SessionRow) => {
     e.stopPropagation();
     if (window.confirm(`Delete conversation "${row.title}"? This cannot be undone.`)) {
       try {
         await data.deleteSession(row.id);
+        if (effectiveActiveId === row.id) {
+          setActiveId(null);
+        }
+        onDeleteSession?.(row.id);
         await reload();
       } catch (err: any) {
         alert(`Error deleting conversation: ${err?.message || err}`);
@@ -107,10 +136,7 @@ export function ChatList({ data, now, selectedSessionId, onSelectSession }: Chat
             key={row.id}
             class={`session-channel-item ${row.active ? "active" : ""}`}
             data-session-id={row.id}
-            onClick={() => {
-              setActiveId(row.id);
-              onSelectSession?.(row.id);
-            }}
+            onClick={() => handleSelect(row)}
           >
             <div class="channel-avatar" aria-hidden="true">
               {row.avatar}
@@ -120,6 +146,11 @@ export function ChatList({ data, now, selectedSessionId, onSelectSession }: Chat
                 <span class="channel-title" title={row.title}>
                   {row.title}
                 </span>
+                {row.unreadCount !== undefined && row.unreadCount > 0 && (
+                  <span class="channel-unread-badge" aria-label={`${row.unreadCount} unread`}>
+                    {row.unreadCount}
+                  </span>
+                )}
                 <span class="channel-time">{row.timeLabel}</span>
               </div>
               <div class="channel-line-2">

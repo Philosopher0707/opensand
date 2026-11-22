@@ -48,7 +48,7 @@ export interface OpenSandBridgeApi {
   getMissionTimeline?: (missionId: string) => Promise<Array<{ seq: number; ts: string; kind: string; data: Record<string, unknown> }>>;
   getMissionReceipt?: (missionId: string) => Promise<import('./shell/mission-receipt-model.js').ReceiptView | null>;
   getMissionFileDiff?: (missionId: string, fileIndex: number) => Promise<import('./shell/mission-diff-model.js').FileDiffView | null>;
-  loadSession: (sessionId: string) => Promise<{ events: unknown[]; transcript: string; agentId?: string; roomId?: string }>;
+  loadSession: (sessionId: string) => Promise<{ events: unknown[]; transcript: string; agentId?: string; roomId?: string; title?: string }>;
   deleteSession?: (sessionId: string) => Promise<{ success: boolean }>;
   clearAllSessions?: () => Promise<{ success: boolean; count: number }>;
   deleteAgent?: (id: string) => Promise<boolean>;
