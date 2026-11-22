@@ -1359,3 +1359,79 @@
 .session-channel-item .channel-title {
   min-width: 0;
 }
+
+/* ==========================================================================
+   Phase 5 Row 10: footer navigation, subnav tabs and view switching
+   ========================================================================== */
+
+.shell-body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+/* Panels fill the shell body instead of the legacy fixed 100vh height. */
+.shell-body .view-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  overflow: auto;
+}
+
+.shell-body .view-panel-chat {
+  overflow: auto;
+}
+
+.shell-body .view-panel-stub .dashboard-container {
+  gap: 16px;
+}
+
+.subnav-tabs {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.subnav-tab {
+  flex: none;
+}
+
+.view-stub-card {
+  max-width: 720px;
+  padding: 20px 24px;
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.35));
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-card, rgba(128, 128, 128, 0.05));
+}
+
+.view-stub-title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.view-stub-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+#btnBackToChat {
+  flex: none;
+}
+
+.sidebar-footer .shell-note {
+  padding: 4px 8px 0;
+  font-size: 11px;
+}
+
+.footer-nav-btn:focus-visible,
+.subnav-tab:focus-visible,
+#btnBackToChat:focus-visible {
+  outline: 2px solid var(--accent, #4c8dff);
+  outline-offset: -2px;
+}

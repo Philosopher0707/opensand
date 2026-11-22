@@ -19,11 +19,62 @@ import {
   type ArtifactItem,
   type CanvasState,
 } from "../../src/shell/canvas-model";
+import {
+  NAV_GROUPS,
+  VIEW_IDS,
+  VIEW_TITLES,
+  groupForView,
+  isFooterNavActive,
+  parseViewFromLocation,
+  viewHash,
+  viewPanelId,
+  type ViewId,
+} from "../../src/shell/navigation-model";
 
 export const SESSION_KEY = "opensand-session-id";
 
 export interface ShellProps {
   data: ShellData;
+}
+
+function ViewPanel({
+  view,
+  active,
+  onSelect,
+}: {
+  view: ViewId;
+  active: boolean;
+  onSelect: (view: ViewId) => void;
+}) {
+  const group = groupForView(view);
+  return (
+    <div id={viewPanelId(view)} class={`view-panel view-panel-stub ${active ? "" : "hidden"}`}>
+      <div class="dashboard-container">
+        {group && (
+          <nav class="subnav-tabs" data-group={group.id} aria-label={`${group.buttonLabel} views`}>
+            {group.tabs.map((tab) => (
+              <button
+                key={tab.view}
+                type="button"
+                class={`subnav-tab ${tab.view === view ? "active" : ""}`}
+                data-view={tab.view}
+                aria-current={tab.view === view ? "page" : undefined}
+                onClick={() => onSelect(tab.view)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        )}
+        <div class="view-stub-card">
+          <h2 class="view-stub-title">{VIEW_TITLES[view]}</h2>
+          <p class="view-stub-desc">
+            This view is being rebuilt in the Preact shell. Navigation, subnav tabs and deep links are live.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function Shell({ data }: ShellProps) {
@@ -35,6 +86,9 @@ export function Shell({ data }: ShellProps) {
   const [approvalsRev, setApprovalsRev] = useState(0);
   const [canvasState, setCanvasState] = useState<CanvasState>(createInitialCanvasState());
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [currentView, setCurrentView] = useState<ViewId>(() =>
+    parseViewFromLocation(window.location.search, window.location.hash)
+  );
 
   const didRestoreRef = useRef(false);
 
@@ -135,16 +189,38 @@ export function Shell({ data }: ShellProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Deep links: `?view=...` on first load, then #hash and back/forward navigation.
+  useEffect(() => {
+    const applyLocation = () => {
+      setCurrentView(parseViewFromLocation(window.location.search, window.location.hash));
+    };
+    window.addEventListener("hashchange", applyLocation);
+    window.addEventListener("popstate", applyLocation);
+    return () => {
+      window.removeEventListener("hashchange", applyLocation);
+      window.removeEventListener("popstate", applyLocation);
+    };
+  }, []);
+
+  const switchView = (view: ViewId) => {
+    setCurrentView(view);
+    const hash = viewHash(view);
+    if (window.location.hash !== hash) window.location.hash = hash;
+  };
+
   const handleSelectMission = (id: string) => {
+    switchView("chat");
     setSelectedApproval(null);
     setMissionId(id);
   };
 
   const handleSelectApproval = (appr: ToolApprovalRequest) => {
+    switchView("chat");
     setSelectedApproval(appr);
   };
 
   const handleSelectSession = (id: string, title?: string) => {
+    switchView("chat");
     setMissionId(null);
     setSelectedApproval(null);
     setSelectedSessionId(id);
@@ -189,6 +265,7 @@ export function Shell({ data }: ShellProps) {
             tabIndex={0}
             title="OpenSand Home"
             onClick={() => {
+              switchView("chat");
               setMissionId(null);
               setSelectedApproval(null);
               setSelectedSessionId(null);
@@ -238,13 +315,43 @@ export function Shell({ data }: ShellProps) {
           />
         </div>
         <div class="sidebar-footer">
+          <nav class="sidebar-footer-nav" aria-label="Primary destinations">
+            {NAV_GROUPS.map((group) => {
+              const active = isFooterNavActive(currentView, group.id);
+              return (
+                <button
+                  key={group.id}
+                  id={group.buttonId}
+                  type="button"
+                  class={`footer-nav-btn ${active ? "active" : ""}`}
+                  data-view={group.view}
+                  title={group.buttonLabel}
+                  aria-current={active ? "page" : undefined}
+                  onClick={() => switchView(group.view)}
+                >
+                  <span class="footer-nav-label">{group.buttonLabel}</span>
+                </button>
+              );
+            })}
+          </nav>
           <span class="shell-note">Preact shell (preview)</span>
         </div>
       </aside>
       <main class="main-panel">
         <header class="topbar">
           <div class="topbar-left">
-            <h1 class="view-header-title" id="viewHeaderTitle">Home</h1>
+            {currentView !== "chat" && (
+              <button
+                id="btnBackToChat"
+                type="button"
+                class="btn btn-ghost btn-xs"
+                title="Back to Dialogue"
+                onClick={() => switchView("chat")}
+              >
+                ← Chat
+              </button>
+            )}
+            <h1 class="view-header-title" id="viewHeaderTitle">{VIEW_TITLES[currentView]}</h1>
             <span class="active-session-title" id="activeSessionTitle" title={activeSessionTitle}>
               {activeSessionTitle}
             </span>
@@ -282,7 +389,8 @@ export function Shell({ data }: ShellProps) {
         </header>
         <QuickCaptureOutput capture={capture} />
         <section class="shell-body">
-          {selectedApproval ? (
+          <div id={viewPanelId("chat")} class={`view-panel view-panel-chat ${currentView === "chat" ? "" : "hidden"}`}>
+            {selectedApproval ? (
             <div class="approval-detail-view" aria-label="Approval Details">
               <div class="approval-detail-card">
                 <header class="approval-detail-header">
@@ -357,6 +465,10 @@ export function Shell({ data }: ShellProps) {
               </div>
             </div>
           )}
+          </div>
+          {VIEW_IDS.filter((view) => view !== "chat").map((view) => (
+            <ViewPanel key={view} view={view} active={currentView === view} onSelect={switchView} />
+          ))}
         </section>
       </main>
       <Inspector
