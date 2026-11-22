@@ -86,10 +86,11 @@ export function createDeviceAuthController(
   };
 
   const finish = (status: ProviderAuthenticationStatus): void => {
+    // Retain the terminal status even without an active flow (e.g. a login CLI exits after a timeout).
+    lastStatus = status;
     if (!flow) return;
     clearTimeout(flow.timer);
     flow.status = status;
-    lastStatus = status;
     if (flow.child && !flow.child.killed) flow.child.kill("SIGKILL");
     flow = null;
   };
