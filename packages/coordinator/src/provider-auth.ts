@@ -6,7 +6,6 @@
  * allowlisted authorization URLs and short user codes.
  */
 
-import { randomUUID } from "node:crypto";
 import type { ProviderInstance, ProviderAuthenticationStart, ProviderAuthenticationStatus } from "@opensand/shared";
 import { providerRegistry } from "./provider-registry.js";
 
@@ -30,7 +29,7 @@ async function ensureSession(kind: string): Promise<AuthSession | null> {
   let session = sessions.get(kind);
   if (session) return session;
 
-  const instanceId = `auth:${kind}:${randomUUID()}`;
+  const instanceId = `auth:${kind}`;
   const { instance } = await providerRegistry.createInstance(instanceId, {
     driver: kind,
     displayName: driver.metadata.displayName,
@@ -87,6 +86,16 @@ export async function getProviderAuthStatus(kind: string, flowId: string): Promi
     session.flowId = null;
   }
   return status ?? { status: "cancelled", flowId, authorizationUrl: null, expiresAt: null };
+}
+
+/** Sign-in state for a provider kind; null when the kind has no auth controller. */
+export async function getProviderAuthState(kind: string): Promise<{ signedIn: boolean; flowId: string | null } | null> {
+  const session = await ensureSession(kind);
+  if (!session) return null;
+  return {
+    signedIn: (await session.instance.isSignedIn?.()) ?? false,
+    flowId: session.flowId,
+  };
 }
 
 export async function cancelProviderAuth(kind: string): Promise<boolean> {

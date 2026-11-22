@@ -8,7 +8,7 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -40,6 +40,16 @@ interface Flow {
   timer: ReturnType<typeof setTimeout>;
 }
 
+/** Stable, instance-independent credential directory for a provider spec. */
+export function credentialHome(spec: DeviceAuthSpec): string {
+  return path.join(os.homedir(), ".opensand", "providers", spec.provider, spec.homeDir.replace(/^\./, ""));
+}
+
+/** Environment passed to both login and session CLIs for a provider spec. */
+export function credentialEnv(spec: DeviceAuthSpec, environment: Record<string, string>): Record<string, string> {
+  return { ...environment, [spec.homeEnv]: credentialHome(spec) };
+}
+
 const START_TIMEOUT_MS = 30_000;
 const FLOW_LIFETIME_MS = 15 * 60_000;
 const MAX_OUTPUT_BYTES = 16 * 1024;
@@ -47,6 +57,7 @@ const MAX_OUTPUT_BYTES = 16 * 1024;
 export interface DeviceAuthController {
   start(): Promise<ProviderAuthenticationStart>;
   get(flowId: string): Promise<ProviderAuthenticationStatus>;
+  isSignedIn(): Promise<boolean>;
   cancel(): Promise<void>;
   signOut(): Promise<void>;
   dispose(): Promise<void>;
@@ -59,12 +70,12 @@ export function createDeviceAuthController(
   environment: Record<string, string>,
   configCli: string
 ): DeviceAuthController {
-  const digest = createHash("sha256").update(instanceId).digest("hex").slice(0, 16);
-  const home = path.join(os.homedir(), ".opensand", "providers", spec.provider, digest);
-  const env = { ...process.env, ...environment, [spec.homeEnv]: home };
+  const env = credentialEnv(spec, { ...(process.env as Record<string, string>), ...environment });
   let flow: Flow | null = null;
+  let lastStatus: ProviderAuthenticationStatus | null = null;
   let disposed = false;
 
+  const home = credentialHome(spec);
   const isSignedIn = (): boolean => {
     if (!spec.signedInFile) return false;
     try {
@@ -78,6 +89,7 @@ export function createDeviceAuthController(
     if (!flow) return;
     clearTimeout(flow.timer);
     flow.status = status;
+    lastStatus = status;
     if (flow.child && !flow.child.killed) flow.child.kill("SIGKILL");
     flow = null;
   };
@@ -86,7 +98,8 @@ export function createDeviceAuthController(
     args: string[],
     onLine?: (line: string) => void,
     isReady?: () => boolean,
-    onSpawn?: (child: ChildProcess) => void
+    onSpawn?: (child: ChildProcess) => void,
+    onExit?: () => void
   ): Promise<string> =>
     new Promise((resolve, reject) => {
       const child = spawn(configCli, args, { env, stdio: ["ignore", "pipe", "pipe"] });
@@ -124,6 +137,7 @@ export function createDeviceAuthController(
       });
       child.on("exit", () => {
         clearTimeout(timer);
+        onExit?.();
         if (!settled) { settled = true; resolve(output); }
       });
     });
@@ -158,7 +172,9 @@ export function createDeviceAuthController(
           if (code && code.length <= 32 && pending.status.userCode === undefined) {
             pending.status = { ...pending.status, userCode: code };
           }
-        }, ready, (child) => { pending.child = child; });
+        }, ready, (child) => { pending.child = child; }, () => finish(isSignedIn()
+          ? { status: "authorized", flowId: id, authorizationUrl: null, expiresAt: null }
+          : { status: "failed", flowId: id, authorizationUrl: null, expiresAt: null, message: spec.failureMessage }));
         void output;
       } catch (error) {
         finish({
@@ -178,10 +194,13 @@ export function createDeviceAuthController(
 
     async get(flowId) {
       if (!flow || flow.id !== flowId) {
+        if (lastStatus && lastStatus.flowId === flowId) return { ...lastStatus };
         return { status: "cancelled", flowId, authorizationUrl: null, expiresAt: null };
       }
       return { ...flow.status };
     },
+
+    isSignedIn: async () => isSignedIn(),
 
     async cancel() {
       if (flow) {

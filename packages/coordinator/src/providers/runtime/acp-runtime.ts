@@ -17,7 +17,7 @@ import type {
   SendTurnInput,
 } from "@opensand/shared";
 import { RpcTransport, type RpcId } from "./rpc-transport.js";
-import { createDeviceAuthController, type DeviceAuthSpec } from "./device-auth.js";
+import { createDeviceAuthController, credentialEnv, type DeviceAuthSpec } from "./device-auth.js";
 
 export interface AcpConfig {
   cli: string;
@@ -133,7 +133,9 @@ export function createAcpInstance<Config extends AcpConfig>(
   const stopIdleReaper = startIdleReaper(sessions, closeSession);
 
   const spawnSession = (threadId: string): AcpSession => {
-    const env = { ...process.env, ...input.environment };
+    const env = options.auth
+      ? credentialEnv(options.auth, { ...(process.env as Record<string, string>), ...input.environment })
+      : { ...process.env, ...input.environment };
     const args = options.spawnArgs(config);
     const child = spawn(config.cli, args, {
       env,
@@ -308,6 +310,7 @@ export function createAcpInstance<Config extends AcpConfig>(
     ...(auth ? {
       authenticationMethod: "device-code" as const,
       startAuthentication: () => auth.start(),
+      isSignedIn: () => auth.isSignedIn(),
       getAuthentication: (flowId: string) => auth.get(flowId),
       cancelAuthentication: () => auth.cancel(),
       signOut: () => auth.signOut(),

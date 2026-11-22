@@ -520,6 +520,7 @@ export interface ProviderInstance {
   readonly startupModelRefresh?: Promise<void>;
   readonly installRuntime?: () => Promise<void>;
   readonly startAuthentication?: () => Promise<ProviderAuthenticationStart>;
+  readonly isSignedIn?: () => Promise<boolean>;
   readonly authenticationMethod?: "browser-pkce" | "device-code" | "browser";
   readonly getAuthentication?: (flowId: string) => Promise<ProviderAuthenticationStatus>;
   readonly completeAuthentication?: (flowId: string, callbackUrl: string) => Promise<void>;
