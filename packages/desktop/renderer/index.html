@@ -85,6 +85,27 @@
         <input type="text" id="conversationSearchInput" class="search-input" placeholder="Search…" aria-label="Search conversations" />
       </div>
 
+      <!-- Bots section (Orca-style: persistent in the sidebar spine) -->
+      <section class="bot-sidecar" id="botSidecar" aria-label="Bots">
+        <div class="bot-sidecar-header">
+          <span class="bot-sidecar-title">Bots</span>
+          <div class="bot-sidecar-actions">
+            <button id="btnBotSearch" class="btn-icon-ghost" aria-label="Search bots" aria-expanded="false" title="Search bots">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+            </button>
+            <button id="btnBotNew" class="btn-icon-ghost" aria-label="New bot" title="New bot">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg>
+            </button>
+          </div>
+        </div>
+        <div class="bot-sidecar-search hidden" id="botSearchWrap">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <input id="botSidecarSearch" type="search" placeholder="Search bots" aria-label="Search bots" />
+        </div>
+        <div class="bot-rail" id="botList" role="list"></div>
+        <button class="bot-sidecar-more hidden" id="btnBotShowMore" type="button"></button>
+      </section>
+
       <!-- Main Conversation Roster Spine -->
       <div class="sidebar-roster-container">
         <div class="session-list" id="sessionList"></div>
@@ -479,9 +500,6 @@
               <button id="btnOpenImportTemplate" class="btn btn-secondary">Import Template</button>
             </div>
           </div>
-
-          <div class="sidebar-section-title" style="margin-top: 14px;">Active Persona Roster</div>
-          <div class="bot-rail" id="botList"></div>
 
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; margin-bottom: 8px;">
             <div class="sidebar-section-title" style="margin: 0;">Active Workspace Tasks</div>

@@ -675,6 +675,50 @@ test("Real-Window Harness: per-bot rail state exposes active session and agent",
   }
 });
 
+test("Real-Window Harness: bot roster lives in a persistent sidebar section", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-sidebar-bots-home-"));
+  const script = [
+    "(async () => {",
+    "  await new Promise((r) => setTimeout(r, 350));",
+    "  const list = document.getElementById('botList');",
+    "  const section = document.getElementById('botSidecar');",
+    "  const nodeBefore = list;",
+    "  const chatVisible = !document.getElementById('viewChat').classList.contains('hidden');",
+    "  document.getElementById('navBtnBots').click();",
+    "  await new Promise((r) => setTimeout(r, 200));",
+    "  document.getElementById('btnBackToChat').click();",
+    "  await new Promise((r) => setTimeout(r, 250));",
+    "  return {",
+    "    chatVisible,",
+    "    inSection: section?.contains(list) === true,",
+    "    sectionInSidebar: !!section?.closest('aside.sidebar'),",
+    "    sectionNotInView: !section?.closest('.view-panel'),",
+    "    sameNode: document.getElementById('botList') === nodeBefore,",
+    "    visible: !!list && getComputedStyle(section).display !== 'none' && list.getBoundingClientRect().width > 0,",
+    "    searchToggle: !!document.getElementById('btnBotSearch'),",
+    "    newButton: !!document.getElementById('btnBotNew'),",
+    "    moreButton: !!document.getElementById('btnBotShowMore'),",
+    "  };",
+    "})()",
+  ].join("\n");
+  try {
+    const r = await runHarness("default", { home: tmpHome, interactScript: script });
+    if (r.skipped) { t.skip(r.skipped); return; }
+    const v = r.interactResult || {};
+    assert.strictEqual(v.chatVisible, true, `chat view must be the boot view (${JSON.stringify(v)})`);
+    assert.strictEqual(v.inSection, true, `#botList must live inside #botSidecar (${JSON.stringify(v)})`);
+    assert.strictEqual(v.sectionInSidebar, true, `Bots section must be in aside.sidebar (${JSON.stringify(v)})`);
+    assert.strictEqual(v.sectionNotInView, true, `Bots section must not be inside a switchable view (${JSON.stringify(v)})`);
+    assert.strictEqual(v.sameNode, true, `view switches must not replace #botList (${JSON.stringify(v)})`);
+    assert.strictEqual(v.visible, true, `Bots section must be visible in chat view (${JSON.stringify(v)})`);
+    assert.strictEqual(v.searchToggle, true, `search toggle must exist (${JSON.stringify(v)})`);
+    assert.strictEqual(v.newButton, true, `new-bot button must exist (${JSON.stringify(v)})`);
+    assert.strictEqual(v.moreButton, true, `show-more button must exist (${JSON.stringify(v)})`);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test("Real-Window Harness: Preact shell frame seeded sessions & search (960x740 and 1920x1080)", async (t) => {
   const built = fs.existsSync(path.join(pkgRoot, "dist", "renderer-next", "index.html"));
   if (!built) {

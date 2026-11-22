@@ -4399,11 +4399,23 @@ textarea#promptInput {
 .detail-swatches button { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; background: var(--swatch); cursor: pointer; }
 .detail-swatches button.active { border-color: var(--text-main); box-shadow: 0 0 0 2px var(--bg-card) inset; }
 
-/* ---- Compact bot rail: one card per bot, one session per bot -------------- */
-.bot-rail {
-  display: flex; flex-direction: column; gap: 6px;
-  max-height: 220px; overflow-y: auto; margin-bottom: 14px;
+/* ---- Bots section in the sidebar spine (Orca-style) --------------------- */
+.bot-sidecar {
+  flex: 0 0 auto; padding: 6px 4px 8px;
+  border-bottom: 1px solid var(--border-color);
 }
+.bot-sidecar-header { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 6px 4px; }
+.bot-sidecar-title { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
+.bot-sidecar-actions { display: flex; align-items: center; gap: 2px; }
+.bot-sidecar-search { display: flex; align-items: center; gap: 6px; margin: 0 4px 6px; padding: 4px 7px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); }
+.bot-sidecar-search .icon { width: 13px; height: 13px; color: var(--text-muted); flex: none; }
+.bot-sidecar-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text-main); font: inherit; font-size: 11.5px; }
+.bot-sidecar-search.hidden { display: none; }
+.bot-sidecar-more { display: block; width: calc(100% - 8px); margin: 4px 4px 0; padding: 4px 6px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font-size: 11px; cursor: pointer; }
+.bot-sidecar-more:hover { background: var(--bg-hover); color: var(--text-main); }
+.bot-sidecar-more.hidden { display: none; }
+
+.bot-rail { display: flex; flex-direction: column; gap: 3px; }
 .bot-rail-card {
   position: relative; min-width: 0; display: flex; align-items: center; gap: 8px;
   padding: 5px 8px; border: 1px solid var(--border-color);
