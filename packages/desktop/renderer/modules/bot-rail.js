@@ -7,6 +7,7 @@ import { escapeHtml } from './chat/markdown.js';
 import { safeAvatarMarkup } from './bot-identity.js';
 
 const VISIBLE_LIMIT = 6;
+const statuses = new Map();
 const uiIcon = (name, cls = 'icon') => `<svg class="${cls}" aria-hidden="true" focusable="false"><use href="#i-${name}"></use></svg>`;
 const tint = (bot) => /^#[0-9a-fA-F]{3,8}$/.test(bot?.logoColor || '') ? bot.logoColor : 'var(--accent)';
 
@@ -24,6 +25,7 @@ function cardFor(agentId) {
 
 export function setBotCardStatus(agentId, status) {
   if (!agentId) return;
+  statuses.set(agentId, status);
   const card = cardFor(agentId);
   if (card) card.dataset.status = status;
 }
@@ -59,7 +61,7 @@ export function createBotRail(options = {}) {
   function cardAttrs(bot, activeId) {
     const id = bot ? escapeHtml(bot.id || '') : '';
     const active = bot ? activeId === bot.id : activeId === null;
-    const status = active ? 'active' : 'idle';
+    const status = (bot && statuses.get(bot.id)) || (active ? 'active' : 'idle');
     const provider = bot?.provider || 'global';
     const model = bot?.model || 'default';
     const label = bot
@@ -139,7 +141,10 @@ export function createBotRail(options = {}) {
       });
     }
     list.querySelector('.bot-rail-card:not([data-agent-id])')?.addEventListener('keydown', (event) => {
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        onSelect?.(null);
+      } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
         moveFocus(event.currentTarget, event.key);
       }

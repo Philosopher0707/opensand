@@ -736,6 +736,13 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     "  card.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));",
     "  await new Promise((r) => setTimeout(r, 200));",
     "  const kb = window.__railState.getActive();",
+    "  window.__railState.emit({ type: 'session_started', sessionId: 'bot_agent_railbot_ab12cd34' });",
+    "  const statusAfterEmit = document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_railbot_ab12cd34\"]')?.dataset.status;",
+    "  input.value = 'zzz-no-match';",
+    "  input.dispatchEvent(new Event('input', { bubbles: true }));",
+    "  input.value = '';",
+    "  input.dispatchEvent(new Event('input', { bubbles: true }));",
+    "  const statusAfterFilter = document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_railbot_ab12cd34\"]')?.dataset.status;",
     "  return {",
     "    chatVisible,",
     "    inSection: section?.contains(list) === true,",
@@ -749,6 +756,7 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     "    layout: (() => { const sc = getComputedStyle(section); const rc = getComputedStyle(list); return { display: sc.display, overflow: sc.overflow, railOverflow: rc.overflowY, railMinHeight: rc.minHeight }; })(),",
     "    filteredCount, filterClearedCount, moreLabel, moreVisible, expanded, afterRefresh, moreLabelAfter, nextFocused,",
     "    keyboardSelect: { agent: kb.activeAgentId, session: kb.currentSessionId },",
+    "    statusAfterEmit, statusAfterFilter,",
     "  };",
     "})()",
   ].join("\n");
@@ -777,6 +785,8 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     assert.strictEqual(v.nextFocused, true, `ArrowDown must move focus to the next card (${JSON.stringify(v)})`);
     assert.strictEqual(v.keyboardSelect.agent, 'agent_railbot_ab12cd34', `Enter must select the focused card (${JSON.stringify(v)})`);
     assert.strictEqual(v.keyboardSelect.session, 'bot_agent_railbot_ab12cd34', `Enter must open the bot_ session (${JSON.stringify(v)})`);
+    assert.strictEqual(v.statusAfterEmit, 'busy', `session_started must mark the bot card busy (${JSON.stringify(v)})`);
+    assert.strictEqual(v.statusAfterFilter, 'busy', `runtime status must survive a filter re-render (${JSON.stringify(v)})`);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
