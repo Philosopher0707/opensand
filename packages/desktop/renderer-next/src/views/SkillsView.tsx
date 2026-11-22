@@ -55,17 +55,19 @@ export function SkillsView({ data, active, onSelect, refreshKey }: SkillsViewPro
     };
   }, [data, refreshKey]);
 
+  // One stable listener: re-attaching on every modal state change can miss a fast reopen.
   useEffect(() => {
-    if (!modals.previewSkill && !modals.createSkillModalOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" && event.key !== "Esc") return;
-      setModals((state) =>
-        state.previewSkill ? closeSkillPreview(state) : closeCreateSkillModal(state)
-      );
+      setModals((state) => {
+        if (state.previewSkill) return closeSkillPreview(state);
+        if (state.createSkillModalOpen) return closeCreateSkillModal(state);
+        return state;
+      });
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [modals.previewSkill, modals.createSkillModalOpen]);
+  }, []);
 
   const reload = async () => {
     try {

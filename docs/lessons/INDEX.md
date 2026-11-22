@@ -89,6 +89,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-22 · [Real-window test running stateful component interactions inside viewport size loops inherits prior state](2026-11-22-real-window-stateful-interactions-across-viewport-sizes.md)
 - 2026-11-22 · [The routines enable route is PATCH, not POST — read the server before coding a brief's HTTP verb](2026-11-22-routines-enable-route-is-patch-not-post.md)
 - 2026-11-22 · [Session list hermetic state dir, unread badges, and reload persistence](2026-11-22-session-list-hermetic-state-dir-and-unread-badges.md)
+- 2026-11-22 · [Keep one stable Escape listener, and assert badges where you rendered them](2026-11-22-skills-esc-listener-and-badge-location.md)
 - 2026-11-22 · [Streaming delta reducer retained stale raw buffer on non-think deltas](2026-11-22-streaming-delta-buffer-stale-retention.md)
 - 2026-11-22 · [A new view panel must beat the legacy `view-panel` rules, and absence assertions must be flipped](2026-11-22-view-panel-class-collision-and-stale-absence-assertions.md)
 - 2026-11-22 · [Worktree dependencies copied from another branch have stale workspace links](2026-11-22-worktree-donor-node-modules-stale-links.md)
