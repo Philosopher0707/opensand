@@ -579,7 +579,14 @@ export class DesktopServer {
     // API: POST /api/settings
     if (pathname === '/api/settings' && req.method === 'POST') {
       const body = await this.readJsonBody(req);
-      this.bridge.updateSettings(body);
+      try {
+        // A chief id is validated asynchronously; reply only once it is settled.
+        await this.bridge.updateSettings(body);
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+        return;
+      }
       const updated = await this.bridge.getSanitizedSettingsResolved();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(updated));

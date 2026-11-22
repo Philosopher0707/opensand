@@ -686,8 +686,9 @@ export class DesktopIpcBridge extends EventEmitter {
     const allToolNames = this.daemon.getToolDefinitions().map((d) => d.function.name);
     if (isChief) {
       effectiveAllowedTools = [...new Set([...(effectiveAllowedTools ?? allToolNames), ...CHIEF_TOOLS])];
-    } else if (agentId && !agent?.allowedTools) {
-      effectiveAllowedTools = allToolNames.filter((name) => !CHIEF_TOOLS.includes(name as (typeof CHIEF_TOOLS)[number]));
+    } else if (agentId && !isChief) {
+      const base = effectiveAllowedTools ?? allToolNames;
+      effectiveAllowedTools = base.filter((name) => !CHIEF_TOOLS.includes(name as (typeof CHIEF_TOOLS)[number]));
     }
 
     // Route API-backed providers (OpenRouter, Anthropic) through the registered

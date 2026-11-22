@@ -957,3 +957,58 @@ test('DesktopServer - provider sign-in routes are reachable', async () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('REST POST /api/settings awaits a valid chief id before replying', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-rest-chief-ok-'));
+  try {
+    const server = new DesktopServer({ baseDir: tmpDir });
+    MockIncomingMessage.defaultToken = server.getAuthToken();
+    const chief = await server.getBridge().createAgent({
+      name: 'REST Chief', role: 'Lead', systemPrompt: 'lead',
+    });
+
+    const req = new MockIncomingMessage('POST', '/api/settings');
+    const res = new MockServerResponse();
+    const pending = (server as any).handleRequest(req, res);
+    req.emit('data', Buffer.from(JSON.stringify({ chiefOfStaffAgentId: chief.id })));
+    req.emit('end');
+    await pending;
+
+    assert.strictEqual(res.statusCode, 200, res.body);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.chiefOfStaffAgentId, chief.id, 'response must reflect the persisted chief');
+    assert.strictEqual(server.getBridge().getSettings().chiefOfStaffAgentId, chief.id);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('REST POST /api/settings rejects an unknown chief id with 400 and no unhandled rejection', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-rest-chief-bad-'));
+  const unhandled: unknown[] = [];
+  const capture = (reason: unknown) => { unhandled.push(reason); };
+  process.on('unhandledRejection', capture);
+  try {
+    const server = new DesktopServer({ baseDir: tmpDir });
+    MockIncomingMessage.defaultToken = server.getAuthToken();
+
+    const req = new MockIncomingMessage('POST', '/api/settings');
+    const res = new MockServerResponse();
+    const pending = (server as any).handleRequest(req, res);
+    req.emit('data', Buffer.from(JSON.stringify({ chiefOfStaffAgentId: 'agent_missing' })));
+    req.emit('end');
+    await pending;
+
+    assert.strictEqual(res.statusCode, 400, res.body);
+    const body = JSON.parse(res.body);
+    assert.match(String(body.error), /Unknown chief of staff agent: agent_missing/);
+    assert.strictEqual(server.getBridge().getSettings().chiefOfStaffAgentId ?? null, null, 'invalid chief must not be persisted');
+
+    // Unhandled rejections surface on a later tick, so let the queue drain.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.deepStrictEqual(unhandled, [], 'chief validation must be awaited, not left unhandled');
+  } finally {
+    process.off('unhandledRejection', capture);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

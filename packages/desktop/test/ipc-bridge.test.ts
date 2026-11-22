@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { DesktopIpcBridge as BaseDesktopIpcBridge } from '../src/ipc-bridge.js';
-import { workspaceSentinel } from '@opensand/coordinator';
+import { workspaceSentinel, DEFAULT_ROLE_TOOLS } from '@opensand/coordinator';
 
 const createdBridges: BaseDesktopIpcBridge[] = [];
 class DesktopIpcBridge extends BaseDesktopIpcBridge {
@@ -828,5 +828,23 @@ test("chief settings persist, validate and invalidate coordinators", async () =>
 
     await bridge.deleteAgent(a.id);
     assert.strictEqual((await bridge.getSettings()).chiefOfStaffAgentId ?? null, null);
+  } finally { fs.rmSync(tmpDir, { recursive: true, force: true }); }
+});
+
+test("a non-chief role keeps its narrow tool whitelist", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-chief-role-whitelist-"));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    const guard = await bridge.createAgent({ name: "Security Bot", role: "Security Bot", systemPrompt: "guard" });
+    const coordinator = await bridge.createSessionCoordinator(`bot_${guard.id}`, guard.id);
+    const resolved = coordinator.getActiveToolDefinitions().map((d) => d.function.name);
+    const expected = [...DEFAULT_ROLE_TOOLS["security"]].sort();
+    assert.deepStrictEqual(
+      [...resolved].sort(),
+      expected,
+      `a role-scoped non-chief must keep only its role tools (${JSON.stringify(resolved)})`
+    );
+    assert.ok(!resolved.includes("delegate_to_agent"), "non-chief must not resolve delegate_to_agent");
+    assert.ok(!resolved.includes("await_agent"), "non-chief must not resolve await_agent");
   } finally { fs.rmSync(tmpDir, { recursive: true, force: true }); }
 });
