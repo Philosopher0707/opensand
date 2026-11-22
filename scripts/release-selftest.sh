@@ -14,6 +14,7 @@ set -euo pipefail
 #   9. Release notes grouped from merged PR titles, with each PR number
 #  12. Post-install health check failure halts the release with exit 2
 #  13. Post-install health check is invoked on the installed app at --install time
+#  18. Stale bump PR base is rebased in release.sh, which exits 3 with re-run instructions
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RELEASE_SCRIPT="$ROOT/scripts/release.sh"
@@ -56,6 +57,10 @@ case "$1" in
         ;;
       create)
         echo "https://github.com/Philosopher0707/opensand/pull/42"
+        exit 0
+        ;;
+      update-branch)
+        printf '%s\n' "$*" >> "$TEST_CASE_DIR/pr_update_branch.log"
         exit 0
         ;;
     esac
@@ -163,6 +168,10 @@ case "$1" in
         exit 0
       fi
     done
+    if [ "$2" = "origin" ] && [ "$3" = "refs/heads/main" ] && [ -f "$TEST_CASE_DIR/main_sha" ]; then
+      cat "$TEST_CASE_DIR/main_sha"
+      exit 0
+    fi
     /usr/bin/git "$@"
     ;;
   tag)
@@ -586,6 +595,26 @@ CASE_OS=""
 if [ -f "$dir/download_args.log" ]; then
   echo "FAIL case17-linux-resume: re-downloaded assets on resume"
   FAILED=1
+fi
+
+# --- Case 18: Stale bump PR base -> rebase via gh, exit 3, never run the gate ---
+dir="$WORK/case18-stale-base"; mkdir -p "$dir"
+echo '[{"number": 42, "state": "OPEN"}]' > "$dir/pr_list.json"
+echo '{"state": "OPEN", "baseRefOid": "1111111111111111111111111111111111111111"}' > "$dir/pr_view.json"
+printf '%s\t%s\n' "2222222222222222222222222222222222222222" "refs/heads/main" > "$dir/main_sha"
+echo "1" > "$dir/pr_gate_exit" # would fail if the gate were run on the stale base
+run_test "case18-stale-base" 3 0.1.11
+if ! grep -qxF "pr update-branch 42 --rebase" "$dir/pr_update_branch.log" 2>/dev/null; then
+  echo "FAIL case18-stale-base: did not call 'gh pr update-branch 42 --rebase'"
+  echo "  saw: $(cat "$dir/pr_update_branch.log" 2>/dev/null || echo '(no calls)')"
+  FAILED=1
+fi
+if grep -q "Running scripts/pr-gate.sh" "$dir/run.out"; then
+  echo "FAIL case18-stale-base: ran pr-gate on a stale base"
+  FAILED=1
+fi
+if [ "$FAILED" -eq 0 ]; then
+  echo "PASS case18-stale-base: rebased stale base, exited 3 without running the gate"
 fi
 
 if [ "$FAILED" -eq 0 ]; then
