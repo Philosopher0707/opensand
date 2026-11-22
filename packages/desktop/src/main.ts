@@ -152,6 +152,8 @@ export class DesktopApp {
       // One engine per app: the window's IPC handlers must drive the same bridge
       // the HTTP API uses, or a query's trust question lands nowhere the UI can see.
       this.bridge = this.server.getBridge();
+      (globalThis as any).__opensandDesktopApp = this;
+      (globalThis as any).__opensandBridge = this.bridge;
       this.forwardBridgeEvents();
 
       const onboarding = await getOnboardingState(this.server.getBridge());

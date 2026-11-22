@@ -153,7 +153,12 @@ export function windowBridgeData(): ShellData {
     approveTool(approvalId, decision) {
       const bridge = (window as any).opensand;
       if (!bridge?.approveTool) return Promise.reject(new Error("Approvals are not available in this build"));
-      return bridge.approveTool(approvalId, decision);
+      return bridge.approveTool(approvalId, decision).then((res: any) => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("opensand:approvals_changed"));
+        }
+        return res;
+      });
     },
     async listPendingApprovals(): Promise<ToolApprovalRequest[]> {
       if (typeof window !== "undefined" && (window as any).__testPendingApprovals) {

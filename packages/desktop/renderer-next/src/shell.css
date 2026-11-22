@@ -85,13 +85,205 @@
 .inbox-detail-row { margin-bottom: 4px; overflow-wrap: anywhere; }
 .inbox-args-box { margin: 4px 0 0; padding: 6px; background: rgba(0,0,0,.35); border-radius: 3px; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-x: auto; white-space: pre-wrap; max-height: 120px; }
 .inbox-detail-meta { display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; color: var(--text-muted); }
-.approval-detail-view { width: 100%; max-width: 728px; padding: 16px; align-self: flex-start; }
-.approval-detail-card { border: 1px solid var(--border, rgba(128,128,128,.35)); border-left: 4px solid #d97706; border-radius: 6px; padding: 16px; background: var(--bg-surface, rgba(128,128,128,.05)); }
-.approval-detail-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.approval-detail-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
-.approval-detail-body { font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
-.approval-row { overflow-wrap: anywhere; }
-.approval-meta-row { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--text-muted); }
+.approval-detail-view {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 800px;
+  padding: 24px;
+  margin: 0 auto;
+  align-self: flex-start;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.approval-detail-card {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--border, rgba(128,128,128,.35));
+  border-left: 4px solid #d97706;
+  border-radius: 8px;
+  padding: 20px;
+  background: var(--bg-surface, rgba(128,128,128,.05));
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.approval-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border, rgba(128,128,128,.15));
+}
+
+.approval-header-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.approval-detail-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #f1f5f9);
+}
+
+.btn-close-approval {
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #94a3b8);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.btn-close-approval:hover {
+  background: var(--bg-hover, rgba(128,128,128,.15));
+  color: var(--text-primary, #f1f5f9);
+}
+
+.btn-close-approval:focus-visible {
+  outline: 2px solid var(--accent, #4c8dff);
+  outline-offset: 1px;
+}
+
+.approval-detail-body {
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.approval-row {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.approval-args-box {
+  margin: 6px 0 0;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.2));
+  border-radius: 6px;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 240px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+}
+
+.approval-meta-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.approval-decision {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.inbox-decision-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.inbox-decision-row .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.inbox-decision-row .btn-primary {
+  background: #2563eb;
+  border: 1px solid #1d4ed8;
+  color: #ffffff;
+}
+
+.inbox-decision-row .btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.inbox-decision-row .btn-secondary {
+  background: #059669;
+  border: 1px solid #047857;
+  color: #ffffff;
+}
+
+.inbox-decision-row .btn-secondary:hover:not(:disabled) {
+  background: #047857;
+}
+
+.inbox-decision-row .btn-ghost {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.inbox-decision-row .btn-ghost:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.inbox-decision-row .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.inbox-item-details {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.inbox-item-details .inbox-decision-row {
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.inbox-item-details .inbox-decision-row .btn {
+  padding: 3px 6px;
+  font-size: 10px;
+  flex: 1 1 auto;
+}
+
+.approval-detail-view .inbox-decision-row {
+  margin-top: 14px;
+  gap: 10px;
+}
+
+.approval-detail-view .inbox-decision-row .btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  flex: 0 0 auto;
+}
+
+.approval-detail-view .inbox-error {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: 6px;
+  color: #fca5a5;
+  font-size: 12px;
+}
 
 .timeline-step-actions { display: flex; gap: 6px; align-items: center; }
 .btn-fork-step { padding: 2px 8px; font-size: 11px; cursor: pointer; border: 1px solid var(--border, rgba(128,128,128,.35)); border-radius: 6px; background: transparent; color: inherit; }

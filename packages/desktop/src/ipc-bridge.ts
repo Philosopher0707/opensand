@@ -847,6 +847,15 @@ export class DesktopIpcBridge extends EventEmitter {
     });
   }
 
+  public async requestApproval(
+    toolName: string,
+    args: Record<string, unknown>,
+    reason?: string,
+    reqExtra?: { effect?: string; sandboxed?: boolean; note?: string }
+  ): Promise<boolean> {
+    return this.requestUserApproval(toolName, args, reason, reqExtra);
+  }
+
   /**
    * Ask whether to trust `folder`. Never consults settings.autoApprove: raising trust always asks.
    * Pending until answered through approveTool; resolves with the level the user chose.

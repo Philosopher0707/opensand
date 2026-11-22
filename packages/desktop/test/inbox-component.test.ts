@@ -378,6 +378,63 @@ test("Inbox Component suite", async (t) => {
       await waitFor(() => Boolean(container.querySelector(".inbox-item-details")));
       assert.strictEqual(container.querySelector(".inbox-decision-row"), null);
     });
+
+    await t.test("stale epoch error produces specific stale approval alert", async () => {
+      const container = new FakeNode(1, "DIV");
+      const data: ShellDataWithApprovals = {
+        listPendingApprovals: async () => [itemA],
+        approveTool: async () => {
+          throw new Error("Stale epoch: request made at epoch 1, current is 2");
+        },
+      };
+
+      render(h(Inbox, { data, now: () => 1700000000000 }), container as unknown as Element);
+      await waitFor(() => container.querySelectorAll(".inbox-item").length === 1);
+      container.querySelectorAll(".inbox-item")[0].click();
+      await waitFor(() => Boolean(container.querySelector(".inbox-decision-row")));
+
+      const approve = [...container.querySelector(".inbox-decision-row")!.querySelectorAll("button")].find((b) => b.textContent === "Approve Once");
+      assert.ok(approve);
+      approve.click();
+
+      await waitFor(() => Boolean(container.querySelector("[role=\"alert\"]")));
+      const alertText = container.querySelector("[role=\"alert\"]")!.textContent;
+      assert.match(alertText, /Stale approval: the system epoch changed/);
+    });
+
+    await t.test("ApprovalDecisionButtons with idPrefix='main' renders legacy action button IDs", async () => {
+      const container = new FakeNode(1, "DIV");
+      const calls: Array<{ id: string; decision: unknown }> = [];
+      const data: ShellDataWithApprovals = {
+        listPendingApprovals: async () => [itemA],
+        approveTool: async (id, decision) => {
+          calls.push({ id, decision });
+          return { success: true };
+        },
+      };
+
+      // Import ApprovalDecisionButtons
+      const { ApprovalDecisionButtons } = await import("../src/shell/inbox-component.js");
+      render(h(ApprovalDecisionButtons, { data, req: itemA, idPrefix: "main" }), container as unknown as Element);
+
+      await waitFor(() => Boolean(container.querySelector(".inbox-decision-row")));
+
+      const btnApprove = container.querySelector("#btnApproveOnce");
+      const btnAlways = container.querySelector("#btnAlwaysAllow");
+      const btnReject = container.querySelector("#btnRejectTool");
+
+      assert.ok(btnApprove, "has #btnApproveOnce");
+      assert.ok(btnAlways, "has #btnAlwaysAllow");
+      assert.ok(btnReject, "has #btnRejectTool");
+
+      assert.strictEqual(btnApprove.getAttribute("data-action"), "approve_once");
+      assert.strictEqual(btnAlways.getAttribute("data-action"), "always_allow");
+      assert.strictEqual(btnReject.getAttribute("data-action"), "reject");
+
+      btnAlways.click();
+      await waitFor(() => calls.length === 1);
+      assert.deepStrictEqual(calls[0], { id: "appr-1", decision: { action: "always_allow", epoch: 1 } });
+    });
   } finally {
     (globalThis as any).document = prevDoc;
   }
