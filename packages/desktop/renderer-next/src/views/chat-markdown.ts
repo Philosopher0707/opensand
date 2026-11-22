@@ -99,7 +99,7 @@ export function renderMarkdown(rawText: string): string {
       }
       return `<p>${p.replace(/\n/g, "<br />")}</p>`;
     })
-    .join("\n");
+    .join("\n\n");
 
   // 10. Re-insert code blocks and inline code
   codeBlocks.forEach((block, idx) => {

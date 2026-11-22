@@ -247,3 +247,19 @@ test("streaming text with inline <think> tags extracts thought into structured f
   assert.strictEqual(s.messages[1].text, "The answer is 4.");
   assert.strictEqual(s.messages[1].thought, "Let me calculate 2+2=4");
 });
+
+test("streaming text across paced chunks preserves exact text without dropping deltas", () => {
+  const chunks = [
+    "CHAT ANSWER: the workspace has three packages.\n\nThe desktop ",
+    "package owns the Electron main process and the bridge; the engine package runs the local model loop and the mission store; the protocol pack",
+    "age carries the message shapes both sides share.\n\nFor a first change, start in packages/desktop/src/shell: the models there are pure state machines, so they test without Electron and the views stay thin.",
+  ];
+  const s = run(
+    { type: "start", query: "summarize" },
+    ...chunks.map((text) => ({ type: "delta" as const, text })),
+    { type: "complete" }
+  );
+  assert.strictEqual(s.status, "done");
+  assert.strictEqual(s.messages[1].text, chunks.join(""));
+  assert.strictEqual(s.messages[1]._rawText, undefined);
+});

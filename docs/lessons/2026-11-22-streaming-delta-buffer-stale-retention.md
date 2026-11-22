@@ -1,0 +1,5 @@
+# Streaming delta reducer retained stale raw buffer on non-think deltas
+
+- **Trap:** During streaming chat turns, when text chunks without thought tags were processed after a chunk that set a raw text buffer, the reducer retained the stale raw text buffer from earlier chunks because `_rawText` was not cleared or unconditionally updated, causing subsequent chunks to overwrite rather than append text. In addition, joining rendered markdown paragraphs with single newlines changed DOM `textContent` paragraph separation compared to the original text.
+- **Root Cause:** Conditional assignment `if (rawCombined !== text) updated._rawText = rawCombined` allowed `_rawText` from prior chunks to persist through object spread (`...m`) when the condition became false, rather than being deleted when no thought tags were present.
+- **Rule:** Streaming buffers must be unconditionally refreshed or explicitly deleted on every delta step; never let stale accumulator properties linger through object spreading. Ensure markdown paragraph rendering preserves paragraph spacing in DOM textContent.

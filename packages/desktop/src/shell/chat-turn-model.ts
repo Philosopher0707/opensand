@@ -88,9 +88,9 @@ export function extractThinking(rawText: string): { text: string; thought?: stri
   if (thoughts.length > 0) {
     thought = thoughts.join("\n\n").trim();
   }
-  const cleanText = rawText.replace(thinkRegex, "").trim();
+  const cleanText = rawText.replace(thinkRegex, "");
   return {
-    text: cleanText,
+    text: thoughts.length > 0 ? cleanText.trimStart() : cleanText,
     thought: thought || undefined,
   };
 }
@@ -128,7 +128,7 @@ export function chatTurnReducer(state: ChatTurnState = INITIAL_CHAT_TURN, action
         ...state,
         status: "streaming",
         messages: updateAssistant(state, (m) => {
-          const rawCombined = (m._rawText ?? m.text) + action.text;
+          const rawCombined = (m._rawText !== undefined ? m._rawText : m.text) + action.text;
           const { text, thought: extractedThought } = extractThinking(rawCombined);
           const thought = extractedThought || m.thought;
           const updated: ChatMessage = {
@@ -136,8 +136,10 @@ export function chatTurnReducer(state: ChatTurnState = INITIAL_CHAT_TURN, action
             text,
             ...(thought ? { thought } : {}),
           };
-          if (rawCombined !== text) {
+          if (rawCombined.includes("<think") || rawCombined.includes("<thinking") || thought) {
             updated._rawText = rawCombined;
+          } else {
+            delete updated._rawText;
           }
           return updated;
         }),
