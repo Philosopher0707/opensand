@@ -4596,6 +4596,18 @@ textarea#promptInput {
 .inspector-session:hover { background: var(--bg-hover); }
 .inspector-empty { padding: 6px 8px; font-size: 11px; color: var(--text-muted); }
 .inspector-new { width: 100%; border-style: dashed; color: var(--accent); }
+
+/* Chief-of-staff picker (token-based; buttons must not fall back to UA white) */
+.chief-picker-title { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--text-main); }
+.chief-picker-option {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-main);
+  font: inherit; font-size: 12px; text-align: center; cursor: pointer;
+  transition: background 150ms var(--ease-out), border-color 150ms var(--ease-out);
+}
+.chief-picker-option:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--accent); }
+.chief-picker-option:disabled { opacity: .55; cursor: default; }
+.chief-picker-clear { background: transparent; color: var(--text-muted); }
 .btn-bot-inspect {
   border: 0; background: transparent; cursor: pointer; padding: 2px; flex: none;
   display: grid; place-items: center; opacity: .75;
