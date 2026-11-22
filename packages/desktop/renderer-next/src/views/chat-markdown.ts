@@ -36,7 +36,7 @@ export function renderMarkdown(rawText: string): string {
     const cleanCode = code.replace(/\n$/, "");
     const idx = codeBlocks.length;
     codeBlocks.push(
-      `<div class="code-block-wrapper"><div class="code-block-header"><span class="code-lang">${cleanLang}</span><button class="btn-copy-code" type="button" data-code="${escapeHtml(cleanCode)}">Copy</button></div><pre><code class="language-${cleanLang}">${escapeHtml(cleanCode)}</code></pre></div>`
+      `<div class="code-block-wrapper"><div class="code-block-header"><span class="code-lang">${cleanLang}</span><div class="code-block-actions"><button class="btn-open-canvas" type="button" data-code="${escapeHtml(cleanCode)}" data-lang="${cleanLang}">Open in Canvas</button><button class="btn-copy-code" type="button" data-code="${escapeHtml(cleanCode)}">Copy</button></div></div><pre><code class="language-${cleanLang}">${escapeHtml(cleanCode)}</code></pre></div>`
     );
     return `\n\x00CODEBLOCK${idx}\x00\n`;
   });

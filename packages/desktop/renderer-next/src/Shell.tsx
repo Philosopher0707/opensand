@@ -11,6 +11,17 @@ import { Inbox } from "./views/Inbox";
 import { ApprovalDecisionButtons } from "../../src/shell/inbox-component";
 import { QuickCaptureButton, QuickCaptureOutput, useQuickCapture } from "./views/QuickCapture";
 import { Chat, useChatTurn } from "./views/Chat";
+import { Canvas } from "./views/Canvas";
+import {
+  closeCanvas,
+  closeTab,
+  createInitialCanvasState,
+  openArtifact,
+  selectTab,
+  setViewMode,
+  type ArtifactItem,
+  type CanvasState,
+} from "../../src/shell/canvas-model";
 
 export interface ShellProps {
   data: ShellData;
@@ -21,6 +32,8 @@ export function Shell({ data }: ShellProps) {
   const [selectedApproval, setSelectedApproval] = useState<ToolApprovalRequest | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [approvalsRev, setApprovalsRev] = useState(0);
+  const [canvasState, setCanvasState] = useState<CanvasState>(createInitialCanvasState());
+
   const capture = useQuickCapture(data);
   // The chat turn lives at the shell level so opening an approval detail does not drop it.
   const chat = useChatTurn(data, selectedSessionId);
@@ -39,6 +52,28 @@ export function Shell({ data }: ShellProps) {
     setSelectedApproval(null);
     setSelectedSessionId(id);
   };
+
+  const handleOpenArtifact = (art: Partial<ArtifactItem> & { title: string; content: string }) => {
+    setCanvasState((prev) => openArtifact(prev, art));
+  };
+
+  const handleSelectTab = (id: string) => {
+    setCanvasState((prev) => selectTab(prev, id));
+  };
+
+  const handleCloseTab = (id: string) => {
+    setCanvasState((prev) => closeTab(prev, id));
+  };
+
+  const handleCloseCanvas = () => {
+    setCanvasState((prev) => closeCanvas(prev));
+  };
+
+  const handleSetViewMode = (id: string, mode: "code" | "preview" | "diff") => {
+    setCanvasState((prev) => setViewMode(prev, id, mode));
+  };
+
+  const hasCanvasOpen = canvasState.isOpen && canvasState.artifacts.length > 0;
 
   return (
     <div class="app-layout">
@@ -101,6 +136,22 @@ export function Shell({ data }: ShellProps) {
             </span>
           </div>
           <div class="topbar-actions">
+            {canvasState.artifacts.length > 0 && (
+              <button
+                id="btnToggleCanvas"
+                type="button"
+                class="btn btn-sm btn-ghost btn-toggle-canvas"
+                title="Toggle Canvas"
+                onClick={() =>
+                  setCanvasState((prev) => ({
+                    ...prev,
+                    isOpen: !prev.isOpen,
+                  }))
+                }
+              >
+                Canvas ({canvasState.artifacts.length})
+              </button>
+            )}
             <QuickCaptureButton capture={capture} />
           </div>
         </header>
@@ -149,7 +200,25 @@ export function Shell({ data }: ShellProps) {
               <MissionReceipt data={data} missionId={missionId} />
             </div>
           ) : (
-            <Chat chat={chat} selectedSessionId={selectedSessionId} data={data} />
+            <div class={`chat-canvas-split ${hasCanvasOpen ? "canvas-open" : "canvas-closed"}`}>
+              <div class="chat-split-pane">
+                <Chat
+                  chat={chat}
+                  selectedSessionId={selectedSessionId}
+                  data={data}
+                  onOpenArtifact={handleOpenArtifact}
+                />
+              </div>
+              <div class="canvas-split-pane">
+                <Canvas
+                  state={canvasState}
+                  onSelectTab={handleSelectTab}
+                  onCloseTab={handleCloseTab}
+                  onCloseCanvas={handleCloseCanvas}
+                  onSetViewMode={handleSetViewMode}
+                />
+              </div>
+            </div>
           )}
         </section>
       </main>

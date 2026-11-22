@@ -180,3 +180,230 @@ test("Canvas #82 in the real Electron window: full edited file, aligned gutter, 
   assert.strictEqual(r.shown.tabs, 12);
   assert.ok(r.shown.activeVisible, "active tab visible again after re-show");
 });
+
+// ---------------------------------------------------------------------------
+// Preact Shell Canvas Split View Real-Window Verification (Phase 5 Row 5)
+// ---------------------------------------------------------------------------
+
+import { makeGitWorkspace, trustFolderIn } from "./engine-mission-fixture.js";
+
+const PREACT_CANVAS_RUNNER = [
+  'import { app } from "electron";',
+  'import fs from "node:fs";',
+  'import path from "node:path";',
+  'const shotDir = process.env.OPENSAND_CANVAS_SHOT_DIR || "";',
+  'const TARGET_SESSION_ID = process.env.OPENSAND_TARGET_SESSION_ID || "sess-canvas-1";',
+  'const TIMEOUT_MS = Number(process.env.OPENSAND_CANVAS_TIMEOUT_MS || 90000);',
+  '',
+  'const timeout = setTimeout(() => { console.error("[preact-runner] timeout"); app.quit(); process.exit(1); }, TIMEOUT_MS);',
+  'const sleep = (ms) => new Promise((r) => setTimeout(r, ms));',
+  'let win;',
+  'const js = (code) => win.webContents.executeJavaScript(code).catch((e) => { console.error("[js failed] " + String(code).slice(0, 90)); throw e; });',
+  'const wait = async (fn) => { for (let i = 0; i < 150; i++) { if (await js("Boolean(" + fn + ")")) return; await sleep(100); } throw new Error("wait timed out: " + fn); };',
+  '',
+  'async function shot(label) {',
+  '  if (!shotDir) return;',
+  '  fs.mkdirSync(shotDir, { recursive: true });',
+  '  await js("new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))");',
+  '  await sleep(250);',
+  '  fs.writeFileSync(path.join(shotDir, label + ".png"), (await win.webContents.capturePage()).toPNG());',
+  '}',
+  '',
+  'app.on("browser-window-created", (_e, w) => {',
+  '  win = w;',
+  '  w.webContents.on("did-finish-load", async () => {',
+  '    try {',
+  '      await wait("document.querySelector(\'#promptInput\') && document.body.classList.contains(\'is-electron\')");',
+  '      await wait("document.querySelectorAll(\'.session-channel-item\').length > 0");',
+  '',
+  '      // Select session in sidebar',
+  '      const clicked = await js("(() => { const items = [...document.querySelectorAll(\'.session-channel-item\')]; const item = items.find((el) => el.getAttribute(\'data-session-id\') === " + JSON.stringify(TARGET_SESSION_ID) + ") || items[0]; if (item) { item.click(); return true; } return false; })()");',
+  '      if (!clicked) throw new Error("Could not find session item for " + TARGET_SESSION_ID);',
+  '',
+  '      await wait("document.querySelectorAll(\'#messageFeed .message\').length >= 2");',
+  '      await wait("document.querySelector(\'.tool-line\')");',
+  '      await wait("document.querySelector(\'.code-block-wrapper\')");',
+  '',
+  '      // 1. Initial window size: 960x740 (compact)',
+  '      win.setContentSize(960, 740);',
+  '      await sleep(300);',
+  '',
+  '      // Step 1: Open file from tool card into Canvas',
+  '      await wait("document.querySelector(\'.tool-line .btn-open-canvas\')");',
+  '      await js("document.querySelector(\'.tool-line .btn-open-canvas\').click()");',
+  '      await wait("document.querySelector(\'.chat-canvas-split.canvas-open\')");',
+  '      await wait("document.querySelector(\'#artifactCanvas\')");',
+  '      await wait("document.querySelectorAll(\'#canvasTabStrip .canvas-file-tab\').length === 1");',
+  '',
+  '      const tab1Title = await js("document.querySelector(\'#canvasTabStrip .canvas-file-tab.active .canvas-file-tab-label\')?.textContent");',
+  '      const code1Content = await js("document.querySelector(\'.canvas-code-content\')?.textContent");',
+  '      const lineNums = await js("document.querySelector(\'#canvasLineNumbers\')?.textContent");',
+  '',
+  '      // Step 2: Open code block from markdown message into Canvas as second tab',
+  '      await wait("document.querySelector(\'.code-block-wrapper .btn-open-canvas\')");',
+  '      await js("document.querySelector(\'.code-block-wrapper .btn-open-canvas\').click()");',
+  '      await wait("document.querySelectorAll(\'#canvasTabStrip .canvas-file-tab\').length === 2");',
+  '',
+  '      const tabsAfterAdd = await js("document.querySelectorAll(\'#canvasTabStrip .canvas-file-tab\').length");',
+  '      const tab2Title = await js("document.querySelector(\'#canvasTabStrip .canvas-file-tab.active .canvas-file-tab-label\')?.textContent");',
+  '',
+  '      // Step 3: Switch back to first tab',
+  '      await js("document.querySelectorAll(\'#canvasTabStrip .canvas-file-tab\')[0].click()");',
+  '      await sleep(150);',
+  '      const activeAfterSwitch = await js("document.querySelector(\'#canvasTabStrip .canvas-file-tab.active .canvas-file-tab-label\')?.textContent");',
+  '',
+  '      // Step 4: Measure compact layout metrics at 960x740',
+  '      const compactMetrics = await js("(() => { const split = document.querySelector(\'.chat-canvas-split\'); const chatP = document.querySelector(\'.chat-split-pane\'); const canP = document.querySelector(\'.canvas-split-pane\'); const sr = split ? split.getBoundingClientRect() : null; const cr = chatP ? chatP.getBoundingClientRect() : null; const ar = canP ? canP.getBoundingClientRect() : null; return { noOverflow: document.documentElement.scrollWidth <= window.innerWidth, splitWidth: sr ? sr.width : 0, chatWidth: cr ? cr.width : 0, canvasWidth: ar ? ar.width : 0, isCanvasOpen: split ? split.classList.contains(\'canvas-open\') : false }; })()");',
+  '      await shot("compact-canvas-split");',
+  '',
+  '      // Step 5: Resize to wide window: 1920x1080',
+  '      win.setContentSize(1920, 1080);',
+  '      await sleep(300);',
+  '      const wideMetrics = await js("(() => { const split = document.querySelector(\'.chat-canvas-split\'); const chatP = document.querySelector(\'.chat-split-pane\'); const canP = document.querySelector(\'.canvas-split-pane\'); const sr = split ? split.getBoundingClientRect() : null; const cr = chatP ? chatP.getBoundingClientRect() : null; const ar = canP ? canP.getBoundingClientRect() : null; return { noOverflow: document.documentElement.scrollWidth <= window.innerWidth, splitWidth: sr ? sr.width : 0, chatWidth: cr ? cr.width : 0, canvasWidth: ar ? ar.width : 0, isCanvasOpen: split ? split.classList.contains(\'canvas-open\') : false }; })()");',
+  '      await shot("wide-canvas-split");',
+  '',
+  '      // Step 6: Close active tab',
+  '      await js("document.querySelector(\'#canvasTabStrip .canvas-file-tab.active .canvas-file-tab-close\').click()");',
+  '      await wait("document.querySelectorAll(\'#canvasTabStrip .canvas-file-tab\').length === 1");',
+  '      const tabsAfterClose = await js("document.querySelectorAll(\'#canvasTabStrip .canvas-file-tab\').length");',
+  '',
+  '      // Step 7: Close canvas entirely',
+  '      await js("document.querySelector(\'#btnCloseCanvas\').click()");',
+  '      await wait("document.querySelector(\'.chat-canvas-split.canvas-closed\')");',
+  '      const metricsAfterClose = await js("(() => { const split = document.querySelector(\'.chat-canvas-split\'); const canP = document.querySelector(\'.canvas-split-pane\'); return { isClosed: split ? split.classList.contains(\'canvas-closed\') : false, canvasHidden: canP ? (getComputedStyle(canP).display === \'none\') : true, noOverflow: document.documentElement.scrollWidth <= window.innerWidth }; })()");',
+  '',
+  '      // Step 8: Re-open canvas via topbar toggle button',
+  '      await wait("document.querySelector(\'#btnToggleCanvas\')");',
+  '      await js("document.querySelector(\'#btnToggleCanvas\').click()");',
+  '      await wait("document.querySelector(\'.chat-canvas-split.canvas-open\')");',
+  '      const reOpened = await js("Boolean(document.querySelector(\'.chat-canvas-split.canvas-open\'))");',
+  '',
+  '      const result = {',
+  '        tab1Title,',
+  '        code1HasContent: Boolean(code1Content && code1Content.includes("add")),',
+  '        hasLineNumbers: Boolean(lineNums && lineNums.includes("1")),',
+  '        tabsAfterAdd,',
+  '        tab2Title,',
+  '        activeAfterSwitch,',
+  '        compactMetrics,',
+  '        wideMetrics,',
+  '        tabsAfterClose,',
+  '        metricsAfterClose,',
+  '        reOpened,',
+  '      };',
+  '',
+  '      console.log("__PREACT_CANVAS_RESULT__:" + JSON.stringify(result));',
+  '      clearTimeout(timeout);',
+  '      app.quit();',
+  '      process.exit(0);',
+  '    } catch (err) {',
+  '      console.error("[preact-runner] error", err);',
+  '      clearTimeout(timeout);',
+  '      app.quit();',
+  '      process.exit(1);',
+  '    }',
+  '  });',
+  '});',
+  'await import(process.env.OPENSAND_MAIN);',
+].join("\n");
+
+test("Preact canvas split view, tab switching, and responsiveness at 960x740 and 1920x1080", async (t) => {
+  const reason = skipReason();
+  if (reason) {
+    t.skip(reason);
+    return;
+  }
+
+  const sessionId = "sess-canvas-split-1";
+  const home = makeTempHome("opensand-canvas-split-home-");
+  const ws = makeGitWorkspace({ "README.md": "# Canvas Split Test" });
+  await trustFolderIn(home, ws);
+
+  const sessDir = path.join(home, ".opensand", "sessions", sessionId);
+  fs.mkdirSync(sessDir, { recursive: true });
+  const events = [
+    { role: "user", content: "Can you generate a helper module and some demo code?" },
+    {
+      role: "assistant",
+      thought: "I will generate the math utility and demo script.",
+      content: "Here is the implementation:\n\n```typescript\nimport { add } from './utils';\nconsole.log(add(1, 2));\n```\n",
+      tool_calls: [
+        {
+          id: "call_write_1",
+          function: {
+            name: "write_file",
+            arguments: JSON.stringify({
+              path: "src/utils.ts",
+              content: "export function add(a: number, b: number): number {\n  return a + b;\n}\n",
+            }),
+          },
+        },
+      ],
+    },
+    {
+      role: "tool",
+      tool_call_id: "call_write_1",
+      result: { success: true },
+    },
+  ];
+  const jsonl = events.map((e) => JSON.stringify(e)).join("\n") + "\n";
+  fs.writeFileSync(path.join(sessDir, "transcript.jsonl"), jsonl, "utf8");
+
+  const electronBin = path.join(pkgRoot, "node_modules", ".bin", "electron");
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-canvas-preact-harness-"));
+  const runner = path.join(tmpDir, "runner-preact.mjs");
+  fs.writeFileSync(runner, PREACT_CANVAS_RUNNER, "utf8");
+
+  const env = hermeticElectronEnv(home);
+  delete env.OPENSAND_RENDERER;
+  env.OPENSAND_RENDERER = "preact";
+  env.OPENSAND_MAIN = path.join(pkgRoot, "dist", "src", "main.js");
+  env.OPENSAND_TARGET_SESSION_ID = sessionId;
+
+  let stdout = "";
+  let stderr = "";
+
+  try {
+    const code = await withElectronLock(async () => {
+      const child = spawn(electronBin, [`--user-data-dir=${tmpDir}`, runner], {
+        cwd: ws,
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      child.stdout.on("data", (d) => {
+        stdout += d.toString();
+      });
+      child.stderr.on("data", (d) => {
+        stderr += d.toString();
+      });
+      return new Promise<number>((resolve) => child.on("close", (c) => resolve(c ?? 0)));
+    });
+
+    assert.strictEqual(code, 0, `preact canvas runner failed (${code})\n${stdout}\n${stderr}`);
+    const match = stdout.match(/__PREACT_CANVAS_RESULT__:(.*)/);
+    assert.ok(match, `no result in stdout:\n${stdout}\n${stderr}`);
+    const res = JSON.parse(match[1]);
+
+    assert.strictEqual(res.tab1Title, "utils.ts", "tool card opened utils.ts tab");
+    assert.strictEqual(res.code1HasContent, true, "utils.ts content is displayed in code pane");
+    assert.strictEqual(res.hasLineNumbers, true, "line numbers are rendered");
+    assert.strictEqual(res.tabsAfterAdd, 2, "code block added second tab");
+    assert.strictEqual(res.tab2Title, "Snippet.typescript", "second tab has expected label");
+    assert.strictEqual(res.activeAfterSwitch, "utils.ts", "switching tab activates utils.ts");
+    assert.strictEqual(res.compactMetrics.noOverflow, true, "compact 960x740: zero horizontal overflow in split view");
+    assert.ok(res.compactMetrics.chatWidth > 0, "compact 960x740: chat pane has positive width");
+    assert.ok(res.compactMetrics.canvasWidth > 0, "compact 960x740: canvas pane has positive width");
+    assert.strictEqual(res.wideMetrics.noOverflow, true, "wide 1920x1080: zero horizontal overflow in split view");
+    assert.ok(res.wideMetrics.chatWidth > 0, "wide 1920x1080: chat pane has positive width");
+    assert.ok(res.wideMetrics.canvasWidth > 0, "wide 1920x1080: canvas pane has positive width");
+    assert.strictEqual(res.tabsAfterClose, 1, "closing tab leaves 1 tab");
+    assert.strictEqual(res.metricsAfterClose.isClosed, true, "closing canvas updates split state");
+    assert.strictEqual(res.metricsAfterClose.canvasHidden, true, "canvas is hidden after close");
+    assert.strictEqual(res.metricsAfterClose.noOverflow, true, "zero horizontal overflow when closed");
+    assert.strictEqual(res.reOpened, true, "topbar button re-opens canvas");
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+});
