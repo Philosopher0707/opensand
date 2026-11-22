@@ -21,7 +21,7 @@ Port Orca's Bots-sidebar pattern into our shell: a persistent "Bots" section in 
   - name `truncate text-[13px] leading-5`, second line `truncate text-xs leading-4 text-muted-foreground`;
   - search toggle `data-bot-sidebar-search-toggle`, list `data-bot-sidebar-list`, rows `data-bot-sidebar-entry`, ArrowUp/ArrowDown focus movement;
   - "Show {{count}} more bots" overflow button (`bots.section.showMore`) and `+N` hidden-attention badge;
-  - sort choices Manual / Agent Activity / Recent / Name (`bot-sidebar-view.js:9-18`).
+  - sort choices Manual / Agent Activity / Recent / Name (`bot-sidebar-view.js:9-18`) — **context only; no sort UI is shipped in this scope**.
 - Our renderer has no framework and no equivalent CSS utility system; port the **pattern and proportions with our existing tokens**, not the React implementation.
 
 ## Non-goals
@@ -55,27 +55,28 @@ Port Orca's Bots-sidebar pattern into our shell: a persistent "Bots" section in 
   </section>
   ```
 - The section is always visible (sidebar itself may collapse via the existing `#btnCollapseSidebar`). `switchView()` never touches the sidebar, so the same `#botList` node survives every view switch. `refreshBots()` → `botRail.render()` and existing harness selectors keep working.
-- `#viewTemplates` keeps management UI (New Persona / Export / Import, Active Workspace Tasks, persona grid) and loses the duplicate roster; `#btnOpenCreateBot` stays there.
+- `#viewTemplates` keeps management UI (New Persona / Export / Import, Active Workspace Tasks, persona grid); the roster is **relocated**, not duplicated. `#btnOpenCreateBot` stays there.
 
 ### 2. Row design (`renderer/modules/bot-rail.js`)
 
-- Keep `createBotRail({ buffers, getAgents, getActiveAgentId, onIdentity, onModel, onSelect, onDelete }) → { render(), applyFilter(text) }` and exported `setBotCardStatus`/`setBotCardBadge`.
-- `render()` fetches agents once into a closure `lastAgents`, then `renderRows()` applies the active filter and the show-more limit. `applyFilter(text)` re-renders from `lastAgents` without a fetch.
+- Extend the existing `createBotRail({ buffers, getAgents, getActiveAgentId, onIdentity, onModel, onSelect, onDelete })` return shape from `{ render() }` to **`{ render(), applyFilter(text), setExpanded(bool), isExpanded() }`** (all four are additions except `render`); keep exported `setBotCardStatus`/`setBotCardBadge` unchanged.
+- **State ownership:** the module owns `filter` (string) and `expanded` (bool) in its closure. `render()` fetches agents once into `lastAgents` then calls `renderRows()`, which applies the current `filter`/`expanded` — so a background `refreshBots()` (identity save, delete, delegation, boot) preserves both. `applyFilter(text)` and `setExpanded(bool)` mutate state and call `renderRows()` from `lastAgents` without a fetch; `isExpanded()` reports state so the controller can set the Show-more label.
 - Row structure (Orca proportions, our tokens): `<div class="bot-rail-card bot-item" role="button" tabindex="0" aria-current aria-label data-agent-id data-status>` containing:
-  - `<span class="bot-avatar-wrap">` with `safeAvatarMarkup(bot)` (or escaped initial tile via `--bot-tint`) plus a `<span class="bot-status-badge">` overlay (bottom-right dot; delegated unread adds a small ringed dot with `role="status"`);
+  - `<span class="bot-avatar-wrap">` with `safeAvatarMarkup(bot)` (or escaped initial tile via `--bot-tint`) and the existing `.bot-status-dot` **moved inside it** and absolutely positioned bottom-right (Orca-style status overlay);
   - `<span class="bot-item-info">` with `<span class="bot-item-name">` (13px/20px, ellipsis) and `<span class="bot-item-sub">` (11-12px muted): `provider · model` with `role` when present;
   - existing hover/focus actions 🎨 identity, model picker, delete with confirm.
-- Default Assistant row stays first with no agent id.
+- **Badge contract (unchanged harness hook):** `setBotCardBadge()` still appends/removes the `.delegated-badge` pill on the card and clear-on-open behavior is untouched. The status-dot relocation is purely visual and additive; no test relies on its old position.
+- Default Assistant row stays first with no agent id. It participates in ArrowUp/Down navigation, carries `aria-current` when no agent is active, `aria-label="Default Assistant — global · default"`, and has no action buttons.
 - Filter matches name, role, provider, model, case-insensitively. With no query, show the first 6 agents + a `Show N more bots` button; clicking reveals all and toggles to `Show less`. While filtering, show all matches and hide the overflow button. No-match renders a single muted "No bots match" row.
 - Keyboard: cards handle Enter/Space → `onSelect(bot)` unless the event target is a nested button; ArrowDown/ArrowUp move focus to the next/previous visible card (Orca behavior). Escape in the search input closes the search and returns focus to `#btnBotSearch`.
 
 ### 3. Controller wiring (`renderer/app.js`)
 
 - Beside the existing `createBotRail(...)` wiring (`app.js:1316-1347`):
-  - `btnBotNew.onclick = () => document.getElementById('btnOpenCreateBot')?.click();`
-  - `btnBotSearch.onclick` toggles `hidden` on `#botSearchWrap`, sets `aria-expanded`, focuses/blurs the input, clears the filter on close, calls `botRail.applyFilter('')`.
-  - `botSidecarSearch.oninput = () => botRail.applyFilter(value)`; `onkeydown` Escape → toggle closed.
-  - Show-more button click toggles the module's `expanded` state via `botRail.setExpanded(bool)` and updates its label.
+  - `btnBotNew.onclick = () => document.getElementById('btnOpenCreateBot')?.click();` (the existing hidden management trigger; no new modal).
+  - **One `setSearchOpen(bool)` path** owns search UI: it toggles `hidden` on `#botSearchWrap`, sets `aria-expanded` on `#btnBotSearch`, and on open focuses `#botSidecarSearch`; on close it clears the input, calls `botRail.applyFilter('')`, and focuses `#btnBotSearch`. The toggle button calls `setSearchOpen(!open)`; Escape in the input calls `setSearchOpen(false)` — never the toggle handler, avoiding stale-state reopen.
+  - `botSidecarSearch.oninput = () => botRail.applyFilter(value)`.
+  - Show-more button click calls `botRail.setExpanded(!botRail.isExpanded())` and updates its own label.
 - No changes to delegation event handling or `selectSession()`.
 
 ### 4. CSS (`renderer/styles.css`)
@@ -84,7 +85,7 @@ Port Orca's Bots-sidebar pattern into our shell: a persistent "Bots" section in 
 - `.bot-sidecar-search`: reuses searchbox styling (icon + input, small height).
 - `.bot-rail`: remove the old `max-height: 220px`; no fixed cap — the section stays short via the 6-row overflow limit.
 - `.bot-rail-card`: match `.session-channel-item` density (padding ~6-7px, radius, hover/active backgrounds, left accent bar on active) but keep 30px rounded-square avatar with the bottom-right status badge, 13px name, 11-12px subline. Focus-visible ring from the global rule (`styles.css:151-154`).
-- Delegated badge: small ringed dot + optional text in the subline; `role="status"` for announcement; rehydrate from `buffers.hasUnread()` after rebuild (already shipped).
+- The existing `.delegated-badge` pill stays as-is (no new badge class); the avatar overlay uses the relocated `.bot-status-dot`. Badge rehydration from `buffers.hasUnread()` after rebuild stays unchanged.
 - Light theme: token-only colors; keep `.bot-item` legacy rules (`styles.css:1993-2068`) intact since cards retain that class.
 - Reduced motion: existing global kill switch (`styles.css:4074-4082`) plus rail rules at `:4472-4475`.
 
@@ -100,14 +101,14 @@ Port Orca's Bots-sidebar pattern into our shell: a persistent "Bots" section in 
 ## Testing
 
 - Extend `packages/desktop/test/window-harness.test.ts`:
-  - Bots section is visible while `#viewChat` is active and the same `#botList` node survives a view switch;
-  - search toggle reveals/focuses the input; typing filters cards; clearing + ArrowUp/Down keyboard navigation works;
+  - **Primary acceptance gate (not the parity score):** Bots section is visible while `#viewChat` is active and the same `#botList` node survives a view switch;
+  - search toggle reveals/focuses the input; typing filters cards; clearing + ArrowUp/Down keyboard navigation works; search text and Show-more state survive a `refreshBots()`;
   - "Show N more" reveals all agents and toggles back;
   - card Enter/Space sets `activeAgentId` and `currentSessionId === 'bot_' + id`;
-  - existing security (hostile SVG), escaped-name, delegation-unread, badge-clear and IPC round-trip assertions remain green.
+  - existing security (hostile SVG), escaped-name, delegation-unread, `.delegated-badge` clear-on-open, and IPC round-trip assertions remain green.
 - Full hermetic gate (`pnpm build`, `HOME=/tmp/... pnpm test`) — all packages green.
 - Live Electron captures via `scripts/capture-ui.sh`: chat view with the sidebar Bots section, search open with a query, show-more expanded, and light theme; read each PNG.
-- Score against `docs/ui-parity-plan.md` dimensions; mean ≥90 required to report as done.
+- Score against `docs/ui-parity-plan.md` dimensions as **advisory only** — its current mean is already ≈92.1% and its dimensions do not cover this goal. The harness assertions above are the acceptance gate.
 - Per-chunk spec + code-quality subagent reviews, fix loops until approved; local commits via `scripts/ship_phase.sh` with explicit paths only.
 
 ## Risks
