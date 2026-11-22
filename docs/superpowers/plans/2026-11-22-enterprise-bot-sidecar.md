@@ -451,14 +451,13 @@ git commit -m "feat(ui): searchable, keyboard-accessible bot sidebar rows"
 
 **Files:** `packages/desktop/renderer/app.js`
 
-- [ ] **Step 1: Add wiring immediately after the `createBotRail(...)` block (`:1347`), before `window.__railState`.**
+- [ ] **Step 1: Add wiring immediately after the `createBotRail(...)` block (`:1347`), before `window.__railState`.** Note: Chunk 2 already added the `#botSidecarSearch` `input` listener and `#btnBotShowMore` `click` listener so its own harness assertions could pass. **Do NOT re-add those two** — a second listener would double-toggle `expanded` and double-render on every keystroke. Wire only the search toggle/open-state path and the new-bot button:
 
 ```js
   // Bot section controls: one open-state path, no stale toggle state.
   const botSearchWrap = document.getElementById('botSearchWrap');
   const botSearchInput = document.getElementById('botSidecarSearch');
   const botSearchToggle = document.getElementById('btnBotSearch');
-  const botMoreButton = document.getElementById('btnBotShowMore');
   function setSearchOpen(open) {
     botSearchWrap.classList.toggle('hidden', !open);
     botSearchToggle.setAttribute('aria-expanded', String(open));
@@ -471,14 +470,12 @@ git commit -m "feat(ui): searchable, keyboard-accessible bot sidebar rows"
     }
   }
   botSearchToggle?.addEventListener('click', () => setSearchOpen(botSearchWrap.classList.contains('hidden')));
-  botSearchInput?.addEventListener('input', () => botRail.applyFilter(botSearchInput.value));
   botSearchInput?.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') { event.preventDefault(); setSearchOpen(false); }
   });
   document.getElementById('btnBotNew')?.addEventListener('click', () => {
     document.getElementById('btnOpenCreateBot')?.click();
   });
-  botMoreButton?.addEventListener('click', () => botRail.setExpanded(!botRail.isExpanded()));
 ```
 
 Do not touch the delegation branch or `selectSession()`. `window.__railState` stays as shipped.
