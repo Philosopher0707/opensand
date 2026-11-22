@@ -18,6 +18,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Guard: refuse to run from or against the owner checkout ($HOME/dev/opensand)
+source "$SCRIPT_DIR/lib/owner-guard.sh"
+assert_not_owner_checkout "worktree.sh"
+
 # Source shared safety predicates
 source "$SCRIPT_DIR/lib/worktree-safety.sh"
 # Free-space guard measures the writable data volume (DISK_PATH), not the system snapshot

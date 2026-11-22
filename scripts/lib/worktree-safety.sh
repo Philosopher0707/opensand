@@ -43,7 +43,7 @@ is_main_checkout() {
 # is the override the selftest uses; it is not for normal work.
 assert_not_main_checkout() {
   local target_dir="$1" what="${2:-path}"
-  if [[ "${OPENSAND_ALLOW_MAIN_CHECKOUT:-0}" == "1" ]]; then
+  if [[ "${OPENSAND_ALLOW_MAIN_CHECKOUT:-0}" == "1" || "${OPENSAND_OWNER:-0}" == "1" ]]; then
     return 0
   fi
   if is_main_checkout "$target_dir"; then
