@@ -688,7 +688,8 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
       name: `Bot ${i + 1}`,
       provider: "global",
       model: "default",
-      createdAt: now,
+      // Bot 1 sorts last so it is hidden by the 6-row cap; readdir order is not reliable.
+      createdAt: i === 0 ? now - 7000 : now,
     })),
   ];
   for (const a of seededAgents) {
@@ -724,6 +725,10 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     "  const filterClearedCount = document.querySelectorAll('#botList .bot-rail-card[data-agent-id]').length;",
     "  const moreLabel = document.getElementById('btnBotShowMore').textContent;",
     "  const moreVisible = !document.getElementById('btnBotShowMore').classList.contains('hidden');",
+    "  window.__railState.emit({ type: 'subagent', sessionId: 'parent-session', subagent: { agentId: 'agent_sidebar_bot_1', agentName: 'Bot 1' }, data: { event: { type: 'turn_completed', finalContent: 'HIDDEN_DELEGATED' } } });",
+    "  await window.__railState.refresh();",
+    "  const hiddenCardExists = !!document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_sidebar_bot_1\"]');",
+    "  const hiddenBadgeLabel = document.getElementById('btnBotShowMore').textContent;",
     "  document.getElementById('btnBotShowMore').click();",
     "  const expanded = document.querySelectorAll('#botList .bot-rail-card[data-agent-id]').length;",
     "  await window.__railState.refresh();",
@@ -776,6 +781,7 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     "    filteredCount, filterClearedCount, moreLabel, moreVisible, expanded, afterRefresh, moreLabelAfter, nextFocused,",
     "    keyboardSelect: { agent: kb.activeAgentId, session: kb.currentSessionId },",
     "    statusAfterEmit, statusAfterFilter, searchFlow,",
+    "    hiddenCardExists, hiddenBadgeLabel,",
     "  };",
     "})()",
   ].join("\n");
@@ -810,6 +816,8 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     assert.strictEqual(v.searchFlow.closed, true, `Escape must close search (${JSON.stringify(v)})`);
     assert.strictEqual(v.searchFlow.focusReturned, true, `Escape must return focus to the toggle (${JSON.stringify(v)})`);
     assert.strictEqual(v.searchFlow.restored > v.searchFlow.narrowed, true, `closing search must restore all cards (${JSON.stringify(v)})`);
+    assert.strictEqual(v.hiddenCardExists, false, `a hidden bot must not render a card while collapsed (${JSON.stringify(v)})`);
+    assert.match(String(v.hiddenBadgeLabel), /1 new/, `show-more must surface unread delegated turns on hidden bots (${JSON.stringify(v)})`);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }

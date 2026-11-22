@@ -61,7 +61,8 @@ export function createBotRail(options = {}) {
   function cardAttrs(bot, activeId) {
     const id = bot ? escapeHtml(bot.id || '') : '';
     const active = bot ? activeId === bot.id : activeId === null;
-    const status = (bot && statuses.get(bot.id)) || (active ? 'active' : 'idle');
+    const cached = bot && bot.id === activeId ? statuses.get(bot.id) : null;
+    const status = cached === 'busy' || cached === 'error' ? cached : (active ? 'active' : 'idle');
     const provider = bot?.provider || 'global';
     const model = bot?.model || 'default';
     const label = bot
@@ -156,7 +157,13 @@ export function createBotRail(options = {}) {
     if (!more) return;
     const hidden = filter.trim() ? 0 : Math.max(0, totalMatches - VISIBLE_LIMIT);
     more.classList.toggle('hidden', hidden === 0);
-    more.textContent = !hidden ? '' : (expanded ? 'Show less' : `Show ${hidden} more bots`);
+    let label = !hidden ? '' : (expanded ? 'Show less' : `Show ${hidden} more bots`);
+    if (buffers && hidden && !expanded) {
+      const unread = lastAgents.slice(VISIBLE_LIMIT)
+        .filter((bot) => bot.id && buffers.hasUnread('bot_' + bot.id)).length;
+      if (unread) label += ` · ${unread} new`;
+    }
+    more.textContent = label;
   }
 
   function renderRows() {
