@@ -452,13 +452,18 @@ test("Preact Sessions list real-window test: search, selection, hydration, unrea
     // Persistence across reload
     assert.strictEqual(res.persistenceReloadPassed, true, "selected session persists to localStorage and restores active state, title, and transcript on reload");
 
-    // Copy proof screenshots to external proof directory
-    const externalProofDir = "/Users/philosopher/dev/_scratch/proof-logs/session-list";
-    fs.mkdirSync(externalProofDir, { recursive: true });
-    for (const f of fs.readdirSync(proofDir)) {
-      fs.copyFileSync(path.join(proofDir, f), path.join(externalProofDir, f));
+    // Copy proof screenshots to external proof directory if available
+    const defaultProofDir = path.join(os.homedir(), "dev/_scratch/proof-logs/session-list");
+    const externalProofDir = process.env.PROOF_DIR || defaultProofDir;
+    try {
+      fs.mkdirSync(externalProofDir, { recursive: true });
+      for (const f of fs.readdirSync(proofDir)) {
+        fs.copyFileSync(path.join(proofDir, f), path.join(externalProofDir, f));
+      }
+      console.log("[proof] session-list real-window screenshots written to:", externalProofDir);
+    } catch {
+      // In CI environments without scratch directories, screenshots stay in temporary proofDir
     }
-    console.log("[proof] session-list real-window screenshots written to:", externalProofDir);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     fs.rmSync(home, { recursive: true, force: true });
