@@ -30,20 +30,21 @@ export interface InboxProps {
   onDecided?: () => void;
 }
 
-const DECISIONS: Array<{ action: ApprovalAction; label: string; class: string }> = [
-  { action: "approve_once", label: "Approve Once", class: "btn-primary" },
-  { action: "always_allow", label: "Always Allow", class: "btn-secondary" },
-  { action: "reject", label: "Reject", class: "btn-ghost" },
+const DECISIONS: Array<{ action: ApprovalAction; label: string; class: string; mainId?: string }> = [
+  { action: "approve_once", label: "Approve Once", class: "btn-primary btn-approve-once", mainId: "btnApproveOnce" },
+  { action: "always_allow", label: "Always Allow", class: "btn-secondary btn-always-allow", mainId: "btnAlwaysAllow" },
+  { action: "reject", label: "Reject", class: "btn-ghost btn-reject", mainId: "btnRejectTool" },
 ];
 
 export interface ApprovalDecisionButtonsProps {
   data: ShellDataWithApprovals;
   req: ToolApprovalRequest;
   onDecided?: () => void;
+  idPrefix?: string;
 }
 
 /** Approve Once / Always Allow / Reject for one request. Renders nothing when the data has no approveTool. */
-export function ApprovalDecisionButtons({ data, req, onDecided }: ApprovalDecisionButtonsProps) {
+export function ApprovalDecisionButtons({ data, req, onDecided, idPrefix }: ApprovalDecisionButtonsProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (!data.approveTool) return null;
@@ -58,9 +59,19 @@ export function ApprovalDecisionButtons({ data, req, onDecided }: ApprovalDecisi
       .approveTool(req.approvalId, { action, epoch: req.epoch })
       .then((res) => {
         if (res && (res as { success?: boolean }).success === false) throw new Error("not pending");
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("opensand:approvals_changed"));
+        }
         onDecided?.();
       })
-      .catch(() => setError("This approval is no longer pending, or the answer did not reach the app."))
+      .catch((err) => {
+        const msg =
+          err?.message?.toLowerCase().includes("stale") ||
+          err?.message?.toLowerCase().includes("epoch")
+            ? "Stale approval: the system epoch changed since this request was created."
+            : "This approval is no longer pending, or the answer did not reach the app.";
+        setError(msg);
+      })
       .finally(() => setPending(false));
   };
 
@@ -75,9 +86,11 @@ export function ApprovalDecisionButtons({ data, req, onDecided }: ApprovalDecisi
           "button",
           {
             type: "button",
+            id: idPrefix === "main" ? d.mainId : undefined,
             class: `btn btn-sm ${d.class}`,
             disabled: pending,
             onClick: decide(d.action),
+            "data-action": d.action,
           },
           d.label
         )

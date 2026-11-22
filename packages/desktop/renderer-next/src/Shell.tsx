@@ -4,8 +4,7 @@ import { ChatList } from "./views/ChatList";
 import { MissionList } from "./views/MissionList";
 import { MissionTimeline } from "./views/MissionTimeline";
 import { MissionReceipt } from "./views/MissionReceipt";
-import { Inbox } from "./views/Inbox";
-import { ApprovalDecisionButtons } from "../../src/shell/inbox-component";
+import { Inbox, ApprovalDecisionButtons } from "./views/Inbox";
 import { QuickCaptureButton, QuickCaptureOutput, useQuickCapture } from "./views/QuickCapture";
 import { Chat, useChatTurn } from "./views/Chat";
 import { Canvas } from "./views/Canvas";
@@ -206,22 +205,33 @@ export function Shell({ data }: ShellProps) {
             <div class="approval-detail-view" aria-label="Approval Details">
               <div class="approval-detail-card">
                 <header class="approval-detail-header">
-                  <span class="modal-alert-icon" aria-hidden="true">⚠️</span>
-                  <h2>Authorization Required</h2>
+                  <div class="approval-header-main">
+                    <span class="modal-alert-icon" aria-hidden="true">⚠️</span>
+                    <h2>Authorization Required</h2>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn-close-approval"
+                    id="btnCloseApprovalDetail"
+                    aria-label="Close approval details"
+                    onClick={() => setSelectedApproval(null)}
+                  >
+                    ✕
+                  </button>
                 </header>
                 <div class="approval-detail-body">
                   <div class="approval-row">
-                    <strong>Tool:</strong> <span>{selectedApproval.toolName}</span>
+                    <strong>Tool:</strong> <span id="approvalDetailToolName">{selectedApproval.toolName}</span>
                   </div>
                   {selectedApproval.reason && (
                     <div class="approval-row">
-                      <strong>Reason:</strong> <span>{selectedApproval.reason}</span>
+                      <strong>Reason:</strong> <span id="approvalDetailReason">{selectedApproval.reason}</span>
                     </div>
                   )}
                   <div class="approval-row">
                     <strong>Arguments:</strong>
                   </div>
-                  <pre class="approval-args-box">
+                  <pre class="approval-args-box" id="approvalDetailArgsBox">
                     {JSON.stringify(selectedApproval.args, null, 2)}
                   </pre>
                   <div class="approval-meta-row">
@@ -231,6 +241,7 @@ export function Shell({ data }: ShellProps) {
                   <ApprovalDecisionButtons
                     data={data}
                     req={selectedApproval}
+                    idPrefix="main"
                     onDecided={() => {
                       setSelectedApproval(null);
                       setApprovalsRev((n) => n + 1);
