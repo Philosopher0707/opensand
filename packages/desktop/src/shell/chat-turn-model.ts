@@ -1,5 +1,7 @@
-// Chat turn: composer, streaming transcript and the end states for the Preact shell.
-// Pure, so the transitions and the event filter are tested without Electron.
+// packages/desktop/src/shell/chat-turn-model.ts
+// Reducer and action mappers for the Preact chat screen.
+// Encapsulates message streaming, thought blocks, tool execution cards, and session history hydration.
+
 import type { TurnEvent } from "./quick-capture-model.js";
 
 export type ChatTurnStatus =
@@ -12,9 +14,23 @@ export type ChatTurnStatus =
   | "stopped"
   | "unavailable";
 
+export interface ToolCallItem {
+  id?: string;
+  name: string;
+  args?: Record<string, any> | string;
+  status: "running" | "done" | "error";
+  result?: any;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
+  /** Accumulated thoughts or reasoning (<think> tags or thought events). */
+  thought?: string;
+  /** Structured tool call items executed in this turn. */
+  toolCalls?: ToolCallItem[];
+  /** Internal raw text buffer for streaming turns with potential <think> tags. */
+  _rawText?: string;
   /** "Stopped." on the assistant message of a cancelled turn. */
   note?: string;
   /** Why this turn failed, shown in its assistant message. */
@@ -42,6 +58,9 @@ export type ChatTurnAction =
   | { type: "sent"; sessionId: string }
   | { type: "failed"; message: string }
   | { type: "delta"; text: string }
+  | { type: "thought"; text: string }
+  | { type: "tool_call"; tool: ToolCallItem }
+  | { type: "tool_result"; tool: { id?: string; name?: string; status?: "done" | "error"; result?: any } }
   | { type: "approval" }
   | { type: "complete"; response?: string }
   | { type: "stopped" }
@@ -50,6 +69,30 @@ export type ChatTurnAction =
 
 export function isChatBusy(status: ChatTurnStatus): boolean {
   return status === "sending" || status === "waiting" || status === "streaming";
+}
+
+/**
+ * Extracts <think>...</think> or <thinking>...</thinking> blocks from raw text.
+ * Also handles unclosed tags during streaming.
+ */
+export function extractThinking(rawText: string): { text: string; thought?: string } {
+  if (!rawText) return { text: "" };
+  let thought = "";
+  const thinkRegex = /<(?:thinking|think)>([\s\S]*?)(?:<\/(?:thinking|think)>|$)/gi;
+  let match: RegExpExecArray | null;
+  const thoughts: string[] = [];
+  while ((match = thinkRegex.exec(rawText)) !== null) {
+    const trimmed = match[1].trim();
+    if (trimmed) thoughts.push(trimmed);
+  }
+  if (thoughts.length > 0) {
+    thought = thoughts.join("\n\n").trim();
+  }
+  const cleanText = rawText.replace(thinkRegex, "");
+  return {
+    text: thoughts.length > 0 ? cleanText.trimStart() : cleanText,
+    thought: thought || undefined,
+  };
 }
 
 /** Replaces the assistant message of the running turn, leaving the rest of the transcript alone. */
@@ -79,24 +122,114 @@ export function chatTurnReducer(state: ChatTurnState = INITIAL_CHAT_TURN, action
       // The send can resolve after the turn already finished; only a busy turn takes the id.
       if (!isChatBusy(state.status)) return state;
       return { ...state, sessionId: action.sessionId };
-    case "delta":
+    case "delta": {
       if (!isChatBusy(state.status) || !action.text) return state;
       return {
         ...state,
         status: "streaming",
-        messages: updateAssistant(state, (m) => ({ ...m, text: m.text + action.text })),
+        messages: updateAssistant(state, (m) => {
+          const rawCombined = (m._rawText !== undefined ? m._rawText : m.text) + action.text;
+          const { text, thought: extractedThought } = extractThinking(rawCombined);
+          const thought = extractedThought || m.thought;
+          const updated: ChatMessage = {
+            ...m,
+            text,
+            ...(thought ? { thought } : {}),
+          };
+          if (rawCombined.includes("<think") || rawCombined.includes("<thinking") || thought) {
+            updated._rawText = rawCombined;
+          } else {
+            delete updated._rawText;
+          }
+          return updated;
+        }),
       };
+    }
+    case "thought": {
+      if (!isChatBusy(state.status) || !action.text) return state;
+      return {
+        ...state,
+        status: "streaming",
+        messages: updateAssistant(state, (m) => ({
+          ...m,
+          thought: (m.thought ? m.thought + action.text : action.text),
+        })),
+      };
+    }
+    case "tool_call": {
+      if (!isChatBusy(state.status)) return state;
+      return {
+        ...state,
+        status: "streaming",
+        messages: updateAssistant(state, (m) => {
+          const calls = (m.toolCalls || []).slice();
+          calls.push(action.tool);
+          return { ...m, toolCalls: calls };
+        }),
+      };
+    }
+    case "tool_result": {
+      if (!isChatBusy(state.status)) return state;
+      return {
+        ...state,
+        status: "streaming",
+        messages: updateAssistant(state, (m) => {
+          const calls = (m.toolCalls || []).slice();
+          let idx = -1;
+          if (action.tool.id) {
+            idx = calls.findIndex((c) => c.id === action.tool.id);
+          }
+          if (idx === -1 && action.tool.name) {
+            idx = calls.findIndex((c) => c.name === action.tool.name && c.status === "running");
+          }
+          if (idx === -1) {
+            idx = calls.findIndex((c) => c.status === "running");
+          }
+          if (idx !== -1) {
+            calls[idx] = {
+              ...calls[idx],
+              status: action.tool.status || "done",
+              result: action.tool.result,
+            };
+          } else {
+            calls.push({
+              ...(action.tool.id ? { id: action.tool.id } : {}),
+              name: action.tool.name || "tool",
+              status: action.tool.status || "done",
+              result: action.tool.result,
+            });
+          }
+          return { ...m, toolCalls: calls };
+        }),
+      };
+    }
     case "approval":
       // The turn is paused until the person answers in the Inbox; the next token or completion resumes it.
       if (!isChatBusy(state.status)) return state;
       return { ...state, status: "waiting" };
-    case "complete":
+    case "complete": {
       if (!isChatBusy(state.status)) return state;
       return {
         ...state,
         status: "done",
-        messages: updateAssistant(state, (m) => ({ ...m, text: m.text || action.response || "" })),
+        messages: updateAssistant(state, (m) => {
+          let text = m.text;
+          let thought = m.thought;
+          if (!text && action.response) {
+            const extracted = extractThinking(action.response);
+            text = extracted.text;
+            thought = extracted.thought || thought;
+          }
+          const updated: ChatMessage = {
+            ...m,
+            text: text || action.response || "",
+            ...(thought ? { thought } : {}),
+          };
+          delete updated._rawText;
+          return updated;
+        }),
       };
+    }
     case "failed":
       if (!isChatBusy(state.status)) return state;
       return {
@@ -137,6 +270,47 @@ export function chatEventAction(event: TurnEvent, sessionId: string | null): Cha
     const delta = event.data?.token || event.token || event.text || "";
     return delta ? { type: "delta", text: delta } : null;
   }
+  if (event.type === "thought" || event.type === "thought_delta") {
+    const thought = event.data?.thought || event.data?.token || event.thought || event.text || "";
+    return thought ? { type: "thought", text: thought } : null;
+  }
+  if (event.type === "tool_call" || event.type === "tool_call_started") {
+    const name = event.toolCall?.function?.name || event.data?.name || event.name || "tool";
+    const id = event.toolCall?.id || event.data?.id || event.id;
+    let args = event.toolCall?.function?.arguments ?? event.data?.args ?? event.args ?? {};
+    if (typeof args === "string") {
+      try {
+        args = JSON.parse(args);
+      } catch {
+        args = { raw: args };
+      }
+    }
+    return {
+      type: "tool_call",
+      tool: {
+        ...(id ? { id } : {}),
+        name,
+        args,
+        status: "running",
+      },
+    };
+  }
+  if (event.type === "tool_result" || event.type === "tool_call_completed") {
+    const name = event.toolCall?.function?.name || event.data?.name || event.name;
+    const id = event.toolCall?.id || event.data?.id || event.id || event.tool_call_id;
+    const result = event.result !== undefined
+      ? (event.result?.output !== undefined ? event.result.output : event.result)
+      : (event.data?.result !== undefined ? event.data.result : event.output);
+    return {
+      type: "tool_result",
+      tool: {
+        ...(id ? { id } : {}),
+        ...(name ? { name } : {}),
+        result,
+        status: "done",
+      },
+    };
+  }
   if (event.type === "approval_required") return { type: "approval" };
   if (event.type === "turn_complete") {
     return { type: "complete", response: event.data?.response || "" };
@@ -166,7 +340,9 @@ export function parseTranscriptText(transcriptText: string): ChatMessage[] {
 
   if (queries.length === 0) {
     const trimmed = transcriptText.trim();
-    return trimmed ? [{ role: "assistant", text: trimmed }] : [];
+    if (!trimmed) return [];
+    const { text, thought } = extractThinking(trimmed);
+    return [{ role: "assistant", text, ...(thought ? { thought } : {}) }];
   }
 
   for (let i = 0; i < queries.length; i++) {
@@ -180,7 +356,12 @@ export function parseTranscriptText(transcriptText: string): ChatMessage[] {
     assistantSection = assistantSection.replace(/^assistant:\s*/i, "").trim();
 
     if (assistantSection) {
-      turns.push({ role: "assistant", text: assistantSection });
+      const { text, thought } = extractThinking(assistantSection);
+      turns.push({
+        role: "assistant",
+        text,
+        ...(thought ? { thought } : {}),
+      });
     }
   }
 
@@ -213,21 +394,77 @@ export function reconstructSessionMessages(
   }
 
   const messages: ChatMessage[] = [];
+  let currentAssistant: ChatMessage | null = null;
+
   for (const ev of rawEvents) {
     if (!ev || typeof ev !== "object") continue;
     const item = ev as Record<string, any>;
     if (item.role === "user") {
+      currentAssistant = null;
       const text = String(item.text ?? item.content ?? "").trim();
       messages.push({ role: "user", text });
     } else if (item.role === "assistant") {
-      let text = String(item.text ?? item.content ?? "");
-      text = text.replace(/<(?:thinking|think)>[\s\S]*?<\/(?:thinking|think)>/gi, "").trim();
-      messages.push({
+      const rawContent = String(item.text ?? item.content ?? "");
+      const { text, thought: extractedThought } = extractThinking(rawContent);
+      const thought = item.thought || extractedThought || undefined;
+      const toolCalls: ToolCallItem[] = [];
+
+      if (Array.isArray(item.tool_calls) || Array.isArray(item.toolCalls)) {
+        const calls = item.tool_calls || item.toolCalls;
+        for (const tc of calls) {
+          const name = tc.function?.name || tc.name || "tool";
+          let args = tc.function?.arguments || tc.args || {};
+          if (typeof args === "string") {
+            try {
+              args = JSON.parse(args);
+            } catch {
+              args = { raw: args };
+            }
+          }
+          toolCalls.push({
+            ...(tc.id ? { id: tc.id } : {}),
+            name,
+            args,
+            status: tc.status || "done",
+            result: tc.result,
+          });
+        }
+      }
+
+      currentAssistant = {
         role: "assistant",
         text,
+        ...(thought ? { thought } : {}),
+        ...(toolCalls.length > 0 ? { toolCalls } : {}),
         ...(item.note ? { note: String(item.note) } : {}),
         ...(item.error ? { error: String(item.error) } : {}),
-      });
+      };
+      messages.push(currentAssistant);
+    } else if (item.role === "tool") {
+      if (currentAssistant) {
+        if (!currentAssistant.toolCalls) currentAssistant.toolCalls = [];
+        const matched =
+          currentAssistant.toolCalls.find((tc) => tc.id === item.tool_call_id || tc.id === item.id) ||
+          currentAssistant.toolCalls.find((tc) => tc.status === "running");
+        if (matched) {
+          matched.status = "done";
+          matched.result = item.result ?? item.output;
+        } else {
+          currentAssistant.toolCalls.push({
+            ...(item.tool_call_id || item.id ? { id: item.tool_call_id || item.id } : {}),
+            name: item.name || "tool",
+            status: "done",
+            result: item.result ?? item.output,
+          });
+        }
+      }
+    } else if (item.role === "thought" || item.type === "thought") {
+      if (currentAssistant) {
+        const t = String(item.thought ?? item.text ?? item.content ?? "").trim();
+        if (t) {
+          currentAssistant.thought = currentAssistant.thought ? currentAssistant.thought + "\n\n" + t : t;
+        }
+      }
     }
   }
 
