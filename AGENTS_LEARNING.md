@@ -2,6 +2,8 @@
 
 **Document Purpose:** Persistent reference for coding agents working on OpenSand or similar agentic architectures. Captures root causes, verified solutions, and non-obvious failure modes discovered during reverse engineering and clean-room implementation.
 
+**Learning mirror (owner instruction, 2026-11-22):** general lessons are also filed in `~/commonplace` following its `README.md` — one searchable `##` lesson per subject, a dated note in `sources/`, and `Seen:`/`Inferred:`. Search/merge before adding; keep this project file as the local, detailed record. Latest source note: `~/commonplace/sources/2026-11-22-opensand-chief-of-staff-sidecar.md`.
+
 ---
 
 ## 1. Binary Forensics & Electron Architecture
