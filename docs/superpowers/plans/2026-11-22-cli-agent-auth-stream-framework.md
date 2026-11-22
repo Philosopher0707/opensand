@@ -27,7 +27,7 @@ import('node:fs').then((fs) => {
 `;
 ```
 Write it via the existing `writeFakeCli(tmpDir, 'fake-login-exit', FAKE_LOGIN_EXIT)`.
-- [ ] **Step 2:** New `it`: save `process.env.HOME`, set it to `tmpDir` (so `credentialHome` is isolated), create the Grok instance with `config: GrokAgentDriver.decodeConfig({cli: exitCli})` and `instanceId:'auth-exit'`, call `start()`, poll `get(flowId)` for up to 5 s and assert `status === 'authorized'`, then `assert.equal(await instance.isSignedIn(), true)`. Restore HOME in `finally`. A second instance with a different instanceId must also report `isSignedIn()===true`.
+- [ ] **Step 2:** New `it`: save `process.env.HOME`, set it to `tmpDir` (so `credentialHome` is isolated), create the Grok instance with `config: GrokAgentDriver.decodeConfig({cli: exitCli})` and `instanceId:'auth-exit'`. With `strict: true`, `assert.ok(instance.startAuthentication && instance.getAuthentication && instance.isSignedIn)` before calling them (follow `device-auth.test.ts:37-40`). Call `start()`, poll `get(flowId)` for up to 5 s and assert `status === 'authorized'`, then `assert.equal(await instance.isSignedIn(), true)`. Restore HOME in `finally`. A second instance with a different instanceId must also report `isSignedIn()===true`.
 - [ ] **Step 3:** ACP env test: register a fake ACP CLI that writes `process.env.GROK_HOME` into a temp marker file at startup; create an ACP instance with the grok auth spec; spawn a turn/probe and assert the marker equals `credentialHome(spec)`.
 - [ ] **Step 4:** Build + coordinator tests; failures must be about missing `isSignedIn`/`authorized`/home propagation, not undefined test symbols.
 
@@ -45,13 +45,13 @@ export function credentialEnv(spec: DeviceAuthSpec, environment: Record<string, 
 ```
 Keep `randomUUID` for flow ids; remove `createHash` if now unused.
 - [ ] **Step 2:** `createDeviceAuthController` sets `const env = credentialEnv(spec, environment)`. Add `lastStatus: ProviderAuthenticationStatus | null` and make `finish(status)` store it **before** nulling `flow`; `get(flowId)` returns `lastStatus` when its `flowId` matches else `cancelled`. Add `isSignedIn: async () => isSignedIn()` to `DeviceAuthController` (`:47-53`).
-- [ ] **Step 3:** In `start()`, immediately after `await run(spec.loginArgs, ...)` (`:152-169`; `run` resolves on child exit), do:
+- [ ] **Step 3:** Add an optional `onExit?: () => void` parameter to `run()` (`device-auth.ts:85-90`) and call it inside the existing `child.on('exit', ...)` handler (`:125-128`), before resolving. `run()` may resolve earlier via `isReady()` (`:113-117`), so the re-check must hang off the real exit event, not the returned promise. In `start()` pass:
 ```ts
-finish(isSignedIn()
+onExit: () => finish(isSignedIn()
   ? { status: 'authorized', flowId: id, authorizationUrl: null, expiresAt: null }
-  : { status: 'failed', flowId: id, authorizationUrl: null, expiresAt: null, message: spec.failureMessage });
+  : { status: 'failed', flowId: id, authorizationUrl: null, expiresAt: null, message: spec.failureMessage })
 ```
-Do **not** modify generic `run()` — `id` and flow identity are out of scope there. A later authorized result overwrites an earlier timer `failed` because `finish()` stores `lastStatus` unconditionally.
+`id` is in scope at the `start()` call site. `finish()` stores `lastStatus` unconditionally, so an authorized exit overwrites an earlier timer `failed`. The original `FAKE_LOGIN` never exits, so its `status === 'pending'` assertions stay valid.
 - [ ] **Step 4:** `shared/src/types.ts`: add `isSignedIn?: () => Promise<boolean>` to `ProviderInstance` (:511-534). In `acp-runtime.ts` the auth controller variable is `auth` (:72-74) and the instance block (:297-314) is in the same closure — add `isSignedIn: () => auth.isSignedIn()` beside `startAuthentication`.
 - [ ] **Step 5:** `provider-auth.ts`: replace `auth:${kind}:${randomUUID()}` with `auth:${kind}`; add `getProviderAuthState(kind)` returning `{signedIn, flowId}` or `null` for unknown kinds, using `ensureSession()` and `instance.isSignedIn?.() ?? false`.
 - [ ] **Step 6:** `acp-runtime.ts`: import `credentialEnv`; at spawn (`:136`) use `options.auth ? credentialEnv(options.auth, { ...process.env, ...input.environment }) : { ...process.env, ...input.environment }`. `options.auth` is the real seam (`AcpRuntimeOptions.auth:37`), not `input.auth`.
@@ -67,7 +67,7 @@ Do **not** modify generic `run()` — `id` and flow identity are out of scope th
 - [ ] **Step 1:** Add `supportsAuthentication?: boolean` and `cli?: boolean` to `ProviderDriver.metadata` (`shared/src/types.ts:641-654`). `defineAcpDriver` sets `supportsAuthentication: Boolean(spec.auth)` and `cli:true`; Claude/Codex drivers set `cli:true`.
 - [ ] **Step 2:** In `desktop-server.ts` the provider-map callback has `driver` (not `kind`) and `providerRegistry` is not imported — use `auth: driver.metadata.supportsAuthentication === true` directly at `:1438`; delete the hardcoded set import/use.
 - [ ] **Step 3:** Import `getProviderAuthState` from the coordinator; add `GET /api/providers/:kind/auth/state` returning `{signedIn, flowId}`; unknown kind → `404 {error:'Unknown provider'}` using the same response shape as `:1461-1462`.
-- [ ] **Step 4:** Renderer has no `refreshProviders()`. In `loadProviderCatalog(selected)` (`app.js:1201-1222`), for each provider with `auth` fetch its auth state and attach `authState`; call `updateProviderAuthPanel(kind)` (`:1231-1248`) after. `model-picker.js` renders its `mp-key-dot` (`:95`) and sign-in hint (`:131-139`) from `provider.authState?.signedIn` instead of capability alone. Tooltip notes sign-out clears the shared home.
+- [ ] **Step 4:** `model-picker.js:47-51` independently fetches `/api/providers`, so attaching state only in `app.js`'s `providerCatalog` would never reach it. In `desktop-server.ts` provider-list serialization (`~1429-1478`), for providers with `auth:true` compute `signedIn` via `getProviderAuthState(kind)` and include it in each provider object (no new endpoint needed for the picker; keep the state route for harness/tests). `model-picker.js` renders `mp-key-dot` (`:95`) and the sign-in hint (`:131-139`) from `provider.signedIn` instead of capability alone. In `app.js`, `loadProviderCatalog(selected)` (`:1201-1222`) and `updateProviderAuthPanel(kind)` (`:1231-1248`) use the same field. Tooltip notes sign-out clears the shared home.
 - [ ] **Step 5:** Tests: state route signed-out/signed-in with a temp HOME; harness asserts dot/hint toggle.
 - [ ] **Step 6:** Build + tests; commit explicit paths; message `feat(providers): driver-derived auth capability and state`; update `CONTEXT.md` Phase 2 log and commit.
 

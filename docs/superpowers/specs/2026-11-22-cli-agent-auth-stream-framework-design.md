@@ -46,11 +46,12 @@ Baseline: `39a94f6`, branch `feat/agent-settings-ui`. `CONTEXT.md` section 7 is 
   `isSignedIn(): Promise<boolean>` (wraps the existing `statSync(...).size > 0`) and keep a
   `lastStatus: ProviderAuthenticationStatus | null` that survives `finish()` nulling `flow`.
   `get(flowId)` returns `lastStatus` when its `flowId` matches, otherwise `cancelled`.
-- In `start()` immediately after `await run(spec.loginArgs, ...)` (`device-auth.ts:152-169`) — `run()`
-  resolves when the login child exits — re-run `isSignedIn()`; if true, `finish({status:'authorized',
-  flowId:id, ...})`, otherwise `finish({status:'failed', ...})` with `spec.failureMessage`. Do this in
-  `start()` (not inside generic `run()`, where `id` and flow identity are not in scope). `finish()` stores
-  into `lastStatus` unconditionally, so an authorized result can overwrite an earlier timer `failed`.
+- `run()` gains an optional `onExit` callback invoked in its existing `child.on('exit')` handler
+  (`device-auth.ts:125-128`); `start()` passes a closure that re-checks `isSignedIn()` and calls
+  `finish({status:'authorized', flowId:id, ...})` when true, otherwise `failed` with
+  `spec.failureMessage`. The re-check must be on the exit event, not after `await run(...)`, because
+  `run()` can resolve earlier when URL/code readiness is reached (`:113-117`). `finish()` stores into
+  `lastStatus` unconditionally, so an authorized result can overwrite an earlier timer `failed`.
   Define signed-in strictly as non-empty credential file; "corrupt" JSON is not detectable generically
   and is not claimed.
 - Extend `ProviderInstance` (`shared/src/types.ts:511-534`) with optional `isSignedIn?: () => Promise<boolean>`
