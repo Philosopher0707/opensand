@@ -245,6 +245,11 @@
 * **Cause:** A workspace package's local build does not rebuild sibling packages' dist; TypeScript project references resolved to stale declarations.
 * **Rule now:** After any change in `shared/` or `coordinator/`, run `pnpm run build` from the **workspace root**, then run the tests. Never debug a "missing field" type error before checking the dependency's dist timestamp.
 
+### 11.23 Tool availability is not tool choice; narrow orchestrator tool lists
+* **Date:** 2026-11-22
+* **What happened:** With local `qwen3:8b`, the chief's real request contained `delegate_to_agent` (proved by a proxy logging `tools[].function.name`, 83 tools) but the model answered that the tool was unavailable. Restricting the chief's tools to three (`delegate_to_agent`, `await_agent`, `list_agents`) made the same model call the tool and complete a real chief → specialist turn with a persisted child transcript.
+* **Rule:** For coordinator/orchestrator roles, prefer a small whitelist over "all tools minus a few". When a model claims a tool is missing, capture the actual request before touching wiring. Verify real event shape against the consumer's contract (`data.type === 'turn_completed'`, `data.finalContent`) even when synthetic tests pass.
+
 ### 11.21 A shared system prompt needs an authoritative identity, not a footnote
 * **Date:** 2026-11-22
 * **What happened:** Every bot answered "I'm OpenSand…" even though each agent record had a distinct `systemPrompt`. The coordinator's system message hardcoded `You are OpenSand…` and appended the persona at the end as `## User Custom Instructions`; name/role were never sent. Separately, `bot_<id>` sessions could have `meta.json` with `agentId: null` because inference only handled `sub_agent_*`, so resumed turns ran with no persona at all.
