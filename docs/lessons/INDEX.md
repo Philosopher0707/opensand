@@ -76,6 +76,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-19 · [A worktree's node_modules symlink resolves workspace packages into the donor worktree](2026-11-19-worktree-node-modules-resolve-into-donor-worktree.md)
 - 2026-11-19 · [Check a block's real boundaries before wrapping it in a new branch](2026-11-19-wrap-branch-read-real-boundaries.md)
 - 2026-11-22 · [Approval decision wiring, stale epoch handling, and event propagation](2026-11-22-approval-decision-wiring-and-epoch-propagation.md)
+- 2026-11-22 · [Draft briefs from executable code rather than hand-copied memory or comments](2026-11-22-briefs-from-code-not-memory.md)
 - 2026-11-22 · [Autocomplete trigger substitution and trailing whitespace normalization](2026-11-22-composer-autocomplete-trailing-whitespace.md)
 - 2026-11-22 · [Detail Inspector keyboard shortcut handlers and idempotent dismissal state](2026-11-22-detail-inspector-keyboard-shortcuts-and-closure-state.md)
 - 2026-11-22 · [A broken Electron runner script hangs the real-window test silently](2026-11-22-electron-runner-syntax-error-silent-hang.md)
