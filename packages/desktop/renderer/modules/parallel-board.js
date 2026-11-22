@@ -6,12 +6,14 @@
  * without one pane stealing the other's tokens. No framework, no dependencies.
  */
 
-export function initParallelBoard({ client, getView, getAgentId, maxPanes = 6 }) {
+export function initParallelBoard({ client, getView, getAgents, registerSessionAgent, maxPanes = 6 }) {
   const grid = document.getElementById('parallelGrid');
   const status = document.getElementById('parallelStatus');
-  if (!grid || !status) return { handleEvent() {}, paneCount: () => 0 };
+  if (!grid || !status) return { handleEvent() {}, paneCount: () => 0, refreshAgents() {} };
 
   const panes = new Map();
+  let agents = [];
+  const sends = [];
   let next = 1;
 
   const updateStatus = () => {
@@ -46,7 +48,39 @@ export function initParallelBoard({ client, getView, getAgentId, maxPanes = 6 })
     }
   }
 
-  function createPane(sessionId) {
+  function fillAgentOptions(pane) {
+    const select = pane.agentSelect;
+    select.replaceChildren(new Option('No bot', ''));
+    for (const agent of agents) select.appendChild(new Option(agent.name || agent.id, agent.id));
+    if (pane.agentId && !agents.some((a) => a.id === pane.agentId)) pane.agentId = null;
+    select.value = pane.agentId || '';
+  }
+
+  function nextAgentId() {
+    const list = [...panes.values()];
+    const used = new Set(list.map((p) => p.agentId));
+    const picked = agents.find((a) => !used.has(a.id)) || agents[list.length % agents.length] || null;
+    return picked?.id ?? null;
+  }
+
+  async function refreshAgents() {
+    try {
+      const list = await getAgents();
+      agents = Array.isArray(list) ? list : [];
+    } catch {
+      agents = [];
+    }
+    for (const pane of panes.values()) {
+      fillAgentOptions(pane);
+      if (!pane.agentId && !pane.agentChosen) {
+        pane.agentId = nextAgentId();
+        fillAgentOptions(pane);
+        registerSessionAgent(pane.sessionId, pane.agentId);
+      }
+    }
+  }
+
+  function createPane(sessionId, agentId = null) {
     if (panes.size >= maxPanes) return null;
     const id = `pane-${next++}`;
     const node = document.createElement('section');
@@ -56,6 +90,7 @@ export function initParallelBoard({ client, getView, getAgentId, maxPanes = 6 })
       <header class="pb-head">
         <span class="pb-dot" aria-hidden="true"></span>
         <span class="pb-title"></span>
+        <select class="pane-agent" aria-label="Bot for this pane"></select>
         <span class="pb-badge">idle</span>
         <button class="pb-close" title="Close pane" aria-label="Close pane">&times;</button>
       </header>
@@ -70,6 +105,8 @@ export function initParallelBoard({ client, getView, getAgentId, maxPanes = 6 })
     const pane = {
       id,
       sessionId: sessionId || `parallel_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      agentId: agentId || nextAgentId(),
+      agentChosen: false,
       running: false,
       assistant: null,
       node,
@@ -77,9 +114,17 @@ export function initParallelBoard({ client, getView, getAgentId, maxPanes = 6 })
       badge: node.querySelector('.pb-badge'),
       input: node.querySelector('.pb-input'),
       stopBtn: node.querySelector('.pb-stop'),
+      agentSelect: node.querySelector('.pane-agent'),
     };
     node.querySelector('.pb-title').textContent = `Pane ${next - 1} · ${pane.sessionId.slice(-8)}`;
     panes.set(id, pane);
+    fillAgentOptions(pane);
+    registerSessionAgent(pane.sessionId, pane.agentId);
+    pane.agentSelect.addEventListener('change', () => {
+      pane.agentId = pane.agentSelect.value || null;
+      pane.agentChosen = true;
+      registerSessionAgent(pane.sessionId, pane.agentId);
+    });
 
     node.querySelector('.pb-close').onclick = () => closePane(id);
     node.querySelector('.pb-send').onclick = () => send(pane);
@@ -112,8 +157,10 @@ export function initParallelBoard({ client, getView, getAgentId, maxPanes = 6 })
     pane.assistant = append(pane, 'assistant', '');
     updateStatus();
 
+    registerSessionAgent(pane.sessionId, pane.agentId);
+    sends.push({ sessionId: pane.sessionId, agentId: pane.agentId });
     try {
-      const result = await client.sendQuery(query, pane.sessionId, getAgentId());
+      const result = await client.sendQuery(query, pane.sessionId, pane.agentId);
       if (result?.sessionId) pane.sessionId = result.sessionId;
       if (result?.queued) setBadge(pane, 'queued');
     } catch (err) {
@@ -213,6 +260,13 @@ export function initParallelBoard({ client, getView, getAgentId, maxPanes = 6 })
     createPane();
     createPane();
   }
+  void refreshAgents();
 
-  return { handleEvent, paneCount: () => panes.size };
+  // Test/debug view of pane ownership without reaching into the DOM.
+  window.__parallelState = {
+    getPanes: () => [...panes.values()].map((p) => ({ id: p.id, sessionId: p.sessionId, agentId: p.agentId })),
+    getSends: () => sends.slice(),
+  };
+
+  return { handleEvent, paneCount: () => panes.size, refreshAgents };
 }

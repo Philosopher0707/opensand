@@ -785,6 +785,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   let currentView = 'chat';
+  let parallelBoard = null;
 
   const viewTitles = {
     chat: 'Chat & Dialogue',
@@ -856,6 +857,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (viewName === 'boundaries') refreshBoundaries();
     if (viewName === 'webhooks') refreshWebhooks();
     if (viewName === 'connectors') refreshConnectors();
+    if (viewName === 'parallel') parallelBoard?.refreshAgents();
   }
 
   footerNavBtns.forEach((btn) => {
@@ -1277,6 +1279,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentSessionId = null;
   let activeAgentId = null;
   let chiefAgentId = null;
+  // A turn can run on any pane's bot; status must follow that session, not the
+  // globally selected bot in the rail.
+  const agentIdForSession = new Map();
+  const sessionAgentMeta = new Map();
+
+  function registerSessionAgent(sessionId, agentId) {
+    if (sessionId && agentId) agentIdForSession.set(sessionId, agentId);
+  }
+
+  function getAgentIdForSession(sessionId) {
+    if (!sessionId) return null;
+    if (agentIdForSession.has(sessionId)) return agentIdForSession.get(sessionId);
+    const bot = sessionId.match(/^bot_(agent_[A-Za-z0-9_]+)$/);
+    if (bot) return bot[1];
+    const child = sessionId.match(/^sub_agent_(.+)_(\d{10,})$/);
+    if (child) return child[1];
+    return sessionAgentMeta.get(sessionId) || null;
+  }
   let turnBusy = false;
   let queuedQueries = [];
   let activeApprovalId = null;
@@ -5211,7 +5231,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       appendToFeed('↳ delegated to ' + (event.subagent?.agentName || 'bot'));
       return;
     }
-    if (event.type === 'session_started') setBotCardStatus(activeAgentId, 'busy');
+    if (event.type === 'session_started') setBotCardStatus(getAgentIdForSession(event.sessionId), 'busy');
     if (['turn_complete', 'turn_cancelled', 'error'].includes(event.type)) {
       setBotCardStatus(activeAgentId, 'active');
     }
@@ -6280,10 +6300,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   await refreshBots();
   await refreshTasks();
   await refreshSessions();
+  // Cache boot session ownership so status events resolve the right bot even
+  // for sessions opened before this window started.
+  const bootSessions = await client.getSessions().catch(() => []);
+  for (const s of Array.isArray(bootSessions) ? bootSessions : []) {
+    if (s?.id && s.agentId) sessionAgentMeta.set(s.id, s.agentId);
+  }
   // Validate persisted session against live list, then restore it
   if (currentSessionId) {
-    const liveSessions = await client.getSessions();
-    if (Array.isArray(liveSessions) && liveSessions.some((s) => s.id === currentSessionId)) {
+    if (Array.isArray(bootSessions) && bootSessions.some((s) => s.id === currentSessionId)) {
       await selectSession(currentSessionId);
     } else {
       currentSessionId = null;
@@ -6301,11 +6326,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   setTurnBusy(false);
   await refreshTokenBadge();
 
-  // Parallel Board — each pane owns a session id and receives only its own events.
-  const parallelBoard = initParallelBoard({
+  // Parallel Board — each pane owns a session id, bot and event stream.
+  parallelBoard = initParallelBoard({
     client,
     getView: () => currentView,
-    getAgentId: () => activeAgentId,
+    getAgents: () => client.getAgents(),
+    registerSessionAgent,
   });
   client.onEvent((event) => parallelBoard.handleEvent(event));
 

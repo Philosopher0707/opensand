@@ -341,6 +341,84 @@ test("Real-Window Harness: Parallel Board mounts independent panes", async (t) =
   assert.match(r.interactResult?.status || "", /3 pane/, "Status must reflect pane count");
 });
 
+test("Real-Window Harness: per-pane bot selection routes sends and status", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-parallel-bots-home-"));
+  const agentPath = path.join(tmpHome, ".opensand", "agents");
+  fs.mkdirSync(agentPath, { recursive: true });
+  const now = Date.now();
+  const alpha = "agent_parallel_alpha_ab12cd34";
+  const beta = "agent_parallel_beta_ab12cd34";
+  const gamma = "agent_parallel_gamma_ab12cd34";
+  for (const [id, name, createdAt] of [
+    [alpha, "Parallel Alpha", now + 3000],
+    [beta, "Parallel Beta", now + 2000],
+    [gamma, "Parallel Gamma", now + 1000],
+  ] as Array<[string, string, number]>) {
+    fs.writeFileSync(path.join(agentPath, `${id}.json`), JSON.stringify({
+      id, name, role: "Worker", systemPrompt: "Work.", kind: "AGENT",
+      model: "default", provider: "global", createdAt, updatedAt: createdAt,
+    }), "utf8");
+  }
+
+  const script = [
+    "(async () => {",
+    "  await new Promise((r) => setTimeout(r, 350));",
+    `  const card = (id) => document.querySelector('#botList .bot-rail-card[data-agent-id="' + id + '"]');`,
+    `  card(${JSON.stringify(gamma)})?.click();`,
+    "  await new Promise((r) => setTimeout(r, 200));",
+    `  window.__railState.emit({ type: 'turn_complete', sessionId: ${JSON.stringify('bot_' + gamma)} });`,
+    "  const activeAgentId = window.__railState.getActive().activeAgentId;",
+    "  document.getElementById('navBtnParallel')?.click();",
+    "  await new Promise((r) => setTimeout(r, 350));",
+    "  const panes = Array.from(document.querySelectorAll('#parallelGrid .pb-pane'));",
+    "  const selectOpts = Array.from(panes[0].querySelector('.pane-agent').options);",
+    "  const options = selectOpts.map((o) => o.value).filter(Boolean);",
+    `  const setBot = (pane, id) => { const sel = pane.querySelector('.pane-agent'); sel.value = id; sel.dispatchEvent(new Event('change', { bubbles: true })); };`,
+    `  setBot(panes[0], ${JSON.stringify(alpha)});`,
+    `  setBot(panes[1], ${JSON.stringify(beta)});`,
+    "  const selectValues = panes.map((p) => p.querySelector('.pane-agent').value);",
+    "  const send = (pane, text) => { pane.querySelector('.pb-input').value = text; pane.querySelector('.pb-send').click(); };",
+    "  send(panes[0], 'alpha turn');",
+    "  send(panes[1], 'beta turn');",
+    "  await new Promise((r) => setTimeout(r, 250));",
+    "  const paneState = window.__parallelState.getPanes();",
+    "  const sends = window.__parallelState.getSends();",
+    "  window.__railState.emit({ type: 'session_started', sessionId: paneState[0].sessionId });",
+    "  const statusFirst = { alpha: card(window.__parallelState.getPanes()[0].agentId)?.dataset.status, active: card(activeAgentId)?.dataset.status };",
+    "  window.__railState.emit({ type: 'session_started', sessionId: paneState[1].sessionId });",
+    "  const statusSecond = { beta: card(window.__parallelState.getPanes()[1].agentId)?.dataset.status, active: card(activeAgentId)?.dataset.status };",
+    "  return { activeAgentId, options, optionCount: selectOpts.length, selectValues, paneState, sends, statusFirst, statusSecond };",
+    "})()",
+  ].join("\n");
+
+  try {
+    const r = await runHarness("default", { home: tmpHome, interactScript: script });
+    if (r.skipped) { t.skip(r.skipped); return; }
+    const v = r.interactResult || {};
+    assert.strictEqual(v.activeAgentId, gamma, `active bot must differ from both pane bots (${JSON.stringify(v)})`);
+    assert.strictEqual(v.optionCount, 4, `selector must offer No bot + three seeded agents (${JSON.stringify(v)})`);
+    assert.ok(v.options.includes(alpha) && v.options.includes(beta), `selector must list seeded agents (${JSON.stringify(v)})`);
+    assert.strictEqual(v.selectValues[0], alpha, `first pane selector must show its own bot (${JSON.stringify(v)})`);
+    assert.strictEqual(v.selectValues[1], beta, `second pane selector must show its own bot (${JSON.stringify(v)})`);
+    assert.strictEqual(v.paneState[0].agentId, alpha, `first pane must own alpha (${JSON.stringify(v)})`);
+    assert.strictEqual(v.paneState[1].agentId, beta, `second pane must own beta (${JSON.stringify(v)})`);
+    assert.notStrictEqual(v.paneState[0].sessionId, v.paneState[1].sessionId, "panes must keep distinct session ids");
+    const sends = v.sends || [];
+    assert.ok(sends.length >= 2, `both panes must have sent (${JSON.stringify(v)})`);
+    const alphaSend = sends.find((s: any) => s.sessionId === v.paneState[0].sessionId);
+    const betaSend = sends.find((s: any) => s.sessionId === v.paneState[1].sessionId);
+    assert.strictEqual(alphaSend?.agentId, alpha, `first pane's sendQuery must carry alpha (${JSON.stringify(v)})`);
+    assert.strictEqual(betaSend?.agentId, beta, `second pane's sendQuery must carry beta (${JSON.stringify(v)})`);
+    assert.ok(!sends.some((s: any) => s.agentId === v.activeAgentId), "no pane may send with the global active bot");
+    assert.strictEqual(v.statusFirst.alpha, "busy", `pane session_started must busy its own bot card (${JSON.stringify(v)})`);
+    assert.notStrictEqual(v.statusFirst.active, "busy", `active bot card must stay untouched (${JSON.stringify(v)})`);
+    assert.strictEqual(v.statusSecond.beta, "busy", `second pane session_started must busy beta (${JSON.stringify(v)})`);
+    assert.notStrictEqual(v.statusSecond.active, "busy", `active bot card must stay untouched after both panes (${JSON.stringify(v)})`);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test("Real-Window Harness: bot card provider chip and model picker", async (t) => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-bot-card-home-"));
   const agentPath = path.join(tmpHome, ".opensand", "agents");

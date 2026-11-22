@@ -4290,6 +4290,7 @@ textarea#promptInput {
 .pb-pane[data-state="error"] .pb-dot { background: var(--danger); }
 @keyframes pb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .pb-title { font-size: 12px; font-weight: 600; color: var(--text-main); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pane-agent { max-width: 132px; min-width: 0; font-size: 11px; padding: 3px 4px; color: var(--text-main); background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
 .pb-badge { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); border: 1px solid var(--border-color); border-radius: 999px; padding: 2px 8px; }
 .pb-pane[data-state="running"] .pb-badge { color: var(--accent); border-color: var(--accent-soft); }
 .pb-close { border: 0; background: transparent; color: var(--text-muted); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px; }
