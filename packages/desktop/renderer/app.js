@@ -1402,9 +1402,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // re-add these two listeners (search toggle / new bot / Escape remain its work).
   document.getElementById('botSidecarSearch')?.addEventListener('input', (event) => {
     botRail.applyFilter(event.target.value);
+    refreshSessions();
   });
   document.getElementById('btnBotShowMore')?.addEventListener('click', () => {
     botRail.setExpanded(!botRail.isExpanded());
+    refreshSessions();
   });
   // Bot section controls: one open-state path, no stale toggle state.
   const botSearchWrap = document.getElementById('botSearchWrap');
@@ -1418,6 +1420,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       botSearchInput.value = '';
       botRail.applyFilter('');
+      refreshSessions();
       botSearchToggle.focus();
     }
   }

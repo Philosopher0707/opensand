@@ -1146,7 +1146,38 @@ test("Real-Window Harness: sessions of collapsed bots stay in the global roster"
     "  const stranded = hiddenIds.filter((id) => globalIds.includes('bot_' + id));",
     "  const duplicatedShown = shownIds.filter((id) => globalIds.includes('bot_' + id));",
     "  const moreVisible = !document.getElementById('btnBotShowMore')?.classList.contains('hidden');",
-    "  return { cardCount: shownIds.length, moreVisible, hiddenIds, stranded, duplicatedShown, globalCount: globalIds.length };",
+    "  document.getElementById('btnBotShowMore')?.click();",
+    "  let expandedShownIds = [];",
+    "  for (let i = 0; i < 40; i++) {",
+    "    expandedShownIds = [...document.querySelectorAll('#botList .bot-rail-card')].map((c) => c.dataset.agentId);",
+    "    if (expandedShownIds.length === allIds.length) break;",
+    "    await new Promise((r) => setTimeout(r, 50));",
+    "  }",
+    "  let expandedGlobalIds = [];",
+    "  for (let i = 0; i < 40; i++) {",
+    "    expandedGlobalIds = [...document.querySelectorAll('#sessionList .session-channel-item .btn-delete-session')].map((b) => b.dataset.sessionId);",
+    "    if (!expandedGlobalIds.includes('bot_' + hiddenIds[0])) break;",
+    "    await new Promise((r) => setTimeout(r, 50));",
+    "  }",
+    "  const duplicatesAfterExpand = expandedShownIds.filter((id) => expandedGlobalIds.includes('bot_' + id));",
+    "  const search = document.getElementById('botSidecarSearch');",
+    "  search.value = 'Hidden Bot 1';",
+    "  search.dispatchEvent(new Event('input', { bubbles: true }));",
+    "  let filteredShownIds = [];",
+    "  for (let i = 0; i < 40; i++) {",
+    "    filteredShownIds = [...document.querySelectorAll('#botList .bot-rail-card')].map((c) => c.dataset.agentId);",
+    "    if (filteredShownIds.length === 1) break;",
+    "    await new Promise((r) => setTimeout(r, 50));",
+    "  }",
+    "  let filteredGlobalIds = [];",
+    "  for (let i = 0; i < 40; i++) {",
+    "    filteredGlobalIds = [...document.querySelectorAll('#sessionList .session-channel-item .btn-delete-session')].map((b) => b.dataset.sessionId);",
+    "    if (filteredGlobalIds.includes('bot_' + hiddenIds[0])) break;",
+    "    await new Promise((r) => setTimeout(r, 50));",
+    "  }",
+    "  const filteredHiddenVisible = hiddenIds.filter((id) => filteredGlobalIds.includes('bot_' + id));",
+    "  const filteredDuplicate = filteredShownIds.filter((id) => filteredGlobalIds.includes('bot_' + id));",
+    "  return { cardCount: shownIds.length, moreVisible, hiddenIds, stranded, duplicatedShown, globalCount: globalIds.length, expandedShownIds, duplicatesAfterExpand, filteredShownIds, filteredHiddenVisible, filteredDuplicate, filteredGlobalCount: filteredGlobalIds.length };",
     "})()",
   ].join("\n");
   try {
@@ -1158,6 +1189,11 @@ test("Real-Window Harness: sessions of collapsed bots stay in the global roster"
     assert.strictEqual(v.hiddenIds?.length, 2, `two bots must be outside the collapsed view (${JSON.stringify(v)})`);
     assert.ok(v.stranded.length >= 1, `a hidden bot's session must stay reachable in #sessionList (${JSON.stringify(v)})`);
     assert.strictEqual(v.duplicatedShown.length, 0, `visible bots' sessions must still be deduped (${JSON.stringify(v)})`);
+    assert.strictEqual(v.expandedShownIds?.length, 8, `Show more must render all eight bots (${JSON.stringify(v)})`);
+    assert.strictEqual(v.duplicatesAfterExpand.length, 0, `Show more must remove now-shown bots' sessions from #sessionList (${JSON.stringify(v)})`);
+    assert.strictEqual(v.filteredShownIds?.length, 1, `bot search must narrow the rail to one bot (${JSON.stringify(v)})`);
+    assert.ok(v.filteredHiddenVisible.length >= 1, `filtering out a bot must restore its bot_ session in #sessionList (${JSON.stringify(v)})`);
+    assert.strictEqual(v.filteredDuplicate.length, 0, `the still-shown bot must stay deduped after filtering (${JSON.stringify(v)})`);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
