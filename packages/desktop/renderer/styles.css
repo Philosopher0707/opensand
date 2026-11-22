@@ -4497,3 +4497,64 @@ textarea#promptInput {
   .identity-popover { animation: none; }
   .bot-rail-card, .btn-bot-identity { transition: none; }
 }
+
+/* ---- Bot inspector (modules/bot-inspector.js) ----------------------------- */
+.inspector-backdrop { position: fixed; inset: 0; z-index: 135; background: rgba(0,0,0,.4); }
+.inspector-popover {
+  position: fixed; width: 320px; max-height: 90vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px; padding: 14px;
+  background: var(--bg-card); color: var(--text-main);
+  border: 1px solid var(--border-color); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  animation: identity-in 160ms var(--ease-out);
+}
+.inspector-title { font-size: 13px; font-weight: 700; }
+.inspector-error {
+  padding: 6px 8px; border-radius: var(--radius-sm);
+  background: var(--danger-soft); color: var(--danger); font-size: 11px;
+}
+.inspector-card {
+  display: flex; flex-direction: column; gap: 7px; padding: 10px;
+  background: var(--bg-subtle); border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+.inspector-card-title {
+  margin: 0; font-size: 11px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.inspector-name {
+  box-sizing: border-box; width: 100%; padding: 7px 9px; font-size: 12px;
+  background: var(--bg-input); color: var(--text-main);
+  border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+}
+.inspector-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.inspector-actions button, .inspector-new {
+  padding: 6px 9px; font-size: 11px; cursor: pointer;
+  background: var(--bg-input); color: var(--text-main);
+  border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+}
+.inspector-actions .inspector-rename {
+  border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600;
+}
+.inspector-actions .inspector-delete { border-color: var(--danger); color: var(--danger); }
+.inspector-sessions { display: flex; flex-direction: column; gap: 3px; max-height: 180px; overflow-y: auto; }
+.inspector-session {
+  display: block; width: 100%; text-align: left; padding: 6px 8px; font-size: 11px;
+  cursor: pointer; background: transparent; color: var(--text-main);
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.inspector-session:hover { background: var(--bg-hover); }
+.inspector-empty { padding: 6px 8px; font-size: 11px; color: var(--text-muted); }
+.inspector-new { width: 100%; border-style: dashed; color: var(--accent); }
+.btn-bot-inspect {
+  border: 0; background: transparent; cursor: pointer; padding: 2px; flex: none;
+  display: grid; place-items: center; opacity: .75;
+  transition: opacity 150ms var(--ease-out);
+}
+.btn-bot-inspect .icon { width: 13px; height: 13px; }
+.btn-bot-inspect:hover, .bot-rail-card:focus-within .btn-bot-inspect { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .inspector-popover { animation: none; }
+  .btn-bot-inspect { transition: none; }
+}

@@ -10,6 +10,7 @@ import { createModelPicker } from './modules/model-picker.js';
 import { createSessionBuffers } from './modules/session-buffers.js';
 import { createBotRail, setBotCardBadge, setBotCardStatus } from './modules/bot-rail.js';
 import { openBotIdentity, safeAvatarMarkup } from './modules/bot-identity.js';
+import { openBotInspector } from './modules/bot-inspector.js';
 
 // Native title bar is hiddenInset on macOS; CSS keys traffic-light clearance off this.
 // Detected via userAgent for instant CSS styling, and via window.opensand for IPC bridge.
@@ -1314,30 +1315,61 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Per-bot sessions + compact rail. Built here, inside DOMContentLoaded, so
   // every refreshBots() call during boot sees an initialized renderer.
   const sessionBuffers = createSessionBuffers();
+  // Shared by the rail actions and the inspector so both paths behave identically.
+  const botIdentityHandler = (b, a) => openBotIdentity({
+    bot: b,
+    anchor: a,
+    onSave: async (patch) => { await client.updateAgentSettings(b.id, patch); await refreshBots(); },
+  });
+  const botModelHandler = (b, a) => openBotModelPicker(b, a);
+  const botDeleteHandler = async (b) => {
+    await client.deleteAgent(b.id);
+    if (activeAgentId === b.id) {
+      activeAgentId = null;
+      badgeActiveBot.textContent = 'Default Assistant';
+    }
+    await refreshBots();
+    refreshTokenBadge();
+    localStorage.removeItem(AGENT_KEY);
+    refreshTemplates();
+  };
+  const selectBotSession = (id, b) => {
+    activeAgentId = b.id;
+    badgeActiveBot.textContent = b.name;
+    persistAgent();
+    void selectSession(id);
+  };
+  const botInspectHandler = (bot, anchor) => openBotInspector({
+    bot,
+    anchor,
+    loadSessions: async () => {
+      try {
+        const all = await client.getSessions();
+        return all.filter((s) => s.agentId === bot.id || s.id === 'bot_' + bot.id);
+      } catch { return null; }
+    },
+    onRename: async (b, name) => {
+      const trimmed = String(name).trim();
+      if (!trimmed || trimmed.length > 64) throw new Error('Name must be 1–64 characters');
+      await client.updateAgentProfile(b.id, { name: trimmed });
+      await refreshBots();
+      refreshDetailPanel();
+      if (activeAgentId === b.id) badgeActiveBot.textContent = trimmed;
+    },
+    onIdentity: botIdentityHandler,
+    onModel: botModelHandler,
+    onDelete: botDeleteHandler,
+    onOpenSession: (id, b) => selectBotSession(id, b),
+    onNewSession: (b) => selectBotSession('bot_' + b.id, b),
+  });
   const botRail = createBotRail({
     buffers: sessionBuffers,
     getAgents: () => client.getAgents(),
     getActiveAgentId: () => activeAgentId,
-    onIdentity: (bot, anchor) => openBotIdentity({
-      bot,
-      anchor,
-      onSave: async (patch) => {
-        await client.updateAgentSettings(bot.id, patch);
-        await refreshBots();
-      },
-    }),
-    onModel: (bot, anchor) => openBotModelPicker(bot, anchor),
-    onDelete: async (bot) => {
-      await client.deleteAgent(bot.id);
-      if (activeAgentId === bot.id) {
-        activeAgentId = null;
-        badgeActiveBot.textContent = 'Default Assistant';
-      }
-      await refreshBots();
-      refreshTokenBadge();
-      localStorage.removeItem(AGENT_KEY);
-      refreshTemplates();
-    },
+    onIdentity: botIdentityHandler,
+    onModel: botModelHandler,
+    onDelete: botDeleteHandler,
+    onInspect: botInspectHandler,
     onSelect: (bot) => {
       activeAgentId = bot?.id || null;
       void selectSession(bot ? 'bot_' + bot.id : null);

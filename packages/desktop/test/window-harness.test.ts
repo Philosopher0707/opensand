@@ -850,6 +850,59 @@ test("Real-Window Harness: Default Assistant card clears session without load er
   }
 });
 
+test("Real-Window Harness: inspector renames and deletes a bot", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-inspector-home-"));
+  const agentPath = path.join(tmpHome, ".opensand", "agents");
+  fs.mkdirSync(agentPath, { recursive: true });
+  seedSessions(tmpHome, [{ id: "bot_agent_insp_a1", firstLine: "bot-home-history" }]);
+  const now = Date.now();
+  for (const [id, name] of [["agent_insp_a1", "Alpha Bot"], ["agent_insp_b2", "Beta Bot"]] as const) {
+    fs.writeFileSync(path.join(agentPath, `${id}.json`), JSON.stringify({
+      id, name, role: "Tester", systemPrompt: `You are ${name}.`, kind: "AGENT",
+      model: "default", provider: "global", createdAt: now, updatedAt: now,
+    }), "utf8");
+  }
+  const script = [
+    "(async () => {",
+    "  await new Promise((r) => setTimeout(r, 350));",
+    "  const card = document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_insp_a1\"]');",
+    "  const btn = card.querySelector('.btn-bot-inspect');",
+    "  btn.click();",
+    "  await new Promise((r) => setTimeout(r, 150));",
+    "  const dialog = document.querySelector('.inspector-popover');",
+    "  const cards = dialog ? dialog.querySelectorAll('.inspector-card').length : -1;",
+    "  const input = dialog?.querySelector('.inspector-name');",
+    "  input.value = 'Renamed Alpha';",
+    "  dialog.querySelector('.inspector-rename').click();",
+    "  let renamed = null;",
+    "  let cardName = null;",
+    "  for (let i = 0; i < 20; i++) {",
+    "    const agents = await (await fetch('/api/agents')).json();",
+    "    renamed = (agents || []).find((a) => a.id === 'agent_insp_a1')?.name;",
+    "    cardName = document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_insp_a1\"] .bot-item-name')?.textContent;",
+    "    if (renamed === 'Renamed Alpha' && cardName === 'Renamed Alpha') break;",
+    "    await new Promise((r) => setTimeout(r, 100));",
+    "  }",
+    "  const sessionsBtn = document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_insp_b2\"] .btn-bot-inspect');",
+    "  sessionsBtn.click();",
+    "  await new Promise((r) => setTimeout(r, 150));",
+    "  const betaSessionRows = document.querySelectorAll('.inspector-popover .inspector-session').length;",
+    "  return { cards, renamed, cardName, betaSessionRows };",
+    "})()",
+  ].join("\n");
+  try {
+    const r = await runHarness("default", { home: tmpHome, interactScript: script });
+    if (r.skipped) { t.skip(r.skipped); return; }
+    const v = r.interactResult || {};
+    assert.strictEqual(v.cards, 2, `inspector must have manage + sessions cards (${JSON.stringify(v)})`);
+    assert.strictEqual(v.renamed, "Renamed Alpha", `rename must persist via API (${JSON.stringify(v)})`);
+    assert.strictEqual(v.cardName, "Renamed Alpha", `rail must show the new name (${JSON.stringify(v)})`);
+    assert.strictEqual(v.betaSessionRows, 1, `a bot with no real sessions shows exactly one synthetic home row (${JSON.stringify(v)})`);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test("Real-Window Harness: Preact shell frame seeded sessions & search (960x740 and 1920x1080)", async (t) => {
   const built = fs.existsSync(path.join(pkgRoot, "dist", "renderer-next", "index.html"));
   if (!built) {

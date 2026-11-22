@@ -45,7 +45,7 @@ export function setBotCardBadge(agentId, text) {
 }
 
 export function createBotRail(options = {}) {
-  const { buffers, getAgents, getActiveAgentId, onIdentity, onModel, onSelect, onDelete } = options;
+  const { buffers, getAgents, getActiveAgentId, onIdentity, onModel, onSelect, onDelete, onInspect } = options;
   const list = document.getElementById('botList');
   let lastAgents = [];
   let filter = '';
@@ -96,6 +96,7 @@ export function createBotRail(options = {}) {
         <span class="bot-item-name">${escapeHtml(bot.name || '')}</span>
         <span class="bot-item-sub">${escapeHtml(provider)} · ${escapeHtml(bot.model || 'default')}${bot.role ? ` · ${escapeHtml(bot.role)}` : ''}</span>
       </span>
+      <button class="btn-bot-inspect" title="Bot actions and sessions" aria-label="Bot actions and sessions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg></button>
       <button class="btn-bot-identity" title="Edit identity" data-bot-id="${id}" aria-label="Edit bot identity">🎨</button>
       <button class="btn-bot-model" title="Choose provider & model" data-bot-id="${id}" aria-label="Choose provider and model">${uiIcon('spark')}</button>
       ${onDelete ? `<button class="btn-delete-bot" title="Delete bot" data-bot-id="${id}" aria-label="Delete bot">${uiIcon('trash')}</button>` : ''}
@@ -127,6 +128,10 @@ export function createBotRail(options = {}) {
           event.preventDefault();
           moveFocus(card, event.key);
         }
+      });
+      card.querySelector('.btn-bot-inspect')?.addEventListener('click', (event) => {
+        event.stopPropagation();
+        onInspect?.(bot, event.currentTarget);
       });
       card.querySelector('.btn-bot-identity')?.addEventListener('click', (event) => {
         event.stopPropagation();
