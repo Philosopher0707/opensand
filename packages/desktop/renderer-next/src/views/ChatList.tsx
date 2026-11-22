@@ -10,12 +10,20 @@ import {
 export interface ChatListProps {
   data: ShellData;
   now?: () => number;
+  selectedSessionId?: string | null;
+  onSelectSession?: (id: string) => void;
 }
 
-export function ChatList({ data, now }: ChatListProps) {
+export function ChatList({ data, now, selectedSessionId, onSelectSession }: ChatListProps) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [query, setQuery] = useState("");
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(selectedSessionId ?? null);
+
+  useEffect(() => {
+    if (selectedSessionId !== undefined) {
+      setActiveId(selectedSessionId);
+    }
+  }, [selectedSessionId]);
 
   const reload = async () => {
     try {
@@ -54,7 +62,8 @@ export function ChatList({ data, now }: ChatListProps) {
 
   const filtered = filterSessions(sessions, query);
   const currentTime = now ? now() : Date.now();
-  const rows: SessionRow[] = filtered.map((s) => toRow(s, currentTime, activeId));
+  const effectiveActiveId = activeId ?? selectedSessionId ?? null;
+  const rows: SessionRow[] = filtered.map((s) => toRow(s, currentTime, effectiveActiveId));
   const empty = rows.length === 0 ? emptyState(query) : null;
 
   return (
@@ -97,7 +106,11 @@ export function ChatList({ data, now }: ChatListProps) {
           <div
             key={row.id}
             class={`session-channel-item ${row.active ? "active" : ""}`}
-            onClick={() => setActiveId(row.id)}
+            data-session-id={row.id}
+            onClick={() => {
+              setActiveId(row.id);
+              onSelectSession?.(row.id);
+            }}
           >
             <div class="channel-avatar" aria-hidden="true">
               {row.avatar}

@@ -10,6 +10,14 @@ import type { TurnEvent } from "../../src/shell/quick-capture-model";
 
 export type { SessionSummary, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent };
 
+export interface LoadedSessionData {
+  events?: unknown[];
+  transcript?: string;
+  agentId?: string;
+  roomId?: string;
+  [key: string]: unknown;
+}
+
 export interface ShellData {
   listSessions(): Promise<SessionSummary[]>;
   deleteSession(id: string): Promise<void>;
@@ -30,6 +38,8 @@ export interface ShellData {
   cancelTurn?(): Promise<unknown>;
   /** Subscribes to every turn event; the caller filters by type and session. Returns the unsubscribe. */
   onTurnEvent?(callback: (event: TurnEvent) => void): () => void;
+  /** Loads historical session data (events, transcript, agentId). */
+  loadSession?(sessionId: string): Promise<LoadedSessionData | any>;
 }
 
 export function windowBridgeData(): ShellData {
@@ -166,6 +176,16 @@ export function windowBridgeData(): ShellData {
         return () => {};
       }
       return bridge.onEvent(callback);
+    },
+    async loadSession(sessionId: string): Promise<LoadedSessionData | any> {
+      if (typeof window !== "undefined" && (window as any).__testLoadedSession) {
+        return (window as any).__testLoadedSession;
+      }
+      const bridge = (window as any).opensand;
+      if (!bridge?.loadSession) {
+        return null;
+      }
+      return bridge.loadSession(sessionId);
     },
   };
 }

@@ -19,10 +19,11 @@ export interface ShellProps {
 export function Shell({ data }: ShellProps) {
   const [missionId, setMissionId] = useState<string | null>(null);
   const [selectedApproval, setSelectedApproval] = useState<ToolApprovalRequest | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [approvalsRev, setApprovalsRev] = useState(0);
   const capture = useQuickCapture(data);
   // The chat turn lives at the shell level so opening an approval detail does not drop it.
-  const chat = useChatTurn(data);
+  const chat = useChatTurn(data, selectedSessionId);
 
   const handleSelectMission = (id: string) => {
     setSelectedApproval(null);
@@ -31,6 +32,12 @@ export function Shell({ data }: ShellProps) {
 
   const handleSelectApproval = (appr: ToolApprovalRequest) => {
     setSelectedApproval(appr);
+  };
+
+  const handleSelectSession = (id: string) => {
+    setMissionId(null);
+    setSelectedApproval(null);
+    setSelectedSessionId(id);
   };
 
   return (
@@ -46,6 +53,7 @@ export function Shell({ data }: ShellProps) {
             onClick={() => {
               setMissionId(null);
               setSelectedApproval(null);
+              setSelectedSessionId(null);
             }}
           >
             <div class="brand-avatar">
@@ -74,7 +82,11 @@ export function Shell({ data }: ShellProps) {
           <MissionList data={data} onSelect={handleSelectMission} />
         </div>
         <div id="sessionList" class="session-list" role="list" aria-label="Sessions">
-          <ChatList data={data} />
+          <ChatList
+            data={data}
+            selectedSessionId={selectedSessionId}
+            onSelectSession={handleSelectSession}
+          />
         </div>
         <div class="sidebar-footer">
           <span class="shell-note">Preact shell (preview)</span>
@@ -84,7 +96,9 @@ export function Shell({ data }: ShellProps) {
         <header class="topbar">
           <div class="topbar-left">
             <h1 class="view-header-title" id="viewHeaderTitle">Home</h1>
-            <span class="active-session-title" id="activeSessionTitle">New Session</span>
+            <span class="active-session-title" id="activeSessionTitle">
+              {selectedSessionId || "New Session"}
+            </span>
           </div>
           <div class="topbar-actions">
             <QuickCaptureButton capture={capture} />
@@ -135,7 +149,7 @@ export function Shell({ data }: ShellProps) {
               <MissionReceipt data={data} missionId={missionId} />
             </div>
           ) : (
-            <Chat chat={chat} />
+            <Chat chat={chat} selectedSessionId={selectedSessionId} data={data} />
           )}
         </section>
       </main>

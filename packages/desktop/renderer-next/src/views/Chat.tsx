@@ -1,8 +1,5 @@
-// Chat screen in the main panel: composer, streamed answer, finished, stopped,
-// error and empty states, scaffolded by scripts/screen-kit.sh. Loading is the
-// thinking/streaming phase of a turn; a long answer scrolls the feed, never the
-// page. Markdown rendering, tool cards and history are later rows (Phase 5
-// inventory rows 3-4); this shows the answer as plain text.
+// Chat view: message feed, status announcement and prompt composer.
+// Thin view over useChatTurn; the state machine lives in chat-turn-model.ts.
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import type { ShellData } from "../data";
 import {
@@ -10,7 +7,10 @@ import {
   chatEventAction,
   chatTurnReducer,
   isChatBusy,
+  reconstructSessionMessages,
+  type ChatAction,
   type ChatMessage,
+  type ChatTurnAction,
   type ChatTurnState,
 } from "../../../src/shell/chat-turn-model";
 import type { TurnEvent } from "../../../src/shell/quick-capture-model";
@@ -20,9 +20,11 @@ export interface ChatTurnController {
   available: boolean;
   send: (query: string) => void;
   stop: () => void;
+  load?: (sessionId: string, messages: ChatMessage[]) => void;
+  dispatch?: (action: ChatTurnAction) => void;
 }
 
-export function useChatTurn(data: ShellData): ChatTurnController {
+export function useChatTurn(data: ShellData, selectedSessionId?: string | null): ChatTurnController {
   const available = typeof data.sendQuery === "function";
   const [state, dispatch] = useReducer(
     chatTurnReducer,
@@ -40,6 +42,23 @@ export function useChatTurn(data: ShellData): ChatTurnController {
       if (action) dispatch(action);
     });
   }, [data]);
+
+  useEffect(() => {
+    if (!selectedSessionId || !data.loadSession) return;
+    let cancelled = false;
+    data.loadSession(selectedSessionId).then((res) => {
+      if (cancelled || !res) return;
+      const messages = Array.isArray(res)
+        ? res
+        : Array.isArray((res as any).messages)
+          ? (res as any).messages
+          : reconstructSessionMessages(res);
+      dispatch({ type: "load", sessionId: selectedSessionId, messages });
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [data, selectedSessionId]);
 
   const send = (query: string) => {
     const text = query.trim();
@@ -60,7 +79,11 @@ export function useChatTurn(data: ShellData): ChatTurnController {
     dispatch({ type: "stopped" });
   };
 
-  return { state, available, send, stop };
+  const load = (sessionId: string, messages: ChatMessage[]) => {
+    dispatch({ type: "load", sessionId, messages });
+  };
+
+  return { state, available, send, stop, load, dispatch };
 }
 
 function statusText(state: ChatTurnState): string {
@@ -124,13 +147,42 @@ export function ChatMessageRow({ message }: { message: ChatMessage }) {
   );
 }
 
-export function Chat({ chat }: { chat: ChatTurnController }) {
+export interface ChatProps {
+  chat: ChatTurnController;
+  selectedSessionId?: string | null;
+  data?: ShellData;
+}
+
+export function Chat({ chat, selectedSessionId, data }: ChatProps) {
   const { state } = chat;
   const busy = isChatBusy(state.status);
   const view = screenState(state);
   const [draft, setDraft] = useState("");
   const feedRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // When selectedSessionId is passed or changed, call data.loadSession(sessionId) and dispatch loaded messages
+  useEffect(() => {
+    if (!selectedSessionId || !data?.loadSession) return;
+    if (chat.state.sessionId === selectedSessionId && chat.state.messages.length > 0) return;
+    let cancelled = false;
+    data.loadSession(selectedSessionId).then((res) => {
+      if (cancelled || !res) return;
+      const messages = Array.isArray(res)
+        ? res
+        : Array.isArray((res as any).messages)
+          ? (res as any).messages
+          : reconstructSessionMessages(res);
+      if (chat.dispatch) {
+        chat.dispatch({ type: "load", sessionId: selectedSessionId, messages });
+      } else if (chat.load) {
+        chat.load(selectedSessionId, messages);
+      }
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSessionId, data, chat]);
 
   // Follow the stream, as the transcript grows on every token.
   useEffect(() => {
