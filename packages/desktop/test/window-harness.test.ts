@@ -1001,6 +1001,7 @@ test("Real-Window Harness: nested bot tree, dedupe and inspector chief", async (
     "(async () => {",
     "  const wait = async (fn, ms = 4000) => { const start = Date.now(); while (Date.now() - start < ms) { const value = fn(); if (value) return value; await new Promise((r) => setTimeout(r, 50)); } return fn(); };",
     "  await wait(() => document.querySelectorAll('#botList .bot-rail-card').length >= 2);",
+    "  await new Promise((r) => setTimeout(r, 400));",
     "  const cardCount = document.querySelectorAll('#botList .bot-rail-card').length;",
     "  const noDefaultCard = !document.querySelector('#botList .bot-rail-card:not([data-agent-id])');",
     "  const toggleCount = document.querySelectorAll('#botList .bot-tree-toggle').length;",
@@ -1013,6 +1014,8 @@ test("Real-Window Harness: nested bot tree, dedupe and inspector chief", async (
     "  const beforeRows = findGroup('agent_tree_worker')?.querySelectorAll('.bot-session-row').length || 0;",
     "  findToggle('agent_tree_worker')?.click();",
     "  await new Promise((r) => setTimeout(r, 120));",
+    "  const toggleFocused = document.activeElement?.classList?.contains('bot-tree-toggle') === true;",
+    "  const rowAriaLabels = [...(findGroup('agent_tree_worker')?.querySelectorAll('.bot-session-row') || [])].map((r) => r.getAttribute('aria-label'));",
     "  const afterExpanded = findToggle('agent_tree_worker')?.getAttribute('aria-expanded');",
     "  const afterHidden = findGroup('agent_tree_worker')?.hidden;",
     "  const rowIds = [...(findGroup('agent_tree_worker')?.querySelectorAll('.bot-session-row') || [])].map((r) => r.dataset.sessionId);",
@@ -1037,9 +1040,11 @@ test("Real-Window Harness: nested bot tree, dedupe and inspector chief", async (
     "    await new Promise((r) => setTimeout(r, 100));",
     "  }",
     "  let rowAfterDelete = [];",
+    "  let focusAfterDelete = false;",
     "  for (let i = 0; i < 30; i++) {",
     "    rowAfterDelete = [...(findGroup('agent_tree_worker')?.querySelectorAll('.bot-session-row') || [])].map((r) => r.dataset.sessionId);",
-    "    if (!rowAfterDelete.includes('sess_tree_worker')) break;",
+    "    focusAfterDelete = document.activeElement?.classList?.contains('btn-bot-inspect') === true;",
+    "    if (!rowAfterDelete.includes('sess_tree_worker') && focusAfterDelete) break;",
     "    await new Promise((r) => setTimeout(r, 100));",
     "  }",
     "  findCard('agent_tree_chief')?.querySelector('.btn-bot-inspect')?.click();",
@@ -1050,6 +1055,7 @@ test("Real-Window Harness: nested bot tree, dedupe and inspector chief", async (
     "  await new Promise((r) => setTimeout(r, 300));",
     "  const stateAfterClear = window.__railState.getChiefAgentId();",
     "  const badgeAfterClear = document.getElementById('badgeActiveBot').textContent;",
+    "  const focusAfterClearChief = document.activeElement?.classList?.contains('btn-bot-inspect') === true;",
     "  findCard('agent_tree_worker')?.querySelector('.btn-bot-inspect')?.click();",
     "  await new Promise((r) => setTimeout(r, 150));",
     "  const workerButtons = [...document.querySelectorAll('.inspector-popover .inspector-chief')].map((b) => b.textContent);",
@@ -1058,7 +1064,8 @@ test("Real-Window Harness: nested bot tree, dedupe and inspector chief", async (
     "  await new Promise((r) => setTimeout(r, 400));",
     "  const stateAfterSet = window.__railState.getChiefAgentId();",
     "  const workerChiefBadge = !!findCard('agent_tree_worker')?.querySelector('.bot-chief-badge');",
-    "  return { cardCount, noDefaultCard, toggleCount, chiefBadge, beforeExpanded, beforeHidden, beforeRows, afterExpanded, afterHidden, rowIds, storedExpanded, activeAfterOpen, persistedExpanded, persistedHidden, globalIds, sessionGone, rowAfterDelete, chiefButtons, stateAfterClear, badgeAfterClear, workerButtons, stateAfterSet, workerChiefBadge };",
+    "  const focusAfterSetChief = document.activeElement?.classList?.contains('btn-bot-inspect') === true;",
+    "  return { cardCount, noDefaultCard, toggleCount, chiefBadge, beforeExpanded, beforeHidden, beforeRows, toggleFocused, rowAriaLabels, afterExpanded, afterHidden, rowIds, storedExpanded, activeAfterOpen, persistedExpanded, persistedHidden, globalIds, sessionGone, rowAfterDelete, focusAfterDelete, chiefButtons, stateAfterClear, badgeAfterClear, focusAfterClearChief, workerButtons, stateAfterSet, workerChiefBadge, focusAfterSetChief };",
     "})()",
   ].join("\n");
   try {
@@ -1072,6 +1079,8 @@ test("Real-Window Harness: nested bot tree, dedupe and inspector chief", async (
     assert.strictEqual(v.beforeExpanded, "false", `disclosure starts collapsed (${JSON.stringify(v)})`);
     assert.strictEqual(v.beforeHidden, true, `nested group starts hidden (${JSON.stringify(v)})`);
     assert.strictEqual(v.beforeRows, 2, `worker homepage + one real session are nested even when hidden (${JSON.stringify(v)})`);
+    assert.strictEqual(v.toggleFocused, true, `disclosure focus must survive the re-render (${JSON.stringify(v)})`);
+    assert.ok(v.rowAriaLabels.every((label: string) => / session$/.test(label)), `nested rows need a descriptive aria-label (${JSON.stringify(v)})`);
     assert.strictEqual(v.afterExpanded, "true", `disclosure click flips aria-expanded (${JSON.stringify(v)})`);
     assert.strictEqual(v.afterHidden, false, `disclosure click reveals the nested group (${JSON.stringify(v)})`);
     assert.ok(v.rowIds.includes("bot_agent_tree_worker") && v.rowIds.includes("sess_tree_worker"), `nested rows must include the home and owned session (${JSON.stringify(v)})`);
@@ -1085,16 +1094,70 @@ test("Real-Window Harness: nested bot tree, dedupe and inspector chief", async (
     assert.strictEqual(v.globalIds.includes("sess_tree_orphan"), true, `orphan sessions must remain in the global roster (${JSON.stringify(v)})`);
     assert.strictEqual(v.sessionGone, true, `nested delete must remove the session via the API (${JSON.stringify(v)})`);
     assert.strictEqual(v.rowAfterDelete.includes("sess_tree_worker"), false, `nested delete must drop the row (${JSON.stringify(v)})`);
+    assert.strictEqual(v.focusAfterDelete, true, `nested delete must restore focus to the bot card (${JSON.stringify(v)})`);
     assert.ok(v.chiefButtons.includes("Clear chief"), `inspector of the chief must offer Clear chief (${JSON.stringify(v)})`);
     assert.strictEqual(v.stateAfterClear ?? null, null, `Clear chief must reset the renderer's chief id (${JSON.stringify(v)})`);
     assert.match(String(v.badgeAfterClear), /No chief chosen/, `clearing chief must reset the badge (${JSON.stringify(v)})`);
+    assert.strictEqual(v.focusAfterClearChief, true, `Clear chief must restore focus to the re-rendered inspect button (${JSON.stringify(v)})`);
     assert.ok(v.workerButtons.includes("Set as chief"), `inspector of a non-chief must offer Set as chief (${JSON.stringify(v)})`);
     assert.strictEqual(v.stateAfterSet, workerId, `Set as chief must update the renderer's chief id (${JSON.stringify(v)})`);
     assert.strictEqual(v.workerChiefBadge, true, `new chief must gain the badge without a reload (${JSON.stringify(v)})`);
+    assert.strictEqual(v.focusAfterSetChief, true, `Set chief must restore focus to the re-rendered inspect button (${JSON.stringify(v)})`);
     // REST settings read a separate cached bridge instance, so verify the
     // persisted file directly (the renderer's IPC state is asserted above).
     const persisted = JSON.parse(fs.readFileSync(path.join(tmpHome, ".opensand", "config.json"), "utf8"));
     assert.strictEqual(persisted.chiefOfStaffAgentId, workerId, `Set as chief must persist to config.json (${JSON.stringify(v)})`);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test("Real-Window Harness: sessions of collapsed bots stay in the global roster", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-stranded-home-"));
+  const ids = Array.from({ length: 8 }, (_, i) => `agent_hidden_${i + 1}`);
+  const opensandDir = path.join(tmpHome, ".opensand");
+  const agentPath = path.join(opensandDir, "agents");
+  fs.mkdirSync(agentPath, { recursive: true });
+  const now = Date.now();
+  for (const [i, id] of ids.entries()) {
+    fs.writeFileSync(path.join(agentPath, `${id}.json`), JSON.stringify({
+      id, name: `Hidden Bot ${i + 1}`, role: "Tester", systemPrompt: "test", kind: "AGENT",
+      model: "default", provider: "global", createdAt: now + i, updatedAt: now + i,
+    }), "utf8");
+  }
+  fs.writeFileSync(path.join(opensandDir, "config.json"), JSON.stringify({
+    endpoint: "http://localhost:11434/v1/chat/completions",
+    model: "llama3.1",
+    apiKey: "none",
+    autoApprove: false,
+    provider: "openai",
+    theme: "dark",
+  }), "utf8");
+  seedSessions(tmpHome, ids.map((id) => ({ id: `bot_${id}`, firstLine: `history of ${id}` })));
+
+  const script = [
+    "(async () => {",
+    "  const allIds = " + JSON.stringify(ids) + ";",
+    "  const start = Date.now();",
+    "  while (document.querySelectorAll('#botList .bot-rail-card').length < 6 && Date.now() - start < 4000) await new Promise((r) => setTimeout(r, 50));",
+    "  const shownIds = [...document.querySelectorAll('#botList .bot-rail-card')].map((c) => c.dataset.agentId);",
+    "  const globalIds = [...document.querySelectorAll('#sessionList .session-channel-item .btn-delete-session')].map((b) => b.dataset.sessionId);",
+    "  const hiddenIds = allIds.filter((id) => !shownIds.includes(id));",
+    "  const stranded = hiddenIds.filter((id) => globalIds.includes('bot_' + id));",
+    "  const duplicatedShown = shownIds.filter((id) => globalIds.includes('bot_' + id));",
+    "  const moreVisible = !document.getElementById('btnBotShowMore')?.classList.contains('hidden');",
+    "  return { cardCount: shownIds.length, moreVisible, hiddenIds, stranded, duplicatedShown, globalCount: globalIds.length };",
+    "})()",
+  ].join("\n");
+  try {
+    const r = await runHarness("default", { home: tmpHome, interactScript: script });
+    if (r.skipped) { t.skip(r.skipped); return; }
+    const v = r.interactResult || {};
+    assert.strictEqual(v.cardCount, 6, `collapsed rail shows six bots (${JSON.stringify(v)})`);
+    assert.strictEqual(v.moreVisible, true, `show-more must expose the hidden bots (${JSON.stringify(v)})`);
+    assert.strictEqual(v.hiddenIds?.length, 2, `two bots must be outside the collapsed view (${JSON.stringify(v)})`);
+    assert.ok(v.stranded.length >= 1, `a hidden bot's session must stay reachable in #sessionList (${JSON.stringify(v)})`);
+    assert.strictEqual(v.duplicatedShown.length, 0, `visible bots' sessions must still be deduped (${JSON.stringify(v)})`);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }

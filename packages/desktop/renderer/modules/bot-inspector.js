@@ -28,7 +28,7 @@ export function openBotInspector({
   let busy = false;
   function liveAnchor() {
     const id = bot?.id;
-    if (!id) return document.querySelector('#botList .bot-rail-card:not([data-agent-id]) .btn-bot-inspect') ?? null;
+    if (!id) return null;
     return document.querySelector(`#botList .bot-rail-card[data-agent-id="${CSS.escape(String(id))}"] .btn-bot-inspect`) ?? null;
   }
   returnFocus = anchor ?? null;
@@ -108,7 +108,7 @@ export function openBotInspector({
     if (!window.confirm(`Are you sure you want to delete bot "${bot?.name}"?`)) return;
     void run(async () => { await onDelete?.(bot); returnFocus = liveAnchor() ?? returnFocus; close(); });
   };
-  chief.onclick = () => void run(async () => { await onSetChief?.(bot, !isChief); close(); });
+  chief.onclick = () => void run(async () => { await onSetChief?.(bot, !isChief); returnFocus = liveAnchor() ?? returnFocus; close(); });
   newBtn.onclick = () => replaceDialog(() => onNewSession?.(bot));
 
   async function renderSessions() {

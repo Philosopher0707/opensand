@@ -59,12 +59,16 @@ export function createBotRail(options = {}) {
   const list = document.getElementById('botList');
   const expandedIds = loadExpanded();
   let lastAgents = [];
+  let shownBots = [];
   let sessions = [];
   let filter = '';
   let expanded = false;
+  let expandedDirty = false;
 
   function saveExpanded() {
-    localStorage.setItem(EXPANDED_KEY, JSON.stringify([...expandedIds]));
+    if (!expandedDirty) return;
+    expandedDirty = false;
+    try { localStorage.setItem(EXPANDED_KEY, JSON.stringify([...expandedIds])); } catch { /* storage unavailable */ }
   }
 
   function sessionsFor(bot) {
@@ -73,7 +77,9 @@ export function createBotRail(options = {}) {
 
   function groupedSessionIds() {
     const ids = new Set();
-    for (const bot of lastAgents) {
+    // Only sessions rendered in the rail are deduped; bots hidden by the
+    // show-more limit or a filter keep their sessions in the global roster.
+    for (const bot of shownBots) {
       if (!bot?.id) continue;
       ids.add('bot_' + bot.id);
       for (const s of sessionsFor(bot)) ids.add(s.id);
@@ -128,7 +134,7 @@ export function createBotRail(options = {}) {
     const own = sessionsFor(bot);
     const homeId = `bot_${bot.id}`;
     if (!own.some((s) => s.id === homeId)) own.unshift({ id: homeId, title: `Bot home — ${bot.name || 'bot'}`, messageCount: 0, updatedAt: null });
-    const rows = own.map((s) => `<div class="bot-session-row" role="button" tabindex="0" data-session-id="${escapeHtml(s.id)}"><span class="bot-session-title">${escapeHtml(s.title || s.id)}</span><span class="bot-session-meta">${s.messageCount || 0} msgs · ${s.updatedAt ? new Date(s.updatedAt).toLocaleDateString() : ''}</span><button class="btn-delete-session" type="button" data-session-id="${escapeHtml(s.id)}" aria-label="Delete session">×</button></div>`).join('');
+    const rows = own.map((s) => `<div class="bot-session-row" role="button" tabindex="0" aria-label="${escapeHtml(s.title || s.id)} session" data-session-id="${escapeHtml(s.id)}"><span class="bot-session-title">${escapeHtml(s.title || s.id)}</span><span class="bot-session-meta">${s.messageCount || 0} msgs · ${s.updatedAt ? new Date(s.updatedAt).toLocaleDateString() : ''}</span><button class="btn-delete-session" type="button" data-session-id="${escapeHtml(s.id)}" aria-label="Delete session">×</button></div>`).join('');
     const group = `<div class="bot-session-group" id="bot-sessions-${id}" ${isOpen ? '' : 'hidden'}>${rows}<button class="bot-session-new" type="button">＋ New session with this bot</button></div>`;
     return `<div class="bot-tree-item">${disclosure}${card}${group}</div>`;
   }
@@ -148,8 +154,10 @@ export function createBotRail(options = {}) {
       item.querySelector('.bot-tree-toggle')?.addEventListener('click', () => {
         if (expandedIds.has(bot.id)) expandedIds.delete(bot.id);
         else expandedIds.add(bot.id);
+        expandedDirty = true;
         saveExpanded();
         renderRows();
+        cardFor(bot.id)?.parentElement?.querySelector('.bot-tree-toggle')?.focus();
       });
       card.addEventListener('click', (event) => {
         if (event.target.closest('button')) return;
@@ -180,7 +188,8 @@ export function createBotRail(options = {}) {
       for (const btn of item.querySelectorAll('.bot-session-group .btn-delete-session')) {
         btn.addEventListener('click', (event) => {
           event.stopPropagation();
-          onDeleteSession?.(btn.dataset.sessionId);
+          const restoreFocus = () => cardFor(bot.id)?.querySelector('.btn-bot-inspect')?.focus();
+          void Promise.resolve(onDeleteSession?.(btn.dataset.sessionId)).then(restoreFocus, restoreFocus);
         });
       }
       item.querySelector('.bot-session-new')?.addEventListener('click', (event) => {
@@ -225,6 +234,7 @@ export function createBotRail(options = {}) {
     const activeId = typeof getActiveAgentId === 'function' ? getActiveAgentId() : null;
     const matchesAll = lastAgents.filter(matches);
     const shown = filter.trim() ? matchesAll : (expanded ? matchesAll : matchesAll.slice(0, VISIBLE_LIMIT));
+    shownBots = shown;
     list.innerHTML = shown.length
       ? shown.map((bot) => cardHtml(bot, activeId)).join('')
       : `<div class="bot-rail-empty">${filter.trim() ? 'No bots match' : 'No bots yet'}</div>`;
@@ -243,8 +253,11 @@ export function createBotRail(options = {}) {
       lastAgents = Array.isArray(agents) ? agents : [];
       const loaded = await getSessions?.();
       sessions = Array.isArray(loaded) ? loaded : [];
-      for (const id of expandedIds) if (!lastAgents.some((a) => a.id === id)) expandedIds.delete(id);
-      saveExpanded();
+      let changed = false;
+      for (const id of expandedIds) {
+        if (!lastAgents.some((a) => a.id === id)) { expandedIds.delete(id); changed = true; }
+      }
+      if (changed) { expandedDirty = true; saveExpanded(); }
       renderRows();
     },
     applyFilter(text) { filter = String(text || ''); renderRows(); },

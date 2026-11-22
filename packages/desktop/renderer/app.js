@@ -1366,6 +1366,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     isChief: bot.id === chiefAgentId,
     onSetChief: async (b, set) => {
       await client.updateSettings({ chiefOfStaffAgentId: set ? b.id : null });
+      chiefAgentId = set ? b.id : null;
       await refreshSettings();
       await refreshBots();
       badgeActiveBot.textContent = set ? b.name : 'No chief chosen';
