@@ -42,6 +42,9 @@ bash scripts/check-doc-links.sh
 echo "verify: checking lessons index is up to date..."
 bash scripts/lessons-index.sh --check
 
+echo "verify: checking real-window navigation helper..."
+bash scripts/check-real-window-nav.sh
+
 # Release tag guard: when in release context, ensure tag matches package version
 RELEASE_TAG="${RELEASE_TAG:-}"
 if [[ -z "${RELEASE_TAG:-}" ]]; then

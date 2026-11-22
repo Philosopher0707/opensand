@@ -4,11 +4,12 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { withElectronLock } from "./electron-lock.js";
 import { hermeticElectronEnv, makeTempHome } from "./hermetic-env.js";
 
 const pkgRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const NAV_HELPER_URL = pathToFileURL(path.join(pkgRoot, "dist/test/helpers/navigate-view.js")).href;
 
 function skipReason(): string | undefined {
   if (process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
@@ -23,6 +24,7 @@ const RUNNER_SCRIPT = String.raw`
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import { navigateToView } from "${NAV_HELPER_URL}";
 
 const shotDir = process.env.OPENSAND_SKILLS_SHOT_DIR || "";
 // Stay under the desktop-test 120 s ceiling so a stall reports its own logs instead of being
@@ -84,14 +86,8 @@ app.on("browser-window-created", (_e, w) => {
   w.webContents.on("did-finish-load", async () => {
     try {
       await wait("document.querySelector('#skillsCardGrid') && document.body.classList.contains('is-electron')");
-      // The hashchange subscriber mounts a tick after the grid appears; re-dispatch until the
-      // view actually switches, or one lost event stalls the run on the next wait.
-      for (let i = 0; i < 50; i++) {
-        if (await js("Boolean(document.querySelector('#viewSkills') && !document.querySelector('#viewSkills').classList.contains('hidden'))")) break;
-        await js("window.location.hash = '#skills'; window.dispatchEvent(new Event('hashchange'));");
-        await sleep(100);
-      }
-      await wait("document.querySelector('#viewSkills') && !document.querySelector('#viewSkills').classList.contains('hidden')");
+      // Shared bounded re-dispatch: the hashchange subscriber can mount a tick after the grid.
+      await navigateToView({ js, sleep }, "#skills", "#viewSkills");
       await wait("!document.querySelector('#skillsCardGrid .skills-loading')");
 
       result.emptyState = await js("document.querySelector('#skillsCardGrid .skills-empty') ? document.querySelector('#skillsCardGrid .skills-empty').textContent.trim() : ''");
