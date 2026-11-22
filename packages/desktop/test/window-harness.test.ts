@@ -363,13 +363,13 @@ test("Real-Window Harness: bot card provider chip and model picker", async (t) =
   const pickerScript = [
     "(async () => {",
     "  await new Promise((r) => setTimeout(r, 350));",
-    "  const chips = Array.from(document.querySelectorAll('#botList .bot-model-chip')).map((e) => e.textContent.trim());",
+    "  const subs = Array.from(document.querySelectorAll('#botList .bot-item-sub')).map((e) => e.textContent.trim());",
     "  const btn = document.querySelector('#botList .btn-bot-model');",
     "  btn?.click();",
     "  await new Promise((r) => setTimeout(r, 500));",
     "  const pop = document.querySelector('.mp-popover');",
     "  const result = {",
-    "    chips,",
+    "    subs,",
     "    avatars: document.querySelectorAll('#botList .bot-avatar').length,",
     "    providerBadges: Array.from(document.querySelectorAll('#botList .bot-provider-badge')).map((e) => e.textContent.trim()),",
     "    statusDots: document.querySelectorAll('#botList .bot-status-dot').length,",
@@ -390,7 +390,7 @@ test("Real-Window Harness: bot card provider chip and model picker", async (t) =
     const r = await runHarness("default", { home: tmpHome, interactScript: pickerScript });
     if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
     const result = r.interactResult || {};
-    assert.ok((result.chips || []).some((c: string) => c.includes('openrouter')), `bot card must show provider chip (${JSON.stringify(result)})`);
+    assert.ok((result.subs || []).some((c: string) => c.includes('openrouter')), `bot card must show provider in its sub-line (${JSON.stringify(result)})`);
     assert.ok(result.avatars >= 2, `every bot card needs an avatar (${JSON.stringify(result)})`);
     assert.ok((result.providerBadges || []).includes('O'), `bot card needs a provider badge (${JSON.stringify(result)})`);
     assert.ok(result.statusDots >= 2, `bot card needs a status dot (${JSON.stringify(result)})`);
@@ -443,7 +443,7 @@ test("Real-Window Harness: bot settings editor saves provider and model", async 
     "  document.getElementById('btnDetailSave')?.click();",
     "  await new Promise((r) => setTimeout(r, 450));",
     "  return { before, after: document.getElementById('detailModel')?.value || '',",
-    "    chip: Array.from(document.querySelectorAll('#botList .bot-model-chip')).map((e) => e.textContent.trim()),",
+    "    sub: Array.from(document.querySelectorAll('#botList .bot-item-sub')).map((e) => e.textContent.trim()),",
     "  };",
     "})()",
   ].join("\n");
@@ -456,7 +456,7 @@ test("Real-Window Harness: bot settings editor saves provider and model", async 
     assert.strictEqual(result.before?.model, 'original-model', `editor must load the bot model (${JSON.stringify(result)})`);
     assert.strictEqual(result.before?.sectionVisible, true, "engine section must be visible for a real bot");
     assert.strictEqual(result.after, 'patched-model-xyz', `save must keep the new model (${JSON.stringify(result)})`);
-    assert.ok((result.chip || []).some((c: string) => c.includes('patched-model-xyz')), `card chip must update after save (${JSON.stringify(result)})`);
+    assert.ok((result.sub || []).some((c: string) => c.includes('patched-model-xyz')), `card sub-line must update after save (${JSON.stringify(result)})`);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
@@ -677,6 +677,33 @@ test("Real-Window Harness: per-bot rail state exposes active session and agent",
 
 test("Real-Window Harness: bot roster lives in a persistent sidebar section", async (t) => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-sidebar-bots-home-"));
+  const agentPath = path.join(tmpHome, ".opensand", "agents");
+  fs.mkdirSync(agentPath, { recursive: true });
+  const now = Date.now();
+  // CTO Bot sorts first (listAgents() is newest-first), so ArrowDown has a deterministic target.
+  const seededAgents = [
+    { id: "agent_railbot_ab12cd34", name: "CTO Bot", provider: "openrouter", model: "cto-model", createdAt: now + 100000 },
+    ...Array.from({ length: 7 }, (_, i) => ({
+      id: `agent_sidebar_bot_${i + 1}`,
+      name: `Bot ${i + 1}`,
+      provider: "global",
+      model: "default",
+      createdAt: now,
+    })),
+  ];
+  for (const a of seededAgents) {
+    fs.writeFileSync(path.join(agentPath, `${a.id}.json`), JSON.stringify({
+      id: a.id,
+      name: a.name,
+      role: "Research Assistant",
+      systemPrompt: "You research things.",
+      kind: "AGENT",
+      model: a.model,
+      provider: a.provider,
+      createdAt: a.createdAt,
+      updatedAt: a.createdAt,
+    }), "utf8");
+  }
   const script = [
     "(async () => {",
     "  await new Promise((r) => setTimeout(r, 350));",
@@ -688,6 +715,27 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     "  await new Promise((r) => setTimeout(r, 200));",
     "  document.getElementById('btnBackToChat').click();",
     "  await new Promise((r) => setTimeout(r, 250));",
+    "  const input = document.getElementById('botSidecarSearch');",
+    "  input.value = 'cto';",
+    "  input.dispatchEvent(new Event('input', { bubbles: true }));",
+    "  const filteredCount = document.querySelectorAll('#botList .bot-rail-card[data-agent-id]').length;",
+    "  input.value = '';",
+    "  input.dispatchEvent(new Event('input', { bubbles: true }));",
+    "  const filterClearedCount = document.querySelectorAll('#botList .bot-rail-card[data-agent-id]').length;",
+    "  const moreLabel = document.getElementById('btnBotShowMore').textContent;",
+    "  const moreVisible = !document.getElementById('btnBotShowMore').classList.contains('hidden');",
+    "  document.getElementById('btnBotShowMore').click();",
+    "  const expanded = document.querySelectorAll('#botList .bot-rail-card[data-agent-id]').length;",
+    "  await window.__railState.refresh();",
+    "  const afterRefresh = document.querySelectorAll('#botList .bot-rail-card[data-agent-id]').length;",
+    "  const moreLabelAfter = document.getElementById('btnBotShowMore').textContent;",
+    "  const card = document.querySelector('#botList .bot-rail-card[data-agent-id=\"agent_railbot_ab12cd34\"]');",
+    "  card.focus();",
+    "  const nextFocused = (() => { card.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); return document.activeElement !== card; })();",
+    "  card.focus();",
+    "  card.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));",
+    "  await new Promise((r) => setTimeout(r, 200));",
+    "  const kb = window.__railState.getActive();",
     "  return {",
     "    chatVisible,",
     "    inSection: section?.contains(list) === true,",
@@ -699,6 +747,8 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     "    newButton: !!document.getElementById('btnBotNew'),",
     "    moreButton: !!document.getElementById('btnBotShowMore'),",
     "    layout: (() => { const sc = getComputedStyle(section); const rc = getComputedStyle(list); return { display: sc.display, overflow: sc.overflow, railOverflow: rc.overflowY, railMinHeight: rc.minHeight }; })(),",
+    "    filteredCount, filterClearedCount, moreLabel, moreVisible, expanded, afterRefresh, moreLabelAfter, nextFocused,",
+    "    keyboardSelect: { agent: kb.activeAgentId, session: kb.currentSessionId },",
     "  };",
     "})()",
   ].join("\n");
@@ -718,6 +768,15 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
     assert.strictEqual(v.searchToggle, true, `search toggle must exist (${JSON.stringify(v)})`);
     assert.strictEqual(v.newButton, true, `new-bot button must exist (${JSON.stringify(v)})`);
     assert.strictEqual(v.moreButton, true, `show-more button must exist (${JSON.stringify(v)})`);
+    assert.strictEqual(v.filteredCount, 1, `search must narrow cards to the matching bot (${JSON.stringify(v)})`);
+    assert.ok(v.filterClearedCount > v.filteredCount, `clearing search must restore cards (${JSON.stringify(v)})`);
+    assert.strictEqual(v.moreVisible, true, `show-more must appear when agents exceed the limit (${JSON.stringify(v)})`);
+    assert.match(String(v.moreLabel), /Show \d+ more/, `show-more label must count hidden bots (${JSON.stringify(v)})`);
+    assert.strictEqual(v.afterRefresh, v.expanded, `expanded state must survive refreshBots() (${JSON.stringify(v)})`);
+    assert.match(String(v.moreLabelAfter), /Show less/, `expanded show-more must offer Show less (${JSON.stringify(v)})`);
+    assert.strictEqual(v.nextFocused, true, `ArrowDown must move focus to the next card (${JSON.stringify(v)})`);
+    assert.strictEqual(v.keyboardSelect.agent, 'agent_railbot_ab12cd34', `Enter must select the focused card (${JSON.stringify(v)})`);
+    assert.strictEqual(v.keyboardSelect.session, 'bot_agent_railbot_ab12cd34', `Enter must open the bot_ session (${JSON.stringify(v)})`);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }

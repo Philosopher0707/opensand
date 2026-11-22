@@ -1345,6 +1345,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       persistAgent();
     },
   });
+  // Chunk 2 wiring: keep the rail's filter/expanded state live. Chunk 3 must not
+  // re-add these two listeners (search toggle / new bot / Escape remain its work).
+  document.getElementById('botSidecarSearch')?.addEventListener('input', (event) => {
+    botRail.applyFilter(event.target.value);
+  });
+  document.getElementById('btnBotShowMore')?.addEventListener('click', () => {
+    botRail.setExpanded(!botRail.isExpanded());
+  });
   window.__railState = {
     buffers: sessionBuffers,
     getActive: () => ({ currentSessionId, activeAgentId }),

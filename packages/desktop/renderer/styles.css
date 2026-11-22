@@ -4427,6 +4427,19 @@ textarea#promptInput {
 .bot-rail-card .bot-avatar-wrap { width: 28px; height: 28px; }
 .bot-rail-card .bot-avatar { width: 28px; height: 28px; border-radius: 8px; font-size: 12px; }
 .bot-rail-card .bot-avatar svg { width: 16px; height: 16px; }
+.bot-sidecar .bot-rail-card { padding: 5px 7px; gap: 7px; border-color: transparent; background: transparent; }
+.bot-sidecar .bot-rail-card:hover { background: var(--bg-hover); border-color: var(--border-color); }
+.bot-sidecar .bot-rail-card.active { background: var(--accent-soft); border-color: var(--border-color); }
+.bot-sidecar .bot-rail-card.active::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 2px; border-radius: 2px; background: var(--accent); }
+.bot-sidecar .bot-avatar-wrap { width: 30px; height: 30px; }
+.bot-sidecar .bot-avatar { width: 30px; height: 30px; border-radius: 8px; font-size: 13px; }
+.bot-sidecar .bot-avatar svg { width: 18px; height: 18px; }
+.bot-sidecar .bot-status-dot { position: absolute; right: -3px; bottom: -2px; }
+.bot-sidecar .bot-item-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.bot-sidecar .bot-item-name { font-size: 13px; line-height: 18px; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bot-sidecar .bot-item-sub { font-size: 11px; line-height: 14px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bot-sidecar .bot-model-chip { display: none; }
+.bot-rail-empty { padding: 8px 7px; font-size: 11.5px; color: var(--text-muted); }
 .bot-rail-card .bot-model-chip { max-width: 100%; }
 .btn-bot-identity {
   border: 0; background: transparent; cursor: pointer; padding: 2px; flex: none;
