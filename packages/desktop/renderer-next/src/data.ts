@@ -26,9 +26,11 @@ import { attachmentsData } from "./data/attachments";
 import { vaultData } from "./data/vault";
 import type { MemoriesData } from "./data/memories";
 import { memoriesData } from "./data/memories";
+import type { BotsData } from "./data/bots";
+import { botsData } from "./data/bots";
 
-export type { RoomsData, RoutinesData, SkillsData, AttachmentsData, VaultData, MemoriesData };
-export { roomsData, routinesData, skillsData, attachmentsData, vaultData, memoriesData };
+export type { RoomsData, RoutinesData, SkillsData, AttachmentsData, VaultData, MemoriesData, BotsData };
+export { roomsData, routinesData, skillsData, attachmentsData, vaultData, memoriesData, botsData };
 
 
 export type { SessionSummary, SessionRow, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent, Room, DiscussionResult, CreateRoomInput, Routine, CreateRoutineInput, Skill, CreateSkillInput, Attachment, VaultSecret, VaultCredential, SecretInput, CredentialInput };
@@ -127,7 +129,7 @@ export interface CoreShellData {
 
 }
 
-export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & AttachmentsData & VaultData & MemoriesData;
+export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & AttachmentsData & VaultData & MemoriesData & BotsData;
 
 export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
   const b = bridge ?? (typeof window !== "undefined" ? (window as any).opensand : undefined);
@@ -483,5 +485,6 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
     ...attachmentsData(b, http),
     ...vaultData(b, http),
     ...memoriesData(b, http),
+    ...botsData(b, http),
   };
 }

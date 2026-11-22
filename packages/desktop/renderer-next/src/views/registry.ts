@@ -7,6 +7,7 @@ import { SkillsView } from "./SkillsView";
 import { AttachmentsView } from "./AttachmentsView";
 import { VaultView } from "./VaultView";
 import { MemoriesView } from "./MemoriesView";
+import { BotsView } from "./BotsView";
 
 export interface ViewProps {
   data: ShellData;
@@ -22,4 +23,5 @@ export const VIEW_COMPONENTS: Partial<Record<ViewId, ComponentType<ViewProps>>> 
   attachments: AttachmentsView,
   vault: VaultView,
   memories: MemoriesView,
+  templates: BotsView,
 };

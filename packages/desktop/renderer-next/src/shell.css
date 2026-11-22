@@ -1846,3 +1846,142 @@
   #stageAttachmentModal { padding: 8px; }
   .attachments-view-container { padding: 16px; }
 }
+
+/* bots view */
+.bots-view-container .dashboard-header { flex-wrap: wrap; }
+#btnOpenCreateBot, #btnOpenExportTemplate, #btnOpenImportTemplate { flex: none; }
+.bots-view-container .card-grid { min-width: 0; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); }
+.bots-view-container .dashboard-card { min-width: 0; }
+.bots-view-container .card-desc,
+.bots-view-container .card-meta { min-width: 0; overflow-wrap: anywhere; }
+.bots-view-container .card-footer { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.bots-empty, .bots-loading, .templates-empty, .tasks-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-muted);
+  padding: 24px 12px;
+  overflow-wrap: anywhere;
+}
+.bots-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--danger, #dc2626);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  margin-bottom: 12px;
+}
+.bots-form-error { color: var(--danger, #dc2626); font-size: 12px; overflow-wrap: anywhere; margin-top: 8px; }
+
+/* Persona roster and task items */
+.bots-view-container .bot-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+  gap: 8px;
+  margin-bottom: 20px;
+  min-width: 0;
+}
+.bots-view-container .bot-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-card, #1e293b);
+  border: 1px solid var(--border-color, #334155);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-width: 0;
+}
+.bots-view-container .bot-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.bots-view-container .bot-item.active {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: var(--accent, #3b82f6);
+}
+.bots-view-container .bot-icon { font-size: 14px; flex-shrink: 0; }
+.bots-view-container .bot-item-info { display: flex; flex-direction: column; overflow: hidden; flex: 1; min-width: 0; }
+.bots-view-container .bot-item-name { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bots-view-container .bot-item-role { font-size: 10px; color: var(--text-muted, #94a3b8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bots-view-container .btn-delete-bot {
+  background: none;
+  border: none;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.6;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.bots-view-container .bot-item:hover .btn-delete-bot { opacity: 0.8; }
+.bots-view-container .btn-delete-bot:hover { opacity: 1; color: var(--danger, #dc2626); background: rgba(239, 68, 68, 0.15); }
+
+.bots-view-container .task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 24px;
+  min-width: 0;
+}
+.bots-view-container .task-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-card, #1e293b);
+  border: 1px solid var(--border-color, #334155);
+  font-size: 12px;
+  min-width: 0;
+}
+.bots-view-container .task-item.done { opacity: 0.5; text-decoration: line-through; }
+.bots-view-container .task-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+
+/* Modals */
+#createBotModal, #createTaskModal, #exportTemplateModal, #importTemplateModal {
+  padding: 16px;
+  box-sizing: border-box;
+}
+#createBotModal .modal-card,
+#createTaskModal .modal-card,
+#exportTemplateModal .modal-card,
+#importTemplateModal .modal-card {
+  width: 100%;
+  max-width: 600px;
+  box-sizing: border-box;
+  margin: 0 auto;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+#createBotModal .modal-header, #createBotModal .modal-body, #createBotModal .modal-actions,
+#createTaskModal .modal-header, #createTaskModal .modal-body, #createTaskModal .modal-actions,
+#exportTemplateModal .modal-header, #exportTemplateModal .modal-body, #exportTemplateModal .modal-actions,
+#importTemplateModal .modal-header, #importTemplateModal .modal-body, #importTemplateModal .modal-actions {
+  min-width: 0;
+}
+#createBotModal .modal-header h3,
+#createTaskModal .modal-header h3,
+#exportTemplateModal .modal-header h3,
+#importTemplateModal .modal-header h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+#exportTemplateJson {
+  max-height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+@media (max-width: 600px) {
+  #createBotModal, #createTaskModal, #exportTemplateModal, #importTemplateModal { padding: 8px; }
+  .bots-view-container { padding: 16px; }
+}
