@@ -25,8 +25,10 @@ async function ensureSession(kind: string): Promise<AuthSession | null> {
     if (existing.driver === driver) return existing;
     // A driver was replaced at runtime (e.g. a test CLI); the cached instance
     // would still spawn the old CLI, so rebuild the session for this driver.
-    await existing.instance.dispose();
+    // Drop the reference before awaiting so a concurrent caller cannot reuse
+    // (and dispose again) the old session.
     sessions.delete(kind);
+    await existing.instance.dispose();
   }
 
   const instanceId = `auth:${kind}`;
@@ -88,12 +90,14 @@ export async function getProviderAuthStatus(kind: string, flowId: string): Promi
   return status ?? { status: "cancelled", flowId, authorizationUrl: null, expiresAt: null };
 }
 
-/** Sign-in state for a provider kind; null when the kind has no auth controller. */
-export async function getProviderAuthState(kind: string): Promise<{ signedIn: boolean; flowId: string | null } | null> {
+/** Sign-in state for a provider kind; null session when it has no auth controller, null signedIn when state is undetectable. */
+export async function getProviderAuthState(kind: string): Promise<{ signedIn: boolean | null; flowId: string | null } | null> {
   const session = await ensureSession(kind);
   if (!session) return null;
   return {
-    signedIn: (await session.instance.isSignedIn?.()) ?? false,
+    signedIn: session.instance.canDetectSignIn === false
+      ? null
+      : ((await session.instance.isSignedIn?.()) ?? false),
     flowId: session.flowId,
   };
 }

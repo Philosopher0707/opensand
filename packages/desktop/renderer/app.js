@@ -1216,7 +1216,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const opt = document.createElement('option');
         opt.value = item.kind;
         opt.textContent = item.displayName + (item.access === 'custom' ? ' (CLI)' : '')
-          + (item.auth ? (item.signedIn ? ' ✓ signed in' : ' (sign-in required)') : '');
+          + (item.auth ? (item.signedIn === true ? ' ✓ signed in' : item.signedIn === false ? ' (sign-in required)' : '') : '');
         settingProvider.appendChild(opt);
       }
       if (selected) settingProvider.value = selected;
@@ -1245,10 +1245,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const info = providerCatalog.find((item) => item.kind === kind);
     if (!info || !info.auth) { authPanel.style.display = 'none'; return; }
     authPanel.style.display = '';
-    btnProviderAuth.textContent = info.signedIn ? `Sign in again with ${info.displayName}` : `Sign in with ${info.displayName}`;
+    btnProviderAuth.textContent = info.signedIn === true ? `Sign in again with ${info.displayName}` : `Sign in with ${info.displayName}`;
     btnProviderAuth.title = 'Sign-out clears the shared CLI credential home for this provider';
     providerAuthUrl.textContent = '';
-    providerAuthStatus.textContent = info.signedIn ? 'Signed in (shared CLI credential home)' : '';
+    providerAuthStatus.textContent = info.signedIn === true ? 'Signed in (shared CLI credential home)' : '';
   }
 
   if (btnProviderAuth) {
@@ -1270,7 +1270,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const pollRes = await fetch(`/api/providers/${encodeURIComponent(kind)}/auth/status?flowId=${encodeURIComponent(authFlowId)}`);
             const status = await pollRes.json();
             providerAuthStatus.textContent = status.status || 'unknown';
-            if (status.status && status.status !== 'pending') stopAuthPoll();
+            if (status.status && status.status !== 'pending') {
+              stopAuthPoll();
+              await loadProviderCatalog(kind);
+              updateProviderAuthPanel(kind);
+              providerAuthStatus.textContent = status.status;
+            }
           } catch { /* keep polling until the bound */ }
         }, 2000);
       } catch {

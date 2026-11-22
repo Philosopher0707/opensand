@@ -520,6 +520,8 @@ export interface ProviderInstance {
   readonly startupModelRefresh?: Promise<void>;
   readonly installRuntime?: () => Promise<void>;
   readonly startAuthentication?: () => Promise<ProviderAuthenticationStart>;
+  /** False when the auth controller cannot observe local sign-in state. */
+  readonly canDetectSignIn?: boolean;
   readonly isSignedIn?: () => Promise<boolean>;
   readonly authenticationMethod?: "browser-pkce" | "device-code" | "browser";
   readonly getAuthentication?: (flowId: string) => Promise<ProviderAuthenticationStatus>;

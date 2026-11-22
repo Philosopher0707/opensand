@@ -92,7 +92,7 @@ export function createModelPicker({ onPick, onOpenAuth }) {
         if (provider.kind === state.provider) button.classList.add('active');
         const glyph = el('span', 'mp-glyph', (provider.displayName || '?').slice(0, 1));
         button.appendChild(glyph);
-        if (provider.signedIn) {
+        if (provider.signedIn === true) {
           const dot = el('span', 'mp-key-dot', '•');
           dot.title = 'Signed in — sign-out clears the shared CLI credential home';
           button.appendChild(dot);

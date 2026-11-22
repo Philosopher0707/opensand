@@ -575,6 +575,11 @@ test("Real-Window Harness: signed-in provider shows a key dot and hides the sign
     "    hintText: pop?.querySelector('.mp-auth-hint')?.textContent || '',",
     "    leaksSecret: (pop?.textContent || '').includes('HARNESS_SECRET_NEVER_SHOWN'),",
     "  };",
+    "  const unknown = pop?.querySelector('[data-provider=\"copilotAgent\"]');",
+    "  unknown?.click();",
+    "  result.hasUnknownItem = !!unknown;",
+    "  result.unknownKeyDots = unknown?.querySelectorAll('.mp-key-dot').length || 0;",
+    "  result.unknownHint = !!pop?.querySelector('.mp-auth-hint');",
     "  document.querySelector('.mp-backdrop')?.remove();",
     "  return result;",
     "})()",
@@ -590,6 +595,9 @@ test("Real-Window Harness: signed-in provider shows a key dot and hides the sign
     assert.match(result.dotTitle || '', /sign-out clears the shared/i, `key dot needs a sign-out tooltip (${JSON.stringify(result)})`);
     assert.strictEqual(result.hasSignInHint, false, `signed-in provider must hide the sign-in hint (${JSON.stringify(result)})`);
     assert.strictEqual(result.leaksSecret, false, `credential values must never reach the UI (${JSON.stringify(result)})`);
+    assert.strictEqual(result.hasUnknownItem, true, `Copilot-style provider must be in the catalog (${JSON.stringify(result)})`);
+    assert.strictEqual(result.unknownKeyDots, 0, `unknown sign-in state must not show a key dot (${JSON.stringify(result)})`);
+    assert.strictEqual(result.unknownHint, false, `unknown sign-in state must not show the sign-in hint (${JSON.stringify(result)})`);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }

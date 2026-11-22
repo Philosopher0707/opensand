@@ -984,6 +984,26 @@ test('DesktopServer - auth state route and catalog reflect the stable credential
         failureMessage: 'Sign-in failed',
       },
     }));
+    // Copilot-style spec: sign-in is supported but local state is not observable.
+    providerRegistry.register(defineAcpDriver({
+      driverKind: 'authUnknownProbe',
+      displayName: 'Auth Unknown Probe',
+      cli: 'probe-cli',
+      spawnArgs: () => [],
+      models: { default: 'probe-model', options: [{ id: 'probe-model', label: 'Probe' }] },
+      auth: {
+        provider: 'copilot',
+        homeEnv: 'COPILOT_CONFIG_DIR',
+        homeDir: '.copilot',
+        loginArgs: ['auth', 'login'],
+        statusArgs: ['auth', 'status'],
+        logoutArgs: ['auth', 'logout'],
+        urlPattern: /https:\/\/github\.com\/login\/\S+/i,
+        codePattern: /\b[A-Z0-9]{4,12}\b/,
+        requiresCode: false,
+        failureMessage: 'Sign-in failed',
+      },
+    }));
 
     const server = new DesktopServer({ baseDir: tmpDir });
     MockIncomingMessage.defaultToken = server.getAuthToken();
@@ -1010,10 +1030,17 @@ test('DesktopServer - auth state route and catalog reflect the stable credential
     assert.deepStrictEqual(JSON.parse(signedIn.body), { signedIn: true, flowId: null });
     assert.ok(!signedIn.body.includes(secret), 'credential values must never reach the UI');
 
+    const unknownState = await get('/api/providers/authUnknownProbe/auth/state');
+    assert.strictEqual(unknownState.statusCode, 200);
+    assert.deepStrictEqual(JSON.parse(unknownState.body), { signedIn: null, flowId: null });
+
     const catalog = JSON.parse((await get('/api/providers')).body).providers;
     const probe = catalog.find((p: any) => p.kind === 'authStateProbe');
     assert.strictEqual(probe.auth, true);
     assert.strictEqual(probe.signedIn, true);
+    const unknownProbe = catalog.find((p: any) => p.kind === 'authUnknownProbe');
+    assert.strictEqual(unknownProbe.auth, true);
+    assert.strictEqual(unknownProbe.signedIn, null);
     const nonAuth = catalog.find((p: any) => p.kind === 'clineAgent');
     assert.strictEqual(nonAuth.auth, false);
     assert.strictEqual('signedIn' in nonAuth, false);
@@ -1021,6 +1048,60 @@ test('DesktopServer - auth state route and catalog reflect the stable credential
     await disposeProviderAuth();
     if (originalHome === undefined) delete process.env.HOME;
     else process.env.HOME = originalHome;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('DesktopServer - a broken driver cannot blank the catalog or crash state lookup', async () => {
+  const { providerRegistry, defineAcpDriver, disposeProviderAuth } = await import('@opensand/coordinator');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-broken-driver-'));
+  const original = defineAcpDriver({
+    driverKind: 'brokenCatalogProbe',
+    displayName: 'Broken Probe',
+    cli: 'probe-cli',
+    spawnArgs: () => [],
+    models: { default: 'probe-model', options: [{ id: 'probe-model', label: 'Probe' }] },
+    auth: {
+      provider: 'brokenProbe',
+      homeEnv: 'BROKEN_PROBE_HOME',
+      homeDir: '.broken',
+      loginArgs: ['login'],
+      signedInFile: 'auth.json',
+      urlPattern: /https:\/\/\S+/,
+      codePattern: /\b[A-Z0-9]{4,12}\b/,
+      failureMessage: 'Sign-in failed',
+    },
+  });
+  try {
+    providerRegistry.register({
+      ...original,
+      defaultConfig: () => { throw new Error('bad driver config'); },
+    });
+    const server = new DesktopServer({ baseDir: tmpDir });
+    MockIncomingMessage.defaultToken = server.getAuthToken();
+    const get = async (url: string) => {
+      const res = new MockServerResponse();
+      await (server as any).handleRequest(new MockIncomingMessage('GET', url), res);
+      return res;
+    };
+
+    const catalogRes = await get('/api/providers');
+    assert.strictEqual(catalogRes.statusCode, 200);
+    const catalog = JSON.parse(catalogRes.body).providers;
+    assert.ok(catalog.some((p: any) => p.kind === 'grok'), 'other drivers must survive one bad driver');
+    const broken = catalog.find((p: any) => p.kind === 'brokenCatalogProbe');
+    assert.strictEqual(broken.signedIn, false);
+
+    const stateRes = await get('/api/providers/brokenCatalogProbe/auth/state');
+    assert.strictEqual(stateRes.statusCode, 400);
+    assert.match(JSON.parse(stateRes.body).error, /bad driver config/);
+
+    const undecodable = await get('/api/providers/%ZZ/auth/state');
+    assert.strictEqual(undecodable.statusCode, 400);
+    assert.ok(JSON.parse(undecodable.body).error);
+  } finally {
+    providerRegistry.register(original);
+    await disposeProviderAuth();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });

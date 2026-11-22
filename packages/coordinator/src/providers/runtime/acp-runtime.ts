@@ -310,6 +310,7 @@ export function createAcpInstance<Config extends AcpConfig>(
     ...(auth ? {
       authenticationMethod: "device-code" as const,
       startAuthentication: () => auth.start(),
+      canDetectSignIn: Boolean(options.auth?.signedInFile),
       isSignedIn: () => auth.isSignedIn(),
       getAuthentication: (flowId: string) => auth.get(flowId),
       cancelAuthentication: () => auth.cancel(),

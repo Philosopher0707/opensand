@@ -1432,20 +1432,32 @@ export class DesktopServer {
         .map((kind) => providerRegistry.getDriver(kind)!)
         .filter(Boolean);
       const providers = await Promise.all(drivers.map(async (driver) => {
-        const defaults = driver.defaultConfig() as { url?: string; cli?: string };
-        const models = driver.models;
-        const auth = driver.metadata.supportsAuthentication === true;
-        const state = auth ? await getProviderAuthState(driver.driverKind) : null;
-        return {
-          kind: driver.driverKind,
-          displayName: driver.metadata.displayName,
-          access: driver.metadata.access ?? 'custom',
-          auth,
-          ...(auth ? { signedIn: state?.signedIn === true } : {}),
-          defaultUrl: typeof defaults.url === 'string' ? defaults.url : undefined,
-          defaultCli: typeof defaults.cli === 'string' ? defaults.cli : undefined,
-          models: { default: models.default, options: models.options.map((m) => m.id) },
-        };
+        try {
+          const defaults = driver.defaultConfig() as { url?: string; cli?: string };
+          const models = driver.models;
+          const auth = driver.metadata.supportsAuthentication === true;
+          const state = auth ? await getProviderAuthState(driver.driverKind) : null;
+          return {
+            kind: driver.driverKind,
+            displayName: driver.metadata.displayName,
+            access: driver.metadata.access ?? 'custom',
+            auth,
+            ...(auth ? { signedIn: state?.signedIn ?? null } : {}),
+            defaultUrl: typeof defaults.url === 'string' ? defaults.url : undefined,
+            defaultCli: typeof defaults.cli === 'string' ? defaults.cli : undefined,
+            models: { default: models.default, options: models.options.map((m) => m.id) },
+          };
+        } catch {
+          // One broken driver must not blank the whole catalog.
+          return {
+            kind: driver.driverKind,
+            displayName: driver.metadata.displayName,
+            access: driver.metadata.access ?? 'custom',
+            auth: driver.metadata.supportsAuthentication === true,
+            signedIn: false,
+            models: { default: '', options: [] },
+          };
+        }
       }));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ providers }));
@@ -1474,11 +1486,16 @@ export class DesktopServer {
       }
     }
     if (pathname.startsWith('/api/providers/') && pathname.endsWith('/auth/state') && req.method === 'GET') {
-      const parts = pathname.split('/');
-      const kind = decodeURIComponent(parts[3] ?? '');
-      const state = await getProviderAuthState(kind);
-      res.writeHead(state === null ? 404 : 200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(state === null ? { error: 'Unknown provider' } : state));
+      try {
+        const parts = pathname.split('/');
+        const kind = decodeURIComponent(parts[3] ?? '');
+        const state = await getProviderAuthState(kind);
+        res.writeHead(state === null ? 404 : 200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(state === null ? { error: 'Unknown provider' } : state));
+      } catch (err: any) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err?.message ?? 'Auth state lookup failed' }));
+      }
       return;
     }
     if (pathname.startsWith('/api/providers/') && pathname.endsWith('/auth/status') && req.method === 'GET') {
