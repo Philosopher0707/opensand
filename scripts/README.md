@@ -33,6 +33,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `mutation-probe.sh` | The one mutation probe: break a tracked file on purpose, prove the test goes red, restore it byte-identically, prove green again | Selftest authors, QA / Release Engineer | `proof-selftest.sh` |
 | `lint-brief.sh` | Shape lint for bot briefs: Goal, Done when, Scope, Report back | `scripts/verify.sh`, bot handoff | `lint-brief-selftest.sh` |
 | `lint-brief-selftest.sh` | Hermetic selftest for the brief linter | Pre-commit / verification | Self |
+| `brief-row.sh` | Draft Phase 5 row briefs directly from inventory, server routes and base SHA | Bot handoff, Phase 5 row planning | `brief-row-selftest.sh` |
+| `brief-row-selftest.sh` | Hermetic selftest for the brief row generator | Pre-commit / verification | Self |
 | `phase7-e2e.sh` | Phase 7 S5 end-to-end check: routes.json + stats fixture into a temp `OPENSAND_HOME`, a 3-attempt tournament against the local HTTP stub, worktree/attempts-root assertions, receipt rows vs log records one-to-one, a stats fixture that moves the ladder start with the `mesh.route.selected` record to prove it, and the CLI verbs (`mission reconcile`, `mission attempt restore`) | Phase 7 S5 verification | `mutation-probe.sh` (via) |
 
 | `opensand-completion.bash` | Bash tab completion definitions | User shell environment | None |
@@ -153,6 +155,21 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
 - **Trigger**: Pre-commit hook, test verification.
+
+### `brief-row.sh`
+- **Purpose**: Draft Phase 5 row briefs directly from the repository: extracts row metadata from `docs/design/phase5-view-inventory.md`, discovers matching server routes and body validation in `packages/desktop/src/desktop-server.ts` with HTTP methods taken directly from code (`req.method === '...'`), reads base SHA from origin/main, emits a standardized brief skeleton, and lints the output via `lint-brief.sh` when `--out` is specified.
+- **Usage**: `scripts/brief-row.sh <row> [--out <file>]`
+- **Exit Codes**: `0` on success, `2` on bad or missing row / usage error, `3` if the row is already marked done in the inventory.
+- **Selftest**: `scripts/brief-row-selftest.sh`.
+- **Trigger**: Bot handoff, Phase 5 row drafting.
+
+### `brief-row-selftest.sh`
+- **Purpose**: Hermetic selftest suite for `brief-row.sh` verifying pending row drafting, done row refusal (exit 3), bad/missing row usage checks (exit 2), HTTP method extraction from code rather than comments (e.g. PATCH vs POST), and request-body validation extraction.
+- **Usage**: `scripts/brief-row-selftest.sh`
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, test verification.
+
 
 ### `mutate.sh`
 - **Purpose**: Thin wrapper kept for the older name. The implementation is `mutation-probe.sh`, which supports both mutation forms (a perl substitution, or one line replaced); this script forwards every argument unchanged, so callers that still use `mutate.sh` keep working.
