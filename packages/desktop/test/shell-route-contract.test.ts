@@ -6,13 +6,22 @@ import { fileURLToPath } from 'node:url';
 
 const pkgRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 // Overridable so the mutation check can point the matcher at a patched copy of data.ts.
-const DATA_FILE = process.env.SHELL_CONTRACT_DATA ?? path.join(pkgRoot, 'renderer-next/src/data.ts');
+const DATA_DIR = path.join(pkgRoot, 'renderer-next/src/data');
+const DATA_FILES = process.env.SHELL_CONTRACT_DATA
+  ? [process.env.SHELL_CONTRACT_DATA]
+  : [
+      path.join(pkgRoot, 'renderer-next/src/data.ts'),
+      ...(fs.existsSync(DATA_DIR)
+        ? fs.readdirSync(DATA_DIR).filter((f) => f.endsWith('.ts')).map((f) => path.join(DATA_DIR, f))
+        : []),
+    ];
 const SERVER_FILE = path.join(pkgRoot, 'src/desktop-server.ts');
 
 interface HttpCall {
   method: string;
   path: string;
   line: number;
+  file?: string;
 }
 
 interface ServerRoute {
@@ -75,11 +84,17 @@ function pathMatches(callPath: string, routePath: string): boolean {
 export function findMismatches(calls: HttpCall[], routes: ServerRoute[]): string[] {
   return calls
     .filter((call) => !routes.some((route) => route.method === call.method && pathMatches(call.path, route.path)))
-    .map((call) => `${call.method} ${call.path} (data.ts:${call.line})`);
+    .map((call) => `${call.method} ${call.path} (${call.file ?? "data.ts"}:${call.line})`);
 }
 
 test('every shell HTTP call matches a route registered by the real desktop server', () => {
-  const calls = collectShellCalls(fs.readFileSync(DATA_FILE, 'utf8'));
+  const calls: HttpCall[] = [];
+  for (const f of DATA_FILES) {
+    const src = fs.readFileSync(f, 'utf8');
+    const fileCalls = collectShellCalls(src);
+    const relFile = path.basename(f);
+    calls.push(...fileCalls.map((c) => ({ ...c, file: relFile })));
+  }
   const routes = collectServerRoutes(fs.readFileSync(SERVER_FILE, 'utf8'));
   assert.ok(calls.length > 0, 'no fetch calls found in data.ts');
   assert.ok(routes.length > 0, 'no routes found in desktop-server.ts');
