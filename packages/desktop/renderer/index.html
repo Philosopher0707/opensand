@@ -1140,9 +1140,13 @@
           <label for="settingApiKey">API Key (optional for local Ollama)</label>
           <input type="password" id="settingApiKey" class="form-control" placeholder="sk-... (blank = keep saved key)" autocomplete="off">
         </div>
-        <div class="form-group-checkbox">
-          <input type="checkbox" id="settingAutoApprove">
-          <label for="settingAutoApprove">Auto-Approve Tool Operations (Skip Prompts)</label>
+        <div class="form-group">
+          <label for="settingApprovalMode">Approval Mode</label>
+          <select id="settingApprovalMode" class="form-control">
+            <option value="ask">Ask every time</option>
+            <option value="auto_edit">Auto-edit files &amp; sandboxed shell</option>
+            <option value="auto">Auto-approve all actions with network</option>
+          </select>
         </div>
         <div class="form-group">
           <label>Support</label>

@@ -1145,6 +1145,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const settingModel = document.getElementById('settingModel');
   const settingApiKey = document.getElementById('settingApiKey');
   let hasStoredApiKey = false;
+  const settingApprovalMode = document.getElementById('settingApprovalMode');
   const settingAutoApprove = document.getElementById('settingAutoApprove');
   const btnCopyDiagnostics = document.getElementById('btnCopyDiagnostics');
 
@@ -1489,9 +1490,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         badgeModel.textContent = modelName;
         badgeModel.title = `Active Model: ${modelName} (${s.endpoint || ''})`;
       }
+      const mode = (s.approvalMode === 'auto_edit' || s.approvalMode === 'auto' || s.approvalMode === 'ask')
+        ? s.approvalMode
+        : (s.autoApprove ? 'auto' : 'ask');
+
       if (badgeAutoApprove) {
-        badgeAutoApprove.innerHTML = `${uiIcon(s.autoApprove ? 'spark' : 'shield')}<span>${s.autoApprove ? 'Auto-Approve' : 'Safe Mode'}</span>`;
-        badgeAutoApprove.className = s.autoApprove ? 'badge badge-warning' : 'badge badge-success';
+        let iconName = 'shield';
+        let label = 'Safe Mode';
+        let badgeCls = 'badge badge-success';
+        if (mode === 'auto') {
+          iconName = 'spark';
+          label = 'Auto-Approve';
+          badgeCls = 'badge badge-warning';
+        } else if (mode === 'auto_edit') {
+          iconName = 'code';
+          label = 'Auto-Edit';
+          badgeCls = 'badge badge-info';
+        } else {
+          iconName = 'shield';
+          label = 'Safe Mode';
+          badgeCls = 'badge badge-success';
+        }
+        badgeAutoApprove.innerHTML = `${uiIcon(iconName)}<span>${label}</span>`;
+        badgeAutoApprove.className = badgeCls;
       }
 
       const composerModelBadge = document.getElementById('composerModelBadge');
@@ -1501,7 +1522,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       const composerAutoApproveText = document.getElementById('composerAutoApproveText');
       if (composerAutoApproveText) {
-        composerAutoApproveText.textContent = s.autoApprove ? 'Auto-Approve' : 'Safe Mode';
+        composerAutoApproveText.textContent = mode === 'auto' ? 'Auto-Approve' : (mode === 'auto_edit' ? 'Auto-Edit' : 'Safe Mode');
+      }
+      const btnToggleSafeModeEl = document.getElementById('btnToggleSafeMode');
+      if (btnToggleSafeModeEl) {
+        const iconSvg = btnToggleSafeModeEl.querySelector('svg');
+        if (iconSvg) {
+          const iconName = mode === 'auto' ? 'spark' : (mode === 'auto_edit' ? 'code' : 'shield');
+          const useEl = iconSvg.querySelector('use');
+          if (useEl) useEl.setAttribute('href', `#i-${iconName}`);
+        }
       }
     } catch (err) {
       console.error('Error refreshing settings:', err);
@@ -4967,8 +4997,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnToggleSafeMode.onclick = async () => {
       try {
         const s = await client.getSettings();
-        const nextAutoApprove = !s.autoApprove;
-        await client.updateSettings({ autoApprove: nextAutoApprove });
+        const currentMode = (s.approvalMode === 'auto_edit' || s.approvalMode === 'auto' || s.approvalMode === 'ask')
+          ? s.approvalMode
+          : (s.autoApprove ? 'auto' : 'ask');
+        const nextMode = currentMode === 'ask' ? 'auto_edit' : (currentMode === 'auto_edit' ? 'auto' : 'ask');
+        await client.updateSettings({ approvalMode: nextMode, autoApprove: nextMode === 'auto' });
         await refreshSettings();
       } catch (err) {
         console.error('Error toggling safe mode:', err);
@@ -5274,7 +5307,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       const args = req.args || req.arguments || req.params || {};
       const reason = req.reason || d.reason || '';
 
-      pendingApprovals.set(approvalId, { toolName, args, reason, epoch: req.epoch ?? d.epoch });
+      pendingApprovals.set(approvalId, {
+        toolName,
+        args,
+        reason,
+        epoch: req.epoch ?? d.epoch,
+        effect: req.effect || d.effect,
+        tainted: req.tainted ?? d.tainted,
+      });
       renderApprovalQueue();
 
       // Keep modal in sync for any test/legacy consumers
@@ -5561,17 +5601,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     hasStoredApiKey = hasStoredKey;
     settingApiKey.value = '';
     settingApiKey.placeholder = hasStoredKey ? 'Saved (leave blank to keep)' : 'sk-...';
-    settingAutoApprove.checked = !!s.autoApprove;
+    const currentMode = (s.approvalMode === 'auto_edit' || s.approvalMode === 'auto' || s.approvalMode === 'ask')
+      ? s.approvalMode
+      : (s.autoApprove ? 'auto' : 'ask');
+    if (settingApprovalMode) {
+      settingApprovalMode.value = currentMode;
+    }
+    if (settingAutoApprove) {
+      settingAutoApprove.checked = currentMode === 'auto';
+    }
     settingsModal.classList.remove('hidden');
     populateModelSuggestions(settingProvider.value, settingEndpoint.value);
   };
   btnCloseSettings.onclick = () => settingsModal.classList.add('hidden');
   btnSaveSettings.onclick = async () => {
+    const mode = settingApprovalMode ? settingApprovalMode.value : (settingAutoApprove?.checked ? 'auto' : 'ask');
     const payload = {
       provider: settingProvider.value,
       endpoint: settingEndpoint.value,
       model: settingModel.value,
-      autoApprove: settingAutoApprove.checked,
+      approvalMode: mode,
+      autoApprove: mode === 'auto',
     };
     const newKey = settingApiKey.value.trim();
     if (newKey) payload.apiKey = newKey;
@@ -6030,6 +6080,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         reason: req.reason || '',
         // A decision without the request's epoch is refused as stale (4001).
         epoch: req.epoch,
+        effect: req.effect,
+        tainted: req.tainted,
       });
     }
     if (pendingApprovals.size > 0) renderApprovalQueue();
