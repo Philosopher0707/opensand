@@ -199,4 +199,4 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
   - `getSessions()` (`ipc-bridge.ts:1131-1178`) returns `SessionSummary` with `agentId`; one call plus `s.agentId === bot.id || s.id === 'bot_'+bot.id` reliably groups sessions; no per-agent endpoint exists (none needed).
   - Global roster (`app.js:1968-2039`) currently duplicates bot-owned sessions; must be filtered and nested rows must gain delete.
 - Planned phases with deps: P1 chief core → P2 sidecar tree → P3 per-pane parallel bots → P4 delegation UX/persistence → P5 full verification & docs.
-- Status: design pending owner approval; no code changed in Phase 0.
+- Status: design approved by owner; spec committed `d15b291` (4 review rounds), plan committed `37fa996` (3 review rounds). No product code changed in Phase 0; implementation starts with P1.
