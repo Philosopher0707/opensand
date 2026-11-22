@@ -823,6 +823,33 @@ test("Real-Window Harness: bot roster lives in a persistent sidebar section", as
   }
 });
 
+test("Real-Window Harness: Default Assistant card clears session without load error", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-default-card-home-"));
+  const script = [
+    "(async () => {",
+    "  await new Promise((r) => setTimeout(r, 350));",
+    "  const card = document.querySelector('#botList .bot-rail-card:not([data-agent-id])');",
+    "  card.click();",
+    "  await new Promise((r) => setTimeout(r, 250));",
+    "  return {",
+    "    feed: document.getElementById('messageFeed').textContent,",
+    "    active: window.__railState.getActive(),",
+    "    welcomeVisible: !document.getElementById('welcomeBanner').classList.contains('hidden'),",
+    "  };",
+    "})()",
+  ].join("\n");
+  try {
+    const r = await runHarness("default", { home: tmpHome, interactScript: script });
+    if (r.skipped) { t.skip(r.skipped); return; }
+    const v = r.interactResult || {};
+    assert.ok(!String(v.feed).includes('Error loading session:'), `default card must not show a session error (${JSON.stringify(v)})`);
+    assert.strictEqual(v.active?.currentSessionId, null, `default card must clear the session id (${JSON.stringify(v)})`);
+    assert.strictEqual(v.welcomeVisible, true, `default card must restore the welcome banner (${JSON.stringify(v)})`);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test("Real-Window Harness: Preact shell frame seeded sessions & search (960x740 and 1920x1080)", async (t) => {
   const built = fs.existsSync(path.join(pkgRoot, "dist", "renderer-next", "index.html"));
   if (!built) {

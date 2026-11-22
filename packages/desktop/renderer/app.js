@@ -4195,6 +4195,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   async function selectSession(sessionId) {
+    if (!sessionId) {
+      startNewSession();
+      return;
+    }
     forceResetTurnState();
     currentSessionId = sessionId;
     persistSession();
