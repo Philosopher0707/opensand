@@ -8,9 +8,10 @@ import type { PreviewRestoreResult, RestoreResult } from "../../src/shell/missio
 import type { TimelineForkResult } from "../../src/shell/mission-fork-model";
 import type { ToolApprovalRequest } from "../../src/shell/inbox-model";
 import type { TurnEvent } from "../../src/shell/quick-capture-model";
+import type { Room, DiscussionResult, CreateRoomInput } from "../../src/shell/rooms-model";
 import { persistToken } from "../../src/shell/auth-model";
 
-export type { SessionSummary, SessionRow, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent };
+export type { SessionSummary, SessionRow, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent, Room, DiscussionResult, CreateRoomInput };
 
 /** sessionStorage can be blocked in a restricted page; keep the token in memory then. */
 function authStorage() {
@@ -103,6 +104,11 @@ export interface ShellData {
   authenticate(token: string): Promise<any>;
   /** Fires when the server reports an unauthenticated session (401 / auth_required event). */
   onAuthRequired(callback: () => void): () => void;
+
+  // Phase 5 Row 13: Multi-Agent Collaborative Rooms
+  getRooms(): Promise<Room[]>;
+  createRoom(payload: CreateRoomInput): Promise<Room>;
+  conveneDiscussion(roomId: string, topic: string): Promise<DiscussionResult>;
 }
 
 export function windowBridgeData(): ShellData {
@@ -450,6 +456,69 @@ export function windowBridgeData(): ShellData {
         unsubs.push(() => window.removeEventListener("opensand:auth_required", handler));
       }
       return () => unsubs.forEach((u) => u());
+    },
+
+    async getRooms(): Promise<Room[]> {
+      if (typeof window !== "undefined" && (window as any).__testRooms !== undefined) {
+        return (window as any).__testRooms;
+      }
+      const bridge = (window as any).opensand;
+      if (bridge?.getRooms) {
+        try {
+          const res = await bridge.getRooms();
+          if (Array.isArray(res)) return res;
+        } catch {
+          // fall through to the HTTP route
+        }
+      }
+      try {
+        const res = await fetch("/api/rooms");
+        if (res.ok) {
+          const data = await res.json();
+          return Array.isArray(data) ? data : [];
+        }
+      } catch {
+        // Fallback when the fetch route is not available
+      }
+      return [];
+    },
+
+    async createRoom(payload: CreateRoomInput): Promise<Room> {
+      const bridge = (window as any).opensand;
+      if (bridge?.createRoom) {
+        try {
+          return await bridge.createRoom(payload);
+        } catch {
+          // fall through to the HTTP route
+        }
+      }
+      const res = await fetch("/api/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `Could not create room (HTTP ${res.status})`);
+      return data as Room;
+    },
+
+    async conveneDiscussion(roomId: string, topic: string): Promise<DiscussionResult> {
+      const bridge = (window as any).opensand;
+      if (bridge?.runRoomDiscussion) {
+        try {
+          return await bridge.runRoomDiscussion(roomId, topic);
+        } catch {
+          // fall through to the HTTP route
+        }
+      }
+      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/discuss`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `Could not start discussion (HTTP ${res.status})`);
+      return data as DiscussionResult;
     },
   };
 }

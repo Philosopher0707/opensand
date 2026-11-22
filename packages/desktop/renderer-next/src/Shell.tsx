@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ShellData, ToolApprovalRequest } from "./data";
 import { ChatList } from "./views/ChatList";
+import { RoomsView } from "./views/RoomsView";
 import { MissionList } from "./views/MissionList";
 import { MissionTimeline } from "./views/MissionTimeline";
 import { MissionReceipt } from "./views/MissionReceipt";
@@ -712,9 +713,19 @@ export function Shell({ data }: ShellProps) {
             </div>
           )}
           </div>
-          {VIEW_IDS.filter((view) => view !== "chat").map((view) => (
-            <ViewPanel key={view} view={view} active={currentView === view} onSelect={switchView} />
-          ))}
+          {VIEW_IDS.filter((view) => view !== "chat").map((view) =>
+            view === "rooms" ? (
+              <RoomsView
+                key="rooms"
+                data={data}
+                active={currentView === "rooms"}
+                onSelect={switchView}
+                refreshKey={dataRev}
+              />
+            ) : (
+              <ViewPanel key={view} view={view} active={currentView === view} onSelect={switchView} />
+            )
+          )}
         </section>
       </main>
       <Inspector
