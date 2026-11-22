@@ -243,6 +243,12 @@
 * **Cause:** A workspace package's local build does not rebuild sibling packages' dist; TypeScript project references resolved to stale declarations.
 * **Rule now:** After any change in `shared/` or `coordinator/`, run `pnpm run build` from the **workspace root**, then run the tests. Never debug a "missing field" type error before checking the dependency's dist timestamp.
 
+### 11.21 A shared system prompt needs an authoritative identity, not a footnote
+* **Date:** 2026-11-22
+* **What happened:** Every bot answered "I'm OpenSand…" even though each agent record had a distinct `systemPrompt`. The coordinator's system message hardcoded `You are OpenSand…` and appended the persona at the end as `## User Custom Instructions`; name/role were never sent. Separately, `bot_<id>` sessions could have `meta.json` with `agentId: null` because inference only handled `sub_agent_*`, so resumed turns ran with no persona at all.
+* **Cause:** One shared template owned identity, and the persona was demoted to an appendix; session-id inference knew only one naming scheme.
+* **Rule:** When multiple personas share one system prompt, make identity a first-class, caller-supplied field in the prompt context and keep the generic branch byte-identical for defaults. Add an explicit precedence boundary so conflicting instructions have a documented winner. Infer ownership from every session-id scheme the product creates, and self-heal metadata at the existing write site (inference → explicit arg → previous value) instead of adding another write. Also: a popover that opens another popover must close first and pass a still-connected anchor, and focus must be restored to a re-queried live element after any re-render that detaches the original.
+
 ### 11.20 Navigation chrome must live in the shell, and overflow hides state
 * **Date:** 2026-11-22
 * **What happened:** The first bot rail was mounted inside a switchable view panel, so it vanished from every other view. Porting the Orca pattern meant relocating the single `#botList` node into the sidebar shell. Two follow-on bugs appeared: a cached runtime status Map gave every previously active bot a sticky green dot, and the new 6-row overflow hid delegated cards so their unread badge had no DOM target.
