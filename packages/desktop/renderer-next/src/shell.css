@@ -1799,3 +1799,50 @@
   #addMemoryModal { padding: 8px; }
   .memories-view-container { padding: 16px; }
 }
+
+/* attachments view */
+.attachments-view-container .dashboard-header { flex-wrap: wrap; }
+#btnOpenStageAttachment { flex: none; }
+.attachments-view-container .card-grid { min-width: 0; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
+.attachments-view-container .dashboard-card { min-width: 0; }
+.attachments-view-container .card-top,
+.attachments-view-container .card-desc,
+.attachments-view-container .card-meta { min-width: 0; }
+.attachments-view-container .attachment-path { overflow-wrap: anywhere; word-break: break-all; }
+.attachments-view-container .attachment-hash { min-width: 0; overflow-wrap: anywhere; }
+.attachments-view-container .card-footer { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.attachments-view-container .btn-del-att { color: var(--danger, #dc2626); }
+.attachments-empty, .attachments-loading {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 12px;
+  overflow-wrap: anywhere;
+}
+.attachments-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--danger, #dc2626);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.attachments-form-error { color: var(--danger, #dc2626); font-size: 12px; overflow-wrap: anywhere; margin-top: 8px; }
+#stageAttachmentModal { padding: 16px; box-sizing: border-box; }
+#stageAttachmentModal .modal-card {
+  width: 100%;
+  max-width: 620px;
+  box-sizing: border-box;
+  margin: 0 auto;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+#stageAttachmentModal .modal-header,
+#stageAttachmentModal .modal-body,
+#stageAttachmentModal .modal-actions { min-width: 0; }
+#stageAttachmentModal .modal-header h3 { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  #stageAttachmentModal { padding: 8px; }
+  .attachments-view-container { padding: 16px; }
+}
