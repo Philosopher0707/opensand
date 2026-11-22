@@ -646,6 +646,8 @@ export interface ProviderDriver<Config = unknown> {
     supportsMultipleInstances?: boolean;
     access?: EngineAccess;
     cliVersion?: RegExp;
+    supportsAuthentication?: boolean;
+    cli?: boolean;
   };
   readonly install?: EngineInstall;
   decodeConfig(raw: unknown): Config;

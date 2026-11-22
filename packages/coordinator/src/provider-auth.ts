@@ -6,28 +6,28 @@
  * allowlisted authorization URLs and short user codes.
  */
 
-import type { ProviderInstance, ProviderAuthenticationStart, ProviderAuthenticationStatus } from "@opensand/shared";
+import type { AnyProviderDriver, ProviderInstance, ProviderAuthenticationStart, ProviderAuthenticationStatus } from "@opensand/shared";
 import { providerRegistry } from "./provider-registry.js";
 
 interface AuthSession {
   instance: ProviderInstance;
+  driver: AnyProviderDriver;
   flowId: string | null;
 }
 
 const sessions = new Map<string, AuthSession>();
 
-/** Driver kinds whose instances expose a sign-in controller. */
-export const AUTH_PROVIDER_KINDS: ReadonlySet<string> = new Set([
-  "grokAgent",
-  "kimiAgent",
-  "copilotAgent",
-]);
-
 async function ensureSession(kind: string): Promise<AuthSession | null> {
   const driver = providerRegistry.getDriver(kind);
   if (!driver) return null;
-  let session = sessions.get(kind);
-  if (session) return session;
+  const existing = sessions.get(kind);
+  if (existing) {
+    if (existing.driver === driver) return existing;
+    // A driver was replaced at runtime (e.g. a test CLI); the cached instance
+    // would still spawn the old CLI, so rebuild the session for this driver.
+    await existing.instance.dispose();
+    sessions.delete(kind);
+  }
 
   const instanceId = `auth:${kind}`;
   const { instance } = await providerRegistry.createInstance(instanceId, {
@@ -40,7 +40,7 @@ async function ensureSession(kind: string): Promise<AuthSession | null> {
     await instance.dispose();
     return null;
   }
-  session = { instance, flowId: null };
+  const session: AuthSession = { instance, driver, flowId: null };
   sessions.set(kind, session);
   return session;
 }

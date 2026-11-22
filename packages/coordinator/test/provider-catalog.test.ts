@@ -7,6 +7,8 @@ import { createServer } from "node:http";
 import { discoverProviderModels } from "../src/provider-catalog.js";
 import { providerRegistry } from "../src/provider-registry.js";
 import { defineAcpDriver } from "../src/providers/factories/acp-driver.js";
+import { ClaudeDriver } from "../src/providers/claude-driver.js";
+import { CodexDriver } from "../src/providers/codex-driver.js";
 import { FAKE_ACP_MODELS, writeFakeCli } from "./helpers/fake-cli.js";
 
 describe("provider model discovery", () => {
@@ -77,6 +79,40 @@ describe("provider model discovery", () => {
 
   it("returns null for an unregistered provider", async () => {
     assert.equal(await discoverProviderModels({ provider: "not-a-provider", endpoint: "" }), null);
+  });
+
+  it("derives auth capability and CLI metadata from the driver definition", () => {
+    const plain = defineAcpDriver({
+      driverKind: "plainMetadataAcp",
+      displayName: "Plain ACP",
+      cli: "plain",
+      spawnArgs: () => [],
+      models: { default: "m", options: [{ id: "m", label: "M" }] },
+    });
+    const withAuth = defineAcpDriver({
+      driverKind: "authMetadataAcp",
+      displayName: "Auth ACP",
+      cli: "auth",
+      spawnArgs: () => [],
+      models: { default: "m", options: [{ id: "m", label: "M" }] },
+      auth: {
+        provider: "authMetadataProbe",
+        homeEnv: "AUTH_METADATA_HOME",
+        homeDir: ".auth-metadata",
+        loginArgs: ["login"],
+        urlPattern: /https:\/\/\S+/,
+        codePattern: /\b[A-Z0-9]{4,12}\b/,
+        failureMessage: "Sign-in failed",
+      },
+    });
+    assert.equal(plain.metadata.supportsAuthentication, false);
+    assert.equal(plain.metadata.cli, true);
+    assert.equal(withAuth.metadata.supportsAuthentication, true);
+    assert.equal(withAuth.metadata.cli, true);
+    assert.equal(ClaudeDriver.metadata.cli, true);
+    assert.equal(CodexDriver.metadata.cli, true);
+    assert.equal(ClaudeDriver.metadata.supportsAuthentication, undefined);
+    assert.equal(CodexDriver.metadata.supportsAuthentication, undefined);
   });
 
   it("uses the driver's static catalog as an unconfirmed fallback when probing fails", { timeout: 20_000 }, async () => {

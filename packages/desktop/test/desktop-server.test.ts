@@ -958,6 +958,73 @@ test('DesktopServer - provider sign-in routes are reachable', async () => {
   }
 });
 
+test('DesktopServer - auth state route and catalog reflect the stable credential home', async () => {
+  const { providerRegistry, defineAcpDriver, disposeProviderAuth } = await import('@opensand/coordinator');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-auth-state-route-'));
+  const home = path.join(tmpDir, 'home');
+  fs.mkdirSync(home, { recursive: true });
+  const originalHome = process.env.HOME;
+  process.env.HOME = home;
+  const secret = 'SECRET_VALUE_NEVER_RETURNED';
+  try {
+    providerRegistry.register(defineAcpDriver({
+      driverKind: 'authStateProbe',
+      displayName: 'Auth State Probe',
+      cli: 'probe-cli',
+      spawnArgs: () => [],
+      models: { default: 'probe-model', options: [{ id: 'probe-model', label: 'Probe' }] },
+      auth: {
+        provider: 'authStateProbe',
+        homeEnv: 'AUTH_STATE_PROBE_HOME',
+        homeDir: '.probe',
+        loginArgs: ['login'],
+        signedInFile: 'auth.json',
+        urlPattern: /https:\/\/\S+/,
+        codePattern: /\b[A-Z0-9]{4,12}\b/,
+        failureMessage: 'Sign-in failed',
+      },
+    }));
+
+    const server = new DesktopServer({ baseDir: tmpDir });
+    MockIncomingMessage.defaultToken = server.getAuthToken();
+    const get = async (url: string) => {
+      const res = new MockServerResponse();
+      await (server as any).handleRequest(new MockIncomingMessage('GET', url), res);
+      return res;
+    };
+
+    const signedOut = await get('/api/providers/authStateProbe/auth/state');
+    assert.strictEqual(signedOut.statusCode, 200);
+    assert.deepStrictEqual(JSON.parse(signedOut.body), { signedIn: false, flowId: null });
+
+    const unknown = await get('/api/providers/no-such-provider/auth/state');
+    assert.strictEqual(unknown.statusCode, 404);
+    assert.deepStrictEqual(JSON.parse(unknown.body), { error: 'Unknown provider' });
+
+    const credentialDir = path.join(home, '.opensand', 'providers', 'authStateProbe', 'probe');
+    fs.mkdirSync(credentialDir, { recursive: true });
+    fs.writeFileSync(path.join(credentialDir, 'auth.json'), JSON.stringify({ token: secret }), 'utf8');
+
+    const signedIn = await get('/api/providers/authStateProbe/auth/state');
+    assert.strictEqual(signedIn.statusCode, 200);
+    assert.deepStrictEqual(JSON.parse(signedIn.body), { signedIn: true, flowId: null });
+    assert.ok(!signedIn.body.includes(secret), 'credential values must never reach the UI');
+
+    const catalog = JSON.parse((await get('/api/providers')).body).providers;
+    const probe = catalog.find((p: any) => p.kind === 'authStateProbe');
+    assert.strictEqual(probe.auth, true);
+    assert.strictEqual(probe.signedIn, true);
+    const nonAuth = catalog.find((p: any) => p.kind === 'clineAgent');
+    assert.strictEqual(nonAuth.auth, false);
+    assert.strictEqual('signedIn' in nonAuth, false);
+  } finally {
+    await disposeProviderAuth();
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('REST POST /api/settings awaits a valid chief id before replying', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-rest-chief-ok-'));
   try {

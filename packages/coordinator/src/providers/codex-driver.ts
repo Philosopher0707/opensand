@@ -39,6 +39,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     displayName: "Codex",
     supportsMultipleInstances: true,
     access: "custom",
+    cli: true,
     cliVersion: /v?(\d+)\.(\d+)\.(\d+)/,
   },
   models: MODELS,

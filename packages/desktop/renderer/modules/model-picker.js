@@ -92,7 +92,11 @@ export function createModelPicker({ onPick, onOpenAuth }) {
         if (provider.kind === state.provider) button.classList.add('active');
         const glyph = el('span', 'mp-glyph', (provider.displayName || '?').slice(0, 1));
         button.appendChild(glyph);
-        if (provider.auth) button.appendChild(el('span', 'mp-key-dot', '•'));
+        if (provider.signedIn) {
+          const dot = el('span', 'mp-key-dot', '•');
+          dot.title = 'Signed in — sign-out clears the shared CLI credential home';
+          button.appendChild(dot);
+        }
         button.onclick = () => {
           state.provider = provider.kind;
           state.endpoint = provider.defaultUrl || '';
@@ -128,7 +132,7 @@ export function createModelPicker({ onPick, onOpenAuth }) {
       endpointRow.appendChild(endpoint);
       details.appendChild(endpointRow);
 
-      if (current.auth) {
+      if (current.auth && current.signedIn === false) {
         const auth = el('button', 'mp-auth-hint');
         auth.type = 'button';
         auth.textContent = state.botName

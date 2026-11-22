@@ -1215,7 +1215,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       for (const item of list) {
         const opt = document.createElement('option');
         opt.value = item.kind;
-        opt.textContent = item.displayName + (item.access === 'custom' ? ' (CLI)' : '');
+        opt.textContent = item.displayName + (item.access === 'custom' ? ' (CLI)' : '')
+          + (item.auth ? (item.signedIn ? ' ✓ signed in' : ' (sign-in required)') : '');
         settingProvider.appendChild(opt);
       }
       if (selected) settingProvider.value = selected;
@@ -1244,9 +1245,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const info = providerCatalog.find((item) => item.kind === kind);
     if (!info || !info.auth) { authPanel.style.display = 'none'; return; }
     authPanel.style.display = '';
-    btnProviderAuth.textContent = `Sign in with ${info.displayName}`;
+    btnProviderAuth.textContent = info.signedIn ? `Sign in again with ${info.displayName}` : `Sign in with ${info.displayName}`;
+    btnProviderAuth.title = 'Sign-out clears the shared CLI credential home for this provider';
     providerAuthUrl.textContent = '';
-    providerAuthStatus.textContent = '';
+    providerAuthStatus.textContent = info.signedIn ? 'Signed in (shared CLI credential home)' : '';
   }
 
   if (btnProviderAuth) {

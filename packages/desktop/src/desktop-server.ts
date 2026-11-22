@@ -6,7 +6,7 @@ import * as crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
 import { createDefaultRpcGateway, RpcGateway } from './rpc-gateway.js';
-import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient, BUILT_IN_DRIVERS, installManagedRuntime, discoverProviderModels, startProviderAuth, getProviderAuthStatus, cancelProviderAuth, signOutProvider, AUTH_PROVIDER_KINDS } from '@opensand/coordinator';
+import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient, providerRegistry, installManagedRuntime, discoverProviderModels, startProviderAuth, getProviderAuthStatus, getProviderAuthState, cancelProviderAuth, signOutProvider } from '@opensand/coordinator';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 import { runStateMigrations, readSchemaVersion } from '@opensand/shared';
 import { buildDiagnosticsReport } from './diagnostics.js';
@@ -1428,19 +1428,25 @@ export class DesktopServer {
 
     // API: GET /api/providers (registered driver catalog for provider selection)
     if (pathname === '/api/providers' && req.method === 'GET') {
-      const providers = BUILT_IN_DRIVERS.map((driver) => {
+      const drivers = providerRegistry.listDrivers()
+        .map((kind) => providerRegistry.getDriver(kind)!)
+        .filter(Boolean);
+      const providers = await Promise.all(drivers.map(async (driver) => {
         const defaults = driver.defaultConfig() as { url?: string; cli?: string };
         const models = driver.models;
+        const auth = driver.metadata.supportsAuthentication === true;
+        const state = auth ? await getProviderAuthState(driver.driverKind) : null;
         return {
           kind: driver.driverKind,
           displayName: driver.metadata.displayName,
           access: driver.metadata.access ?? 'custom',
-          auth: AUTH_PROVIDER_KINDS.has(driver.driverKind),
+          auth,
+          ...(auth ? { signedIn: state?.signedIn === true } : {}),
           defaultUrl: typeof defaults.url === 'string' ? defaults.url : undefined,
           defaultCli: typeof defaults.cli === 'string' ? defaults.cli : undefined,
           models: { default: models.default, options: models.options.map((m) => m.id) },
         };
-      });
+      }));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ providers }));
       return;
@@ -1466,6 +1472,14 @@ export class DesktopServer {
         }
         return;
       }
+    }
+    if (pathname.startsWith('/api/providers/') && pathname.endsWith('/auth/state') && req.method === 'GET') {
+      const parts = pathname.split('/');
+      const kind = decodeURIComponent(parts[3] ?? '');
+      const state = await getProviderAuthState(kind);
+      res.writeHead(state === null ? 404 : 200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(state === null ? { error: 'Unknown provider' } : state));
+      return;
     }
     if (pathname.startsWith('/api/providers/') && pathname.endsWith('/auth/status') && req.method === 'GET') {
       const parts = pathname.split('/');

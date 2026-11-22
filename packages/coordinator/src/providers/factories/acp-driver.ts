@@ -41,6 +41,8 @@ export function defineAcpDriver(spec: AcpDriverSpec): ProviderDriver<AcpConfig> 
       displayName: spec.displayName,
       supportsMultipleInstances: true,
       access: spec.access ?? "custom",
+      supportsAuthentication: Boolean(spec.auth),
+      cli: true,
       ...(spec.cliVersion ? { cliVersion: spec.cliVersion } : {}),
     },
     models: spec.models,

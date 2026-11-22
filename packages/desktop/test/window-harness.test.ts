@@ -537,6 +537,64 @@ test("Real-Window Harness: bot card provider chip and model picker", async (t) =
   }
 });
 
+test("Real-Window Harness: signed-in provider shows a key dot and hides the sign-in hint", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-auth-home-"));
+  const credentialDir = path.join(tmpHome, ".opensand", "providers", "grok", "grok");
+  fs.mkdirSync(credentialDir, { recursive: true });
+  fs.writeFileSync(path.join(credentialDir, "auth.json"), JSON.stringify({ token: "HARNESS_SECRET_NEVER_SHOWN" }), "utf8");
+  const agentPath = path.join(tmpHome, ".opensand", "agents");
+  fs.mkdirSync(agentPath, { recursive: true });
+  const now = Date.now();
+  fs.writeFileSync(path.join(agentPath, "agent_authbot_ab12cd34.json"), JSON.stringify({
+    id: "agent_authbot_ab12cd34",
+    name: "Auth Bot",
+    role: "Research Assistant",
+    systemPrompt: "You research things.",
+    kind: "AGENT",
+    model: "bot-model",
+    provider: "grokAgent",
+    allowedTools: ["read_file"],
+    createdAt: now,
+    updatedAt: now,
+  }), "utf8");
+
+  const pickerScript = [
+    "(async () => {",
+    "  await new Promise((r) => setTimeout(r, 350));",
+    "  document.querySelector('#botList .btn-bot-model')?.click();",
+    "  await new Promise((r) => setTimeout(r, 500));",
+    "  const pop = document.querySelector('.mp-popover');",
+    "  const item = pop?.querySelector('[data-provider=\"grokAgent\"]');",
+    "  item?.click();",
+    "  const result = {",
+    "    hasPicker: !!pop,",
+    "    hasItem: !!item,",
+    "    keyDots: item?.querySelectorAll('.mp-key-dot').length || 0,",
+    "    dotTitle: item?.querySelector('.mp-key-dot')?.title || '',",
+    "    hasSignInHint: !!pop?.querySelector('.mp-auth-hint'),",
+    "    hintText: pop?.querySelector('.mp-auth-hint')?.textContent || '',",
+    "    leaksSecret: (pop?.textContent || '').includes('HARNESS_SECRET_NEVER_SHOWN'),",
+    "  };",
+    "  document.querySelector('.mp-backdrop')?.remove();",
+    "  return result;",
+    "})()",
+  ].join("\n");
+
+  try {
+    const r = await runHarness("default", { home: tmpHome, interactScript: pickerScript });
+    if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
+    const result = r.interactResult || {};
+    assert.strictEqual(result.hasPicker, true, `picker must open (${JSON.stringify(result)})`);
+    assert.strictEqual(result.hasItem, true, `seeded provider must be in the catalog (${JSON.stringify(result)})`);
+    assert.strictEqual(result.keyDots, 1, `signed-in provider must show one key dot (${JSON.stringify(result)})`);
+    assert.match(result.dotTitle || '', /sign-out clears the shared/i, `key dot needs a sign-out tooltip (${JSON.stringify(result)})`);
+    assert.strictEqual(result.hasSignInHint, false, `signed-in provider must hide the sign-in hint (${JSON.stringify(result)})`);
+    assert.strictEqual(result.leaksSecret, false, `credential values must never reach the UI (${JSON.stringify(result)})`);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test("Real-Window Harness: bot settings editor saves provider and model", async (t) => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-bot-settings-home-"));
   const agentPath = path.join(tmpHome, ".opensand", "agents");

@@ -41,6 +41,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
     displayName: "Claude Code",
     supportsMultipleInstances: true,
     access: "custom",
+    cli: true,
     cliVersion: /v?(\d+)\.(\d+)\.(\d+)/,
   },
   models: MODELS,
