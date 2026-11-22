@@ -275,8 +275,10 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
   };
 
   daemon.registerCustomTool({
+    effect: "delegate",
     definition: {
       type: "function",
+      effect: "delegate",
       function: {
         name: "delegate_to_agent",
         description: "Delegate a task or query to a registered subagent persona. Spawns an isolated subagent turn loop with that agent's system prompt and returns the result.",

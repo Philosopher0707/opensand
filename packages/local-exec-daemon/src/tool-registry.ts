@@ -44,6 +44,7 @@ export interface ToolExecutionContext {
    */
   sandboxProfile?: SandboxProfileType;
   allowOutsideWorkspace?: boolean;
+  allowNetwork?: boolean;
   /**
    * Turn cancellation. Mirrors Grok Bot's ExecServerAbort: a long command is
    * killed when the user cancels the turn instead of running to its timeout.
@@ -72,6 +73,7 @@ export type CustomToolHandler = (args: Record<string, any>, context?: ToolExecut
 export interface CustomToolRegistration {
   definition: ToolDefinition;
   handler: CustomToolHandler;
+  effect?: string | ((args: Record<string, any>) => string);
   requiresGate?: "computerUse" | "deviceTools" | "memoryWrite" | "skillWrite";
   /** memoryWrite only: the gate applies to a call when this returns true (default: every call). */
   gateWhen?: (args: Record<string, any>) => boolean;
@@ -98,6 +100,8 @@ export function memoryWriteNeedsGate(toolName: string, args: Record<string, any>
 export const CORE_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
   exec_command: {
     type: "function",
+    effect: (args: Record<string, any>) => (args?.unsandboxed ? "shell_outside" : "shell"),
+    access: "write",
     function: {
       name: "exec_command",
       description: "Execute a bash shell command in the local workspace environment with preflight validation and timeout controls.",
@@ -123,6 +127,8 @@ export const CORE_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
   },
   read_file: {
     type: "function",
+    effect: "read",
+    access: "read",
     function: {
       name: "read_file",
       description: "Read contents of a file on the local filesystem, with optional line range slicing.",
@@ -148,6 +154,8 @@ export const CORE_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
   },
   write_file: {
     type: "function",
+    effect: "edit",
+    access: "write",
     function: {
       name: "write_file",
       description: "Atomically write or overwrite content to a file on the local filesystem.",
@@ -173,6 +181,8 @@ export const CORE_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
   },
   list_directory: {
     type: "function",
+    effect: "read",
+    access: "read",
     function: {
       name: "list_directory",
       description: "List files and directories at a given path, with optional recursive traversal.",
@@ -198,6 +208,8 @@ export const CORE_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
   },
   edit_file: {
     type: "function",
+    effect: "edit",
+    access: "write",
     function: {
       name: "edit_file",
       description: "Perform exact string replacement in a file. Errors if old_string is absent, not unique (unless replace_all is true), or identical to new_string.",
@@ -227,6 +239,8 @@ export const CORE_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
   },
   grep: {
     type: "function",
+    effect: "read",
+    access: "read",
     function: {
       name: "grep",
       description: "Search file contents under the workspace using regular expressions, returning file:line:text matches.",
@@ -260,6 +274,8 @@ export const CORE_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
   },
   glob: {
     type: "function",
+    effect: "read",
+    access: "read",
     function: {
       name: "glob",
       description: "Find files and directories matching a glob pattern (**, *, ?) under the workspace.",
@@ -288,6 +304,8 @@ export const CORE_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
 export const PTY_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
   pty_spawn: {
     type: "function",
+    effect: "shell",
+    access: "write",
     function: {
       name: "pty_spawn",
       description: "Spawn an interactive pseudo-terminal (PTY) or long-running process session.",
@@ -331,6 +349,8 @@ export const PTY_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
   },
   pty_write: {
     type: "function",
+    effect: "shell",
+    access: "write",
     function: {
       name: "pty_write",
       description: "Write input data (keystrokes/commands) to an active PTY session's stdin.",
@@ -352,6 +372,8 @@ export const PTY_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
   },
   pty_read: {
     type: "function",
+    effect: "read",
+    access: "read",
     function: {
       name: "pty_read",
       description: "Read buffered terminal output from a PTY session with optional character offset.",
@@ -373,6 +395,8 @@ export const PTY_TOOL_DEFINITIONS: Record<string, ToolDefinition> = {
   },
   pty_kill: {
     type: "function",
+    effect: "shell",
+    access: "write",
     function: {
       name: "pty_kill",
       description: "Terminate an active PTY session by sending a POSIX signal.",
@@ -496,7 +520,14 @@ export class ToolRegistry {
   /**
    * Register a custom tool or extension.
    */
+  getDefinition(name: string): ToolDefinition | undefined {
+    return CORE_TOOL_DEFINITIONS[name] ?? (this.ptyToolsRegistered ? PTY_TOOL_DEFINITIONS[name] : undefined) ?? this.customTools.get(name)?.definition;
+  }
+
   registerCustomTool(registration: CustomToolRegistration): void {
+    if (registration.effect && !registration.definition.effect) {
+      registration.definition.effect = registration.effect;
+    }
     const name = registration.definition.function.name;
     if (CORE_TOOL_DEFINITIONS[name] || PTY_TOOL_DEFINITIONS[name]) {
       throw new Error(`Cannot override core tool: ${name}`);
@@ -553,6 +584,7 @@ export class ToolRegistry {
             cwd: containCwd(input.cwd, context?.workspaceRoot) ?? context?.workspaceRoot,
             workspaceRoot: context?.workspaceRoot,
             sandboxProfile: clampSandboxProfile(input.sandboxProfile, context?.sandboxProfile),
+            allowNetwork: context?.allowNetwork,
           },
           { signal: context?.signal }
         );

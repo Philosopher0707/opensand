@@ -4,6 +4,7 @@ import {
   listWorkspaceSnapshots,
   RestorePoint,
   RevertResult,
+  effectOf,
 } from "@opensand/shared";
 import { LocalExecDaemon, ToolExecutionResult, PolicyDecision, ToolDefinition, memoryWriteNeedsGate, skillWriteNeedsGate } from "@opensand/local-exec-daemon";
 import { wrapUntrusted, untrustedSourceFor, isStandingExecAllowed, escapeUntrustedText, neutraliseSystemLines } from "@opensand/shared";
@@ -423,11 +424,15 @@ export class AgentCoordinator {
 
         if (needsApproval && this.onApprovalRequired) {
           const approvalId = `appr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+          const toolDef = this.daemon.getToolDefinition(tc.function.name);
+          const effect = effectOf(toolDef, args);
           const req: ApprovalRequest = {
             approvalId,
             toolName: tc.function.name,
             arguments: args,
             reason: policy.reason || `Execution of tool '${tc.function.name}' requires explicit approval.`,
+            effect,
+            sandboxed: this.sandboxProfile ? true : false,
           };
 
           this.emit({ type: "approval_requested", request: req });

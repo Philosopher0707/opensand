@@ -11,6 +11,7 @@ export interface CapabilityGrant {
   expiresAt?: number;
   missionId?: string;
   folderPath?: string;
+  effect?: string;
 }
 
 export interface GrantsFileContent {

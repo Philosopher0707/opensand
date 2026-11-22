@@ -237,7 +237,7 @@ export async function runCommandOperation(
         if (isSandboxed && code !== 0) {
           const denials = parseSandboxDenials(stderrBuffer, {
             cwd,
-            networkDenied: !input.customProfileString && !input.allowNetwork,
+            networkDenied: !input.customProfileString && input.allowNetwork === false,
           });
           if (denials.length > 0) output.sandboxDenials = denials;
         }

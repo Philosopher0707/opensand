@@ -1,3 +1,4 @@
+import type { ApprovalMode } from "./approval.js";
 /**
  * @opensand/shared — canonical types & contracts shared by
  * coordinator, local-exec-daemon, desktop, cli, and native-bridge.
@@ -25,6 +26,8 @@ export interface ToolDefinition {
       required?: string[];
     };
   };
+  effect?: string | ((args: Record<string, any>) => string);
+  access?: "read" | "write";
 }
 
 /**
@@ -148,6 +151,9 @@ export interface ApprovalRequest {
   toolName: string;
   arguments: Record<string, any>;
   reason: string;
+  effect?: string;
+  sandboxed?: boolean;
+  note?: string;
 }
 
 export type ApprovalDecision = "allow_once" | "allow_session" | "deny";
@@ -239,6 +245,7 @@ export interface DesktopSettings {
   provider: 'openai' | 'anthropic' | 'openrouter';
   theme: 'dark' | 'light' | 'system';
   maxContextTokens?: number;
+  approvalMode?: ApprovalMode;
 }
 
 export interface SessionSummary {

@@ -17,3 +17,4 @@ export * from "./folder-trust.js";
 export * from "./untrusted-text.js";
 export * from "./target-types.js";
 export * from "./targets-store.js";
+export * from "./approval.js";

@@ -198,6 +198,7 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     assert.strictEqual(res1.statusCode, 200);
     const settings = JSON.parse(res1.body);
     assert.strictEqual(settings.provider, 'openai');
+    assert.strictEqual(settings.approvalMode, 'ask');
 
     // Test API key redaction: key must be masked in API responses
     (server as any).bridge.updateSettings({ apiKey: 'sk-ant-api03-super-secret-key-12345' });
@@ -212,13 +213,14 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     const res2 = new MockServerResponse();
     const handlePromise = (server as any).handleRequest(req2, res2);
 
-    req2.emit('data', Buffer.from(JSON.stringify({ model: 'deepseek-coder' })));
+    req2.emit('data', Buffer.from(JSON.stringify({ model: 'deepseek-coder', approvalMode: 'auto_edit' })));
     req2.emit('end');
     await handlePromise;
 
     assert.strictEqual(res2.statusCode, 200);
     const updated = JSON.parse(res2.body);
     assert.strictEqual(updated.model, 'deepseek-coder');
+    assert.strictEqual(updated.approvalMode, 'auto_edit');
 
     // Test GET /api/sessions
     const req3 = new MockIncomingMessage('GET', '/api/sessions');

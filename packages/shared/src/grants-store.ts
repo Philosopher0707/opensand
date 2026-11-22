@@ -114,6 +114,9 @@ export class GrantsStore {
 
   /** Build a grant stamped with the epoch of `content`; the caller adds it to content.grants. */
   public static newGrant(input: NewGrant, content: GrantsFileContent): CapabilityGrant {
+    if (input.lifetime === "always" && (input.effect === "shell_outside" || input.tool === "shell_outside")) {
+      throw new Error("Cannot grant 'always' lifetime on shell_outside");
+    }
     return {
       ...input,
       id: input.id ?? `grant_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`,
@@ -140,7 +143,7 @@ export class GrantsStore {
     if (inputs.length === 0) return { added: [], skippedExisting: 0 };
     return this.underLock(async () => {
       const content = await this.read();
-      const key = (g: Pick<CapabilityGrant, "tool" | "scope" | "lifetime">) => JSON.stringify([g.tool, g.scope, g.lifetime]);
+      const key = (g: Pick<CapabilityGrant, "tool" | "scope" | "lifetime"> & { effect?: string }) => JSON.stringify([g.effect ?? g.tool, g.scope, g.lifetime]);
       const seen = new Set(content.grants.map(key));
       const added: CapabilityGrant[] = [];
       let skippedExisting = 0;
@@ -232,6 +235,7 @@ export interface ToolExecutionQuery {
   cwd?: string;
   path?: string;
   domain?: string;
+  effect?: string;
 }
 
 function scopeMatches(scope: string, q: ToolExecutionQuery): boolean {
@@ -260,7 +264,37 @@ export function isToolExecutionGranted(
   query: ToolExecutionQuery,
   now: number = Date.now(),
 ): boolean {
-  return grants.some(
-    (g) => g.tool === query.tool && (g.expiresAt === undefined || g.expiresAt > now) && scopeMatches(g.scope, query),
-  );
+  return grants.some((g) => {
+    if (g.expiresAt !== undefined && g.expiresAt <= now) return false;
+
+    // Never allow always on shell_outside
+    if (g.lifetime === "always") {
+      if (
+        g.tool === "shell_outside" ||
+        g.effect === "shell_outside" ||
+        query.tool === "shell_outside" ||
+        query.effect === "shell_outside"
+      ) {
+        return false;
+      }
+    }
+
+    // Effect and tool matching
+    if (g.effect) {
+      const queryEffect = query.effect ?? (query.tool === "exec_command" ? "shell" : undefined);
+      if (queryEffect && g.effect !== queryEffect) return false;
+      if (!queryEffect && g.effect !== query.tool && g.tool !== query.tool) return false;
+    } else {
+      if (query.effect) {
+        if (query.effect === "shell_outside" && (g.tool === "shell" || g.tool === "exec_command")) {
+          return false;
+        }
+        if (g.tool !== query.effect && g.tool !== query.tool) return false;
+      } else {
+        if (g.tool !== query.tool) return false;
+      }
+    }
+
+    return scopeMatches(g.scope, query);
+  });
 }
