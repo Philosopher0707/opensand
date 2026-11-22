@@ -723,7 +723,7 @@ MOCK_MAIN="$WORK/mock_main"
 git clone --quiet "$MOCK_ORIGIN" "$MOCK_MAIN" >/dev/null 2>&1
 mkdir -p "$MOCK_MAIN/scripts/lib"
 cp "$WORKTREE_SCRIPT" "$MOCK_MAIN/scripts/worktree.sh"
-cp "$ROOT/scripts/lib/worktree-safety.sh" "$ROOT/scripts/lib/free-space.sh" "$MOCK_MAIN/scripts/lib/"
+cp "$ROOT/scripts/lib/worktree-safety.sh" "$ROOT/scripts/lib/free-space.sh" "$ROOT/scripts/lib/owner-guard.sh" "$MOCK_MAIN/scripts/lib/"
 age_files "$MOCK_MAIN"
 export OPENSAND_MAIN_CHECKOUT="$MOCK_MAIN"
 

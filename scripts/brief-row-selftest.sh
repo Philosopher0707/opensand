@@ -208,6 +208,13 @@ else
   fail "Scope does not match registry pattern requirements"
 fi
 
+if grep -qF "cd ~/dev/_scratch/opensand-base && git fetch origin" "$OUT_BRIEF" && \
+   grep -qF "Never run anything in \`~/dev/opensand\`" "$OUT_BRIEF"; then
+  pass "emitted brief has base-clone start line in Scope and owner checkout prohibition in Fixed Rules"
+else
+  fail "base-clone start line or owner checkout prohibition missing in brief"
+fi
+
 # 8. Legacy line ranges from code (app.js VIEW CONTROLLER and index.html view / modals)
 # In FIXTURE_APP, WIDGET VIEW CONTROLLER is lines 8-18 (not inventory table's L900-920)
 if grep -qF "refreshWidget" "$OUT_BRIEF" && grep -qF "L8" "$OUT_BRIEF"; then

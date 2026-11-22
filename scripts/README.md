@@ -68,6 +68,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `verify.sh` | Core repository verification gate (versions, build, tests, tripwires) | CI, pre-commit, manual | `verify-selftest.sh` |
 | `worktree.sh` | OpenSand automated worktree lifecycle manager (base, new, save, review, done, list, prune); `new` guards free space on the writable data volume and no command acts on the main checkout | Developer, bots, release automation | `worktree-selftest.sh` |
 | `worktree-selftest.sh` | Hermetic selftest suite for worktree lifecycle manager, including the main-checkout guard (cwd, symlink, source repo, target) and the regenerated-screenshot skip | Pre-commit / verification | Self |
+| `owner-guard-selftest.sh` | Hermetic selftest suite for owner checkout guard in `worktree.sh` and `pr-gate.sh` | Pre-commit / verification | Self |
 
 ---
 
@@ -238,6 +239,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Pre-commit hook, test verification (`verify-selftest.sh`).
 
 ### `pr-gate.sh`
+- **Owner Checkout Guard**: refuses (exit 4 with "pr-gate.sh: refusing to run from the owner's checkout; use ~/dev/_scratch/opensand-base") when `--git-common-dir` matches `$HOME/dev/opensand/.git` (or `OPENSAND_PROTECTED_CHECKOUT`). Overridden only with `OPENSAND_OWNER=1`.
 - **Purpose**: 5-step automated pre-merge verification gate: CI rollup check, base freshness, diff hygiene, checkpoint tag creation/remote verification, and merge. With `--when-green`, a PR behind origin/main is rebased and pushed first so bots no longer babysit merges.
 - **Usage**: `scripts/pr-gate.sh [--allow-lockfile] [--allow-binary] [--dry-run] [--when-green [--timeout <min>]] [--no-post-merge-check] <PR-number>`
 - **`--when-green`**: first watches pending CI with `gh pr checks --watch`, bounded by `--timeout` minutes (default 40), then runs the normal 5 checks and merges. If CI has not registered any check yet (right after the PR is opened) it waits for the first one inside the same deadline. Red CI exits `1` and names the failing job; a timeout exits `3`. While no check is registered, a queued, pending, waiting, requested or in-progress workflow run for the head commit — read from the per-run Jobs API (`gh api repos/{owner}/{repo}/actions/runs/<id>/jobs`), because `gh run list` status can lag — extends the no-checks grace window, bounded by `PR_GATE_QUEUED_RUN_MAX_SECONDS` (default 600s); a timeout while still queued names the queued jobs.
@@ -427,6 +429,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Selftest authors, QA / Release Engineer, automated job proof.
 
 ### `worktree.sh`
+- **Owner Checkout Guard**: refuses (exit 4 with "worktree.sh: refusing to run from the owner's checkout; use ~/dev/_scratch/opensand-base") when `--git-common-dir` matches `$HOME/dev/opensand/.git` (or `OPENSAND_PROTECTED_CHECKOUT`). Overridden only with `OPENSAND_OWNER=1`.
 - **Purpose**: Manage developer and agent worktrees in `~/dev/_scratch/` safely (`base`, `new`, `save`, `review`, `done`, `list`, `prune`). No command acts on the owner's main checkout `~/dev/opensand`: the current directory, the source repository's toplevel and every `new`/`review`/`done` target path are refused before anything happens, resolved through symlinks (`OPENSAND_ALLOW_MAIN_CHECKOUT=1` bypasses it for the selftest only). `base` creates or refreshes the reusable base clone (`OPENSAND_BASE_DIR`, default `~/dev/_scratch/opensand-base`, cloned from `OPENSAND_REPO_URL` or the current origin) and leaves it clean and detached at `origin/main`; `new` refreshes it and hangs the job worktree off it, so no throwaway clone in `/tmp` is needed. The base clone, and any clone that owns linked worktrees, is never removed, pruned or cleaned, and removal goes through the owning repository. `done` also drops the merged local branch so the job name is reusable (remote branches are never touched). `prune` and `clean-disk.sh` never touch a *live* worktree (branch has an OPEN PR, or any file changed in the last 2 hours; rule in `scripts/lib/worktree-safety.sh`, which also fails closed when `gh` cannot be read).
 - **`save "<message>" [-- <path>...]`**: run inside a job worktree to save work in one step. It stages by explicit path (the given paths, or every changed or new file listed one by one; ignored files stay out; never `git add -A`), **restores regenerated `packages/desktop/artifacts/*.png` to HEAD and prints what it skipped** (a full `verify.sh` rewrites them as a side effect; name one after `--` to commit a real screenshot change), refuses if the staged diff looks like a secret (`sk-`, `ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`, `AKIA`, `BEGIN ... PRIVATE KEY`, and `.env`, `.env.*`, `*.env` files except `.env.example`, `.env.sample`, `.env.template`; the finding names file and line, never the value, and nothing is committed or pushed), commits with the repository's hooks ON (a failing hook means no push; there is no `--no-verify`), pushes the branch (never forced) and verifies the remote has exactly that commit. The first push opens a **draft** PR (`gh pr create --draft`); later saves reuse it. It refuses in the main checkout, the base clone, a plain clone, a detached HEAD, or on `main`. `new` only creates the worktree and branch: a branch with no commits cannot have a PR, so the draft opens on the first `save`. Run `gh pr ready <N>` when the work is ready; `pr-gate.sh` refuses drafts.
 - **`done`** also refuses while HEAD holds commits that are on no remote branch (unpushed), naming `scripts/worktree.sh save`.
@@ -434,6 +437,13 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: `0` on success, `1` on error or safety refusal.
 - **Selftest**: `scripts/worktree-selftest.sh`.
 - **Trigger**: Developer CLI, Gump/Rigel bot tasks, automation routines.
+
+### `owner-guard-selftest.sh`
+- **Purpose**: Hermetic selftest suite for the owner checkout guard (`scripts/lib/owner-guard.sh`). Verifies that `worktree.sh` and `pr-gate.sh` refuse (exit 4) when run from or linked to the owner's checkout (`$HOME/dev/opensand`), pass when run in an independent clone/worktree, and allow execution when overridden with `OPENSAND_OWNER=1`. Also verifies that removing the guard causes the refusal check to fail.
+- **Usage**: `scripts/owner-guard-selftest.sh`
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, verification suite.
 
 ### `worktree-selftest.sh`
 - **Purpose**: Hermetic selftest suite verifying the base clone, worktree creation (including the `df` stub proving the free-space guard measures the data volume), branch isolation, review worktree detachment, dirty/unmerged/unpushed refusal, pruning dry-run, and `save` (explicit-path staging, secret refusal per pattern with runtime-built fake tokens, hooks on, push verification, one draft PR).

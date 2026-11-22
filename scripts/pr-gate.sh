@@ -26,6 +26,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$ROOT/scripts"
+
+source "$SCRIPT_DIR/lib/owner-guard.sh"
+assert_not_owner_checkout "pr-gate.sh"
+
 cd "$ROOT"
 
 DRY_RUN=0

@@ -373,7 +373,8 @@ brief = f"""## Goal
 Implement the {feature_title} view in the Preact shell for Phase 5 View Inventory Row {target_row}, with parity to legacy `packages/desktop/renderer/app.js` {legacy_app_summary} and `index.html` {legacy_html_summary}, verified in a real Electron window with zero horizontal overflow.{note_section}
 
 ## Scope
-1. Files to create/modify (base: origin/main `{git_sha}`):
+1. `cd ~/dev/_scratch/opensand-base && git fetch origin`, then create your worktree FROM THAT CLONE off origin/main (`{git_sha}` or later).
+2. Files to create/modify:
    - Server routes (verified in `packages/desktop/src/desktop-server.ts`, do not change them):
 {routes_block}
    - Legacy elements to replicate (`index.html`):
@@ -395,12 +396,13 @@ Implement the {feature_title} view in the Preact shell for Phase 5 View Inventor
    - Create `packages/desktop/test/{slug}-real-window.test.ts`:
      - Real Electron window test verifying UI states, modals, and layout at 960x740 and 1920x1080 with zero horizontal overflow.
    - `docs/design/phase5-view-inventory.md`: Row {target_row} → `done` with a one-line description and the test names.
-2. Off-limits:
+3. Off-limits:
    - Do NOT edit or delete `packages/desktop/renderer/app.js` or `index.html` (kept until the Phase 5 deletion gate).
    - Do NOT edit `desktop-server.ts`, `packages/coordinator` or `packages/local-exec-daemon`.
    - Leave open PR #159 alone. Never touch `~/dev/opensand`, `~/.opensand`, or `/Applications/OpenSand.app`.
 
 ## Fixed Rules
+- Never run anything in `~/dev/opensand`, not even read-only git; always work from `~/dev/_scratch/opensand-base` or scratch worktrees.
 - Worktree via `scripts/worktree.sh new phase5-{slug}-view` off origin/main; remove with `scripts/worktree.sh done` after merge.
 - Commit and push work-in-progress early so a stop loses nothing.
 - Work economically: grep then read only needed line ranges; run only the {slug} tests while coding; run verify.sh once before the PR; never re-run a passing check.
