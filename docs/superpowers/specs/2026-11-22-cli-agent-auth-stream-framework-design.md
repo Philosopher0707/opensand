@@ -77,13 +77,15 @@ Baseline: `39a94f6`, branch `feat/agent-settings-ui`. `CONTEXT.md` section 7 is 
 ### P3 — Stream conventions and framework fidelity
 - Keep `dispatchDriverEvent`'s deliberate `text.delta` skip. Add permission handling in the **shim**
   (`provider-llm.ts`), not by adding a DesktopEvent type or new IPC method:
-  - `DriverLlmClientInput` gains `onPermissionRequest?: (req) => Promise<{behavior:'allow'|'answer'|'reject'}>`.
+  - `DriverLlmClientInput` gains `onPermissionRequest?: (req) => Promise<{behavior:'allow'|'reject'|'answer'; always?: boolean}>`.
     The bridge supplies it from its existing approval system (`approval_required` → `approveTool`,
-    `ipc-bridge.ts:1005-1020`); map `approve_once`/`always_allow` → `allow`, `reject` → `reject`.
+    `ipc-bridge.ts:1005-1020`); map `approve_once` → `{behavior:'allow'}`, `always_allow` →
+    `{behavior:'allow', always:true}`, `reject` → `{behavior:'reject'}`.
   - ACP/Codex `permission.request` events already carry `threadId`/`requestId` (`acp-runtime.ts:178`,
     `codex-runtime.ts:175`). The shim passes them with method/options to `onPermissionRequest`, then calls
-    `instance.respondToRequest(threadId, requestId, {behavior})` using the retained CLI instance
-    (`DriverLlmClientInput.onInstance`, `provider-llm.ts:31,149`).
+    **`instance.adapter.respondToRequest(threadId, requestId, decision)`** — `respondToRequest` is on
+    `ProviderAdapter` (`shared/src/types.ts:586`), not `ProviderInstance`. The shim already holds
+    `instance` directly (`provider-llm.ts:58-62,150`); no instance-id round-trip is needed.
   - No UI response → existing fail-closed timeout; no silent approval.
 - Framework prompt:
   - Add `toolClaim?: 'full' | 'none'` to `SystemPromptContext` (`system-prompt.ts:3-11`). `buildSystemPrompt`
