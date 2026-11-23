@@ -1,0 +1,34 @@
+#!/usr/bin/env node
+// Fake Antigravity `agy -p <prompt> --output-format stream-json` (agy 1.4.12): {event, conversation_id, <event>: {...}}
+// lines: init, step_update (state ACTIVE|DONE, step_type user_input|agent_response|tool), then a terminal result with
+// status SUCCESS|ERROR. --mode plan --sandbox is advisory in agy: this fake does not enforce it.
+// Prompt markers: FAIL_AUTH (stderr "Error: not logged in", exit 1), BADMODEL (ERROR result, exit 1), HANG (no output).
+// Logs argv, stdin kind and pid to $FAKE_LOG.
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+if (args[0] === "--version") { console.log("1.4.12"); process.exit(0); }
+const stdinKind = () => { try { const s = fs.fstatSync(0); return s.isSocket() || s.isFIFO() ? "pipe" : s.isCharacterDevice() ? "null" : "other"; } catch { return "closed"; } };
+const prompt = args[args.indexOf("-p") + 1] || "";
+const conv = args.includes("--conversation") ? args[args.indexOf("--conversation") + 1] : null;
+const id = conv || "conv-agy-1";
+const f = process.env.FAKE_LOG;
+if (f) fs.writeFileSync(f, JSON.stringify({ engine: "antigravity", args, prompt, stdin: stdinKind(), pid: process.pid, cwd: process.cwd() }));
+const out = (event, body) => process.stdout.write(JSON.stringify({ event, conversation_id: id, [event]: body }) + "\n");
+const step = (o) => out("step_update", { conversation_id: id, ...o });
+if (/FAIL_AUTH/.test(prompt)) { console.error("Error: not logged in"); process.exit(1); }
+if (/HANG/.test(prompt)) { setInterval(() => {}, 1000); }
+else if (/BADMODEL/.test(prompt)) {
+  out("result", { conversation_id: "", status: "ERROR", response: "", error: "invalid model selection: model x is not recognized", finished_reason: "error" });
+  process.exit(1);
+} else {
+  out("init", { cwd: process.cwd(), tools: ["view_file", "write_to_file"], permission_mode: "always-proceed" });
+  step({ step_index: 0, state: "DONE", step_type: "user_input" });
+  step({ step_index: 1, state: "DONE", step_type: "agent_response", usage: { input_tokens: 9 } });
+  step({ step_index: 2, state: "ACTIVE", step_type: "tool", tool_name: "view_file", tool_info: { name: "view_file", parameters: { path: "note.txt" } } });
+  step({ step_index: 2, state: "DONE", step_type: "tool", tool_name: "view_file", tool_info: { name: "view_file", parameters: { path: "note.txt" }, output: "hello" } });
+  step({ step_index: 3, state: "ACTIVE", step_type: "agent_response", text_delta: conv ? `continued ${conv}` : "The note " });
+  if (!conv) step({ step_index: 3, state: "ACTIVE", step_type: "agent_response", text_delta: "says hello." });
+  step({ step_index: 3, state: "DONE", step_type: "agent_response", usage: { input_tokens: 9 } });
+  out("result", { conversation_id: id, status: "SUCCESS", response: conv ? `continued ${conv}` : "The note says hello.\n", num_turns: 1 });
+  process.exit(0);
+}
