@@ -1,3 +1,4 @@
+import { whenElectronExited } from "./helpers/electron-exit.js";
 import test from "node:test";
 import assert from "node:assert";
 import { spawn } from "node:child_process";
@@ -508,14 +509,16 @@ test("Preact bots & templates view, roster, tasks, and modals at 960x740 and 192
         stderr += String(err);
       });
       return new Promise<number>((resolve) => {
-        const watchdog = setTimeout(() => {
-          child.kill("SIGKILL");
-          resolve(124);
-        }, 180_000);
-        child.on("close", (c) => {
+        let done = false;
+        let watchdog: NodeJS.Timeout;
+        const settle = (code: number) => {
+          if (done) return;
+          done = true;
           clearTimeout(watchdog);
-          resolve(c ?? 0);
-        });
+          resolve(code);
+        };
+        watchdog = setTimeout(() => { child.kill("SIGKILL"); settle(124); }, 180_000);
+        void whenElectronExited(child).then(settle);
       });
     });
 
