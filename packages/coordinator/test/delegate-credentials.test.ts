@@ -184,6 +184,94 @@ describe("delegate production wiring", () => {
     }
   });
 
+  it("gives delegated CLI children an honest prompt and routes their permissions through the injected callback", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-delegate-cli-"));
+    let emit: (event: unknown) => void = () => {};
+    const permissionRequests: Array<{ threadId: string; requestId: string; method?: string; options?: unknown }> = [];
+    let markSeen!: () => void;
+    const seen = new Promise<void>((resolve) => { markSeen = resolve; });
+    const models = { default: "fake-cli-1", options: [{ id: "fake-cli-1", label: "Fake CLI" }] };
+    const fake: ProviderDriver = {
+      driverKind: "fake-delegate-cli",
+      metadata: { displayName: "Fake Delegate CLI", access: "custom", cli: true },
+      models,
+      decodeConfig: (raw) => raw,
+      defaultConfig: () => ({}),
+      async create(input) {
+        return {
+          instanceId: input.instanceId,
+          driverKind: "fake-delegate-cli",
+          displayName: input.displayName,
+          enabled: input.enabled,
+          models,
+          adapter: {
+            provider: "fake-delegate-cli",
+            capabilities: {},
+            async sendTurn() {
+              emit({ type: "permission.request", threadId: "child-thread", requestId: "child-req-1", method: "exec" });
+              return { text: "cli child ok", toolCalls: [] };
+            },
+            steer: () => Promise.resolve(),
+            interruptTurn: () => Promise.resolve(),
+            respondToRequest: () => Promise.resolve("allowed-once" as const),
+            hasSession: () => false,
+            enginePid: () => undefined,
+            stopAll: () => Promise.resolve(),
+            onEvent: (listener) => { emit = listener; return () => {}; },
+          },
+          snapshot: async () => ({ instanceId: input.instanceId, driverKind: "fake-delegate-cli", enabled: input.enabled }),
+          dispose: () => Promise.resolve(),
+        };
+      },
+    };
+    providerRegistry.register(fake);
+    const daemon = new LocalExecDaemon({ stateDir: path.join(tmpDir, "state") });
+    await daemon.start();
+    await daemon.state.writePermissionGates({ computerUseAllowed: true });
+    const sessionsBaseDir = path.join(tmpDir, "sessions");
+    try {
+      const store = new AgentStore(path.join(tmpDir, "agents"));
+      registerOrchestratorTools({
+        daemon,
+        store,
+        sessionsBaseDir,
+        onPermissionRequest: async (req) => {
+          permissionRequests.push(req);
+          markSeen();
+          return { behavior: "allow" };
+        },
+      });
+      const agent = await store.createAgent({
+        name: "CLI Bot",
+        role: "Research Assistant",
+        systemPrompt: "You research things.",
+        provider: "fake-delegate-cli",
+      });
+      const res = await daemon.executeTool("delegate_to_agent", {
+        agent_id_or_name: agent.id,
+        task: "do research",
+      });
+      assert.strictEqual(res.status, "ok");
+      await Promise.race([
+        seen,
+        new Promise((_resolve, reject) => setTimeout(() => reject(new Error("delegated CLI permission never reached the callback")), 2000)),
+      ]);
+      assert.deepStrictEqual(permissionRequests.map((r) => r.requestId), ["child-req-1"]);
+      assert.strictEqual(permissionRequests[0].method, "exec");
+      assert.strictEqual(permissionRequests[0].threadId, "child-thread");
+
+      const childDirs = fs.readdirSync(sessionsBaseDir).filter((name) => name.startsWith("sub_"));
+      assert.ok(childDirs.length >= 1, "a child session must be created");
+      const log = fs.readFileSync(path.join(sessionsBaseDir, childDirs[0], "event-log.jsonl"), "utf8");
+      assert.ok(log.includes("You are CLI Bot"), "child system prompt must be recorded");
+      assert.ok(!log.includes("## Tools Available"), "CLI child must not claim the app tool loop");
+    } finally {
+      await daemon.stop();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      await providerRegistry.disposeAll();
+    }
+  });
+
   it("propagates parent cancellation to the child and bounds the delegation registry", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-delegate-lifecycle-"));
     let mode: "hang" | "fast" = "hang";

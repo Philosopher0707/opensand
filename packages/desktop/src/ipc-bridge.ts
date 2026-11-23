@@ -246,6 +246,7 @@ export class DesktopIpcBridge extends EventEmitter {
       resolveApiKey: () => this.settings.apiKey,
       resolveProvider: () => this.settings.provider,
       resolveEndpoint: () => this.settings.endpoint,
+      onPermissionRequest: (req) => this.resolveProviderPermission(req),
       sessionsBaseDir: path.join(this.baseDir, 'sessions'),
     });
 
@@ -717,15 +718,7 @@ export class DesktopIpcBridge extends EventEmitter {
         });
       },
       onDriverEvent: (event) => this.dispatchDriverEvent(activeSessionId, event),
-      onPermissionRequest: async (req) => {
-        const ok = await this.requestUserApproval(
-          'provider_permission', { ...req },
-          'CLI agent requests permission to continue',
-          activeSessionId,
-          true // forcePrompt
-        );
-        return { behavior: ok ? 'allow' : 'reject' };
-      },
+      onPermissionRequest: (req) => this.resolveProviderPermission(req, activeSessionId),
     });
     const llmClient = driverClient ?? new UniversalLLMClient({
       baseUrl: targetEndpoint,
@@ -972,6 +965,20 @@ export class DesktopIpcBridge extends EventEmitter {
     this.sessionAdmission.cancelQueued(runtime.key);
     this.sessionAdmission.release(runtime.agentId ?? 'default', runtime.key);
     this.sessionRuntimes.remove(runtime.key);
+  }
+
+  /** Shared CLI permission resolver for main-turn and delegated drivers. */
+  private async resolveProviderPermission(
+    req: { threadId: string; requestId: string; method?: string; options?: unknown },
+    sessionId?: string,
+  ): Promise<{ behavior: 'allow' | 'reject' }> {
+    const ok = await this.requestUserApproval(
+      'provider_permission', { ...req },
+      'CLI agent requests permission to continue',
+      sessionId,
+      true // forcePrompt
+    );
+    return ok ? { behavior: 'allow' } : { behavior: 'reject' };
   }
 
   public async requestUserApproval(

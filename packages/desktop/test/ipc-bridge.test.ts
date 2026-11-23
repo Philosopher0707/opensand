@@ -4,7 +4,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { DesktopIpcBridge as BaseDesktopIpcBridge } from '../src/ipc-bridge.js';
-import { workspaceSentinel, DEFAULT_ROLE_TOOLS } from '@opensand/coordinator';
+import { workspaceSentinel, DEFAULT_ROLE_TOOLS, providerRegistry } from '@opensand/coordinator';
+import type { ProviderDriver } from '@opensand/shared';
 
 const createdBridges: BaseDesktopIpcBridge[] = [];
 class DesktopIpcBridge extends BaseDesktopIpcBridge {
@@ -937,4 +938,73 @@ test("a non-chief role keeps its narrow tool whitelist", async () => {
     assert.ok(!resolved.includes("delegate_to_agent"), "non-chief must not resolve delegate_to_agent");
     assert.ok(!resolved.includes("await_agent"), "non-chief must not resolve await_agent");
   } finally { fs.rmSync(tmpDir, { recursive: true, force: true }); }
+});
+
+// registerOrchestratorTools captures the bridge's permission callback at
+// construction; a delegated CLI permission can only reach the approval UI if
+// that callback was passed through. Driving the real approval path proves it.
+test("delegated CLI permissions use the bridge's main-turn approval UI", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-delegate-cli-approval-"));
+  let emit: (event: unknown) => void = () => {};
+  const models = { default: "fake-cli-1", options: [{ id: "fake-cli-1", label: "Fake CLI" }] };
+  const fake: ProviderDriver = {
+    driverKind: "fake-desktop-delegate-cli",
+    metadata: { displayName: "Fake Desktop Delegate CLI", access: "custom", cli: true },
+    models,
+    decodeConfig: (raw) => raw,
+    defaultConfig: () => ({}),
+    async create(input) {
+      return {
+        instanceId: input.instanceId,
+        driverKind: "fake-desktop-delegate-cli",
+        displayName: input.displayName,
+        enabled: input.enabled,
+        models,
+        adapter: {
+          provider: "fake-desktop-delegate-cli",
+          capabilities: {},
+          async sendTurn() {
+            emit({ type: "permission.request", threadId: "child-thread", requestId: "delegated-req-1", method: "exec" });
+            return { text: "cli child ok", toolCalls: [] };
+          },
+          steer: () => Promise.resolve(),
+          interruptTurn: () => Promise.resolve(),
+          respondToRequest: () => Promise.resolve("allowed-once" as const),
+          hasSession: () => false,
+          enginePid: () => undefined,
+          stopAll: () => Promise.resolve(),
+          onEvent: (listener) => { emit = listener; return () => {}; },
+        },
+        snapshot: async () => ({ instanceId: input.instanceId, driverKind: "fake-desktop-delegate-cli", enabled: input.enabled }),
+        dispose: () => Promise.resolve(),
+      };
+    },
+  };
+  providerRegistry.register(fake);
+  const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+  try {
+    await bridge.daemon.state.writePermissionGates({ computerUseAllowed: true });
+    bridge.updateSettings({ autoApprove: true, provider: "openai" });
+    const approvals: any[] = [];
+    bridge.on('event', (event) => {
+      if (event.type !== 'approval_required' || event.data?.toolName !== 'provider_permission') return;
+      approvals.push(event.data);
+      void bridge.approveTool(event.data.approvalId, { action: 'approve_once' });
+    });
+    const agent = await bridge.createAgent({
+      name: 'CLI Specialist', role: 'Research Assistant', systemPrompt: 'x',
+      provider: 'fake-desktop-delegate-cli',
+    });
+    const result = await bridge.daemon.executeTool('delegate_to_agent', {
+      agent_id_or_name: agent.id,
+      task: 'do research',
+    });
+    assert.strictEqual(result.status, 'ok');
+    assert.deepStrictEqual(approvals.map((a) => a.args?.requestId), ['delegated-req-1']);
+    assert.strictEqual(approvals[0].reason, 'CLI agent requests permission to continue');
+  } finally {
+    await bridge.close();
+    await providerRegistry.disposeAll();
+    rmTmp(tmpDir);
+  }
 });

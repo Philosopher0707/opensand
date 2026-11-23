@@ -14,7 +14,7 @@ import { GitManager } from "./git-manager.js";
 import { WorkspaceSentinel, createAutonomousHealer } from "./workspace-sentinel.js";
 import { AttachmentManager } from "./attachment-manager.js";
 import { UniversalLLMClient } from "./llm-client.js";
-import { createDriverLlmClient } from "./provider-llm.js";
+import { createDriverLlmClient, driverKindForProvider } from "./provider-llm.js";
 import { providerRegistry } from "./provider-registry.js";
 import { AgentCoordinator } from "./coordinator.js";
 import { buildToolDiscoverySummary, resolveRoleAllowedTools, recommendToolScopeMode } from "./token-hygiene.js";
@@ -72,6 +72,8 @@ export interface RegisterOrchestratorToolsOptions {
   resolveApiKey?: () => string | undefined;
   resolveProvider?: () => string | undefined;
   resolveEndpoint?: () => string | undefined;
+  /** Resolve a delegated CLI driver's permission request; absence fails closed. */
+  onPermissionRequest?: (req: { threadId: string; requestId: string; method?: string; options?: unknown }) => Promise<{ behavior: 'allow' | 'reject' }>;
   sessionsBaseDir?: string;
   repoRoot?: string;
 }
@@ -455,12 +457,20 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
       const subagentModel = resolveAgentModel(agent.model, options.defaultModel);
       const liveApiKey = options.resolveApiKey?.() ?? options.defaultApiKey;
       const subagentEndpoint = agent.endpoint || options.resolveEndpoint?.() || options.defaultEndpoint || "http://127.0.0.1:11434/v1";
+      const delegateProvider = agent.provider || options.resolveProvider?.() || options.defaultProvider || "";
+      // Same driver resolution as createDriverLlmClient, so the prompt claim
+      // matches the driver that actually runs the child turn.
+      const driverKind = providerRegistry.hasDriver(delegateProvider)
+        ? delegateProvider
+        : driverKindForProvider(delegateProvider);
+      const isCli = driverKind ? providerRegistry.getDriver(driverKind)?.metadata.cli === true : false;
       let delegateInstanceId: string | undefined;
       const subagentLlm = (await createDriverLlmClient({
-        provider: agent.provider || options.resolveProvider?.() || options.defaultProvider || "",
+        provider: delegateProvider,
         endpoint: subagentEndpoint,
         model: subagentModel,
         apiKey: liveApiKey,
+        onPermissionRequest: options.onPermissionRequest ?? (async () => ({ behavior: 'reject' as const })),
         onInstance: (id) => { delegateInstanceId = id; },
       })) ?? new UniversalLLMClient({
         baseUrl: subagentEndpoint,
@@ -481,6 +491,9 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           role: agent.role,
           allowedTools: effectiveAllowedTools,
         }),
+        // CLI children own their tools inside their own process; the app's
+        // tool loop is not available to them.
+        toolClaim: isCli ? 'none' : 'full',
         systemPromptContext: {
           userInstructions: agent.systemPrompt,
           learnedRules: await habitExtractor.getLearnedRulesMarkdown(),
