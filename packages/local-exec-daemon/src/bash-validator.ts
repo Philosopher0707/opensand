@@ -11,14 +11,22 @@ export interface ValidationResult {
   dangerReason?: string;
 }
 
+// Destructive flags in every spelling an attacker can use: combined -rf/-fr,
+// split -r -f, and long --recursive --force (either order).
+const RM_FLAGS = String.raw`(?:-(?:[a-zA-Z]*r[a-zA-Z]*f|[a-zA-Z]*f[a-zA-Z]*r)(?![a-zA-Z])|-(?:r|f)(?:\s+--?[a-zA-Z0-9-]+)*\s+-(?:f|r)(?![a-zA-Z])|--recursive(?:\s+--?[a-zA-Z0-9-]+)*\s+--force|--force(?:\s+--?[a-zA-Z0-9-]+)*\s+--recursive)`;
+// A wrapped command ends the path with a quote, paren, backtick or shell operator
+// instead of whitespace/end, so the old (?:\s|$) terminator let it through.
+const CMD_EDGE = '[\\s;&|)"`]|$';
+const RM_PREFIX = String.raw`\brm\b(?:\s+--?[a-zA-Z0-9-]+)*?\s+` + RM_FLAGS + String.raw`(?:\s+--?[a-zA-Z0-9-]+)*\s+`;
+
 const DANGEROUS_PATTERNS = [
   {
-    pattern: /\brm\b(?:\s+--?[a-zA-Z0-9-]+)*\s+-(?:[a-zA-Z]*r[a-zA-Z]*f|[a-zA-Z]*f[a-zA-Z]*r)\b(?:\s+--?[a-zA-Z0-9-]+)*\s+(?:\/|\/\*|~)(?:\s|$)/,
+    pattern: new RegExp(RM_PREFIX + String.raw`(?:\/\*?|~\/?|\$\([^)]*\/[^)]*\))` + `(?:${CMD_EDGE})`),
     reason: "Destructive root/home recursive deletion",
   },
   {
     // A bare variable (X=/; rm -rf $X) hides the root/home target from the pattern above.
-    pattern: /\brm\b(?:\s+--?[a-zA-Z0-9-]+)*\s+-(?:[a-zA-Z]*r[a-zA-Z]*f|[a-zA-Z]*f[a-zA-Z]*r)\b(?:\s+--?[a-zA-Z0-9-]+)*\s+\$\{?[A-Za-z_][A-Za-z0-9_]*\}?(?:\s|$)/,
+    pattern: new RegExp(RM_PREFIX + String.raw`\$\{?[A-Za-z_][A-Za-z0-9_]*\}?` + `(?:${CMD_EDGE})`),
     reason: "Destructive recursive deletion via variable",
   },
   { pattern: /\bmkfs(?:\.[a-zA-Z0-9]+)?\s+/, reason: "Filesystem formatting command" },
@@ -33,9 +41,10 @@ export function validateBashCommand(command: string): ValidationResult {
     return { valid: false, isDangerous: false, error: "Empty command string" };
   }
 
-  // 1. Check for dangerous destructive patterns. Quoting a root/home path (rm -rf "/")
-  // must not dodge the denylist; syntax checks below still use the original text.
-  const forMatching = trimmed.replace(/["'](\/\*?|~)["']/g, "$1");
+  // 1. Quotes must not hide a destructive target: r""m -rf /, rm -rf ""/, rm -rf "$HOME"
+  // and sh -c "rm -rf /" all reduce to the bare form for matching. Syntax checks
+  // below still use the original text.
+  const forMatching = trimmed.replace(/["']/g, "");
   for (const { pattern, reason } of DANGEROUS_PATTERNS) {
     if (pattern.test(forMatching)) {
       return { valid: true, isDangerous: true, dangerReason: reason };

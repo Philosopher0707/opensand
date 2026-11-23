@@ -71,6 +71,13 @@ export function isChatBusy(status: ChatTurnStatus): boolean {
   return status === "sending" || status === "waiting" || status === "streaming";
 }
 
+/** Retry re-sends the last user turn, so it only appears after a failure or a stop with one to send. */
+export function canRetryTurn(state: ChatTurnState): boolean {
+  if (isChatBusy(state.status)) return false;
+  if (state.status !== "error" && state.status !== "stopped") return false;
+  return state.messages.some((message) => message.role === "user");
+}
+
 /**
  * Extracts <think>...</think> or <thinking>...</thinking> blocks from raw text.
  * Also handles unclosed tags during streaming.

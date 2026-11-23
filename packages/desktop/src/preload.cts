@@ -21,6 +21,14 @@ try {
   }
 
   if (isAllowed && contextBridge && ipcRenderer) {
+    try {
+      contextBridge.exposeInMainWorld("api", {
+        engines: {
+          detect: () => ipcRenderer.invoke("engines:detect"),
+        },
+      });
+    } catch {}
+
     contextBridge.exposeInMainWorld('opensand', {
       sendQuery: (query: string, sessionId?: string, agentId?: string) =>
         ipcRenderer.invoke('opensand:sendQuery', { query, sessionId, agentId }),
@@ -30,6 +38,11 @@ try {
         ipcRenderer.invoke('opensand:listPendingApprovals'),
       getToolDiscovery: () =>
         ipcRenderer.invoke('opensand:getToolDiscovery'),
+      detectEngines: () =>
+        ipcRenderer.invoke('engines:detect'),
+      engines: {
+        detect: () => ipcRenderer.invoke('engines:detect'),
+      },
       cancelTurn: () =>
         ipcRenderer.invoke('opensand:cancelTurn'),
       getSessions: () =>
@@ -69,6 +82,13 @@ try {
         ipcRenderer.on('opensand:event', handler);
         return () => {
           ipcRenderer.removeListener('opensand:event', handler);
+        };
+      },
+      onOpenSettings: (callback: () => void) => {
+        const handler = () => callback();
+        ipcRenderer.on('opensand:openSettings', handler);
+        return () => {
+          ipcRenderer.removeListener('opensand:openSettings', handler);
         };
       },
     });

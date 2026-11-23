@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Pre-merge gate for OpenSand PRs: runs checks 1-5 and merges only when all pass.
-# Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] [--when-green [--timeout <min>]] [--no-post-merge-check] <PR-number>
+# Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] [--when-green [--timeout <min>]] [--no-post-merge-check] [--no-review "<reason>"] <PR-number>
+#
+# A PR needs the `rigel-pass` label before it can merge; --no-review "<reason>" is the only
+# escape hatch and records the reason in the merge commit body. A stale base (Check 2) is
+# updated with `gh pr update-branch` and exits 3 for a re-run; this script never waits on CI here.
 #
 # --when-green  First wait for pending CI with `gh pr checks --watch` (bounded by
 #               --timeout minutes, default 40), then run the normal 5 checks and merge.
@@ -38,11 +42,13 @@ ALLOW_LOCKFILE=0
 ALLOW_BINARY=0
 WHEN_GREEN=0
 POST_MERGE_CHECK=1
+NO_REVIEW=0
+NO_REVIEW_REASON=""
 TIMEOUT_MIN=40
 # Seconds per --timeout unit (60 = minutes); only the selftest overrides it.
 TIMEOUT_UNIT_SECONDS="${PR_GATE_TIMEOUT_UNIT_SECONDS:-60}"
 PR=""
-USAGE="Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] [--when-green [--timeout <min>]] [--no-post-merge-check] <PR-number>"
+USAGE="Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] [--when-green [--timeout <min>]] [--no-post-merge-check] [--no-review \"<reason>\"] <PR-number>"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -65,6 +71,15 @@ while [[ $# -gt 0 ]]; do
     --no-post-merge-check)
       POST_MERGE_CHECK=0
       shift
+      ;;
+    --no-review)
+      if [[ $# -lt 2 || -z "$2" || "$2" == --* ]]; then
+        echo "FAIL: --no-review requires a reason" >&2
+        exit 1
+      fi
+      NO_REVIEW=1
+      NO_REVIEW_REASON="$2"
+      shift 2
       ;;
     --timeout)
       if [[ $# -lt 2 || ! "$2" =~ ^[1-9][0-9]*$ ]]; then
@@ -495,7 +510,7 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
 fi
 
 echo "==> [Check 1/5] Checking PR #$PR status and CI rollups..."
-if ! PR_JSON=$(gh pr view "$PR" --json state,isDraft,mergeable,baseRefOid,headRefOid,statusCheckRollup,body 2>&1); then
+if ! PR_JSON=$(gh pr view "$PR" --json state,isDraft,mergeable,baseRefOid,headRefOid,statusCheckRollup,body,labels 2>&1); then
   echo "FAIL: gh pr view failed for PR #$PR: $PR_JSON" >&2
   exit 1
 fi
@@ -518,7 +533,7 @@ if [[ "$IS_WORKTREE_DRAFT" == "true" ]]; then
       exit 1
     fi
   fi
-  if ! PR_JSON=$(gh pr view "$PR" --json state,isDraft,mergeable,baseRefOid,headRefOid,statusCheckRollup,body 2>&1); then
+  if ! PR_JSON=$(gh pr view "$PR" --json state,isDraft,mergeable,baseRefOid,headRefOid,statusCheckRollup,body,labels 2>&1); then
     echo "FAIL: gh pr view failed for PR #$PR: $PR_JSON" >&2
     exit 1
   fi
@@ -597,7 +612,13 @@ if [[ -z "$REMOTE_MAIN_SHA" ]]; then
 fi
 
 if [[ "$BASE_REF_OID" != "$REMOTE_MAIN_SHA" ]]; then
-  echo "FAIL: PR base is out of date: PR baseRefOid ($BASE_REF_OID) does not match origin/main ($REMOTE_MAIN_SHA)" >&2
+  echo "PR base is out of date: baseRefOid ($BASE_REF_OID) != origin/main ($REMOTE_MAIN_SHA); updating branch..."
+  if UPDATE_ERR=$(gh pr update-branch "$PR" 2>&1); then
+    echo "$UPDATE_ERR"
+    echo "branch updated; CI re-running; re-run pr-gate when green"
+    exit 3
+  fi
+  echo "FAIL: could not update PR #$PR branch: $UPDATE_ERR" >&2
   exit 1
 fi
 echo "PASS: PR base is up to date with origin/main ($REMOTE_MAIN_SHA)"
@@ -671,6 +692,23 @@ if [[ "$CHECK3_STATUS" -ne 0 ]]; then
 fi
 echo "$CHECK3_OUT"
 
+echo "==> [Review gate] Checking Rigel PASS label on PR #$PR..."
+gh label create rigel-pass --color 0e8a16 --description "Rigel QA verified" 2>/dev/null || true
+HAS_RIGEL_PASS=$(node -e '
+const d = JSON.parse(process.argv[1] || "{}");
+const labels = (d.labels || []).map(l => (typeof l === "string" ? l : (l && l.name) || ""));
+console.log(labels.includes("rigel-pass") ? "1" : "0");
+' "$PR_JSON" 2>/dev/null || echo 0)
+if [[ "$HAS_RIGEL_PASS" -ne 1 && "$NO_REVIEW" -eq 0 ]]; then
+  echo "FAIL: PR #$PR needs Rigel PASS (label rigel-pass)" >&2
+  exit 1
+fi
+if [[ "$NO_REVIEW" -eq 1 ]]; then
+  echo "WARNING: merging PR #$PR without Rigel PASS; reason: $NO_REVIEW_REASON"
+else
+  echo "PASS: PR #$PR carries the rigel-pass label"
+fi
+
 DATE=$(date +%Y-%m-%d)
 TAG="checkpoint/${DATE}/main-before-pr-${PR}"
 
@@ -702,7 +740,11 @@ fi
 echo "PASS: checkpoint tag $TAG verified on origin pointing to $REMOTE_MAIN_SHA"
 
 echo "==> [Check 5/5] Merging PR #$PR..."
-if ! gh pr merge "$PR" --merge; then
+MERGE_ARGS=("$PR" --merge)
+if [[ "$NO_REVIEW" -eq 1 ]]; then
+  MERGE_ARGS+=(--body "Review waiver: $NO_REVIEW_REASON")
+fi
+if ! gh pr merge "${MERGE_ARGS[@]}"; then
   echo "FAIL: gh pr merge failed for PR #$PR" >&2
   exit 1
 fi

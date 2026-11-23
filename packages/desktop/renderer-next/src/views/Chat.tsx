@@ -8,6 +8,7 @@ import {
   INITIAL_CHAT_TURN,
   chatEventAction,
   chatTurnReducer,
+  canRetryTurn,
   isChatBusy,
   reconstructSessionMessages,
   type ChatMessage,
@@ -17,6 +18,7 @@ import {
 } from "../../../src/shell/chat-turn-model";
 import type { ArtifactItem } from "../../../src/shell/canvas-model";
 import type { TurnEvent } from "../../../src/shell/quick-capture-model";
+import { querySendArgs } from "../../../src/shell/query-send-model";
 import { renderMarkdown } from "./chat-markdown";
 import {
   DEFAULT_PROMPT_CHIPS,
@@ -43,7 +45,11 @@ export interface ChatTurnController {
   dispatch?: (action: ChatTurnAction) => void;
 }
 
-export function useChatTurn(data: ShellData, selectedSessionId?: string | null): ChatTurnController {
+export function useChatTurn(
+  data: ShellData,
+  selectedSessionId?: string | null,
+  activeAgentId?: string | null,
+): ChatTurnController {
   const available = typeof data.sendQuery === "function";
   const [state, dispatch] = useReducer(
     chatTurnReducer,
@@ -87,7 +93,7 @@ export function useChatTurn(data: ShellData, selectedSessionId?: string | null):
     const text = query.trim();
     if (!data.sendQuery || !text || isChatBusy(stateRef.current.status)) return;
     dispatch({ type: "start", query: text });
-    data.sendQuery(text).then(
+    data.sendQuery(...querySendArgs(text, selectedSessionId, activeAgentId)).then(
       (res) => {
         if (res?.success === false) dispatch({ type: "failed", message: "The message did not send." });
         else dispatch({ type: "sent", sessionId: String(res?.sessionId ?? "") });
@@ -612,7 +618,7 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
       {/* Always mounted, so the first status change is announced. */}
       <div class="chat-status" role="status" aria-live="polite" data-status={state.status}>
         {statusText(state)}
-        {view === "error" && !busy && (
+        {canRetryTurn(state) && (
           <button type="button" class="btn btn-sm chat-retry" onClick={retry}>
             Retry
           </button>

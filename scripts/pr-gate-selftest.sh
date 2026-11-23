@@ -7,7 +7,7 @@
 # 4. lockfile in diff -> fail
 # 5. png in diff -> fail
 # 6. --allow-binary -> passes with a warning
-# 7. stale base -> fail
+# 7. stale base -> gh pr update-branch, exit 3 for a re-run
 # 8. tag push fails -> no merge
 # 11. --when-green: pending CI turns green during the watch -> normal checks run and merge
 # 12. --when-green: CI goes red -> exit 1 naming the failing job, no tag, no merge
@@ -34,6 +34,10 @@
 # 35. --when-green: `gh run list` status lags (COMPLETED) but the Jobs API says in_progress -> still waits
 # 36. an already-merged PR -> report the merge sha, only the post-merge check runs, no rebase/tag/push, exit 0 green
 # 37. an already-merged PR with red main CI -> exit 4, still no rebase/tag/push
+# 39. no rigel-pass label -> refused before any tag or merge
+# 40. rigel-pass label -> review check passes and merges
+# 41. --no-review without a reason -> refused
+# 42. --no-review with a reason -> merges with the reason in the merge commit body
 # Usage: scripts/pr-gate-selftest.sh (PR_GATE_SCRIPT=<path> to test another copy)
 set -uo pipefail
 
@@ -112,7 +116,18 @@ case "$1" in
           fi
         fi
         if [ -f "$TEST_CASE_DIR/pr_view.json" ]; then
-          cat "$TEST_CASE_DIR/pr_view.json"
+          # Default to a Rigel-approved PR so older cases stay focused on their own check;
+          # touch no_labels to simulate a PR missing the label.
+          if [ -f "$TEST_CASE_DIR/no_labels" ]; then
+            cat "$TEST_CASE_DIR/pr_view.json"
+          else
+            node -e '
+const fs = require("fs");
+const d = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+if (!d.labels) d.labels = [{ name: "rigel-pass" }];
+console.log(JSON.stringify(d));
+' "$TEST_CASE_DIR/pr_view.json"
+          fi
           exit 0
         fi
         echo "gh pr view: mock data missing in $TEST_CASE_DIR" >&2
@@ -163,8 +178,21 @@ case "$1" in
         echo "gh $*" >> "$TEST_CASE_DIR/ready_calls.log"
         exit 0
         ;;
+      update-branch)
+        echo "gh $*" >> "$TEST_CASE_DIR/update_branch_calls.log"
+        if [ -f "$TEST_CASE_DIR/fail_update_branch" ]; then
+          echo "gh pr update-branch failed" >&2
+          exit 1
+        fi
+        exit 0
+        ;;
       merge)
-        echo "gh pr merge $*" >> "$TEST_CASE_DIR/merge_calls.log"
+        # A duplicate subcommand (e.g. `gh pr merge merge 42`) used to pass this stub silently.
+        if [[ ! "${3:-}" =~ ^[0-9]+$ ]]; then
+          echo "gh stub: pr merge needs a numeric PR number, got '${3:-}'" >&2
+          exit 1
+        fi
+        echo "gh $*" >> "$TEST_CASE_DIR/merge_calls.log"
         if [ -f "$TEST_CASE_DIR/fail_merge" ]; then
           echo "gh pr merge failed" >&2
           exit 1
@@ -176,6 +204,10 @@ case "$1" in
         exit 1
         ;;
     esac
+    ;;
+  label)
+    echo "gh $*" >> "$TEST_CASE_DIR/label_calls.log"
+    exit 0
     ;;
   run)
     case "${2:-}" in
@@ -489,6 +521,12 @@ run_test_case() {
     if [[ ! -f "$dir/merge_calls.log" ]]; then
       echo "FAIL $label: expected gh pr merge to be called, but merge_calls.log is missing"
       ok=0
+    else
+      first_merge=$(head -n 1 "$dir/merge_calls.log")
+      if [[ ! "$first_merge" =~ ^gh\ pr\ merge\ [0-9]+\ --merge(\ |$) ]]; then
+        echo "FAIL $label: bad merge command: $first_merge"
+        ok=0
+      fi
     fi
   else
     if [[ -f "$dir/merge_calls.log" ]]; then
@@ -637,15 +675,19 @@ EXPECT_TAG=1
 NEED_SUBSTRINGS=("WARNING: --allow-binary passed" "allowing binary file in diff: docs/screenshot.png" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
 run_test_case "case6-allow-binary" --allow-binary 42
 
-# --- Case 7: Stale base -> fail ---
+# --- Case 7: Stale base -> update the branch itself and exit 3 for a re-run ---
 dir="$WORK/case7-stale-base"
 setup_defaults "$dir"
 echo "9999999999999999999999999999999999999999" > "$dir/remote_main_sha"
-EXPECT_EXIT=1
+EXPECT_EXIT=3
 EXPECT_MERGE=0
 EXPECT_TAG=0
-NEED_SUBSTRINGS=("FAIL: PR base is out of date" "1111111111111111111111111111111111111111" "9999999999999999999999999999999999999999")
+NEED_SUBSTRINGS=("updating branch" "branch updated; CI re-running; re-run pr-gate when green")
 run_test_case "case7-stale-base" 42
+if ! grep -qF "update-branch 42" "$dir/update_branch_calls.log" 2>/dev/null; then
+  echo "FAIL case7: gate never called gh pr update-branch 42"
+  FAILED=1
+fi
 
 # --- Case 8: Tag push fails -> no merge ---
 dir="$WORK/case8-tag-push-fails"
@@ -1284,6 +1326,48 @@ NEED_SUBSTRINGS=("base is behind origin/main" "rebase attempt 1/3" "force-pushed
 PR_GATE_POLL_SECONDS=1 PR_GATE_NO_CHECKS_GRACE_SECONDS=7 run_test_case "case38-rebase-resets-no-checks-window" --when-green 42
 if [[ "$(wc -l < "$dir/checks_calls.log" 2>/dev/null || echo 0)" -lt 3 ]]; then
   echo "FAIL case38: gate gave up before checks registered on the rebased SHA (stale no-checks deadline)"
+  FAILED=1
+fi
+
+# --- Case 39: no rigel-pass label -> refused before any tag or merge ---
+dir="$WORK/case39-no-review-label"
+setup_defaults "$dir"
+touch "$dir/no_labels"
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("FAIL: PR #42 needs Rigel PASS (label rigel-pass)")
+run_test_case "case39-no-review-label" 42
+
+# --- Case 40: rigel-pass label -> review gate passes and merges ---
+dir="$WORK/case40-review-label-ok"
+setup_defaults "$dir"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("PASS: PR #42 carries the rigel-pass label" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+run_test_case "case40-review-label-ok" 42
+
+# --- Case 41: --no-review without a reason -> refused ---
+dir="$WORK/case41-no-review-no-reason"
+setup_defaults "$dir"
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("FAIL: --no-review requires a reason")
+run_test_case "case41-no-review-no-reason" 42 --no-review
+
+# --- Case 42: --no-review with a reason -> merge body records the reason ---
+dir="$WORK/case42-no-review-with-reason"
+setup_defaults "$dir"
+touch "$dir/no_labels"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("WARNING: merging PR #42 without Rigel PASS; reason: incident INC-42" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+run_test_case "case42-no-review-with-reason" --no-review "incident INC-42" 42
+if ! grep -qF -- "--body Review waiver: incident INC-42" "$dir/merge_calls.log" 2>/dev/null; then
+  echo "FAIL case42: merge commit body does not record the waiver reason"
   FAILED=1
 fi
 
