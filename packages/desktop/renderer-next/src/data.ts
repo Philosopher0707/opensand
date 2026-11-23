@@ -1,5 +1,6 @@
 // Shell data layer: wraps window.opensand and HTTP endpoints so components stay testable without a real bridge.
 import type { SessionSummary, SessionRow } from "../../src/shell/session-list-model";
+import { SESSIONS_CHANGED_EVENT, sessionRenameRequest } from "../../src/shell/session-list-model";
 import type { MissionSummary } from "../../src/shell/mission-list-model";
 import type { RawTimelineEvent } from "../../src/shell/mission-timeline-model";
 import type { ReceiptView } from "../../src/shell/mission-receipt-model";
@@ -86,9 +87,16 @@ export interface GrantedSkillData {
   [key: string]: unknown;
 }
 
+function notifySessionsChanged(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(SESSIONS_CHANGED_EVENT));
+  }
+}
+
 export interface CoreShellData {
   listSessions(): Promise<SessionSummary[]>;
   deleteSession(id: string): Promise<void>;
+  renameSession(id: string, title: string): Promise<boolean>;
   listMissions(): Promise<MissionSummary[]>;
   getMissionTimeline(missionId: string): Promise<RawTimelineEvent[]>;
   getMissionReceipt(missionId: string): Promise<ReceiptView | null>;
@@ -259,13 +267,24 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
       if (bridge?.deleteSession) {
         await bridge.deleteSession(id);
       }
+      notifySessionsChanged();
+    },
+    async renameSession(id: string, title: string): Promise<boolean> {
+      const { url, init } = sessionRenameRequest(id, title);
+      const res = await (http ?? fetch)(url, init);
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error || `Rename failed (HTTP ${res.status})`);
+      notifySessionsChanged();
+      return payload?.success !== false;
     },
     async sendQuery(query: string, sessionId?: string, agentId?: string): Promise<{ success: boolean; sessionId: string }> {
       const bridge = (window as any).opensand;
       if (!bridge?.sendQuery) {
         throw new Error("Sending is not available in this build");
       }
-      return (await bridge.sendQuery(...querySendArgs(query, sessionId, agentId))) as { success: boolean; sessionId: string };
+      const result = (await bridge.sendQuery(...querySendArgs(query, sessionId, agentId))) as { success: boolean; sessionId: string };
+      if (result?.success) notifySessionsChanged();
+      return result;
     },
     async cancelTurn(): Promise<unknown> {
       const bridge = (window as any).opensand;
@@ -306,7 +325,10 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
       if (!bridge?.onEvent) {
         return () => {};
       }
-      return bridge.onEvent(callback);
+      return bridge.onEvent((event: TurnEvent) => {
+        if (event?.type === "turn_complete") notifySessionsChanged();
+        callback(event);
+      });
     },
     async loadSession(sessionId: string): Promise<LoadedSessionData | any> {
       if (typeof window !== "undefined" && (window as any).__testLoadedSession) {

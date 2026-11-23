@@ -444,14 +444,19 @@ test("Real-Window Harness: Preact session delete removes row and disk directory"
 
     const deleteScript = [
       "(async () => {",
-      "  window.confirm = () => true;",
+      "  let blockingConfirmCalled = false;",
+      "  window.confirm = () => { blockingConfirmCalled = true; return false; };",
       "  const btn = document.querySelector('#sessionList .btn-delete-session');",
       "  if (!btn) return { error: 'no-delete-btn' };",
       "  const targetId = btn.getAttribute('data-session-id');",
       "  btn.click();",
+      "  await new Promise((r) => setTimeout(r, 100));",
+      "  const confirm = document.querySelector('#sessionList [aria-label=\"Confirm delete\"]');",
+      "  if (!confirm) return { error: 'no-inline-confirm', targetId };",
+      "  confirm.click();",
       "  await new Promise((r) => setTimeout(r, 600));",
       "  const remainingRows = document.querySelectorAll('#sessionList .session-channel-item').length;",
-      "  return { targetId, remainingRows };",
+      "  return { targetId, blockingConfirmCalled, remainingRows };",
       "})()",
     ].join("\n");
 
@@ -465,6 +470,7 @@ test("Real-Window Harness: Preact session delete removes row and disk directory"
 
     assert.ok(r.interactResult);
     assert.strictEqual(r.interactResult.targetId, "del-target");
+    assert.strictEqual(r.interactResult.blockingConfirmCalled, false, "Deletion must not use window.confirm");
     assert.strictEqual(r.interactResult.remainingRows, 1, "Exactly 1 row should remain after deletion");
 
     const deletedPath = path.join(tmpHome, ".opensand", "sessions", "del-target");
