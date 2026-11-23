@@ -111,6 +111,17 @@ Baseline: `39a94f6`, branch `feat/agent-settings-ui`. `CONTEXT.md` section 7 is 
   → timeout; framework prompt not duplicated in user text for Claude when the flag is supported;
   `toolClaim:'none'` removes tool claims; `fullAuto` still reaches `--permission-mode bypassPermissions`.
 
+### P4a — Reusable CLI binary-auth wrapper (owner addition)
+- Export a small reusable module `coordinator/src/providers/runtime/cli-agent-binary-auth.ts` from the
+  coordinator package: `wrapCliBinaryAuth(spec)` → `{ home, env(base?), isSignedIn(), clear() }`. It must
+  delegate to the P1 `credentialHome`/`credentialEnv` helpers (no second home implementation), read the
+  credential file with `signedInFile`, and never return credential contents.
+- Add `scripts/cli-agent-auth.mjs` for future use by agents/operators: generic flags
+  `--provider <name> --home-env <ENV> --home-dir <dir> [--signed-in-file <file>] --action status|clear`;
+  prints only `{provider, home, signedIn}` JSON. No secrets in stdout/stderr.
+- Document usage in the module docstring and a short section in `CONTEXT.md`; verify with a temp HOME
+  and a fake credential file.
+
 ### P4 — Verification and documentation
 - Full hermetic gate; `real-cli-compat.test.ts` smoke for installed binaries; per-phase spec + quality
   reviews; `CONTEXT.md` section 7, `AGENTS_LEARNING.md`, commonplace source note and daily memory.

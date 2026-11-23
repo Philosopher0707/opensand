@@ -108,6 +108,12 @@ Add the optional 5th `forcePrompt` parameter to `requestUserApproval` (`:959-100
 
 ---
 
+## P4a — Reusable CLI binary-auth wrapper
+- [ ] Create `packages/coordinator/src/providers/runtime/cli-agent-binary-auth.ts`: `wrapCliBinaryAuth(spec: DeviceAuthSpec)` returning `{home, env(base?), isSignedIn(), clear()}` built from `credentialHome`/`credentialEnv`; export from `coordinator/src/index.ts`.
+- [ ] Create `scripts/cli-agent-auth.mjs`: flags `--provider`, `--home-env`, `--home-dir`, optional `--signed-in-file`, `--action status|clear`; dynamic-import the compiled coordinator; print only `{provider, home, signedIn}`; no credential values.
+- [ ] Test with a temp HOME + fake credential file; assert status true, clear removes it, no secret in stdout.
+- [ ] Commit explicit paths, message `feat(coordinator): reusable CLI binary auth wrapper`; update CONTEXT Phase 4 log.
+
 ## P4 — Verification and docs
 - [ ] Full hermetic gate: `HOME=/tmp/opensand-hermetic-home pnpm build && HOME=/tmp/opensand-hermetic-home pnpm test`.
 - [ ] `real-cli-compat.test.ts` smoke for installed binaries; do **not** add `--system-prompt-file` to its flag list (the pinned flag is `--system-prompt`).
