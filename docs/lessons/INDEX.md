@@ -112,3 +112,4 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-23 · [Research findings kept only in chat were interleaved and truncated when the job stopped](2026-11-23-research-findings-must-land-in-a-file.md)
 - 2026-11-23 · [A stale bump-PR base stalls release.sh at the gate instead of rebasing and resuming](2026-11-23-stale-bump-base-stalls-release.md)
 - 2026-11-23 · [Real-window persona deletion races bridge handler over in-memory mocks](2026-11-23-test-bridge-persona-deletion-and-in-memory-mocks.md)
+- 2026-11-23 · [Vendored plain .mjs assets in compiled packages and CommonJS test fakes](2026-11-23-vendored-mjs-assets-and-commonjs-fakes.md)

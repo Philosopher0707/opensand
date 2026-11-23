@@ -30,6 +30,13 @@ export interface SessionMetadata {
   endpoint: string;
   provider?: string;
   title?: string;
+  externalEngine?: {
+    engine: string;
+    sessionId: string;
+    model?: string;
+    binaryPath?: string;
+    version?: string;
+  };
 }
 
 export interface SessionLockInfo {

@@ -1,0 +1,146 @@
+#!/usr/bin/env node
+// Fake `opencode acp` (2.0.20): a minimal Agent Client Protocol agent over stdio (newline-delimited JSON-RPC 2.0).
+// Shape as the real engine answers session/new (probe_acp, 2026-11-23): `modes: null`, and configOptions with
+// model, effort and mode (id, currentValue, options[{value,name}]). The mode and model of each session are kept in
+// $FAKE_LOG (sessions{}), so a session/load in a new process still finds the mode it was left in.
+// Supports initialize, session/new, session/load, session/set_config_option (mode, model), session/prompt,
+// session/cancel and session/request_permission. set_mode and set_model answer "method not found", as the real one.
+// FAKE_NO_MODE=1 is the variant with no mode option at all (only model and effort are offered); FAKE_NO_PLAN=1 offers build only.
+// Prompt markers:
+//   REPLAY_SUBAGENT  replays session/update and opencode/session/child_update lines from
+//                    fixtures/opencode-2.0.20-acp-subagent.jsonl with its session id rewritten, then end_turn
+//   ASK_WRITE        asks permission (session/request_permission, options allow-once / reject-once) and reports the choice
+//   HANG             never answers the prompt; answers it with stopReason "cancelled" when session/cancel arrives
+//   SLOW_SILENT      silent for 4 s, then answers
+//   FAIL_AUTH        stderr "Error: not logged in", exit 1
+//   AGENT_REQUEST    sends fs/read_text_file to the client and logs the error it gets back (-32601 expected)
+//   TRY_WRITE        writes x.txt in its working folder without asking, and says "TRY_WRITE:ok" or "TRY_WRITE:<error code>"
+//                    (EPERM when the OS hold of a read-only run denies it)
+// Every request and notification it receives is logged to $FAKE_LOG (rpc list, with mode and model ids).
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv.slice(2);
+if (args[0] === "--version") { console.log("2.0.20"); process.exit(0); }
+const SID = "ses_fake_opencode_1";
+const REC_ROOT = "ses_dfb3115f7ffeaAPdc0KByQQT2G";
+const MODES = [{ id: "build", name: "Build" }, { id: "plan", name: "Plan" }];
+const MODELS = [{ modelId: "fake/model-a", name: "Model A" }, { modelId: "fake/model-b", name: "Model B" }];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const stdinKind = () => { try { const s = fs.fstatSync(0); return s.isSocket() || s.isFIFO() ? "pipe" : s.isCharacterDevice() ? "null" : "other"; } catch { return "closed"; } };
+function note(fn) {
+  const f = process.env.FAKE_LOG; if (!f) return;
+  let o = {}; try { o = JSON.parse(fs.readFileSync(f, "utf8")); } catch { /* first write */ }
+  fn(o); fs.writeFileSync(f, JSON.stringify(o));
+}
+note((o) => Object.assign(o, { engine: "opencode", args, stdin: stdinKind(), pid: process.pid, cwd: process.cwd(), rpc: o.rpc || [] }));
+const NO_MODE = !!process.env.FAKE_NO_MODE;
+const EFFORTS = ["none", "low", "medium", "xhigh", "default"];
+// One session's state, kept in FAKE_LOG so that a later process (a resumed turn) sees it. fn changes it.
+function state(sid, fn) {
+  let out = { mode: "build", model: "fake/model-a" };
+  note((o) => {
+    o.sessions = o.sessions || {};
+    const s = (o.sessions[sid] = o.sessions[sid] || { ...out });
+    if (fn) fn(s);
+    out = { ...s };
+  });
+  return out;
+}
+// FAKE_NO_PLAN=1 is the variant whose mode option offers build only (no plan value).
+const modeValues = () => (process.env.FAKE_NO_PLAN ? MODES.filter((m) => m.id !== "plan") : MODES);
+function configOptions(sid) {
+  const s = state(sid);
+  const opts = [
+    { id: "model", name: "Model", category: "model", type: "select", currentValue: s.model, options: MODELS.map((m) => ({ value: m.modelId, name: m.name })) },
+    { id: "effort", name: "Effort", category: "thought_level", type: "select", currentValue: "default", options: EFFORTS.map((v) => ({ value: v, name: v })) },
+  ];
+  if (!NO_MODE) opts.push({ id: "mode", name: "Mode", category: "mode", type: "select", currentValue: s.mode, options: modeValues().map((m) => ({ value: m.id, name: m.name })) });
+  return opts;
+}
+const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\n");
+const update = (sessionId, u) => send({ method: "session/update", params: { sessionId, update: u } });
+let nextId = 1000, pending = null; // the prompt request still open (HANG)
+const waiting = new Map();
+const ask = (method, params) => new Promise((r) => { const id = ++nextId; waiting.set(id, r); send({ id, method, params }); });
+const sendReplay = (sessionId) => {
+  const lines = fs.readFileSync(path.join(__dirname, "..", "fixtures", "opencode-2.0.20-acp-subagent.jsonl"), "utf8").split("\n").filter(Boolean);
+  let endResult = null;
+  for (const line of lines) {
+    const rewritten = line.split(REC_ROOT).join(sessionId);
+    const msg = JSON.parse(rewritten);
+    if (msg.id !== undefined) endResult = msg.result; else process.stdout.write(rewritten + "\n");
+  }
+  return endResult || { stopReason: "end_turn" };
+};
+async function prompt(req) {
+  const p = req.params;
+  const text = (p.prompt || []).map((c) => c.text).join("");
+  note((o) => o.rpc.push({ method: "session/prompt", text: text.slice(0, 200) }));
+  if (/FAIL_AUTH/.test(text)) { console.error("Error: not logged in"); process.exit(1); }
+  if (/HANG/.test(text)) { pending = req.id; return; } // answered on session/cancel
+  if (/SLOW_SILENT/.test(text)) await sleep(4000);
+  if (/AGENT_REQUEST/.test(text)) {
+    const r = await ask("fs/read_text_file", { sessionId: p.sessionId, path: path.resolve("note.txt") });
+    note((o) => o.rpc.push({ method: "agent-request-answer", code: r.error ? r.error.code : null }));
+    return send({ id: req.id, result: { stopReason: "end_turn" } });
+  }
+  if (/REPLAY_SUBAGENT/.test(text)) return send({ id: req.id, result: sendReplay(p.sessionId) });
+  if (/TRY_WRITE/.test(text)) {
+    let said;
+    try { fs.writeFileSync(path.join(process.cwd(), "x.txt"), "x"); said = "ok"; } catch (err) { said = err.code || "error"; }
+    update(p.sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `TRY_WRITE:${said}` } });
+    return send({ id: req.id, result: { stopReason: "end_turn" } });
+  }
+  if (/ASK_WRITE/.test(text)) {
+    const file = path.resolve("acp-wrote.txt");
+    const toolCall = { toolCallId: "call_w1", title: `File ${path.basename(file)}`, kind: "edit", locations: [{ path: file }], rawInput: { Path: file, Content: "acp\n" } };
+    const answer = await ask("session/request_permission", { sessionId: p.sessionId, toolCall, options: [{ optionId: "allow-once", name: "Allow", kind: "allow_once" }, { optionId: "reject-once", name: "Reject", kind: "reject_once" }] });
+    const choice = answer.result && answer.result.outcome && answer.result.outcome.optionId;
+    note((o) => o.rpc.push({ method: "permission-answer", optionId: choice || null }));
+    if (choice === "allow-once") fs.writeFileSync(file, "acp\n");
+    update(p.sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `ASK_RESULT:${choice === "allow-once" ? "allow" : "reject"}` } });
+    return send({ id: req.id, result: { stopReason: "end_turn" } });
+  }
+  update(p.sessionId, { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Thinking" } });
+  update(p.sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "hello from opencode" } });
+  send({ id: req.id, result: { stopReason: "end_turn", usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } } });
+}
+function handle(m) {
+  if (m.id !== undefined && m.method === undefined) { const r = waiting.get(m.id); if (r) { waiting.delete(m.id); r(m); } return; }
+  if (m.method === "session/cancel") {
+    note((o) => o.rpc.push({ method: "session/cancel" }));
+    if (pending !== null) { send({ id: pending, result: { stopReason: "cancelled" } }); pending = null; }
+    return;
+  }
+  const p = m.params || {};
+  // sessionMode: the mode the session had when this request arrived (a session/load shows what it was left in).
+  const sessionMode = p.sessionId ? state(p.sessionId).mode : null;
+  if (m.method !== "session/prompt") note((o) => o.rpc.push({ method: m.method, modeId: p.modeId ?? null, configId: p.configId ?? null, modelId: p.modelId ?? null, value: p.value ?? null, sessionMode }));
+  switch (m.method) {
+    case "initialize": return send({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true }, authMethods: [] } });
+    case "session/new":
+      state(SID, (s) => { s.mode = "build"; });
+      return send({ id: m.id, result: { sessionId: SID, modes: null, configOptions: configOptions(SID) } });
+    case "session/load":
+      return send({ id: m.id, result: { modes: null, configOptions: configOptions(p.sessionId) } });
+    case "session/set_config_option": {
+      if (p.configId === "mode" && !NO_MODE && modeValues().some((x) => x.id === p.value)) {
+        state(p.sessionId, (s) => { s.mode = p.value; });
+        return send({ id: m.id, result: { configOptions: configOptions(p.sessionId) } });
+      }
+      if (p.configId === "model" && MODELS.some((x) => x.modelId === p.value)) {
+        state(p.sessionId, (s) => { s.model = p.value; });
+        return send({ id: m.id, result: { configOptions: configOptions(p.sessionId) } });
+      }
+      return send({ id: m.id, error: { code: -32602, message: `Invalid config option ${p.configId}=${p.value}` } });
+    }
+    case "session/set_mode": case "session/set_model":
+      return send({ id: m.id, error: { code: -32601, message: `Method not found: ${m.method}` } });
+    case "session/prompt": return void prompt(m);
+    default: if (m.id !== undefined) send({ id: m.id, error: { code: -32601, message: `Method not found: ${m.method}` } });
+  }
+}
+let buf = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (d) => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (line.trim()) handle(JSON.parse(line)); } });
+process.stdin.on("end", () => process.exit(0));

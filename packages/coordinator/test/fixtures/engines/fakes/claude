@@ -1,0 +1,90 @@
+#!/usr/bin/env node
+// Fake `claude` (2.1.311): stream-json in and out, permission questions to the host as control_request can_use_tool
+// (--permission-prompt-tool stdio), answered by control_response on stdin. Prompt markers:
+//   ASK_WRITE / ASK_EXIT / ASK_READ  ask the host about Write / ExitPlanMode / Read, then report the answer as text
+//   REPLAY_SUBAGENT                  streams fixtures/claude-2.1.311-subagent.jsonl (a real run with a sub-agent)
+//   HANG                             prints nothing and never exits
+//   SLOW_SILENT                      stays silent for 4 s, then answers
+//   FAIL_AUTH                        exit 1, stderr "Error: not logged in"
+// Every turn logs argv, stdin kind, pid and the answers it received to $FAKE_LOG.
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv.slice(2);
+if (args[0] === "--version") { console.log("2.1.311 (Claude Code)"); process.exit(0); }
+const opt = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : null);
+const perm = opt("--permission-mode");
+const resume = opt("--resume");
+const sid = resume || "sess-claude-1";
+const FIX = path.join(__dirname, "..", "fixtures");
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const stdinKind = () => { try { const s = fs.fstatSync(0); return s.isSocket() || s.isFIFO() ? "pipe" : s.isCharacterDevice() ? "null" : "other"; } catch { return "closed"; } };
+function note(fn) {
+  const f = process.env.FAKE_LOG; if (!f) return;
+  let o = {}; try { o = JSON.parse(fs.readFileSync(f, "utf8")); } catch { /* first write */ }
+  fn(o); fs.writeFileSync(f, JSON.stringify(o));
+}
+note((o) => Object.assign(o, { engine: "claude", args, stdin: stdinKind(), pid: process.pid, cwd: process.cwd(), answers: [] }));
+const out = (o) => process.stdout.write(JSON.stringify(o) + "\n");
+const waiting = new Map(); // request_id -> resolve (the host's answer)
+let n = 0, ended = false, done = false, started = false;
+const request = (id, msg) => new Promise((resolve) => { waiting.set(id, resolve); out(msg); });
+const ask = (tool, input) => request(`req-${++n}`, { type: "control_request", request_id: `req-${n}`, request: { subtype: "can_use_tool", tool_name: tool, display_name: tool, input } });
+function finish() { done = true; if (ended) process.exit(0); }
+let buf = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (d) => {
+  buf += d;
+  let i;
+  while ((i = buf.indexOf("\n")) >= 0) {
+    const line = buf.slice(0, i); buf = buf.slice(i + 1);
+    if (!line.trim()) continue;
+    const m = JSON.parse(line);
+    if (m.type === "control_response") {
+      const r = m.response;
+      note((o) => o.answers.push({ request_id: r.request_id, ...r.response }));
+      const res = waiting.get(r.request_id);
+      if (res) { waiting.delete(r.request_id); res(r.response); }
+    } else if (m.type === "user" && !started) {
+      started = true;
+      const prompt = typeof m.message.content === "string" ? m.message.content : JSON.stringify(m.message.content);
+      run(prompt).catch((e) => { process.stderr.write(String(e && e.stack)); process.exit(2); });
+    }
+  }
+});
+process.stdin.on("end", () => { ended = true; if (done) process.exit(0); });
+
+const ASK = { ASK_WRITE: "Write", ASK_EXIT: "ExitPlanMode", ASK_READ: "Read" };
+async function run(prompt) {
+  if (/FAIL_AUTH/.test(prompt)) { process.stderr.write("Error: not logged in\n"); process.exit(1); }
+  if (/FAIL_RATE_LIMIT_TIME/.test(prompt)) { process.stderr.write("Claude usage limit reached, resets at 3:00 PM\n"); process.exit(1); }
+  if (/FAIL_RATE_LIMIT_NO_TIME/.test(prompt)) { process.stderr.write("Claude usage limit reached\n"); process.exit(1); }
+  if (/CRASH_MID_TURN/.test(prompt)) {
+    out({ type: "system", subtype: "init", session_id: sid, model: "claude-haiku-5-5", permissionMode: perm });
+    process.stderr.write("Fatal crash: unexpected segmentation fault\n");
+    process.exit(1);
+  }
+  if (/HANG/.test(prompt)) { setInterval(() => {}, 1000); return; }
+  if (/SLOW_SILENT/.test(prompt)) await sleep(4000);
+  if (/REPLAY_SUBAGENT/.test(prompt)) {
+    const lines = fs.readFileSync(path.join(FIX, "claude-2.1.311-subagent.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    for (const e of lines) {
+      if (e.type === "control_request") await request(e.request_id, e); // the sub-agent waits for the host's answer
+      else out(e);
+    }
+    return finish();
+  }
+  out({ type: "system", subtype: "init", session_id: sid, model: "claude-haiku-5-5", permissionMode: perm });
+  const key = Object.keys(ASK).find((k) => prompt.includes(k));
+  let text = resume ? `continued ${resume}` : "hello from claude";
+  if (key) {
+    const tool = ASK[key];
+    const input = tool === "Write" ? { file_path: path.resolve("ask-write.txt"), content: "written\n" }
+      : tool === "Read" ? { file_path: path.resolve("note.txt") } : { plan: "write ask-write.txt" };
+    const answer = await ask(tool, input);
+    if (tool === "Write" && answer.behavior === "allow") fs.writeFileSync(input.file_path, input.content);
+    text = `ASK_RESULT:${tool}:${answer.behavior}`;
+  }
+  out({ type: "assistant", message: { content: [{ type: "text", text }] }, session_id: sid });
+  out({ type: "result", subtype: "success", is_error: false, result: text, session_id: sid });
+  finish();
+}

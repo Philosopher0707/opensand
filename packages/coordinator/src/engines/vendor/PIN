@@ -1,0 +1,5 @@
+# OpenSand Vendored Coding-Agent Engine Wrapper Pin
+# Source: ~/SKILLS/coding-agent-engines/scripts
+# Synced: 2026-11-23T06:57:58Z
+SHA256 (agent_wrap.mjs) = 7a4af52ff0aa95821f8b2220680127328deb83c1d9796fd019e2fc15af342ca2
+SHA256 (engine_facts.mjs) = c9c85deeee0b922e3e5cbf811ac0c503fd8c797d94e27252a42f0f3f5bab42bf
