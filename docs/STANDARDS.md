@@ -45,6 +45,9 @@ and loading states, and recovery. Every new export is wired and reachable: an un
   Do not pipe it through `tail` and do not re-run a passing check.
 - Never use `--no-verify`. If a hook is flaky, fix or narrow it in the same change.
 - No lockfile or `.github/` changes without the owner: `scripts/pr-gate.sh` refuses them unless overridden.
+- Every PR needs the `rigel-pass` label to merge; `pr-gate.sh --no-review "<reason>"` is the only
+  escape and writes the reason into the merge commit body. A stale base makes the gate run
+  `gh pr update-branch` and exit 3 with a re-run instruction, not a failed merge.
 - Never touch `~/dev/opensand`, `~/.opensand` or the owner's real chats (CTO standard, 2026-11-23). Use isolated state and test accounts.
 - Save with `scripts/worktree.sh save "<message>"`: it stages explicit paths, scans for secrets, commits with
   hooks on, pushes, and opens a draft PR on the first push. Run `gh pr ready <N>` when the work is ready;
@@ -65,8 +68,8 @@ deliberately broken input — on the same Node major CI uses. A test that has ne
 
 ## 4. Review
 
-- Rigel does the final verification: `scripts/pr-gate.sh` checks CI, base freshness, diff hygiene, a checkpoint
-  tag, then merges. Local green is not CI green; read the actual CI run.
+- Rigel does the final verification: `scripts/pr-gate.sh` checks CI, base freshness, diff hygiene, the
+  `rigel-pass` label, a checkpoint tag, then merges. Local green is not CI green; read the actual CI run.
 - Vega reviews security for anything touching IPC, the local API, shell or tool execution, approvals, keys or
   vendored code (CTO standard, 2026-11-23). Permission checks fail closed: a command runs only with a standing
   grant or an explicit approval, never silently.
