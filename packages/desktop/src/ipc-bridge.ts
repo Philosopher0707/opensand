@@ -65,6 +65,9 @@ import {
   GalleryQueryOptions,
   buildToolDiscoverySummary,
   RulesLoader,
+  detectEngines,
+  ExternalEngineConfig,
+  EngineDetectionResult,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand, skillWriteNeedsGate, memoryWriteNeedsGate } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -629,9 +632,8 @@ export class DesktopIpcBridge extends EventEmitter {
     let targetModel = this.settings.model;
     let targetEndpoint = this.settings.endpoint;
     let customInstructions: string | undefined;
-
-    if (agentId) {
-      const agent = await this.agentStore.getAgent(agentId);
+    const agent = agentId ? await this.agentStore.getAgent(agentId) : undefined;
+    if (agent) {
       if (agent) {
         if (agent.model && agent.model !== 'default') targetModel = agent.model;
         if (agent.endpoint) targetEndpoint = agent.endpoint;
@@ -639,12 +641,32 @@ export class DesktopIpcBridge extends EventEmitter {
       }
     }
 
-    const llmClient = new UniversalLLMClient({
-      baseUrl: targetEndpoint,
-      model: targetModel,
-      apiKey: this.settings.apiKey,
-      provider: this.settings.provider,
-    });
+    let engineConfig: ExternalEngineConfig | undefined = (agent as any)?.engineConfig;
+    if (!engineConfig) {
+      if (targetModel?.startsWith("external:")) {
+        const parts = targetModel.split(":");
+        engineConfig = {
+          type: "external",
+          engine: parts[1] as any,
+          model: parts[2] || undefined,
+        };
+      } else if (targetEndpoint === "external" || targetModel === "claude") {
+        engineConfig = {
+          type: "external",
+          engine: (targetModel === "claude" ? "claude" : ((agent as any)?.engine ?? "claude")),
+          model: (agent as any)?.model && (agent as any).model !== "default" ? (agent as any).model : undefined,
+        };
+      }
+    }
+
+    const llmClient = engineConfig
+      ? undefined
+      : new UniversalLLMClient({
+          baseUrl: targetEndpoint,
+          model: targetModel,
+          apiKey: this.settings.apiKey,
+          provider: this.settings.provider,
+        });
 
     const learnedRules = await this.habitExtractor.getLearnedRulesPromptContext();
     const memoryContext = await this.memoryStore.getPromptMemoryContext(agentId);
@@ -660,6 +682,7 @@ export class DesktopIpcBridge extends EventEmitter {
 
     const coordinator = new AgentCoordinator({
       llmClient,
+      engineConfig,
       daemon: this.daemon,
       sessionId: activeSessionId,
       vaultStore: this.vaultStore,
@@ -736,6 +759,10 @@ export class DesktopIpcBridge extends EventEmitter {
         isUserFixable: actionable.isUserFixable,
       });
     }
+  }
+
+  public async detectEngines(): Promise<EngineDetectionResult[]> {
+    return detectEngines();
   }
 
   public async sendQuery(query: string, sessionId?: string, agentId?: string): Promise<{ success: boolean; sessionId: string }> {
