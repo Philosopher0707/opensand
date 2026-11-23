@@ -21,7 +21,7 @@ This design specifies how OpenSand integrates these external coding agents into 
 | # | Architectural Dimension | Ratified Decision | One-Line Reason |
 |---|---|---|---|
 | **1** | **Integration Seam** | **Turn Runner beside the Coordinator LLM Loop (`ExternalEngineTurnRunner`)**, not an LLM client. | External engines manage their own autonomous tool-calling loops and child processes, so they must plug in as a peer turn runner alongside OpenSand's native loop rather than masquerading as a token-streaming LLM client. |
-| **2** | **Packaging & Sourcing** | **Vendored Copy in `packages/coordinator/src/engines/vendor/` with Automated SHA-256 CI Parity Check.** | Packaged Electron distributions require self-contained offline dependencies, while an automated SHA-256 parity script enforces the catalog invariant that `~/SKILLS/coding-agent-engines/` remains the single canonical source of truth. |
+| **2** | **Packaging & Sourcing** | **Vendored Copy in `packages/coordinator/src/engines/vendor/` governed by a committed `PIN` file, build-time asset copy, and CI parity check.** | Packaged Electron distributions require self-contained offline dependencies, a committed `PIN` prevents CI failure on machines lacking `~/SKILLS`, and an asset copy step ensures uncompiled `.mjs` files reach the packaged `.app`. |
 | **3** | **Permissions & Safety** | **Fail-Closed Interactive Bridge from OpenSand Modes (`ask` / `auto_edit` / `auto`) to Wrapper `approve()` Callback.** | OpenSand's effect-based safety gates govern all child tool execution via the wrapper's `approve()` callback, enforcing fail-closed rejection with zero permission-bypass flags. |
 | **4** | **UX & Lifecycle** | **Passive Detection, Diagnostic Error Surfacing via `explainError`, and Process-Group Lifecycle Control.** | The UX detects installed tools without reading secret stores, translates obscure crash codes into plain English recovery steps via `explainError`, and bounds execution with abortable process groups and idle timers. |
 | **5** | **Smallest First Slice** | **Claude Code (`claude`) End-to-End as Slice 1.** | Claude Code provides the cleanest stdio-based interactive permission channel (`--permission-prompt-tool stdio`) matching OpenSand's per-action approval modal, with full stream-json event fidelity already verified on macOS. |
@@ -132,29 +132,85 @@ External coding agents maintain their own conversational memory across runs:
 
 ## 3. Packaging & Sourcing: The Single-Source Invariant
 
-### 3.1 The Constraint
+### 3.1 The Constraint: Packaged App vs. Local Canonical Skills
 
 OpenSand desktop packages into a production DMG / app bundle via `electron-builder` (`electron-builder.yml`). At runtime, a packaged application runs inside an isolated app bundle (e.g. `/Applications/OpenSand.app/Contents/Resources/`) and **cannot** dynamically resolve or import files from arbitrary user directories such as `~/SKILLS/coding-agent-engines/scripts/`.
 
-Simultaneously, the repository follows strict development discipline established in `~/SKILLS/CATALOG.md` and `~/SKILLS/WORKFLOW.md`:
-> *"All bots check ~/SKILLS/CATALOG.md before writing anything reusable, improve the one existing copy instead of making another, and keep check_catalog.py passing."*
+Simultaneously, two constraints govern packaging:
+1. **Catalog Rule:** The repository follows the rule established in `~/SKILLS/CATALOG.md` and `~/SKILLS/WORKFLOW.md`: one real copy exists in `~/SKILLS/coding-agent-engines/`, and other consumers point to it or maintain pinned vendor synchronizations.
+2. **CI Portability:** GitHub Actions runners and other developers' machines do not possess `~/SKILLS`. Any check that naively attempts to compare against `~/SKILLS` would fail in CI, breaking `scripts/verify.sh` and `scripts/pr-gate.sh`.
 
-### 3.2 The Decision: Pinned Vendoring with Automated SHA-256 Parity Gate
+### 3.2 The Decision: Committed `PIN` File and Parity Gate
 
-**Decision:** Vendor `agent_wrap.mjs` and `engine_facts.mjs` directly into OpenSand under `packages/coordinator/src/engines/vendor/`, governed by a mandatory SHA-256 parity verification gate:
+**Decision:** Vendor `agent_wrap.mjs` and `engine_facts.mjs` in `packages/coordinator/src/engines/vendor/`, governed by a committed `PIN` file:
 
-1. **Vendored Location:**
+1. **Vendored Files & Location:**
    - `packages/coordinator/src/engines/vendor/agent_wrap.mjs`
    - `packages/coordinator/src/engines/vendor/engine_facts.mjs`
-2. **Automated Verification Script:** `scripts/check-engine-wrapper-sync.sh`
-   - Computes SHA-256 checksums of both files in `packages/coordinator/src/engines/vendor/` and compares them against `~/SKILLS/coding-agent-engines/scripts/`.
-   - Running `bash scripts/check-engine-wrapper-sync.sh` fails with exit code 1 if files drift or are modified independently in OpenSand.
-   - Running `bash scripts/check-engine-wrapper-sync.sh --sync` copies the canonical files from `~/SKILLS/coding-agent-engines/scripts/` into the vendored path and logs the sync commit.
-3. **CI & Gate Integration:**
-   - Hooked into `scripts/verify.sh` (Step 1) and `scripts/pr-gate.sh` (Pre-merge check).
-   - Any pull request modifying `packages/coordinator/src/engines/vendor/` without matching `~/SKILLS` is rejected automatically by the gate.
-4. **Catalog Indexing:**
-   - An entry in `~/SKILLS/CATALOG.md` documents OpenSand as an active consumer of `agent_wrap.mjs` and `engine_facts.mjs`, maintaining complete traceability across the machine.
+   - `packages/coordinator/src/engines/vendor/PIN`
+
+2. **The `PIN` File Format:**
+   `packages/coordinator/src/engines/vendor/PIN` records the exact cryptographic hash of each file, the upstream source location, and the sync timestamp:
+   ```
+   # OpenSand Vendored Coding-Agent Engine Wrapper Pin
+   # Source: ~/SKILLS/coding-agent-engines/scripts
+   # Synced: 2026-11-23T11:42:00Z
+   SHA256 (agent_wrap.mjs) = a98b1c4e7...
+   SHA256 (engine_facts.mjs) = f40d3a2b1...
+   ```
+
+3. **Verification Script: `scripts/check-engine-wrapper-sync.sh`**
+   The script executes a two-tiered check:
+   - **Tier 1 (Everywhere & CI):** Reads `PIN` and computes the SHA-256 hashes of `packages/coordinator/src/engines/vendor/{agent_wrap.mjs,engine_facts.mjs}`. If the files do not match `PIN` (i.e. someone edited the vendored files in OpenSand by hand), the check **fails hard with exit code 1**. This runs hermetically on any environment without requiring `~/SKILLS`.
+   - **Tier 2 (Local Machines with `~/SKILLS`):** If and only if the canonical directory `~/SKILLS/coding-agent-engines/scripts/` exists on the machine, the script computes the SHA-256 of the source files and compares them against `PIN`:
+     - If the source has updated ahead of `PIN`, it prints:  
+       `NOTICE: vendored copy in OpenSand is behind the source (~/SKILLS/coding-agent-engines/scripts). Run: bash scripts/check-engine-wrapper-sync.sh --sync`
+     - **Decision on Warn vs. Fail:** The local source comparison **warns with exit code 0** by default, but **fails with exit code 1** when `--strict` is passed (used during release gates and PR checks).
+     - **Rationale:** Local work on unrelated OpenSand features must not stall or fail CI simply because an engineer has experimental uncommitted drafts in `~/SKILLS`. However, the committed `PIN` ensures immutability everywhere, and `--strict` ensures release branches are synchronized.
+   - **`--sync` Option:** Running `bash scripts/check-engine-wrapper-sync.sh --sync` copies the files from `~/SKILLS/coding-agent-engines/scripts/` into `packages/coordinator/src/engines/vendor/`, regenerates `PIN`, and prints the updated SHAs.
+
+### 3.3 Packaging Plain `.mjs` into the Built Desktop App (`.app`)
+
+#### The Problem: `tsc` Ignores Plain `.mjs` in `src/`
+`packages/coordinator` is a TypeScript package compiled with `tsc -b`. The TypeScript compiler only processes and emits `.ts` files into `dist/`. Non-TypeScript files located under `packages/coordinator/src/engines/vendor/*.mjs` and `PIN` are ignored by `tsc` and omitted from `packages/coordinator/dist/`. Consequently, when `pnpm stage:desktop` stages the app, the vendored `.mjs` files are missing from the build output, causing runtime module resolution failures.
+
+#### The Build & Packaging Solution
+
+1. **Build Step Copy Rule in `packages/coordinator/package.json`:**
+   Update the coordinator build script to copy vendor assets after compilation:
+   ```json
+   "scripts": {
+     "build": "tsc -b && node scripts/copy-vendor-assets.mjs",
+     "test": "node --test dist/test/**/*.test.js"
+   }
+   ```
+   The helper script `packages/coordinator/scripts/copy-vendor-assets.mjs` ensures:
+   ```js
+   import fs from "node:fs";
+   import path from "node:path";
+   const srcDir = "src/engines/vendor";
+   const destDir = "dist/src/engines/vendor";
+   fs.mkdirSync(destDir, { recursive: true });
+   for (const file of ["agent_wrap.mjs", "engine_facts.mjs", "PIN"]) {
+     fs.copyFileSync(path.join(srcDir, file), path.join(destDir, file));
+   }
+   ```
+
+2. **How Compiled TypeScript Imports the Wrapper:**
+   In `packages/coordinator/src/engines/external-engine-runner.ts`:
+   ```ts
+   import { runTurn, findBinary, engineVersion, versionStatus } from "./vendor/agent_wrap.mjs";
+   import { explainError, ENGINE_FACTS } from "./vendor/engine_facts.mjs";
+   ```
+   When `tsc` compiles `external-engine-runner.ts` to `dist/src/engines/external-engine-runner.js`, it retains the exact relative import `./vendor/agent_wrap.mjs`. Because the copy step placed `agent_wrap.mjs` at `dist/src/engines/vendor/agent_wrap.mjs`, Node.js native ESM resolution succeeds both in development and in the built bundle.
+
+3. **Distribution Packaging Pipeline:**
+   - **Staging (`pnpm stage:desktop`):** Staging invokes `pnpm --filter @opensand/desktop deploy --prod --legacy dist/stage`. This deploys `@opensand/coordinator` with its `dist/` output into `dist/stage/node_modules/@opensand/coordinator/dist/`.
+   - **Electron Bundling (`electron-builder.yml`):** `electron-builder.yml` configures `asar: false` and packages `dist/stage` into `OpenSand.app/Contents/Resources/app/`. The vendored files reside at:
+     ```
+     OpenSand.app/Contents/Resources/app/node_modules/@opensand/coordinator/dist/src/engines/vendor/agent_wrap.mjs
+     ```
+   - **Packaged App Verification Check:** In Slice 1, a smoke check loads the packaged coordinator directly from `dist/stage` to verify that `agent_wrap.mjs` is present and callable within the staged distribution.
 
 ---
 
@@ -320,7 +376,7 @@ The following test suites must be created under `packages/coordinator/test/`:
 - **Error Surfacing:** Tests crash exit codes (137, missing binary, unauthenticated) and verifies that `explainError` produces the expected human-readable guidance.
 
 #### 4. `scripts/check-engine-wrapper-sync.sh`
-- Standalone verification script that verifies SHA-256 parity between the vendored wrapper files in OpenSand and the canonical sources in `~/SKILLS`.
+- Standalone verification script that verifies SHA-256 parity between the vendored wrapper files in OpenSand and the committed `PIN` file (and warns/checks against `~/SKILLS` when present).
 
 ---
 
@@ -334,11 +390,17 @@ This build list provides the exact, file-by-file specification Dex needs to impl
 - **Action:** Vendor canonical files from `~/SKILLS/coding-agent-engines/scripts/`.
 - **Exports Consumed:** `runTurn`, `findBinary`, `engineVersion`, `versionStatus`, `explainError`, `ENGINE_FACTS`.
 
-#### 2. `scripts/check-engine-wrapper-sync.sh`
-- **Action:** Create bash script checking SHA-256 equality of vendored files against `~/SKILLS/coding-agent-engines/scripts/`.
-- **Options:** `--sync` (updates vendored copy from source), `--check` (CI validation, exits 1 on drift).
+#### 2. `packages/coordinator/src/engines/vendor/PIN`
+- **Action:** Commit the cryptographic pin file recording SHA-256 hashes of `agent_wrap.mjs` and `engine_facts.mjs`, source path `~/SKILLS/coding-agent-engines/scripts`, and the sync date.
 
-#### 3. `packages/coordinator/src/engines/types.ts`
+#### 3. `packages/coordinator/scripts/copy-vendor-assets.mjs`
+- **Action:** Node script that copies `src/engines/vendor/*.mjs` and `PIN` into `dist/src/engines/vendor/` post-`tsc` compilation so plain `.mjs` files reach `dist/` and downstream packaged distributions.
+
+#### 4. `scripts/check-engine-wrapper-sync.sh`
+- **Action:** Create bash script checking SHA-256 equality of vendored files against `PIN`. If `~/SKILLS/coding-agent-engines/scripts` exists locally, also compares against source (warns on drift, fails if `--strict`).
+- **Options:** `--sync` (copies source files and rewrites `PIN`), `--strict` (fails if source differs from `PIN`).
+
+#### 5. `packages/coordinator/src/engines/types.ts`
 - **Action:** Define TypeScript types for external engine configuration and runtime options:
 ```ts
 export interface ExternalEngineConfig {
@@ -362,54 +424,82 @@ export interface EngineDetectionResult {
 }
 ```
 
-#### 4. `packages/coordinator/src/engines/external-engine-runner.ts`
-- **Action:** Create the turn runner that wraps `agent_wrap.runTurn()`.
+#### 6. `packages/coordinator/src/engines/external-engine-runner.ts`
+- **Action:** Create the turn runner that imports and wraps `./vendor/agent_wrap.mjs`.
 - **Key Responsibilities:**
   - Manages session lifecycle and reads/writes `metadata.json` for `resumeId`.
   - Translates wrapper events into OpenSand `TurnEvent` emissions and `TranscriptManager` event-log entries.
   - Implements the `approve` callback by dispatching to OpenSand's approval policy and `coordinator.onApprovalRequired`.
   - Catches process errors and formats user-facing exceptions using `explainError`.
 
-#### 5. `packages/coordinator/test/external-engine-runner.test.ts`
+#### 7. `packages/coordinator/test/external-engine-runner.test.ts`
 - **Action:** Unit and integration tests using fake Claude script fixtures to test the complete event, projection, and approval lifecycle.
 
 ### 8.2 Files to Edit
 
-#### 1. `packages/coordinator/src/coordinator.ts`
+#### 1. `packages/coordinator/package.json`
+- **Edit:** Update `"build"` script to:
+  ```json
+  "scripts": {
+    "build": "tsc -b && node scripts/copy-vendor-assets.mjs",
+    "test": "node --test dist/test/**/*.test.js"
+  }
+  ```
+  This guarantees that uncompiled `.mjs` and `PIN` files are copied into `dist/src/engines/vendor/` whenever coordinator is built.
+
+#### 2. `packages/coordinator/src/coordinator.ts`
 - **Symbol / Location:** `AgentCoordinatorConfig` (~L80), `AgentCoordinator.runTurn()` (~L223).
 - **Edit:**
   - Add `engineConfig?: ExternalEngineConfig` to `AgentCoordinatorConfig`.
   - In `runTurn()`, check `if (this.engineConfig) return this.runExternalEngineTurn(userQuery, signal);`.
   - In `runExternalEngineTurn()`, instantiate `ExternalEngineTurnRunner` and execute the turn while preserving existing rules loading, session start hooks, turn completed events, and `writeProjections()`.
 
-#### 2. `packages/coordinator/src/index.ts`
+#### 3. `packages/coordinator/src/index.ts`
 - **Edit:** Export external engine types and `ExternalEngineTurnRunner`.
 
-#### 3. `packages/desktop/src/ipc-bridge.ts`
+#### 4. `packages/desktop/src/ipc-bridge.ts`
 - **Symbol / Location:** `IPCBridge.createCoordinatorForSession()` (~L628), IPC handlers registration (~L200).
 - **Edit:**
   - Register `engines:detect` handler calling `detectEngines()`.
   - Check if selected agent or session specifies an external engine; if so, pass `engineConfig` to `AgentCoordinator` constructor instead of `UniversalLLMClient`.
   - Ensure `onApprovalRequired` is hooked to `this.requestUserApproval` exactly as done for native tools.
 
-#### 4. `packages/desktop/src/preload.ts`
+#### 5. `packages/desktop/src/preload.ts`
 - **Edit:** Expose `api.engines.detect()` to the renderer context bridge.
 
-#### 5. `scripts/verify.sh`
+#### 6. `scripts/verify.sh`
 - **Edit:** Add `bash scripts/check-engine-wrapper-sync.sh` to the verification routine.
 
 ### 8.3 Done-When Verification Command for Dex
 
-Dex can verify that Slice 1 is complete, functionally sound, and regression-free by executing:
+Dex can verify that Slice 1 is complete, functionally sound, reaches the packaged desktop application, and passes all gates by executing:
 
 ```bash
-# 1. Verify wrapper synchronization with canonical skills
+# 1. Verify vendor files match committed PIN (runs in CI and locally)
 bash scripts/check-engine-wrapper-sync.sh
 
 # 2. Run the hermetic external engine coordinator test suite
 pnpm --filter @opensand/coordinator test test/external-engine-runner.test.ts
 
-# 3. Run full project verification
+# 3. Build packages and verify plain .mjs vendor assets reach dist/
+pnpm --filter @opensand/coordinator run build
+test -f packages/coordinator/dist/src/engines/vendor/agent_wrap.mjs
+test -f packages/coordinator/dist/src/engines/vendor/PIN
+
+# 4. Stage desktop distribution and verify vendor .mjs loads from the packaged app structure
+pnpm stage:desktop
+node -e 'import("./dist/stage/node_modules/@opensand/coordinator/dist/src/engines/vendor/agent_wrap.mjs").then(m => {
+  if (typeof m.runTurn !== "function") throw new Error("runTurn missing from staged package");
+  console.log("PASS: packaged vendor .mjs successfully loaded from staged app");
+})'
+
+# 5. Run packaged app smoke verification with fake engine turn
+node -e '
+import { ExternalEngineTurnRunner } from "./dist/stage/node_modules/@opensand/coordinator/dist/src/index.js";
+console.log("PASS: ExternalEngineTurnRunner exported and resolvable in staged desktop bundle");
+'
+
+# 6. Run full project verification
 bash scripts/verify.sh
 ```
 
