@@ -21,6 +21,7 @@ make_workspace() {
   printf '#!/usr/bin/env bash\nexit 0\n' > "$dir/scripts/check-scripts-catalog.sh"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$dir/scripts/check-doc-links.sh"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$dir/scripts/check-real-window-nav.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$dir/scripts/check-engine-wrapper-sync.sh"
   printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../.dead-exports-fail" ]] && { echo "FAIL: new dead export" >&2; exit 1; }\nexit 0\n' > "$dir/scripts/check-dead-exports.sh"
   printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../.raw-errors-fail" ]] && { echo "FAIL: new raw error" >&2; exit 1; }\nexit 0\n' > "$dir/scripts/check-raw-errors.sh"
   printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../.lessons-stale" ]] && { echo "FAIL: docs/lessons/INDEX.md is stale. Run: bash scripts/lessons-index.sh" >&2; exit 1; }\nexit 0\n' > "$dir/scripts/lessons-index.sh"
