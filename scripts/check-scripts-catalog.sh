@@ -3,9 +3,10 @@
 # Enforces:
 #   1. Every script in scripts/ (*.sh, *.js, *.ts, *.bash, *.zsh) is documented in scripts/README.md.
 #   2. No stale/nonexistent scripts are cataloged in scripts/README.md.
-#   3. Gate and critical release scripts (pr-gate.sh, release.sh, clean-disk.sh, verify.sh, check-scripts-catalog.sh)
+#   3. All cataloged shell scripts (*.sh) have executable permission (test -x).
+#   4. Gate and critical release scripts (pr-gate.sh, release.sh, clean-disk.sh, verify.sh, check-scripts-catalog.sh)
 #      have a corresponding hermetic selftest (*-selftest.sh) on disk.
-#   4. CONTRIBUTING.md names every required workflow step (the save and merge-gate commands), so an agent
+#   5. CONTRIBUTING.md names every required workflow step (the save and merge-gate commands), so an agent
 #      that reads the contributor guide is told to run them.
 set -euo pipefail
 
@@ -23,7 +24,7 @@ fi
 FAILED=0
 
 # --- Check 1: Every script on disk is cataloged ---
-echo "==> [Check 1/3] Checking that all scripts on disk are cataloged in $(basename "$CATALOG_FILE")..."
+echo "==> [Check 1/5] Checking that all scripts on disk are cataloged in $(basename "$CATALOG_FILE")..."
 for filepath in "$SCRIPTS_DIR"/*; do
   [[ -f "$filepath" ]] || continue
   filename="$(basename "$filepath")"
@@ -43,7 +44,7 @@ for filepath in "$SCRIPTS_DIR"/*; do
 done
 
 # --- Check 2: No stale or nonexistent scripts in catalog ---
-echo "==> [Check 2/3] Checking that all scripts in $(basename "$CATALOG_FILE") exist on disk..."
+echo "==> [Check 2/5] Checking that all scripts in $(basename "$CATALOG_FILE") exist on disk..."
 CATALOGED_SCRIPTS=$(grep -oE '`[a-zA-Z0-9_-]+\.(sh|js|ts|bash|zsh)`' "$CATALOG_FILE" | tr -d '`' | sort -u || true)
 for script_name in $CATALOGED_SCRIPTS; do
   if [[ ! -f "$SCRIPTS_DIR/$script_name" ]]; then
@@ -52,8 +53,21 @@ for script_name in $CATALOGED_SCRIPTS; do
   fi
 done
 
-# --- Check 3: Gate & critical release scripts have selftests ---
-echo "==> [Check 3/3] Checking that gate and critical release scripts have selftests..."
+# --- Check 3: Cataloged shell scripts have executable permission ---
+echo "==> [Check 3/5] Checking that cataloged shell scripts are executable..."
+for script_name in $CATALOGED_SCRIPTS; do
+  case "$script_name" in
+    *.sh)
+      if [[ -f "$SCRIPTS_DIR/$script_name" && ! -x "$SCRIPTS_DIR/$script_name" ]]; then
+        echo "FAIL: cataloged script '$script_name' is not executable (missing +x)" >&2
+        FAILED=1
+      fi
+      ;;
+  esac
+done
+
+# --- Check 4: Gate & critical release scripts have selftests ---
+echo "==> [Check 4/5] Checking that gate and critical release scripts have selftests..."
 GATE_SCRIPTS=("pr-gate.sh" "release.sh" "clean-disk.sh" "verify.sh" "check-scripts-catalog.sh")
 
 for gate in "${GATE_SCRIPTS[@]}"; do
@@ -67,8 +81,8 @@ for gate in "${GATE_SCRIPTS[@]}"; do
   fi
 done
 
-# --- Check 4: CONTRIBUTING.md names the required workflow steps ---
-echo "==> [Check 4/4] Checking that $(basename "$CONTRIBUTING_FILE") names the required workflow steps..."
+# --- Check 5: CONTRIBUTING.md names the required workflow steps ---
+echo "==> [Check 5/5] Checking that $(basename "$CONTRIBUTING_FILE") names the required workflow steps..."
 if [[ ! -f "$CONTRIBUTING_FILE" ]]; then
   echo "FAIL: contributor guide not found: $CONTRIBUTING_FILE" >&2
   FAILED=1
@@ -86,5 +100,5 @@ if [[ "$FAILED" -ne 0 ]]; then
   exit 1
 fi
 
-echo "PASS: scripts catalog is complete, valid, all gate scripts have selftests, and the contributor guide names the workflow steps."
+echo "PASS: scripts catalog is complete, valid, shell scripts are executable, all gate scripts have selftests, and the contributor guide names the workflow steps."
 exit 0

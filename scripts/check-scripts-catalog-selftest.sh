@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 set -euo pipefail
 
 # Hermetic selftest for scripts/check-scripts-catalog.sh
@@ -8,6 +9,7 @@ set -euo pipefail
 #   4. Missing selftest for gate/release script fails validation
 #   5. Real repository scripts catalog passes cleanly
 #   6. A contributor guide that does not name a required workflow step fails validation
+#   7. Non-executable script in catalog fails validation and passes when executable
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHECK_SCRIPT="$ROOT/scripts/check-scripts-catalog.sh"
@@ -49,6 +51,7 @@ cat << 'MD' > "$dir/README.md"
 | `pr-gate-selftest.sh` | Selftest |
 MD
 touch "$dir/demo.sh" "$dir/pr-gate.sh" "$dir/pr-gate-selftest.sh"
+chmod +x "$dir/demo.sh" "$dir/pr-gate.sh" "$dir/pr-gate-selftest.sh"
 run_fixture_test "case1-all-green" 0
 
 # --- Case 2: Unlisted script on disk -> fail ---
@@ -60,6 +63,7 @@ cat << 'MD' > "$dir/README.md"
 | `demo.sh` | Demo script |
 MD
 touch "$dir/demo.sh" "$dir/unlisted.sh"
+chmod +x "$dir/demo.sh" "$dir/unlisted.sh"
 run_fixture_test "case2-unlisted-script" 1
 
 # --- Case 3: Stale catalog entry -> fail ---
@@ -72,6 +76,7 @@ cat << 'MD' > "$dir/README.md"
 | `missing-on-disk.sh` | Phantom script |
 MD
 touch "$dir/demo.sh"
+chmod +x "$dir/demo.sh"
 run_fixture_test "case3-stale-entry" 1
 
 # --- Case 4: Missing gate selftest -> fail ---
@@ -83,6 +88,7 @@ cat << 'MD' > "$dir/README.md"
 | `pr-gate.sh` | Gate |
 MD
 touch "$dir/pr-gate.sh"
+chmod +x "$dir/pr-gate.sh"
 run_fixture_test "case4-missing-gate-selftest" 1
 
 # --- Case 6: Contributor guide missing a required workflow step -> fail ---
@@ -95,12 +101,40 @@ cat << 'MD' > "$dir/README.md"
 | `pr-gate-selftest.sh` | Selftest |
 MD
 touch "$dir/pr-gate.sh" "$dir/pr-gate-selftest.sh"
+chmod +x "$dir/pr-gate.sh" "$dir/pr-gate-selftest.sh"
 printf '# Contributing\nRun scripts/pr-gate.sh only.\n' > "$dir/CONTRIBUTING.md"
 status=0; out=$(OPENSAND_SCRIPTS_DIR="$dir" OPENSAND_CATALOG_FILE="$dir/README.md" OPENSAND_CONTRIBUTING_FILE="$dir/CONTRIBUTING.md" bash "$CHECK_SCRIPT" 2>&1) || status=$?
 if [ "$status" -eq 0 ] || ! echo "$out" | grep -qF "'scripts/worktree.sh save'"; then
   echo "FAIL case6-guide-missing-step (exit $status): $out"; FAILED=1
 else
   echo "PASS case6-guide-missing-step (exit $status)"
+fi
+
+# --- Case 7: Non-executable script in catalog -> fail, passes when executable ---
+dir="$WORK/case7-non-executable-script"
+mkdir -p "$dir"
+cat << 'MD' > "$dir/README.md"
+# Scripts
+| Script | Purpose |
+| `demo.sh` | Demo script |
+MD
+touch "$dir/demo.sh"
+chmod -x "$dir/demo.sh"
+status=0; out=$(OPENSAND_SCRIPTS_DIR="$dir" OPENSAND_CATALOG_FILE="$dir/README.md" bash "$CHECK_SCRIPT" 2>&1) || status=$?
+if [ "$status" -eq 0 ] || ! echo "$out" | grep -q "not executable"; then
+  echo "FAIL case7-non-executable-script (exit $status): expected failure for non-executable script: $out"
+  FAILED=1
+else
+  echo "PASS case7-non-executable-script (exit $status)"
+fi
+
+chmod +x "$dir/demo.sh"
+status=0; out=$(OPENSAND_SCRIPTS_DIR="$dir" OPENSAND_CATALOG_FILE="$dir/README.md" bash "$CHECK_SCRIPT" 2>&1) || status=$?
+if [ "$status" -ne 0 ]; then
+  echo "FAIL case7-non-executable-script-fixed (exit $status): expected pass after chmod +x: $out"
+  FAILED=1
+else
+  echo "PASS case7-non-executable-script-fixed (exit 0)"
 fi
 
 # --- Case 5: Real repository scripts catalog check ---
