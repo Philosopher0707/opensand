@@ -620,4 +620,11 @@ describe("UniversalLLMClient", () => {
     );
   });
 
+  it("caps Retry-After: 120 at 30s without a real sleep", () => {
+    const client = new UniversalLLMClient({ baseUrl: "https://api.openai.com/v1", model: "m" });
+    const waitMs = (client as any).calculateBackoff(1, "120");
+    assert.ok(waitMs <= 30000, `Retry-After: 120 must cap at 30s, got ${waitMs}ms`);
+    assert.ok(waitMs > 0, "the retry delay must remain positive");
+  });
+
 });

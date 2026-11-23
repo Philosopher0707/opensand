@@ -512,7 +512,7 @@ export class UniversalLLMClient {
           throw new ProviderError(
             `Authentication failed (401 Unauthorized) at ${endpoint}.\n` +
             `  Detail: ${detail}\n` +
-            `  Fix: Provide an API key via --api-key, export OPENAI_API_KEY, or use a local model (--endpoint http://127.0.0.1:11434/v1).`,
+            `  Fix: Provide an API key in Settings, or switch to another model or provider in Settings.`,
             {
               status: 401,
               endpoint,
@@ -556,7 +556,7 @@ export class UniversalLLMClient {
           throw new ProviderError(
             `Model or endpoint not found (404 Not Found) at ${endpoint}.\n` +
             `  Detail: ${detail}\n` +
-            `  Fix: Check available models (e.g. 'ollama list') and specify with --model <name>.`,
+            `  Fix: Check available models in Settings and choose one, or check the endpoint you configured.`,
             {
               status: 404,
               endpoint,

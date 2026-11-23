@@ -541,6 +541,14 @@ export class McpClient {
         proc.stdout?.destroy();
         proc.stderr?.destroy();
         proc.kill("SIGTERM");
+        // A server that traps SIGTERM would keep closeAll() (and desktop shutdown) waiting
+        // forever. Escalate after a short grace so shutdown always completes.
+        const forceKill = setTimeout(() => {
+          if (proc.exitCode === null && proc.signalCode === null) {
+            try { proc.kill("SIGKILL"); } catch { /* already gone */ }
+          }
+        }, 2000);
+        forceKill.unref();
         proc.unref();
       } catch {
         // Ignore

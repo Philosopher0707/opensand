@@ -1,5 +1,6 @@
 import test from "node:test";
 import * as assert from "node:assert";
+import { spawn } from "node:child_process";
 import { PassThrough } from "node:stream";
 import * as readline from "node:readline";
 import * as fs from "node:fs";
@@ -481,4 +482,27 @@ test("TokenHygiene - scopes dynamic MCP tools by capability and role", async () 
   // Model requests irrelevant capability
   const scopedIrrelevant = selectActiveToolsForModel([mcpTool], ["vision"]);
   assert.strictEqual(scopedIrrelevant.length, 0);
+});
+
+test("McpClient.close() SIGKILLs a child that traps SIGTERM", async () => {
+  const child = spawn(
+    process.execPath,
+    ["-e", "process.on('SIGTERM', () => {}); process.stdout.write('ready\\n'); setInterval(() => {}, 1000);"],
+    { stdio: ["pipe", "pipe", "pipe"] }
+  );
+  await new Promise<void>((resolve) => child.stdout!.once("data", () => resolve()));
+  const client = new McpClient({ serverName: "stubborn", config: { command: process.execPath } });
+  (client as any).process = child;
+  try {
+    await client.close();
+    const exited = await new Promise<boolean>((resolve) => {
+      if (child.exitCode !== null || child.signalCode !== null) return resolve(true);
+      const watchdog = setTimeout(() => resolve(false), 5000);
+      child.once("exit", () => { clearTimeout(watchdog); resolve(true); });
+    });
+    assert.ok(exited, "SIGTERM-trapping child must be killed by the fallback");
+    assert.strictEqual(child.signalCode, "SIGKILL");
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  }
 });

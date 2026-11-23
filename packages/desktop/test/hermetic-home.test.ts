@@ -1,3 +1,4 @@
+import { whenElectronExited } from "./helpers/electron-exit.js";
 import test from 'node:test';
 import assert from 'node:assert';
 import { spawn } from 'node:child_process';
@@ -56,7 +57,7 @@ await import(${JSON.stringify(mainScript)});
       });
       child.stdout.on('data', (d) => { stdout += d.toString(); });
       child.stderr.on('data', (d) => { stderr += d.toString(); });
-      return new Promise<number>((resolve) => child.on('close', (code) => resolve(code ?? 0)));
+      return whenElectronExited(child);
     });
 
     assert.ok(

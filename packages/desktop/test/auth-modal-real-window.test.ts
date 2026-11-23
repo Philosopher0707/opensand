@@ -1,3 +1,4 @@
+import { whenElectronExited } from "./helpers/electron-exit.js";
 import test from "node:test";
 import assert from "node:assert";
 import { spawn } from "node:child_process";
@@ -197,7 +198,7 @@ test("Preact auth modal and token exchange real-window test at 960x740 and 1920x
       child.stderr.on("data", (d) => {
         stderr += d.toString();
       });
-      return new Promise<number>((resolve) => child.on("close", (c) => resolve(c ?? 0)));
+      return whenElectronExited(child);
     });
 
     assert.strictEqual(code, 0, `auth runner failed (${code})\n${stdout}\n${stderr}`);

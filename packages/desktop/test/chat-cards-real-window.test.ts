@@ -1,3 +1,4 @@
+import { whenElectronExited } from "./helpers/electron-exit.js";
 import test from "node:test";
 import assert from "node:assert";
 import { spawn } from "node:child_process";
@@ -223,7 +224,7 @@ test("real Electron window renders tool cards, thought accordion, and markdown a
       child.stderr.on("data", (d) => {
         stderr += d.toString();
       });
-      return new Promise<number>((resolve) => child.on("close", (c) => resolve(c ?? 0)));
+      return whenElectronExited(child);
     });
 
     assert.strictEqual(code, 0, `runner failed (${code})\n${stdout}\n${stderr}`);
