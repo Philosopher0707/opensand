@@ -1,0 +1,11 @@
+# Barrel Export Symbol Collisions & Desktop Provider Error Formatting
+
+- **Trap:** Defining a typed `ProviderError` class in `packages/coordinator/src/llm-client.ts` broke the coordinator build with TS2308 because `packages/coordinator/src/provider-clients.ts` also exported an interface named `ProviderError` for connector clients. Additionally, raw provider errors (such as OpenRouter 429 "Provider returned error" or multi-line CLI errors with `--api-key`) were displayed directly in the chat window, leaking endpoints and CLI instructions.
+- **Root Cause:** Barrel exports (`export * from "./..."`) in `index.ts` collided on the duplicate `ProviderError` identifier without explicit disambiguation. Furthermore, desktop turn catch blocks in `ipc-bridge.ts` and `desktop-server.ts` forwarded raw `err.message` directly to `this.emitEvent("error", ...)` instead of invoking `classifyError()`.
+- **Rule:** When introducing a public error class that shares an identifier name with another module, explicitly disambiguate the re-export in `index.ts`. Always route thrown coordinator turn errors through `classifyError()` in desktop catch blocks so the renderer displays human-friendly cause and one-line desktop next actions with no CLI flags.
+
+# Unawaited Background MCP Client Starts Cause Process Shutdown Hangs
+
+- **Trap:** Tests or app shutdowns hung indefinitely because spawned MCP child processes (e.g. Python or Node stdio servers) kept the Node event loop alive even after `close()` was called.
+- **Root Cause:** `mcpManager.startAll()` in `DesktopIpcBridge` was kicked off asynchronously in the constructor without saving or awaiting its promise. When `close()` was called during or immediately after startup, `mcpManager.closeAll()` saw an empty clients map and exited immediately, while `startAll()` finished afterwards and left running child processes with active stdio sockets. Furthermore, `mcp-client.ts` did not destroy stdio streams or `unref()` the process upon close.
+- **Rule:** Background initialization promises in service bridges must be tracked (e.g. `this.backgroundMcpStart`) and awaited inside `close()`. Child processes closed by client managers must explicitly destroy stdio streams (`proc.stdin?.destroy()`, `stdout`, `stderr`), send termination signals, and call `proc.unref()` to avoid pinning the Node event loop.
