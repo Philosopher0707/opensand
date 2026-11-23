@@ -495,15 +495,40 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
 fi
 
 echo "==> [Check 1/5] Checking PR #$PR status and CI rollups..."
-if ! PR_JSON=$(gh pr view "$PR" --json state,isDraft,mergeable,baseRefOid,headRefOid,statusCheckRollup 2>&1); then
+if ! PR_JSON=$(gh pr view "$PR" --json state,isDraft,mergeable,baseRefOid,headRefOid,statusCheckRollup,body 2>&1); then
   echo "FAIL: gh pr view failed for PR #$PR: $PR_JSON" >&2
   exit 1
+fi
+
+IS_WORKTREE_DRAFT=$(node -e '
+  try {
+    const d = JSON.parse(process.argv[1]);
+    const body = d.body || "";
+    console.log((d.isDraft === true && (body.includes("scripts/worktree.sh save") || body.includes("worktree.sh save"))) ? "true" : "false");
+  } catch { console.log("false"); }
+' "$PR_JSON" 2>/dev/null || echo "false")
+
+if [[ "$IS_WORKTREE_DRAFT" == "true" ]]; then
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "DRY RUN: PR #$PR is a draft opened by worktree.sh; would run 'gh pr ready $PR'"
+  else
+    echo "PR #$PR is a draft opened by worktree.sh; running 'gh pr ready $PR' automatically..."
+    if ! READY_ERR=$(gh pr ready "$PR" 2>&1); then
+      echo "FAIL: failed to mark PR #$PR ready: $READY_ERR" >&2
+      exit 1
+    fi
+  fi
+  if ! PR_JSON=$(gh pr view "$PR" --json state,isDraft,mergeable,baseRefOid,headRefOid,statusCheckRollup,body 2>&1); then
+    echo "FAIL: gh pr view failed for PR #$PR: $PR_JSON" >&2
+    exit 1
+  fi
 fi
 
 CHECK1_STATUS=0
 CHECK1_OUT=$(node -e '
 const raw = process.argv[1];
 const pr = process.argv[2];
+const isWorktreeDraft = process.argv[3];
 let data;
 try {
   data = JSON.parse(raw);
@@ -517,7 +542,7 @@ if (data.state !== "OPEN") {
   process.exit(1);
 }
 
-if (data.isDraft === true) {
+if (data.isDraft === true && isWorktreeDraft !== "true") {
   console.error("FAIL: PR #" + pr + " is still a draft (scripts/worktree.sh save opens drafts); GitHub refuses to merge a draft, and the checkpoint tag would already be pushed. Run: gh pr ready " + pr);
   process.exit(1);
 }
@@ -550,7 +575,7 @@ for (const [osName, job] of [["Linux", linuxJob], ["macOS", macJob]]) {
 }
 
 console.log("PASS: PR #" + pr + " is OPEN, MERGEABLE, and both CI jobs (Linux, macOS) succeeded on head " + data.headRefOid);
-' "$PR_JSON" "$PR" 2>&1) || CHECK1_STATUS=$?
+' "$PR_JSON" "$PR" "$IS_WORKTREE_DRAFT" 2>&1) || CHECK1_STATUS=$?
 
 if [[ "$CHECK1_STATUS" -ne 0 ]]; then
   echo "$CHECK1_OUT" >&2

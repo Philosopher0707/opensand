@@ -16,7 +16,8 @@
 # 15. --timeout validation
 # 16. --when-green: CI has not registered any check yet -> waits for it, then watches and merges
 # 17. --when-green: no check ever appears -> exit 3 naming "no CI checks", no merge
-# 18. a draft PR is refused before any checkpoint tag or merge, naming `gh pr ready`
+# 18. a draft PR opened by worktree.sh is auto-readied via `gh pr ready` and merged
+# 18b. a draft PR not opened by worktree.sh is refused naming `gh pr ready`
 # 19. --when-green: gh pr checks says "no checks reported" twice, then green -> merges
 # 20. --when-green: gh pr checks never reports any check -> bounded exit 3 naming "no CI checks appeared after Ns"
 # 21-24. auto-rebase: clean rebase, conflict abort, 3-attempt cap, DIRTY/CONFLICTING detection
@@ -156,6 +157,10 @@ case "$1" in
         if [ -f "$TEST_CASE_DIR/checks_exit" ]; then
           exit "$(cat "$TEST_CASE_DIR/checks_exit")"
         fi
+        exit 0
+        ;;
+      ready)
+        echo "gh $*" >> "$TEST_CASE_DIR/ready_calls.log"
         exit 0
         ;;
       merge)
@@ -815,7 +820,7 @@ if [[ "$elapsed" -gt 10 ]]; then
   FAILED=1
 fi
 
-# --- Case 18: a draft PR (opened by worktree.sh save) -> exit 1 before the tag, no merge ---
+# --- Case 18: a draft PR opened by worktree.sh save -> auto-readied via gh pr ready and merged ---
 dir="$WORK/case18-draft"
 setup_defaults "$dir"
 cat << 'JSON' > "$dir/pr_view.json"
@@ -825,6 +830,34 @@ cat << 'JSON' > "$dir/pr_view.json"
   "mergeable": "MERGEABLE",
   "baseRefOid": "1111111111111111111111111111111111111111",
   "headRefOid": "2222222222222222222222222222222222222222",
+  "body": "Draft opened automatically by `scripts/worktree.sh save` on the first push of `job/test`.",
+  "statusCheckRollup": [
+    {"name": "Build & test (Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"},
+    {"name": "Build & test (macOS, Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"}
+  ]
+}
+JSON
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("is a draft opened by worktree.sh; running 'gh pr ready 42' automatically")
+run_test_case "case18-draft" 42
+if ! grep -qF "gh pr ready 42" "$dir/ready_calls.log" 2>/dev/null; then
+  echo "FAIL case18-draft: gh pr ready was not invoked for worktree draft"
+  FAILED=1
+fi
+
+# --- Case 18b: a draft PR NOT opened by worktree.sh -> exit 1 before the tag, no merge ---
+dir="$WORK/case18b-manual-draft"
+setup_defaults "$dir"
+cat << 'JSON' > "$dir/pr_view.json"
+{
+  "state": "OPEN",
+  "isDraft": true,
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "body": "Manual WIP PR description without worktree marker",
   "statusCheckRollup": [
     {"name": "Build & test (Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"},
     {"name": "Build & test (macOS, Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"}
@@ -835,7 +868,11 @@ EXPECT_EXIT=1
 EXPECT_MERGE=0
 EXPECT_TAG=0
 NEED_SUBSTRINGS=("is still a draft" "gh pr ready 42")
-run_test_case "case18-draft" 42
+run_test_case "case18b-manual-draft" 42
+if [[ -f "$dir/ready_calls.log" ]]; then
+  echo "FAIL case18b-manual-draft: gh pr ready should not be called for manual draft"
+  FAILED=1
+fi
 
 # --- Case 14: without --when-green, gh pr checks is never called ---
 if [[ -f "$WORK/case1-all-green/checks_calls.log" || -f "$WORK/case2-pending-ci/checks_calls.log" ]]; then
