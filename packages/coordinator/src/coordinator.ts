@@ -1,3 +1,5 @@
+import type { ExternalEngineConfig } from "./engines/types.js";
+import { ExternalEngineTurnRunner } from "./engines/external-engine-runner.js";
 import {
   createWorkspaceSnapshot,
   revertWorkspaceSnapshot,
@@ -36,7 +38,8 @@ import {
 } from "./token-hygiene.js";
 
 export interface CoordinatorOptions {
-  llmClient: UniversalLLMClient;
+  llmClient?: UniversalLLMClient;
+  engineConfig?: ExternalEngineConfig;
   daemon: LocalExecDaemon;
   sessionId?: string;
   rulesLoader?: RulesLoader;
@@ -79,7 +82,8 @@ function escapeQuotedText(text: string): string {
 }
 
 export class AgentCoordinator {
-  public readonly llmClient: UniversalLLMClient;
+  public readonly llmClient?: UniversalLLMClient;
+  public readonly engineConfig?: ExternalEngineConfig;
   public readonly daemon: LocalExecDaemon;
   public readonly transcript: TranscriptManager;
   public readonly sessionId: string;
@@ -113,12 +117,13 @@ export class AgentCoordinator {
 
   constructor(options: CoordinatorOptions) {
     this.llmClient = options.llmClient;
+    this.engineConfig = options.engineConfig;
     this.daemon = options.daemon;
     this.sessionId = options.sessionId ?? `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     this.transcript = new TranscriptManager(this.sessionId, options.sessionsBaseDir);
     this.allowedTools = options.allowedTools;
-    this.maxContextTokens = options.maxContextTokens ?? getModelMaxContextTokens(options.llmClient?.model);
-    this.toolScopeMode = options.toolScopeMode ?? recommendToolScopeMode(options.llmClient?.model, this.maxContextTokens, { allowedTools: this.allowedTools });
+    this.maxContextTokens = options.maxContextTokens ?? (options.llmClient?.model ? getModelMaxContextTokens(options.llmClient.model) : 128000);
+    this.toolScopeMode = options.toolScopeMode ?? (options.llmClient?.model ? recommendToolScopeMode(options.llmClient.model, this.maxContextTokens, { allowedTools: this.allowedTools }) : "auto");
     this.vaultStore = options.vaultStore;
     this.hookDispatcher = new HookDispatcher(options.hooks);
     this.onApprovalRequired = options.onApprovalRequired;
@@ -221,6 +226,9 @@ export class AgentCoordinator {
   }
 
   async runTurn(userQuery: string, signal?: AbortSignal): Promise<string> {
+    if (this.engineConfig) {
+      return this.runExternalEngineTurn(userQuery, signal);
+    }
     if (this.rulesLoader?.refresh()) {
       const globalRules = this.rulesLoader.globalRules;
       const userInstructions = [this.baseUserInstructions, globalRules].filter(Boolean).join("\n\n") || undefined;
@@ -252,7 +260,7 @@ export class AgentCoordinator {
         }
       }
 
-      await this.transcript.recordBaseline(this.messages, { model: this.llmClient.model });
+      await this.transcript.recordBaseline(this.messages, { model: this.llmClient?.model ?? "default" });
 
       await this.hookDispatcher.dispatchSessionStart({
         sessionId: this.sessionId,
@@ -291,7 +299,7 @@ export class AgentCoordinator {
 
       const toolDefs = this.getActiveToolDefinitions(userQuery);
 
-      const { stream, getConsolidated, getUsage } = await this.llmClient.streamCompletion(
+      const { stream, getConsolidated, getUsage } = await this.llmClient!.streamCompletion(
         this.messages,
         toolDefs,
         signal
@@ -616,6 +624,91 @@ export class AgentCoordinator {
     return fallbackMessage;
   }
 
+
+  private async runExternalEngineTurn(userQuery: string, signal?: AbortSignal): Promise<string> {
+    if (this.rulesLoader?.refresh()) {
+      const globalRules = this.rulesLoader.globalRules;
+      const userInstructions = [this.baseUserInstructions, globalRules].filter(Boolean).join("\n\n") || undefined;
+      this.systemPromptContext = {
+        ...this.systemPromptContext,
+        userInstructions,
+        rulesContext: this.rulesLoader.rulesContext || undefined,
+      };
+      if (this.messages.length > 0 && this.messages[0].role === "system") {
+        this.messages[0].content = buildSystemPrompt(this.systemPromptContext);
+      }
+    }
+
+    if (!this.initialized) {
+      this.initialized = true;
+
+      // Hydrate historical turns from disk if resuming an existing session
+      if (this.messages.length <= 1) {
+        const history = await this.transcript.loadHistory();
+        if (history.length > 0) {
+          const nonSystem = history.filter((m) => m.role !== "system");
+          const historicalSummary = history.find(
+            (m) => (m.role === "user" || m.role === "system") && m.content?.includes("<historical_context_summary>")
+          );
+          if (historicalSummary) {
+            this.messages.splice(1, 0, historicalSummary);
+          }
+          this.messages.push(...nonSystem);
+        }
+      }
+
+      const activeModel = this.engineConfig?.model ?? this.engineConfig?.engine ?? "external";
+      await this.transcript.recordBaseline(this.messages, { model: activeModel });
+
+      await this.hookDispatcher.dispatchSessionStart({
+        sessionId: this.sessionId,
+        systemPrompt: this.messages[0]?.content ?? undefined,
+      });
+    }
+
+    const userMessage: ChatMessage = { role: "user", content: userQuery };
+    this.messages.push(userMessage);
+
+    this.emit({ type: "user_message", content: userQuery });
+    await this.transcript.recordEvent(EVENT.turnStarted, { message: userMessage });
+
+    const runner = new ExternalEngineTurnRunner({
+      config: this.engineConfig!,
+      sessionId: this.sessionId,
+      workspaceDir: this.workspaceDir,
+      transcript: this.transcript,
+      daemon: this.daemon,
+      hookDispatcher: this.hookDispatcher,
+      onApprovalRequired: this.onApprovalRequired,
+      onEvent: (event: TurnEvent) => this.emit(event),
+      systemPrompt: this.messages[0]?.content ?? undefined,
+      sandboxProfile: this.sandboxProfile,
+    });
+
+    try {
+      const finalContent = await runner.runTurn(userQuery, signal);
+      const assistantMessage: ChatMessage = { role: "assistant", content: finalContent };
+      this.messages.push(assistantMessage);
+
+      this.emit({ type: "turn_completed", finalContent });
+      try {
+        await this.transcript.writeProjections();
+      } catch (err) {
+        console.warn("[coordinator] writeProjections failed:", err instanceof Error ? err.message : err);
+      }
+      await this.hookDispatcher.dispatchStop({
+        sessionId: this.sessionId,
+        finalContent,
+      });
+      return finalContent;
+    } catch (err) {
+      try {
+        await this.transcript.writeProjections();
+      } catch {}
+      throw err;
+    }
+  }
+
   /**
    * Build the delegation context so delegate_to_agent can stream the child
    * turn's events up to the UI. Only meaningful for delegate_to_agent;
@@ -723,7 +816,7 @@ ${escapeQuotedText(question)}`;
       },
     ];
 
-    const { stream, getConsolidated } = await this.llmClient.streamCompletion(
+    const { stream, getConsolidated } = await this.llmClient!.streamCompletion(
       ephemeralMessages,
       [], // No tools in side-questions
       signal

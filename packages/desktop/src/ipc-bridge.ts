@@ -65,6 +65,9 @@ import {
   GalleryQueryOptions,
   buildToolDiscoverySummary,
   RulesLoader,
+  detectEngines,
+  ExternalEngineConfig,
+  EngineDetectionResult,
 } from '@opensand/coordinator';
 import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand, skillWriteNeedsGate, memoryWriteNeedsGate } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
@@ -83,6 +86,11 @@ import {
   type ApprovalMode,
 } from '@opensand/shared';
 import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSummary, DesktopEvent, ToolDiscoverySummary } from './types.js';
+
+// A nested shell or runtime evaluation can assemble any command after this point,
+// so a regex denylist cannot see through it. Force a human prompt in every mode,
+// including auto. This is a prompt (mustPrompt), never a silent deny.
+const NESTED_SHELL_RE = /\b(?:sh|bash|zsh|dash)\b[^\n]*\s-[a-zA-Z]*c\b|\beval\b|\$\(|`|\|\s*(?:sh|bash|zsh|dash)\b|\bbase64\b[^\n]*\s-[a-zA-Z]*d\b[^\n]*\||\bsource\b|(?:^|[\s;&|])\.\s+\S+/;
 
 export interface IpcBridgeOptions {
   baseDir?: string;
@@ -629,9 +637,8 @@ export class DesktopIpcBridge extends EventEmitter {
     let targetModel = this.settings.model;
     let targetEndpoint = this.settings.endpoint;
     let customInstructions: string | undefined;
-
-    if (agentId) {
-      const agent = await this.agentStore.getAgent(agentId);
+    const agent = agentId ? await this.agentStore.getAgent(agentId) : undefined;
+    if (agent) {
       if (agent) {
         if (agent.model && agent.model !== 'default') targetModel = agent.model;
         if (agent.endpoint) targetEndpoint = agent.endpoint;
@@ -639,12 +646,32 @@ export class DesktopIpcBridge extends EventEmitter {
       }
     }
 
-    const llmClient = new UniversalLLMClient({
-      baseUrl: targetEndpoint,
-      model: targetModel,
-      apiKey: this.settings.apiKey,
-      provider: this.settings.provider,
-    });
+    let engineConfig: ExternalEngineConfig | undefined = (agent as any)?.engineConfig;
+    if (!engineConfig) {
+      if (targetModel?.startsWith("external:")) {
+        const parts = targetModel.split(":");
+        engineConfig = {
+          type: "external",
+          engine: parts[1] as any,
+          model: parts[2] || undefined,
+        };
+      } else if (targetEndpoint === "external" || targetModel === "claude") {
+        engineConfig = {
+          type: "external",
+          engine: (targetModel === "claude" ? "claude" : ((agent as any)?.engine ?? "claude")),
+          model: (agent as any)?.model && (agent as any).model !== "default" ? (agent as any).model : undefined,
+        };
+      }
+    }
+
+    const llmClient = engineConfig
+      ? undefined
+      : new UniversalLLMClient({
+          baseUrl: targetEndpoint,
+          model: targetModel,
+          apiKey: this.settings.apiKey,
+          provider: this.settings.provider,
+        });
 
     const learnedRules = await this.habitExtractor.getLearnedRulesPromptContext();
     const memoryContext = await this.memoryStore.getPromptMemoryContext(agentId);
@@ -660,6 +687,7 @@ export class DesktopIpcBridge extends EventEmitter {
 
     const coordinator = new AgentCoordinator({
       llmClient,
+      engineConfig,
       daemon: this.daemon,
       sessionId: activeSessionId,
       vaultStore: this.vaultStore,
@@ -736,6 +764,10 @@ export class DesktopIpcBridge extends EventEmitter {
         isUserFixable: actionable.isUserFixable,
       });
     }
+  }
+
+  public async detectEngines(): Promise<EngineDetectionResult[]> {
+    return detectEngines();
   }
 
   public async sendQuery(query: string, sessionId?: string, agentId?: string): Promise<{ success: boolean; sessionId: string }> {
@@ -835,6 +867,14 @@ export class DesktopIpcBridge extends EventEmitter {
         reason = reason
           ? `${reason} (Dangerous pattern detected: ${validation.dangerReason})`
           : `Dangerous command pattern detected: ${validation.dangerReason}`;
+      }
+      // Wrapped/evaluated commands build their real payload at runtime; the denylist
+      // above cannot see it. Prompt even when the outer text looks harmless.
+      if (NESTED_SHELL_RE.test(args.command)) {
+        mustPrompt = true;
+        reason = reason
+          ? `${reason} (Command runs another shell or evaluates text; needs your yes)`
+          : 'Command runs another shell or evaluates text; needs your yes';
       }
     }
 

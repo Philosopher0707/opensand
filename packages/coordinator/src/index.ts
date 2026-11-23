@@ -39,3 +39,5 @@ export * from "./provider-clients.js";
 
 export * from './errors.js';
 export * from "./rules-loader.js";
+export * from "./engines/types.js";
+export * from "./engines/external-engine-runner.js";
