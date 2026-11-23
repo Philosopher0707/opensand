@@ -537,8 +537,11 @@ export class McpClient {
       const proc = this.process;
       this.process = null;
       try {
-        proc.stdin?.end();
+        proc.stdin?.destroy();
+        proc.stdout?.destroy();
+        proc.stderr?.destroy();
         proc.kill("SIGTERM");
+        proc.unref();
       } catch {
         // Ignore
       }
