@@ -84,4 +84,67 @@ describe("BashValidator", () => {
       assert.equal(res.isDangerous, false, `Ordinary delete must stay safe: ${cmd}`);
     }
   });
+
+  it("F3b: nested shells, substitution, split flags and quote tricks are all dangerous", () => {
+    // Every string Rigel reported as isDangerous=false against the compiled validator.
+    const bypasses = [
+      'sh -c "rm -rf /"',
+      "bash -c 'rm -rf /'",
+      "(rm -rf /)",
+      "$(rm -rf /)",
+      "`rm -rf /`",
+      'rm -rf "$HOME"',
+      'rm -rf "$X"',
+      "rm -rf ~/",
+      "rm -r -f /",
+      "rm --recursive --force /",
+      'r""m -rf /',
+      "rm -rf $(echo /)",
+      'rm -rf ""/',
+    ];
+    for (const cmd of bypasses) {
+      const res = validateBashCommand(cmd);
+      assert.equal(res.isDangerous, true, `Bypass must be flagged dangerous: ${cmd}`);
+      assert.ok(res.dangerReason, `Bypass must carry a plain-language reason: ${cmd}`);
+    }
+  });
+
+  it("F3b: no regression - Rigel's 19 previously blocked strings stay dangerous", () => {
+    // 16 verbatim from Rigel's PR #203 check; fork bomb / dd / mkfs were recorded by
+    // description only, so use the strings already in this file's dangerous table.
+    const blocked = [
+      "rm -rf /",
+      'rm -rf "/"',
+      "rm -rf '/'",
+      "rm -rf $HOME",
+      "X=/; rm -rf $X",
+      "env rm -rf /",
+      "echo hi; rm -rf /",
+      "true && rm -rf /",
+      "/bin/rm -rf /",
+      "command rm -rf /",
+      "sudo rm -rf /",
+      "rm -rf /*",
+      "rm -rf ~",
+      "rm -fr /",
+      "rm -rf -- /",
+      "rm -rf / --no-preserve-root",
+      ":(){ :|:& };:",
+      "dd if=/dev/zero of=/dev/sda",
+      "mkfs.ext4 /dev/sda",
+    ];
+    for (const cmd of blocked) {
+      const res = validateBashCommand(cmd);
+      assert.equal(res.isDangerous, true, `Previously blocked string regressed: ${cmd}`);
+      assert.ok(res.dangerReason);
+    }
+  });
+
+  it("F3b: relative-path deletes still pass after the denylist hardening", () => {
+    for (const cmd of ["rm -rf ./build", "rm -rf node_modules", "rm -rf ./dist", "rm -r ./build"]) {
+      const res = validateBashCommand(cmd);
+      assert.equal(res.isDangerous, false, `Relative-path delete must stay safe: ${cmd}`);
+      assert.equal(res.valid, true, `Relative-path delete must stay syntactically valid: ${cmd}`);
+    }
+  });
 });

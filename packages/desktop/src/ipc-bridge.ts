@@ -84,6 +84,11 @@ import {
 } from '@opensand/shared';
 import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSummary, DesktopEvent, ToolDiscoverySummary } from './types.js';
 
+// A nested shell or runtime evaluation can assemble any command after this point,
+// so a regex denylist cannot see through it. Force a human prompt in every mode,
+// including auto. This is a prompt (mustPrompt), never a silent deny.
+const NESTED_SHELL_RE = /\b(?:sh|bash|zsh|dash)\b[^\n]*\s-[a-zA-Z]*c\b|\beval\b|\$\(|`|\|\s*(?:sh|bash|zsh|dash)\b|\bbase64\b[^\n]*\s-[a-zA-Z]*d\b[^\n]*\||\bsource\b|(?:^|[\s;&|])\.\s+\S+/;
+
 export interface IpcBridgeOptions {
   baseDir?: string;
   /** Folder the session coordinators work in and the trust gate applies to. Default: process.cwd(), or the home folder when cwd is a filesystem root. */
@@ -835,6 +840,14 @@ export class DesktopIpcBridge extends EventEmitter {
         reason = reason
           ? `${reason} (Dangerous pattern detected: ${validation.dangerReason})`
           : `Dangerous command pattern detected: ${validation.dangerReason}`;
+      }
+      // Wrapped/evaluated commands build their real payload at runtime; the denylist
+      // above cannot see it. Prompt even when the outer text looks harmless.
+      if (NESTED_SHELL_RE.test(args.command)) {
+        mustPrompt = true;
+        reason = reason
+          ? `${reason} (Command runs another shell or evaluates text; needs your yes)`
+          : 'Command runs another shell or evaluates text; needs your yes';
       }
     }
 
