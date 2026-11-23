@@ -29,13 +29,16 @@ function standingExecGrants(grants: unknown, now: number): CapabilityGrant[] {
  * Is `command` standing-allowed by `grants`? The chaining guard runs first because the shared
  * scope matcher has none (`git *` would otherwise match `git status; rm -rf ~`). Only `always`
  * exec_command grants count, and the query carries the command alone, so path or domain scopes
- * cannot match. Anything missing or malformed denies.
+ * cannot match. Anything missing or malformed denies. A context carrying `unsandboxed` or `tainted`
+ * always denies: those need a fresh human decision, never a standing grant.
  */
 export function isStandingExecAllowed(
   grants: readonly CapabilityGrant[] | undefined,
   command: string,
   now: number = Date.now(),
+  context?: { unsandboxed?: boolean; tainted?: boolean },
 ): boolean {
+  if (context?.unsandboxed === true || context?.tainted === true) return false;
   if (typeof command !== "string" || command.trim() === "") return false;
   if (hasShellChaining(command)) return false;
   return isToolExecutionGranted(standingExecGrants(grants, now), { tool: "exec_command", command }, now);
