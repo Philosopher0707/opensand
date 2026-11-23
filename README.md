@@ -366,6 +366,10 @@ touches files you edited with the agent.
 
 ## Development
 
+Read [docs/STANDARDS.md](docs/STANDARDS.md) before starting any job: the
+definition of done, workflow, evidence, review, learning and error rules
+every contributor follows.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the workflow rules
 (stage by explicit path, check for in-progress work, verify before
 concluding), and the package layout. CI runs `pnpm run build` and
