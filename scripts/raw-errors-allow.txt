@@ -1,0 +1,29 @@
+# Raw error paths present on main; add only intentional entries. Key: relative-path|source line
+packages/desktop/renderer-next/src/views/Chat.tsx|(err) => dispatch({ type: "failed", message: err instanceof Error ? err.message : String(err) }),
+packages/desktop/renderer-next/src/views/MissionTimeline.tsx|setDialogError(e.message);
+packages/desktop/renderer-next/src/views/MissionTimeline.tsx|setForkDialogError(e.message);
+packages/desktop/renderer-next/src/views/MissionTimeline.tsx|setForkPreviewError(e.message);
+packages/desktop/renderer-next/src/views/MissionTimeline.tsx|setPreviewError(e.message);
+packages/desktop/renderer-next/src/views/MissionTimeline.tsx|setToast({ tone: "bad", message: e.message });
+packages/desktop/renderer-next/src/views/QuickCapture.tsx|(err) => dispatch({ type: "failed", message: err instanceof Error ? err.message : String(err) }),
+packages/desktop/src/desktop-server.ts|data: { error: err.message },
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err.message }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err.message }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err.message }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err.message }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err.message }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err.message }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err.message }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err.message }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err.message }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err.message }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err.message }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err.message }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err.message || 'Session export failed' }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ error: err.message, code: 4001, name: 'StaleEpochError' }));
+packages/desktop/src/desktop-server.ts|res.end(JSON.stringify({ models: [], error: err.message }));
+packages/desktop/src/ipc-bridge.ts|this.emitEvent('error', { message: err instanceof Error ? err.message : String(err) });
+packages/desktop/src/ipc-bridge.ts|this.emitEvent('error', { message: event.error.message });
+packages/desktop/src/rpc-gateway.ts|message: err.message || 'Internal RPC Error',
+packages/desktop/src/shell/bots-model.ts|return { valid: false, error: err.message };
