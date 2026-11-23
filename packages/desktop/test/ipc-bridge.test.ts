@@ -907,12 +907,52 @@ test('DesktopIpcBridge - approval mode routing and autoAllows bypasses prompt', 
     bridge.updateSettings({ approvalMode: 'auto' });
     assert.strictEqual(bridge.getSettings().approvalMode, 'auto');
 
-    // In auto: unsandboxed shell auto-approves
+    // In auto: unsandboxed shell still prompts (shell_outside is a separate approval, F1)
     let autoAsked = false;
     bridge.once('approval_required', () => { autoAsked = true; });
-    const autoOutsideAllowed = await bridge.requestUserApproval('exec_command', { command: 'echo auto', unsandboxed: true });
-    assert.strictEqual(autoOutsideAllowed, true);
-    assert.strictEqual(autoAsked, false, 'auto mode must not prompt for unsandboxed shell');
+    const autoOutsidePromise = bridge.requestUserApproval('exec_command', { command: 'echo auto', unsandboxed: true });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(autoAsked, true, 'auto mode must prompt for unsandboxed shell');
+    const autoList = await bridge.listPendingApprovals();
+    await bridge.approveTool(autoList[0].approvalId, { action: 'approve_once', epoch: autoList[0].epoch });
+    assert.strictEqual(await autoOutsidePromise, true);
+
+    await bridge.close();
+  } finally {
+    rmTmp(tmpDir);
+  }
+});
+
+test('F1: auto mode never auto-runs a dangerous shell command (sandboxed or unsandboxed)', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-f1-auto-shell-'));
+  try {
+    const bridge = new DesktopIpcBridge({
+      baseDir: tmpDir,
+      defaultSettings: { approvalMode: 'auto', model: 'test-f1-model' },
+    });
+
+    // Harmless sandboxed shell still auto-approves in auto mode.
+    assert.strictEqual(
+      await bridge.requestUserApproval('exec_command', { command: 'ls' }),
+      true,
+      'harmless sandboxed shell must still auto-approve in auto mode',
+    );
+
+    for (const unsandboxed of [false, true]) {
+      let prompted = false;
+      bridge.once('approval_required', () => { prompted = true; });
+      const pending = bridge.requestUserApproval('exec_command', { command: 'rm -rf /', unsandboxed });
+      await new Promise((r) => setTimeout(r, 20));
+      assert.strictEqual(prompted, true, `rm -rf / (unsandboxed=${unsandboxed}) must prompt in auto mode, never auto-run`);
+
+      const list = await bridge.listPendingApprovals();
+      assert.strictEqual(list.length, 1);
+      assert.match(list[0].reason ?? '', /Dangerous command pattern detected/i, 'prompt must show the danger reason in plain words');
+      await bridge.approveTool(list[0].approvalId, { action: 'reject', epoch: list[0].epoch });
+      assert.strictEqual(await pending, false, 'a denied card means the command does not run');
+      // The turn continues: a later harmless command still works.
+      assert.strictEqual(await bridge.requestUserApproval('exec_command', { command: 'ls' }), true);
+    }
 
     await bridge.close();
   } finally {

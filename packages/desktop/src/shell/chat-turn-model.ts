@@ -317,7 +317,18 @@ export function chatEventAction(event: TurnEvent, sessionId: string | null): Cha
   }
   if (event.type === "turn_cancelled") return { type: "stopped" };
   if (event.type === "error") {
-    return { type: "failed", message: event.data?.message || event.message || "Unknown error occurred" };
+    const d = event.data as any;
+    let text = "";
+    if (d?.cause && d?.nextAction) {
+      text = `${d.cause} ${d.nextAction}`;
+    } else if (d?.message) {
+      text = d.message;
+    } else if (event.message) {
+      text = event.message;
+    } else {
+      text = "Unknown error occurred";
+    }
+    return { type: "failed", message: text };
   }
   return null;
 }

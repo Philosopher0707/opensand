@@ -62,4 +62,26 @@ describe("BashValidator", () => {
       assert.ok(res.dangerReason);
     }
   });
+
+  it("F3: flags quoted and variable-indirection bypasses of destructive root deletion", () => {
+    const bypasses = [
+      'rm -rf "/"',
+      "rm -rf '/'",
+      'X=/; rm -rf $X',
+      'X=/; rm -rf ${X}',
+      'rm -rf -- /',
+    ];
+    for (const cmd of bypasses) {
+      const res = validateBashCommand(cmd);
+      assert.equal(res.isDangerous, true, `Quoted/variable bypass must be flagged dangerous: ${cmd}`);
+      assert.ok(res.dangerReason);
+    }
+  });
+
+  it("F3: does not flag ordinary recursive deletes of relative paths", () => {
+    for (const cmd of ["rm -rf ./build", "rm file.txt"]) {
+      const res = validateBashCommand(cmd);
+      assert.equal(res.isDangerous, false, `Ordinary delete must stay safe: ${cmd}`);
+    }
+  });
 });

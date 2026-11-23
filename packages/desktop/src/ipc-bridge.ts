@@ -11,6 +11,7 @@ import * as crypto from 'node:crypto';
 import {
   AgentCoordinator,
   UniversalLLMClient,
+  classifyError,
   TurnEvent,
   ApprovalRequest,
   McpManager,
@@ -116,6 +117,7 @@ export class DesktopIpcBridge extends EventEmitter {
   // A daemon start begun without awaiting (requestUserApproval); close() waits for it,
   // otherwise it sees running === false, skips stop(), and the start finishes afterwards.
   private backgroundDaemonStart: Promise<void> | null = null;
+  private backgroundMcpStart: Promise<void> | null = null;
   public daemon: LocalExecDaemon;
   public stateManager: StateManager;
   // The bridge is the only writer of grants.json; daemon and coordinator only read.
@@ -260,8 +262,13 @@ export class DesktopIpcBridge extends EventEmitter {
       daemon: this.daemon,
       configPath: path.join(this.baseDir, 'mcp.json'),
     });
-    this.mcpManager.startAll().catch((err) => {
-      console.error("[ipc-bridge] MCP startAll failed:", err instanceof Error ? err.message : err);
+    this.backgroundMcpStart = this.mcpManager.startAll().then(
+      () => {},
+      (err) => {
+        console.error("[ipc-bridge] MCP startAll failed:", err instanceof Error ? err.message : err);
+      }
+    ).finally(() => {
+      this.backgroundMcpStart = null;
     });
 
     // Forward Workspace Sentinel events to UI clients
@@ -287,6 +294,13 @@ export class DesktopIpcBridge extends EventEmitter {
     if (this.routineEngine) {
       try {
         this.routineEngine.stop();
+      } catch {
+        // ignore
+      }
+    }
+    if (this.backgroundMcpStart) {
+      try {
+        await this.backgroundMcpStart;
       } catch {
         // ignore
       }
@@ -735,7 +749,15 @@ export class DesktopIpcBridge extends EventEmitter {
     } else if (event.type === 'turn_completed') {
       this.emitEvent('turn_complete', { response: event.finalContent });
     } else if (event.type === 'error') {
-      this.emitEvent('error', { message: event.error.message });
+      const actionable = classifyError(event.error);
+      const userMessage = `${actionable.cause} ${actionable.nextAction}`;
+      this.emitEvent('error', {
+        message: userMessage,
+        code: actionable.code,
+        cause: actionable.cause,
+        nextAction: actionable.nextAction,
+        isUserFixable: actionable.isUserFixable,
+      });
     }
   }
 
@@ -772,7 +794,15 @@ export class DesktopIpcBridge extends EventEmitter {
           this.emitEvent('turn_cancelled', { message: 'Turn cancelled by user.' });
           return;
         }
-        this.emitEvent('error', { message: err instanceof Error ? err.message : String(err) });
+        const actionable = classifyError(err);
+        const userMessage = `${actionable.cause} ${actionable.nextAction}`;
+        this.emitEvent('error', {
+          message: userMessage,
+          code: actionable.code,
+          cause: actionable.cause,
+          nextAction: actionable.nextAction,
+          isUserFixable: actionable.isUserFixable,
+        });
       });
 
     return { success: true, sessionId: activeSessionId };
@@ -822,11 +852,6 @@ export class DesktopIpcBridge extends EventEmitter {
       args,
     };
 
-    // Evaluate autoAllows first: auto-allowed requests proceed without creating a prompt card
-    if (autoAllows(mode, reqForCheck)) {
-      return true;
-    }
-
     let mustPrompt = false;
 
     // Safety Ceiling: Destructive shell commands (rm -rf /, raw disks, fork bombs) must never auto-approve
@@ -847,6 +872,19 @@ export class DesktopIpcBridge extends EventEmitter {
         mustPrompt = true;
         reason = reason ? `${reason} (${policy.reason})` : policy.reason;
       }
+    }
+
+    // Unsandboxed shell is a separate approval: never auto, never covered by "always" or autoApprove.
+    if (effect === 'shell_outside') {
+      mustPrompt = true;
+      reason = reason
+        ? `${reason} (Runs outside the sandbox; needs your yes in every mode)`
+        : 'Runs outside the sandbox; needs your yes in every mode';
+    }
+
+    // autoAllows only short-circuits when no safety gate demands a prompt (F1).
+    if (!mustPrompt && autoAllows(mode, reqForCheck)) {
+      return true;
     }
 
     // Safety Ceiling: Skill write/mount and memory write require human confirmation unless autoApprovePersistent is on
