@@ -116,5 +116,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-23 · [Renderer-only helpers trip the dead-export gate, and renderer types live outside the desktop build](2026-11-23-renderer-only-helpers-and-compile-scope.md)
 - 2026-11-23 · [Research findings kept only in chat were interleaved and truncated when the job stopped](2026-11-23-research-findings-must-land-in-a-file.md)
 - 2026-11-23 · [A stale bump-PR base stalls release.sh at the gate instead of rebasing and resuming](2026-11-23-stale-bump-base-stalls-release.md)
+- 2026-11-23 · [standing grants and turn aborts leave approval holes](2026-11-23-standing-grants-and-approval-abort.md)
 - 2026-11-23 · [Real-window persona deletion races bridge handler over in-memory mocks](2026-11-23-test-bridge-persona-deletion-and-in-memory-mocks.md)
 - 2026-11-23 · [Vendored plain .mjs assets in compiled packages and CommonJS test fakes](2026-11-23-vendored-mjs-assets-and-commonjs-fakes.md)
+- 2026-11-23 · [Optional webhook secrets fail open and prefix checks leak through symlinks](2026-11-23-webhook-secret-and-static-symlink-containment.md)

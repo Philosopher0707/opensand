@@ -109,6 +109,52 @@ test('DesktopIpcBridge - always_allow persists a grants.json grant the daemon ho
   }
 });
 
+test('DesktopIpcBridge - cancelling a turn clears the pending approval and unblocks its waiter', { timeout: 5000 }, async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-abort-'));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    (bridge as any).activeAbortController = new AbortController();
+
+    const approval = bridge.requestUserApproval('exec_command', { command: 'echo hi' });
+    const activeMap = (bridge as any).activeApprovals as Map<string, any>;
+    assert.strictEqual(activeMap.size, 1);
+    assert.strictEqual((await bridge.listPendingApprovals()).length, 1);
+
+    assert.strictEqual((await bridge.cancelTurn()).cancelled, true);
+    assert.strictEqual(await approval, false, 'the approval waiter must be denied, not left pending');
+    assert.deepStrictEqual(await bridge.listPendingApprovals(), [], 'no orphaned approval remains');
+
+    // The next turn asks and answers normally.
+    (bridge as any).activeAbortController = new AbortController();
+    const second = bridge.requestUserApproval('exec_command', { command: 'git status' });
+    const [id] = Array.from(activeMap.keys());
+    const epoch = activeMap.get(id).request.epoch;
+    await bridge.approveTool(id, { action: 'approve_once', epoch });
+    assert.strictEqual(await second, true);
+  } finally {
+    rmTmp(tmpDir);
+  }
+});
+
+test('DesktopIpcBridge - always_allow on an unsandboxed command stores no standing grant', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-unsandboxed-'));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    const resPromise = bridge.requestUserApproval('exec_command', { command: 'echo hi', unsandboxed: true });
+    const activeMap = (bridge as any).activeApprovals as Map<string, any>;
+    const [approvalId] = Array.from(activeMap.keys());
+    const epoch = activeMap.get(approvalId).request.epoch;
+    await bridge.approveTool(approvalId, { action: 'always_allow', epoch });
+    assert.strictEqual(await resPromise, true);
+
+    const grantsFile = path.join(tmpDir, 'grants.json');
+    const stored = fs.existsSync(grantsFile) ? JSON.parse(fs.readFileSync(grantsFile, 'utf8')) : { grants: [] };
+    assert.deepStrictEqual(stored.grants, [], 'unsandboxed commands must never become standing grants');
+  } finally {
+    rmTmp(tmpDir);
+  }
+});
+
 test('DesktopIpcBridge - always_allow leaves the legacy standing-allowlist path untouched', async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-legacy-'));
   const write = t.mock.method(process.stderr, 'write', () => true);

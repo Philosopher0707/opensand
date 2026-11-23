@@ -20,6 +20,7 @@ describe('WebhookGateway - Inbound Proactive Event Triggers', () => {
     gateway.registerWebhook({
       id: 'wh_ci_fail',
       name: 'ci-failure-hook',
+      secret: 'ci-failure-secret',
       targetType: 'graph',
       targetId: 'self_repair_graph',
       enabled: true,
@@ -55,6 +56,7 @@ describe('WebhookGateway - Inbound Proactive Event Triggers', () => {
     gateway.registerWebhook({
       id: 'wh_ci',
       name: 'ci-dispatch',
+      secret: 'ci-dispatch-secret',
       targetType: 'graph',
       targetId: 'ci_graph',
       enabled: true,
@@ -63,7 +65,7 @@ describe('WebhookGateway - Inbound Proactive Event Triggers', () => {
     const result = await gateway.handleWebhook('ci-dispatch', {
       repo: 'opensand',
       branch: 'main',
-    });
+    }, { authorization: 'Bearer ci-dispatch-secret' });
 
     assert.strictEqual(result.success, true);
     assert.strictEqual(result.status, 'dispatched');
@@ -213,5 +215,40 @@ describe('WebhookGateway - Inbound Proactive Event Triggers', () => {
     const missingAuth = await gateway.handleWebhook('ci-bearer', { event: 'deploy' }, {});
     assert.strictEqual(missingAuth.success, false);
     assert.strictEqual(missingAuth.status, 'rejected');
+  });
+
+  it('rejects registration when the secret is missing, empty or whitespace-only (F4)', () => {
+    const base = { id: 'wh_nosecret', name: 'no-secret-hook', targetType: 'graph' as const, targetId: 'g', enabled: true };
+    assert.throws(() => gateway.registerWebhook({ ...base }), /requires a non-empty secret/);
+    assert.throws(() => gateway.registerWebhook({ ...base, secret: '' }), /requires a non-empty secret/);
+    assert.throws(() => gateway.registerWebhook({ ...base, secret: '   ' }), /requires a non-empty secret/);
+    assert.throws(() => gateway.registerWebhook({ ...base, secret: 42 as any }), /requires a non-empty secret/);
+    assert.strictEqual(gateway.getWebhook('no-secret-hook'), undefined);
+    assert.deepStrictEqual(gateway.getWebhooks(), []);
+  });
+
+  it('never dispatches a secret-less webhook loaded from disk (F4 fail closed)', async () => {
+    // Legacy persisted registration predating mandatory secrets: write it behind the
+    // gateway's back so the registerWebhook guard cannot mask the handleWebhook guard.
+    fs.writeFileSync(path.join(tmpDir, 'webhooks.json'), JSON.stringify([
+      { id: 'wh_legacy', name: 'legacy-hook', targetType: 'graph', targetId: 'ci_graph', enabled: true, createdAt: 1, triggerCount: 0 },
+    ]));
+    const legacy = new WebhookGateway({ storageDir: tmpDir });
+    const graph = new StateGraph<any>();
+    graph.addNode('noop', (s) => s);
+    graph.setEntryPoint('noop');
+    graph.addEdge('noop', END);
+    legacy.registerGraph('ci_graph', graph.compile());
+
+    const headerSets: Record<string, string>[] = [{}, { authorization: 'Bearer anything' }];
+    for (const headers of headerSets) {
+      const result = await legacy.handleWebhook('legacy-hook', { event: 'push' }, headers);
+      assert.strictEqual(result.success, false);
+      assert.strictEqual(result.status, 'rejected');
+    }
+    assert.strictEqual(legacy.getWebhook('legacy-hook')?.triggerCount, 0);
+    const logs = legacy.getDeliveryLogs(5);
+    assert.strictEqual(logs.length, 2);
+    assert.ok(logs.every((l) => l.status === 'rejected'));
   });
 });

@@ -706,6 +706,7 @@ export class DesktopIpcBridge extends EventEmitter {
       onApprovalRequired: async (req: ApprovalRequest) => {
         return this.requestUserApproval(req.toolName, req.arguments, req.reason, req);
       },
+      isTainted: () => this.tainted,
       onEvent: (event: TurnEvent) => {
         this.dispatchTurnEvent(event);
       },
@@ -779,6 +780,7 @@ export class DesktopIpcBridge extends EventEmitter {
 
     // Abort any turn still running on this coordinator (double-submit, stop-then-resend).
     this.activeAbortController?.abort();
+    this.clearPendingApprovalsOnAbort();
     const abortController = new AbortController();
     this.activeAbortController = abortController;
     this.tainted = false;
@@ -813,12 +815,22 @@ export class DesktopIpcBridge extends EventEmitter {
     return { success: true, sessionId: activeSessionId };
   }
 
+  /** An aborted turn must not leave an approval waiting for a human who stopped the turn. */
+  private clearPendingApprovalsOnAbort(): void {
+    for (const [approvalId, pending] of this.activeApprovals) {
+      this.activeApprovals.delete(approvalId);
+      pending.resolve(false);
+      pending.resolveTrust?.('prompt');
+    }
+  }
+
   public async cancelTurn(): Promise<{ success: boolean; cancelled: boolean }> {
     if (!this.activeAbortController) {
       return { success: true, cancelled: false };
     }
     this.activeAbortController.abort();
     this.activeAbortController = null;
+    this.clearPendingApprovalsOnAbort();
     return { success: true, cancelled: true };
   }
 
@@ -1052,8 +1064,8 @@ export class DesktopIpcBridge extends EventEmitter {
         if (decision.action !== 'always_allow') return;
         if (pending.request.toolName === 'exec_command' && typeof pending.request.args.command === 'string') {
           const effect = pending.request.effect ?? effectOf(this.daemon?.getToolDefinition(pending.request.toolName), pending.request.args);
-          // Never allow always on shell_outside
-          if (effect === 'shell_outside') {
+          // Never allow always on shell_outside or an explicitly unsandboxed command.
+          if (effect === 'shell_outside' || pending.request.args.unsandboxed === true) {
             return;
           }
           const cmd = pending.request.args.command.trim();
@@ -1351,6 +1363,7 @@ export class DesktopIpcBridge extends EventEmitter {
     if (this.currentSessionId === sessionId) {
       this.activeAbortController?.abort();
       this.activeAbortController = null;
+      this.clearPendingApprovalsOnAbort();
       this.currentSessionId = null;
     }
     if (this.coordinator && this.coordinator.sessionId === sessionId) {
@@ -1375,6 +1388,7 @@ export class DesktopIpcBridge extends EventEmitter {
   public async clearAllSessions(): Promise<number> {
     this.activeAbortController?.abort();
     this.activeAbortController = null;
+    this.clearPendingApprovalsOnAbort();
     this.currentSessionId = null;
     this.coordinator = null;
     this.activeAgentId = undefined;

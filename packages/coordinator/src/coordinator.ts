@@ -50,6 +50,8 @@ export interface CoordinatorOptions {
   vaultStore?: VaultStore;
   hooks?: LifecycleHooks;
   onApprovalRequired?: ApprovalHandler;
+  /** Live host taint flag (web/connector content read this turn); a tainted shell always asks. */
+  isTainted?: () => boolean;
   onEvent?: TurnEventListener;
   maxTurnIterations?: number;
   sessionsBaseDir?: string;
@@ -110,6 +112,7 @@ export class AgentCoordinator {
   private messages: ChatMessage[] = [];
   private declaredCapabilities = new Set<string>();
   private onApprovalRequired?: ApprovalHandler;
+  private readonly isTainted?: () => boolean;
   private eventListeners: Set<TurnEventListener> = new Set();
   private maxTurnIterations: number;
   private readonly subagentDepth: number;
@@ -127,6 +130,7 @@ export class AgentCoordinator {
     this.vaultStore = options.vaultStore;
     this.hookDispatcher = new HookDispatcher(options.hooks);
     this.onApprovalRequired = options.onApprovalRequired;
+    this.isTainted = options.isTainted;
     if (options.onEvent) {
       this.eventListeners.add(options.onEvent);
     }
@@ -449,10 +453,13 @@ export class AgentCoordinator {
         // allowlist unless policy already said it needs approval.
         if (tc.function.name === "exec_command") {
           const cmd = typeof args.command === "string" ? args.command.trim() : "";
+          const unsandboxed = args.unsandboxed === true;
+          const tainted = this.isTainted?.() === true;
           // Standing grants come from grants.json via the shared matcher (chaining guard first); a gate
           // snapshot that carries grantsError never allows. The epoch is re-checked right before the spawn.
-          isAllowlisted = !gates.grantsError && isStandingExecAllowed(gates.standingGrants, cmd);
-          if (!gates.computerUseAllowed && !isAllowlisted) {
+          isAllowlisted = !gates.grantsError && isStandingExecAllowed(gates.standingGrants, cmd, Date.now(), { unsandboxed, tainted });
+          // Unsandboxed or tainted shell must ask even when computer use is otherwise allowed.
+          if (unsandboxed || tainted || (!gates.computerUseAllowed && !isAllowlisted)) {
             needsApproval = true;
           }
         }
