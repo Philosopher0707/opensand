@@ -269,6 +269,14 @@ export class DesktopApp {
       });
     }
 
+    ipcMain.handle("engines:detect", async () => {
+      return this.bridge.detectEngines();
+    });
+
+    ipcMain.handle("opensand:engines:detect", async () => {
+      return this.bridge.detectEngines();
+    });
+
     ipcMain.handle('opensand:sendQuery', async (_: any, { query, sessionId, agentId }: { query: string; sessionId?: string; agentId?: string }) => {
       return this.bridge.sendQuery(query, sessionId, agentId);
     });

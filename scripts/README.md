@@ -15,6 +15,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `bench-first-token.ts` | Benchmark engine model time-to-first-token | Manual performance testing | None |
 | `check-doc-links.sh` | Check that local markdown links under `docs/` resolve to real files | `scripts/verify.sh`, CI | `check-doc-links-selftest.sh` |
 | `check-doc-links-selftest.sh` | Hermetic selftest for the docs link checker | Pre-commit / verification | Self |
+| `check-engine-wrapper-sync.sh` | Validate SHA-256 parity of vendored engine wrapper files against committed PIN and upstream skills | `scripts/verify.sh`, CI | None |
 | `check-real-window-nav.sh` | Fail if a real-window test assigns location.hash directly; navigation must go through the shared bounded re-dispatch helper | `scripts/verify.sh`, CI | None |
 | `check-scripts-catalog.sh` | Validate completeness of `scripts/README.md` and selftests | `scripts/verify.sh`, CI | `check-scripts-catalog-selftest.sh` |
 | `check-scripts-catalog-selftest.sh` | Hermetic selftest for scripts catalog checker | Pre-commit / verification | Self |
@@ -101,6 +102,13 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
 - **Trigger**: Pre-commit hook, test verification.
+
+### `check-engine-wrapper-sync.sh`
+- **Purpose**: Validate SHA-256 cryptographic parity of vendored coding-agent engine wrapper files (`agent_wrap.mjs`, `engine_facts.mjs`) against the committed `PIN` file in `packages/coordinator/src/engines/vendor/`. In local environments with `~/SKILLS`, checks for upstream drift (warns by default, fails on `--strict`). The `--sync` flag copies upstream sources and regenerates `PIN`.
+- **Usage**: `scripts/check-engine-wrapper-sync.sh [--sync|--strict]`
+- **Exit Codes**: `0` on match / clean sync, `1` on hash mismatch or drift under `--strict`.
+- **Selftest**: None (`external-engine-runner.test.ts` tests hash mismatch and failure).
+- **Trigger**: `scripts/verify.sh`, CI, PR gate.
 
 ### `check-real-window-nav.sh`
 - **Purpose**: Fail with file and line when any `*-real-window.test.ts` assigns location.hash directly. The one-shot change is lost when the view's hashchange subscriber mounts a tick after the DOM appears; runners must call the shared navigateToView helper, which re-dispatches with a bounded retry until the target view is visible. `REAL_WINDOW_TEST_DIR` overrides the scanned directory.

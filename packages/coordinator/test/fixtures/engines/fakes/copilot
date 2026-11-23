@@ -1,0 +1,48 @@
+#!/usr/bin/env node
+// Fake GitHub Copilot CLI 1.0.107 (`copilot -p <prompt> --output-format json`): JSONL {type, data, ...} lines ending with
+// a {type:"result", sessionId, exitCode} line. Prompt markers:
+//   REPLAY_SUBAGENT  streams fixtures/copilot-1.0.107-subagent.jsonl (a real run whose task tool ran an explore sub-agent)
+//   HANG             prints nothing and never exits
+//   SLOW_SILENT      stays silent for 4 s, then answers
+//   FAIL_AUTH        exit 1, stderr "Error: not logged in"
+//   FAILEXIT         the result line carries exitCode 2
+//   LINGER           a normal turn, then after its result line it stays alive 60 s without output (the real CLI lingers)
+// Logs argv (incl. the --allow-tool / --deny-tool flags), stdin kind and pid to $FAKE_LOG.
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv.slice(2);
+if (args[0] === "--version" || args[0] === "-v") { console.log("GitHub Copilot CLI 1.0.107.\nRun 'copilot update' to check for updates."); process.exit(0); }
+const prompt = args[args.indexOf("-p") + 1] || "";
+const resume = args.includes("--resume") ? args[args.indexOf("--resume") + 1] : null;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const stdinKind = () => { try { const s = fs.fstatSync(0); return s.isSocket() || s.isFIFO() ? "pipe" : s.isCharacterDevice() ? "null" : "other"; } catch { return "closed"; } };
+const f = process.env.FAKE_LOG;
+if (f) fs.writeFileSync(f, JSON.stringify({ engine: "copilot", args, prompt, stdin: stdinKind(), pid: process.pid, cwd: process.cwd() }));
+const out = (type, data, extra = {}) => process.stdout.write(JSON.stringify({ type, data, id: `ev-${Math.random().toString(36).slice(2, 8)}`, timestamp: new Date().toISOString(), ...extra }) + "\n");
+const result = (extra = {}) => process.stdout.write(JSON.stringify({ type: "result", timestamp: new Date().toISOString(), sessionId: resume || "cop-session-1", exitCode: /FAILEXIT/.test(prompt) ? 2 : 0, usage: { premiumRequests: 1 }, ...extra }) + "\n");
+async function main() {
+  if (/FAIL_AUTH/.test(prompt)) { console.error("Error: not logged in"); process.exit(1); }
+  if (/HANG/.test(prompt)) { setInterval(() => {}, 1000); return; }
+  if (/SLOW_SILENT/.test(prompt)) await sleep(4000);
+  if (/REPLAY_SUBAGENT/.test(prompt)) {
+    process.stdout.write(fs.readFileSync(path.join(__dirname, "..", "fixtures", "copilot-1.0.107-subagent.jsonl"), "utf8"));
+    return;
+  }
+  out("session.mcp_server_status_changed", { serverName: "github-mcp-server", status: "connected" }, { ephemeral: true });
+  out("user.message", { content: prompt });
+  out("assistant.turn_start", { turnId: "0" });
+  out("assistant.message", { content: "", toolRequests: [{ toolCallId: "call_1", name: "view", arguments: { path: "note.txt" }, type: "function", toolTitle: "Viewing file" }] });
+  out("tool.execution_start", { toolCallId: "call_1", toolName: "view", arguments: { path: "note.txt" }, toolTitle: "Viewing file" });
+  out("tool.execution_complete", { toolCallId: "call_1", success: true, result: { content: "hello\n" } });
+  out("tool.execution_start", { toolCallId: "call_2", toolName: "bash", arguments: { command: "touch x" } });
+  out("tool.execution_complete", { toolCallId: "call_2", success: false, error: { message: "Permission to run this tool was denied due to the following rules: `shell`", code: "denied" } });
+  out("assistant.turn_end", { turnId: "0" });
+  out("assistant.message_start", { messageId: "m2", phase: "final_answer" }, { ephemeral: true });
+  const answer = resume ? `continued ${resume}` : "copilot says hello";
+  for (const piece of answer.match(/.{1,6}/g)) out("assistant.message_delta", { messageId: "m2", deltaContent: piece }, { ephemeral: true });
+  out("assistant.message", { messageId: "m2", content: answer, toolRequests: [] });
+  out("assistant.idle", {}, { ephemeral: true });
+  result();
+  if (/LINGER/.test(prompt)) await sleep(60000);
+}
+main();
