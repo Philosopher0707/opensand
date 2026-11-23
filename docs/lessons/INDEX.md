@@ -99,6 +99,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-23 · [Extract screen server routes through client methods and normalized template paths](2026-11-23-brief-route-extraction-client-methods-and-parameterized-paths.md)
 - 2026-11-23 · [Brief helper scripts may exist only on origin/main](2026-11-23-brief-scripts-may-be-branch-local.md)
 - 2026-11-23 · [Event projection sparse array holes crash transcript formatting](2026-11-23-event-projections-out-of-bounds-holes.md)
+- 2026-11-23 · [A fresh worktree has no node_modules, so SKIP_INSTALL=1 fails at build](2026-11-23-fresh-worktree-skip-install-needs-node-modules.md)
 - 2026-11-23 · [Team review resolution route is POST /api/team-review/resolve, not /api/team-review/:id/resolve](2026-11-23-legacy-resolve-review-item-route-404.md)
 - 2026-11-23 · [Bots operating in the owner checkout refused by git common-dir guard](2026-11-23-owner-checkout-guard.md)
 - 2026-11-23 · [A one-shot hash fix in one test leaves the same race in every other real-window test](2026-11-23-real-window-hash-navigation-helper.md)

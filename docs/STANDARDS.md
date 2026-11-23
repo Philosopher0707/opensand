@@ -1,7 +1,9 @@
 # OpenSand Development Standards
 
-Every bot reads this before a job. It gathers rules that already exist in the repo; it adds no new ones.
-Sources: `docs/brief-template.md`, `scripts/README.md`, `AGENTS_LEARNING.md`, `docs/lessons/`.
+Every bot reads this before a job. It gathers rules that already exist in the repo, plus standards the CTO set.
+Sources: `docs/lessons/INDEX.md`, `scripts/README.md`, `AGENTS_LEARNING.md`.
+Build dimensions: `~/SKILLS/engineering-workflow/references/build-dimensions.md` (outside the repo).
+CTO standards set 2026-11-23.
 
 ---
 
@@ -55,8 +57,8 @@ and loading states, and recovery. Every new export is wired and reachable: an un
 A report lists each changed file with line ranges and the symbols changed, plus real command output. Paste
 the actual `echo $?` and test output, not a summary of it.
 
-A claim is not proof: Rigel re-runs the tests on the PR head before merge. Any mismatch between the report and
-the code is a failed job. Prove a new or changed gate twice — it passes on good input and fails on
+A claim is not proof: Rigel re-runs the tests on the PR head before merge (CTO standard, 2026-11-23).
+Any mismatch between the report and the code is a failed job. Prove a new or changed gate twice — it passes on good input and fails on
 deliberately broken input — on the same Node major CI uses. A test that has never failed is not proven.
 
 ---
@@ -66,8 +68,8 @@ deliberately broken input — on the same Node major CI uses. A test that has ne
 - Rigel does the final verification: `scripts/pr-gate.sh` checks CI, base freshness, diff hygiene, a checkpoint
   tag, then merges. Local green is not CI green; read the actual CI run.
 - Vega reviews security for anything touching IPC, the local API, shell or tool execution, approvals, keys or
-  vendored code. Permission checks fail closed: a command runs only with a standing grant or an explicit
-  approval, never silently.
+  vendored code (CTO standard, 2026-11-23). Permission checks fail closed: a command runs only with a standing
+  grant or an explicit approval, never silently.
 
 ---
 
@@ -83,5 +85,6 @@ deliberately broken input — on the same Node major CI uses. A test that has ne
 ## 6. Errors users see
 
 Show a plain cause and a next step — never a stack trace or raw JSON. Route errors through `classifyError`
-in `packages/coordinator/src/errors.ts`, which returns `cause` and `nextAction`. Never show CLI flags inside
-the desktop app: describe the action in Settings, not a command to type.
+in `packages/coordinator/src/errors.ts`, which returns `cause` and `nextAction` (CTO standard, 2026-11-23).
+It is not wired in yet; the provider-error PR is wiring it. Never show CLI flags inside the desktop app:
+describe the action in Settings, not a command to type.
