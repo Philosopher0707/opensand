@@ -11,6 +11,7 @@ import * as crypto from 'node:crypto';
 import {
   AgentCoordinator,
   UniversalLLMClient,
+  classifyError,
   TurnEvent,
   ApprovalRequest,
   McpManager,
@@ -113,6 +114,7 @@ export class DesktopIpcBridge extends EventEmitter {
   // A daemon start begun without awaiting (requestUserApproval); close() waits for it,
   // otherwise it sees running === false, skips stop(), and the start finishes afterwards.
   private backgroundDaemonStart: Promise<void> | null = null;
+  private backgroundMcpStart: Promise<void> | null = null;
   public daemon: LocalExecDaemon;
   public stateManager: StateManager;
   // The bridge is the only writer of grants.json; daemon and coordinator only read.
@@ -257,8 +259,13 @@ export class DesktopIpcBridge extends EventEmitter {
       daemon: this.daemon,
       configPath: path.join(this.baseDir, 'mcp.json'),
     });
-    this.mcpManager.startAll().catch((err) => {
-      console.error("[ipc-bridge] MCP startAll failed:", err instanceof Error ? err.message : err);
+    this.backgroundMcpStart = this.mcpManager.startAll().then(
+      () => {},
+      (err) => {
+        console.error("[ipc-bridge] MCP startAll failed:", err instanceof Error ? err.message : err);
+      }
+    ).finally(() => {
+      this.backgroundMcpStart = null;
     });
 
     // Forward Workspace Sentinel events to UI clients
@@ -284,6 +291,13 @@ export class DesktopIpcBridge extends EventEmitter {
     if (this.routineEngine) {
       try {
         this.routineEngine.stop();
+      } catch {
+        // ignore
+      }
+    }
+    if (this.backgroundMcpStart) {
+      try {
+        await this.backgroundMcpStart;
       } catch {
         // ignore
       }
@@ -712,7 +726,15 @@ export class DesktopIpcBridge extends EventEmitter {
     } else if (event.type === 'turn_completed') {
       this.emitEvent('turn_complete', { response: event.finalContent });
     } else if (event.type === 'error') {
-      this.emitEvent('error', { message: event.error.message });
+      const actionable = classifyError(event.error);
+      const userMessage = `${actionable.cause} ${actionable.nextAction}`;
+      this.emitEvent('error', {
+        message: userMessage,
+        code: actionable.code,
+        cause: actionable.cause,
+        nextAction: actionable.nextAction,
+        isUserFixable: actionable.isUserFixable,
+      });
     }
   }
 
@@ -745,7 +767,15 @@ export class DesktopIpcBridge extends EventEmitter {
           this.emitEvent('turn_cancelled', { message: 'Turn cancelled by user.' });
           return;
         }
-        this.emitEvent('error', { message: err instanceof Error ? err.message : String(err) });
+        const actionable = classifyError(err);
+        const userMessage = `${actionable.cause} ${actionable.nextAction}`;
+        this.emitEvent('error', {
+          message: userMessage,
+          code: actionable.code,
+          cause: actionable.cause,
+          nextAction: actionable.nextAction,
+          isUserFixable: actionable.isUserFixable,
+        });
       });
 
     return { success: true, sessionId: activeSessionId };

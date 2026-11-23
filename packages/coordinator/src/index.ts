@@ -1,3 +1,5 @@
+export { ProviderError, parseRetryAfterMs } from "./llm-client.js";
+export type { ProviderError as ConnectorProviderError } from "./provider-clients.js";
 export * from "./types.js";
 export * from "./sse-parser.js";
 export * from "./llm-client.js";

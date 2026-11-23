@@ -6,7 +6,7 @@ import * as crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
 import { createDefaultRpcGateway, RpcGateway } from './rpc-gateway.js';
-import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient } from '@opensand/coordinator';
+import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient, classifyError } from '@opensand/coordinator';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 import { runStateMigrations, readSchemaVersion } from '@opensand/shared';
 import { buildDiagnosticsReport } from './diagnostics.js';
@@ -1419,11 +1419,17 @@ export class DesktopServer {
         const coordinator = this.bridge.getCoordinator() || (await this.bridge.createSessionCoordinator(body.threadId, body.agentId));
         await handleAgUiRunRequest(body, coordinator, sink);
       } catch (err: any) {
+        const actionable = classifyError(err);
         sink.writeEvent({
           event: 'RUN_ERROR',
           threadId: body.threadId || 'default',
           runId: body.runId || 'default',
-          data: { error: err.message },
+          data: {
+            error: `${actionable.cause} ${actionable.nextAction}`,
+            cause: actionable.cause,
+            nextAction: actionable.nextAction,
+            code: actionable.code,
+          },
           timestamp: Date.now(),
         });
         sink.close();

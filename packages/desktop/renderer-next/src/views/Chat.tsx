@@ -363,7 +363,7 @@ export function ChatMessageRow({
             <span class="chat-thinking">Thinking…</span>
           )
         )}
-        {message.error && <div class="chat-turn-error">Error: {message.error}</div>}
+        {message.error && <div class="chat-turn-error">{message.error}</div>}
         {message.note && <div class="chat-turn-note">{message.note}</div>}
       </div>
     </div>
