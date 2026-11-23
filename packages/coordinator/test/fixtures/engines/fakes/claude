@@ -56,6 +56,13 @@ process.stdin.on("end", () => { ended = true; if (done) process.exit(0); });
 const ASK = { ASK_WRITE: "Write", ASK_EXIT: "ExitPlanMode", ASK_READ: "Read" };
 async function run(prompt) {
   if (/FAIL_AUTH/.test(prompt)) { process.stderr.write("Error: not logged in\n"); process.exit(1); }
+  if (/FAIL_RATE_LIMIT_TIME/.test(prompt)) { process.stderr.write("Claude usage limit reached, resets at 3:00 PM\n"); process.exit(1); }
+  if (/FAIL_RATE_LIMIT_NO_TIME/.test(prompt)) { process.stderr.write("Claude usage limit reached\n"); process.exit(1); }
+  if (/CRASH_MID_TURN/.test(prompt)) {
+    out({ type: "system", subtype: "init", session_id: sid, model: "claude-haiku-5-5", permissionMode: perm });
+    process.stderr.write("Fatal crash: unexpected segmentation fault\n");
+    process.exit(1);
+  }
   if (/HANG/.test(prompt)) { setInterval(() => {}, 1000); return; }
   if (/SLOW_SILENT/.test(prompt)) await sleep(4000);
   if (/REPLAY_SUBAGENT/.test(prompt)) {

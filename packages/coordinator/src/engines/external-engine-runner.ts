@@ -54,6 +54,39 @@ export class ExternalEngineTurnRunner {
       throw new DOMException("Turn was cancelled by user", "AbortError");
     }
 
+    const spec = (ENGINES as any)[this.config.engine] || (ENGINE_FACTS as any)[this.config.engine];
+    const engineLabel = spec?.label || this.config.engine;
+    const isClaude = this.config.engine === "claude";
+
+    // 0. Binary existence check
+    const bin = findBinary(this.config.engine, { bin: this.config.binaryPath });
+    if (!bin) {
+      if (isClaude) {
+        throw new Error("Install Claude Code: run `npm install -g @anthropic-ai/claude-code` or visit the Anthropic installation guide to get started.");
+      }
+      throw new Error(`Install ${engineLabel}: ensure the engine binary is installed and available on PATH.`);
+    }
+
+    // 0. Version evaluation check
+    try {
+      const v = await engineVersion(bin);
+      if (v) {
+        const vStat = versionStatus(this.config.engine, v);
+        if (vStat.status === "older") {
+          const minVer = vStat.tested?.[0] || "a supported version";
+          if (isClaude) {
+            throw new Error(`Update Claude Code to ${minVer} (installed: ${vStat.version || v}): run \`npm update -g @anthropic-ai/claude-code\` to update.`);
+          }
+          throw new Error(`Update ${engineLabel} to ${minVer} (installed: ${vStat.version || v}): update the binary to a supported version.`);
+        }
+      }
+    } catch (err: any) {
+      if (err instanceof Error && (err.message.startsWith("Update ") || err.message.startsWith("Install "))) {
+        throw err;
+      }
+      // If version probe failed or timed out, proceed to runAgentTurn
+    }
+
     // 1. Session Continuity: Load metadata for resumeId
     const metadata = await this.transcript.loadMetadata();
     let resumeId: string | undefined = undefined;
@@ -253,13 +286,47 @@ export class ExternalEngineTurnRunner {
       throw new DOMException("Turn was cancelled by user", "AbortError");
     }
 
+    if (result.status === "timeout" || result.status === "idle") {
+      await this.transcript.writeProjections().catch(() => {});
+      throw new Error(`${engineLabel} timed out: no output was received before the timeout limit. Try sending a shorter prompt or check the engine status.`);
+    }
+
     if (result.status === "failed" || result.status === "not_found" || (result.error && result.status !== "completed")) {
       await this.transcript.writeProjections().catch(() => {});
-      const explained = explainError(this.config.engine, result.error, {
+      const rawError = result.error || "";
+
+      // 1. Usage or rate limit
+      if (/usage limit|rate limit|quota/i.test(rawError)) {
+        const resetMatch = rawError.match(/resets?\s+(?:at\s+|in\s+)?([0-9a-zA-Z:_\s\-\+\/]+?)(?=[.,;\n\)]|$)/i);
+        const resetTime = resetMatch ? resetMatch[1].trim() : null;
+        if (resetTime) {
+          throw new Error(`${isClaude ? "Claude" : engineLabel} usage limit reached, resets at ${resetTime}. Switch to another model in Settings or try again after reset.`);
+        }
+        throw new Error(`${isClaude ? "Claude" : engineLabel} usage limit reached, try again later or switch to another model in Settings.`);
+      }
+
+      // 2. Not signed in / auth failure (delegate to explainError directly)
+      if (/not logged in|log ?in|authenticat|unauthori[sz]ed|401|invalid api key|credentials/i.test(rawError)) {
+        const explained = explainError(this.config.engine, rawError, {
+          settings: "Settings",
+          emptyIsRefusal: true,
+        });
+        const cleaned = explained.replace(new RegExp(`^${engineLabel}:\\s*${engineLabel}:\\s*`, "i"), `${engineLabel}: `);
+        throw new Error(cleaned);
+      }
+
+      // 3. Mid-turn crash / non-zero exit / segmentation fault
+      if (/ended before its answer was complete|crash|segmentation fault|exited with code/i.test(rawError)) {
+        throw new Error(`${engineLabel} stopped unexpectedly mid-turn. Send another message to continue the session or try again.`);
+      }
+
+      // 4. General explanation via explainError
+      const explained = explainError(this.config.engine, rawError, {
         settings: "Settings",
         emptyIsRefusal: true,
       });
-      throw new Error(explained);
+      const cleaned = explained.replace(new RegExp(`^${engineLabel}:\\s*${engineLabel}:\\s*`, "i"), `${engineLabel}: `);
+      throw new Error(cleaned);
     }
 
     const finalContent = result.text || assistantText || "";

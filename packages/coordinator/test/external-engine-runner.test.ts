@@ -176,8 +176,108 @@ describe("ExternalEngineTurnRunner & AgentCoordinator external engine integratio
     assert.strictEqual(reply, "ASK_RESULT:Write:deny");
   });
 
-  it("aborts turn cleanly and leaves no lingering processes", async () => {
+  it("(a) surfaces plain next-step message when claude binary is missing or version is too old", async () => {
+    // 1. Missing binary
+    const coordMissing = new AgentCoordinator({
+      daemon,
+      sessionId: `test_missing_${Date.now()}`,
+      sessionsBaseDir: sessionsDir,
+      workspaceDir,
+      engineConfig: {
+        type: "external",
+        engine: "claude",
+        binaryPath: path.join(tempDir, "nonexistent-claude-bin"),
+      },
+    });
+
+    await assert.rejects(coordMissing.runTurn("hello"), (err: any) => {
+      assert.match(err.message, /Install Claude Code/);
+      assert.doesNotMatch(err.message, /^\s*at\s+/m);
+      return true;
+    });
+
+    // 2. Version too old
+    const oldClaudeBin = path.join(tempDir, "fake-claude-old");
+    await fs.writeFile(
+      oldClaudeBin,
+      `#!/usr/bin/env node\nif (process.argv.slice(2)[0] === "--version") { console.log("1.0.0 (Claude Code)"); process.exit(0); }\n`,
+      { mode: 0o755 }
+    );
+
+    const coordOld = new AgentCoordinator({
+      daemon,
+      sessionId: `test_old_${Date.now()}`,
+      sessionsBaseDir: sessionsDir,
+      workspaceDir,
+      engineConfig: {
+        type: "external",
+        engine: "claude",
+        binaryPath: oldClaudeBin,
+      },
+    });
+
+    await assert.rejects(coordOld.runTurn("hello"), (err: any) => {
+      assert.match(err.message, /Update Claude Code to/);
+      assert.doesNotMatch(err.message, /^\s*at\s+/m);
+      return true;
+    });
+  });
+
+  it("(c) handles engine crash / non-zero exit mid-turn and allows subsequent message on same session to succeed", async () => {
+    const sessionId = `test_crash_${Date.now()}`;
+    const coordinator = new AgentCoordinator({
+      daemon,
+      sessionId,
+      sessionsBaseDir: sessionsDir,
+      workspaceDir,
+      engineConfig: {
+        type: "external",
+        engine: "claude",
+        binaryPath: fakeClaudeBin,
+      },
+    });
+
+    // Turn 1 crashes mid-turn
+    await assert.rejects(coordinator.runTurn("CRASH_MID_TURN"), (err: any) => {
+      assert.match(err.message, /Claude Code stopped unexpectedly/);
+      assert.match(err.message, /send another message/i);
+      assert.doesNotMatch(err.message, /^\s*at\s+/m);
+      return true;
+    });
+
+    // Turn 2 on the same session succeeds
+    const reply2 = await coordinator.runTurn("turn 2 after crash");
+    assert.match(reply2, /continued sess-claude-1/);
+  });
+
+  it("(d) stops turn with a plain message when no output received before timeoutMs", async () => {
+    const sessionId = `test_timeout_${Date.now()}`;
+    const coordinator = new AgentCoordinator({
+      daemon,
+      sessionId,
+      sessionsBaseDir: sessionsDir,
+      workspaceDir,
+      engineConfig: {
+        type: "external",
+        engine: "claude",
+        binaryPath: fakeClaudeBin,
+        timeoutMs: 250,
+      },
+    });
+
+    await assert.rejects(coordinator.runTurn("SLOW_SILENT"), (err: any) => {
+      assert.match(err.message, /timed out/i);
+      assert.match(err.message, /try/i);
+      assert.doesNotMatch(err.message, /^\s*at\s+/m);
+      return true;
+    });
+  });
+
+  it("(e) aborts turn cleanly and verifies child process is terminated via ESRCH", async () => {
     const sessionId = `test_abort_${Date.now()}`;
+    const fakeLog = path.join(tempDir, `fake-abort-${Date.now()}.json`);
+    process.env.FAKE_LOG = fakeLog;
+
     const coordinator = new AgentCoordinator({
       daemon,
       sessionId,
@@ -192,16 +292,95 @@ describe("ExternalEngineTurnRunner & AgentCoordinator external engine integratio
 
     const ac = new AbortController();
     const turnPromise = coordinator.runTurn("HANG", ac.signal);
-    setTimeout(() => ac.abort(), 100);
+
+    // Wait for the fake engine process to spawn and write its PID to FAKE_LOG
+    let childPid;
+    for (let i = 0; i < 20; i++) {
+      try {
+        if (await fs.stat(fakeLog).then(() => true).catch(() => false)) {
+          const raw = JSON.parse(await fs.readFile(fakeLog, "utf-8"));
+          if (raw.pid) {
+            childPid = raw.pid;
+            break;
+          }
+        }
+      } catch {}
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.ok(childPid, "Child PID should have been recorded in FAKE_LOG");
+
+    // Verify child is alive before abort
+    assert.doesNotThrow(() => {
+      process.kill(childPid, 0);
+    }, "Child process should be running before abort");
+
+    ac.abort();
 
     await assert.rejects(turnPromise, (err: any) => {
       return err.name === "AbortError" || /cancelled/i.test(err.message);
     });
 
-    // Verify no lingering process with the fake claude script
-    await new Promise((r) => setTimeout(r, 200));
-    const ps = execSync("ps aux | grep fakes/claude | grep -v grep || true", { encoding: "utf-8" });
-    assert.strictEqual(ps.trim(), "", "No lingering fake claude process should be left");
+    // Verify process is killed and ESRCH is thrown
+    let dead = false;
+    for (let i = 0; i < 20; i++) {
+      try {
+        process.kill(childPid, 0);
+        await new Promise((r) => setTimeout(r, 50));
+      } catch (err) {
+        if (err && (err as any).code === "ESRCH") {
+          dead = true;
+          break;
+        }
+      }
+    }
+    assert.strictEqual(dead, true, `Process ${childPid} should have terminated with ESRCH`);
+    assert.throws(() => {
+      process.kill(childPid, 0);
+    }, (err: any) => err && err.code === "ESRCH");
+
+    delete process.env.FAKE_LOG;
+  });
+
+  it("(f) reports user-friendly usage/rate limit with reset time or fallback", async () => {
+    // 1. With reset time
+    const coordWithTime = new AgentCoordinator({
+      daemon,
+      sessionId: `test_rate_time_${Date.now()}`,
+      sessionsBaseDir: sessionsDir,
+      workspaceDir,
+      engineConfig: {
+        type: "external",
+        engine: "claude",
+        binaryPath: fakeClaudeBin,
+      },
+    });
+
+    await assert.rejects(coordWithTime.runTurn("FAIL_RATE_LIMIT_TIME"), (err: any) => {
+      assert.match(err.message, /Claude usage limit reached, resets at 3:00 PM/);
+      assert.match(err.message, /Settings|try again/i);
+      assert.doesNotMatch(err.message, /^\s*at\s+/m);
+      return true;
+    });
+
+    // 2. Without reset time
+    const coordNoTime = new AgentCoordinator({
+      daemon,
+      sessionId: `test_rate_notime_${Date.now()}`,
+      sessionsBaseDir: sessionsDir,
+      workspaceDir,
+      engineConfig: {
+        type: "external",
+        engine: "claude",
+        binaryPath: fakeClaudeBin,
+      },
+    });
+
+    await assert.rejects(coordNoTime.runTurn("FAIL_RATE_LIMIT_NO_TIME"), (err: any) => {
+      assert.match(err.message, /Claude usage limit reached/);
+      assert.match(err.message, /try again later/);
+      assert.doesNotMatch(err.message, /^\s*at\s+/m);
+      return true;
+    });
   });
 
   it("surfaces explainError text on sign-in / authentication failure", async () => {
