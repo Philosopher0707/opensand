@@ -140,6 +140,10 @@ packages/desktop/src/shell/composer-model.ts|function formatBytes
 packages/desktop/src/shell/composer-model.ts|function getFileCategory
 packages/desktop/src/shell/composer-model.ts|function insertTriggerSelection
 # Consumed from packages/desktop/renderer-next/src, outside the packages/*/src scan root.
+packages/desktop/src/shell/composer-model.ts|function formatDoctorReport
+packages/desktop/src/shell/composer-model.ts|function friendlyErrorMessage
+packages/desktop/src/shell/composer-model.ts|function parseSlashCommand
+packages/desktop/src/shell/composer-model.ts|function runLocalSlashCommand
 packages/desktop/src/shell/dead-actions-model.ts|const OPEN_COMPACT_EVENT
 packages/desktop/src/shell/dead-actions-model.ts|const OPEN_ROLLBACK_EVENT
 packages/desktop/src/shell/dead-actions-model.ts|function openSettingsHash

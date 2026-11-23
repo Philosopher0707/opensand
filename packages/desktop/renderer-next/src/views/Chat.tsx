@@ -28,13 +28,17 @@ import {
   detectTrigger,
   filterSlashCommands,
   formatBytes,
+  friendlyErrorMessage,
   getFileCategory,
   insertTriggerSelection,
+  runLocalSlashCommand,
   type PromptChip,
   type SlashCommand,
   type StagedAttachment,
   type TriggerMatch,
 } from "../../../src/shell/composer-model";
+
+const TRANSCRIPT_LOAD_ERROR = "Could not load this conversation's history. Select the session again to retry.";
 
 export interface ChatTurnController {
   state: ChatTurnState;
@@ -43,6 +47,8 @@ export interface ChatTurnController {
   stop: () => void;
   load?: (sessionId: string, messages: ChatMessage[]) => void;
   dispatch?: (action: ChatTurnAction) => void;
+  loadError?: string | null;
+  clearLoadError?: () => void;
 }
 
 export function useChatTurn(
@@ -51,6 +57,7 @@ export function useChatTurn(
   activeAgentId?: string | null,
 ): ChatTurnController {
   const available = typeof data.sendQuery === "function";
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [state, dispatch] = useReducer(
     chatTurnReducer,
     available ? INITIAL_CHAT_TURN : { ...INITIAL_CHAT_TURN, status: "unavailable" as const },
@@ -75,6 +82,7 @@ export function useChatTurn(
     }
     if (!data.loadSession) return;
     let cancelled = false;
+    setLoadError(null);
     data.loadSession(selectedSessionId).then((res) => {
       if (cancelled || !res) return;
       const messages = Array.isArray(res)
@@ -83,7 +91,9 @@ export function useChatTurn(
           ? (res as any).messages
           : reconstructSessionMessages(res);
       dispatch({ type: "load", sessionId: selectedSessionId, messages });
-    }).catch(() => {});
+    }).catch((err) => {
+      if (!cancelled) setLoadError(friendlyErrorMessage(err, TRANSCRIPT_LOAD_ERROR));
+    });
     return () => {
       cancelled = true;
     };
@@ -111,7 +121,7 @@ export function useChatTurn(
     dispatch({ type: "load", sessionId, messages });
   };
 
-  return { state, available, send, stop, load, dispatch };
+  return { state, available, send, stop, load, dispatch, loadError, clearLoadError: () => setLoadError(null) };
 }
 
 function statusText(state: ChatTurnState): string {
@@ -390,6 +400,9 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
   const [draft, setDraft] = useState("");
   const [stagedAttachments, setStagedAttachments] = useState<StagedAttachment[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Autocomplete / Slash trigger state
   const [triggerMatch, setTriggerMatch] = useState<TriggerMatch | null>(null);
@@ -440,7 +453,9 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
         try {
           const res = await data.stageAttachment(item.localPath || item.name);
           if (res && res.id) item.serverId = res.id;
-        } catch {}
+        } catch (err) {
+          setNotice(friendlyErrorMessage(err, `Could not attach ${f.name}. Check the file and try again.`));
+        }
       }
       newItems.push(item);
     }
@@ -506,6 +521,7 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
     if (!selectedSessionId || !data?.loadSession) return;
     if (chat.state.sessionId === selectedSessionId && chat.state.messages.length > 0) return;
     let cancelled = false;
+    setLoadError(null);
     data.loadSession(selectedSessionId).then((res) => {
       if (cancelled || !res) return;
       const messages = Array.isArray(res)
@@ -518,11 +534,13 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
       } else if (chat.load) {
         chat.load(selectedSessionId, messages);
       }
-    }).catch(() => {});
+    }).catch((err) => {
+      if (!cancelled) setLoadError(friendlyErrorMessage(err, TRANSCRIPT_LOAD_ERROR));
+    });
     return () => {
       cancelled = true;
     };
-  }, [selectedSessionId, data, chat]);
+  }, [selectedSessionId, data, chat, reloadKey]);
 
   // Follow the stream, as the transcript grows on every token.
   useEffect(() => {
@@ -530,16 +548,35 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
     if (feed) feed.scrollTop = feed.scrollHeight;
   }, [state.messages]);
 
-  const submit = () => {
-    if (busy || (!draft.trim() && stagedAttachments.length === 0)) return;
-    const finalPrompt = composePromptWithAttachments(draft, stagedAttachments);
-    if (!finalPrompt) return;
-    chat.send(finalPrompt);
+  const clearComposer = () => {
     setDraft("");
     setStagedAttachments([]);
     setTriggerMatch(null);
     setTriggerItems([]);
     if (inputRef.current) inputRef.current.style.height = "auto";
+  };
+
+  const submit = () => {
+    if (busy || (!draft.trim() && stagedAttachments.length === 0)) return;
+    const local = runLocalSlashCommand(draft.trim(), {
+      compact: data?.compact,
+      rollback: data?.rollback,
+      clearView: () => {
+        if (chat.dispatch) chat.dispatch({ type: "load", sessionId: "", messages: [] });
+        else chat.load?.("", []);
+      },
+      hasSession: Boolean(selectedSessionId),
+      notice: setNotice,
+    });
+    if (local !== false) {
+      local.then(clearComposer);
+      return;
+    }
+    const finalPrompt = composePromptWithAttachments(draft, stagedAttachments);
+    if (!finalPrompt) return;
+    setNotice(null);
+    chat.send(finalPrompt);
+    clearComposer();
   };
 
   // Retry resends the last user message of the failed turn; the failed answer stays in the feed.
@@ -618,6 +655,23 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
       {/* Always mounted, so the first status change is announced. */}
       <div class="chat-status" role="status" aria-live="polite" data-status={state.status}>
         {statusText(state)}
+        {notice && <div class="chat-turn-note" data-kind="notice">{notice}</div>}
+        {(chat.loadError || loadError) && (
+          <div class="chat-turn-error" role="alert">
+            {chat.loadError || loadError}
+            <button
+              type="button"
+              class="btn btn-sm chat-retry"
+              onClick={() => {
+                setLoadError(null);
+                chat.clearLoadError?.();
+                setReloadKey((key) => key + 1);
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
         {canRetryTurn(state) && (
           <button type="button" class="btn btn-sm chat-retry" onClick={retry}>
             Retry
