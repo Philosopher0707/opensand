@@ -245,6 +245,11 @@
 * **Cause:** A workspace package's local build does not rebuild sibling packages' dist; TypeScript project references resolved to stale declarations.
 * **Rule now:** After any change in `shared/` or `coordinator/`, run `pnpm run build` from the **workspace root**, then run the tests. Never debug a "missing field" type error before checking the dependency's dist timestamp.
 
+### 11.24 CLI agent auth is a subprocess-contract problem, not just a login flow
+* **Date:** 2026-11-23
+* **What happened:** CLI agents signed in to a home derived from random per-instance ids; chat/catalog/turn subprocesses never received that home, so every turn started signed out and no flow ever reached `authorized`. ACP/Codex permission requests were dropped by the bridge, and the framework prompt claimed tools the subprocess didn't have. Delegated CLI subagents inherited none of the fixes.
+* **Rule:** one stable credential-home helper must be used by auth and every spawn site; a reusable wrapper can expose home/env/isSignedIn/clear but must delegate to it. Route CLI permission requests through the approval UI with a forced prompt even when auto-approve is on, and fail closed on missing callbacks. Make tool claims conditional on the runtime (`toolClaim:'none'` for CLI), deliver the framework prompt through a real system channel where supported, and apply both rules to delegated subagents too.
+
 ### 11.23 Tool availability is not tool choice; narrow orchestrator tool lists
 * **Date:** 2026-11-22
 * **What happened:** With local `qwen3:8b`, the chief's real request contained `delegate_to_agent` (proved by a proxy logging `tools[].function.name`, 83 tools) but the model answered that the tool was unavailable. Restricting the chief's tools to three (`delegate_to_agent`, `await_agent`, `list_agents`) made the same model call the tool and complete a real chief → specialist turn with a persisted child transcript.
