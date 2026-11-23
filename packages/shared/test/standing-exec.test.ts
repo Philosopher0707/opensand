@@ -32,6 +32,17 @@ test("isStandingExecAllowed - an always exec_command prefix grant allows the bar
   assert.strictEqual(isStandingExecAllowed(grants, "rm -rf /"), false);
 });
 
+test("isStandingExecAllowed - unsandboxed or tainted shell never uses a standing grant", () => {
+  const grants = [grant()];
+  const now = 1_000;
+  assert.strictEqual(isStandingExecAllowed(grants, "git status", now), true);
+  assert.strictEqual(isStandingExecAllowed(grants, "git status", now, { unsandboxed: true }), false);
+  assert.strictEqual(isStandingExecAllowed(grants, "git status", now, { tainted: true }), false);
+  assert.strictEqual(isStandingExecAllowed(grants, "git status", now, { unsandboxed: true, tainted: true }), false);
+  // An exact-scope grant is no exception.
+  assert.strictEqual(isStandingExecAllowed([grant({ scope: "git status" })], "git status", now, { unsandboxed: true }), false);
+});
+
 test("isStandingExecAllowed - chaining is rejected even when the prefix grant matches", () => {
   const grants = [grant()];
   for (const cmd of ["git status; rm -rf ~", "git status && id", "git log | sh", "git `id`", "git $(id)", "git status\nid"]) {

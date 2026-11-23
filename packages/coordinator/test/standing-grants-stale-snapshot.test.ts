@@ -28,7 +28,7 @@ describe("coordinator standing exec permission comes from grants.json", () => {
   });
 
   /** A model that asks for the given exec_command calls in one turn, then says Done. */
-  function clientCalling(commands: string[]) {
+  function clientCalling(calls: (string | Record<string, unknown>)[]) {
     return new UniversalLLMClient({
       baseUrl: "https://api.openai.com/v1",
       model: "gpt-4o",
@@ -44,11 +44,14 @@ describe("coordinator standing exec permission comes from grants.json", () => {
                     choices: [
                       {
                         delta: {
-                          tool_calls: commands.map((command, index) => ({
+                          tool_calls: calls.map((call, index) => ({
                             index,
                             id: `call_${index}`,
                             type: "function",
-                            function: { name: "exec_command", arguments: JSON.stringify({ command }) },
+                            function: {
+                              name: "exec_command",
+                              arguments: JSON.stringify(typeof call === "string" ? { command: call } : call),
+                            },
                           })),
                         },
                       },
@@ -122,6 +125,43 @@ describe("coordinator standing exec permission comes from grants.json", () => {
     assert.equal(fs.existsSync(marker), false);
     assert.equal(toolResults(coordinator)[0].error.code, "PERMISSION_DENIED");
     assert.equal(fs.readFileSync(grantsFile, "utf8"), "{", "the file is not repaired");
+  });
+
+  it("asks before an unsandboxed exec_command even with a matching standing grant and computer use allowed", async () => {
+    await store.addGrant({ tool: "exec_command", scope: "echo *", lifetime: "always" });
+    await daemon.updateGates({ computerUseAllowed: true });
+    let prompts = 0;
+    const coordinator = new AgentCoordinator({
+      llmClient: clientCalling([{ command: "echo hi", unsandboxed: true }]),
+      daemon,
+      sessionsBaseDir: path.join(base, "sessions"),
+      onApprovalRequired: async () => {
+        prompts++;
+        return false;
+      },
+    });
+    await coordinator.runTurn("go");
+    assert.equal(prompts, 1, "unsandboxed shell must ask despite the standing grant and open computer-use gate");
+    assert.equal(toolResults(coordinator)[0].error.code, "PERMISSION_DENIED");
+  });
+
+  it("asks before a tainted exec_command even with a matching standing grant and computer use allowed", async () => {
+    await store.addGrant({ tool: "exec_command", scope: "echo *", lifetime: "always" });
+    await daemon.updateGates({ computerUseAllowed: true });
+    let prompts = 0;
+    const coordinator = new AgentCoordinator({
+      llmClient: clientCalling(["echo hi"]),
+      daemon,
+      sessionsBaseDir: path.join(base, "sessions"),
+      isTainted: () => true,
+      onApprovalRequired: async () => {
+        prompts++;
+        return false;
+      },
+    });
+    await coordinator.runTurn("go");
+    assert.equal(prompts, 1, "tainted shell must ask despite the standing grant and open computer-use gate");
+    assert.equal(toolResults(coordinator)[0].error.code, "PERMISSION_DENIED");
   });
 
   it("refuses shell chaining through a prefix grant", async () => {
