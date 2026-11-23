@@ -5,6 +5,10 @@ import {
   toRow,
   emptyState,
   relativeTime,
+  SESSIONS_CHANGED_EVENT,
+  validateSessionTitle,
+  formatSessionError,
+  sessionRenameRequest,
   type SessionSummary,
 } from "../src/shell/session-list-model.js";
 
@@ -119,4 +123,28 @@ test("session-list-model: toRow handles unreadCount", () => {
 
   const rowZeroUnread = toRow({ id: "s3", title: "Chat", unreadCount: 0 }, now);
   assert.strictEqual(rowZeroUnread.unreadCount, 0);
+});
+
+test("session-list-model: validateSessionTitle trims and rejects empty drafts", () => {
+  assert.strictEqual(validateSessionTitle("  Hello world  "), "Hello world");
+  assert.strictEqual(validateSessionTitle(""), null);
+  assert.strictEqual(validateSessionTitle("   "), null);
+});
+
+test("session-list-model: formatSessionError yields plain user-facing text", () => {
+  assert.strictEqual(
+    formatSessionError(new Error("boom"), "rename the conversation"),
+    "Could not rename the conversation: boom",
+  );
+  assert.strictEqual(formatSessionError("flat failure", "delete the conversation"), "Could not delete the conversation: flat failure");
+  assert.strictEqual(formatSessionError(undefined, "delete the conversation"), "Could not delete the conversation. Please try again.");
+});
+
+test("session-list-model: rename request targets the registered PATCH route", () => {
+  assert.strictEqual(SESSIONS_CHANGED_EVENT, "opensand:sessions_changed");
+  const req = sessionRenameRequest("sess 1", "New title");
+  assert.strictEqual(req.url, "/api/sessions/sess%201");
+  assert.strictEqual(req.init.method, "PATCH");
+  assert.strictEqual((req.init.headers as Record<string, string>)["Content-Type"], "application/json");
+  assert.strictEqual(req.init.body, JSON.stringify({ title: "New title" }));
 });

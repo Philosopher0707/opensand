@@ -137,13 +137,13 @@ packages/desktop/src/shell/composer-model.ts|function composePromptWithAttachmen
 packages/desktop/src/shell/composer-model.ts|function detectTrigger
 packages/desktop/src/shell/composer-model.ts|function filterSlashCommands
 packages/desktop/src/shell/composer-model.ts|function formatBytes
-packages/desktop/src/shell/composer-model.ts|function getFileCategory
-packages/desktop/src/shell/composer-model.ts|function insertTriggerSelection
-# Consumed from packages/desktop/renderer-next/src, outside the packages/*/src scan root.
 packages/desktop/src/shell/composer-model.ts|function formatDoctorReport
 packages/desktop/src/shell/composer-model.ts|function friendlyErrorMessage
+packages/desktop/src/shell/composer-model.ts|function getFileCategory
+packages/desktop/src/shell/composer-model.ts|function insertTriggerSelection
 packages/desktop/src/shell/composer-model.ts|function parseSlashCommand
 packages/desktop/src/shell/composer-model.ts|function runLocalSlashCommand
+# Consumed from packages/desktop/renderer-next/src, outside the packages/*/src scan root.
 packages/desktop/src/shell/dead-actions-model.ts|const OPEN_COMPACT_EVENT
 packages/desktop/src/shell/dead-actions-model.ts|const OPEN_ROLLBACK_EVENT
 packages/desktop/src/shell/dead-actions-model.ts|function openSettingsHash
@@ -230,9 +230,13 @@ packages/desktop/src/shell/routines-model.ts|function routineStatusBadge
 packages/desktop/src/shell/routines-model.ts|function toggleLabel
 packages/desktop/src/shell/routines-model.ts|function validateCreateRoutineInput
 packages/desktop/src/shell/session-list-model.ts|const RELATIVE_UNITS
+packages/desktop/src/shell/session-list-model.ts|const SESSIONS_CHANGED_EVENT
 packages/desktop/src/shell/session-list-model.ts|function emptyState
 packages/desktop/src/shell/session-list-model.ts|function filterSessions
+packages/desktop/src/shell/session-list-model.ts|function formatSessionError
+packages/desktop/src/shell/session-list-model.ts|function sessionRenameRequest
 packages/desktop/src/shell/session-list-model.ts|function toRow
+packages/desktop/src/shell/session-list-model.ts|function validateSessionTitle
 packages/desktop/src/shell/skills-model.ts|const SKILL_EMPTY_STATE
 packages/desktop/src/shell/skills-model.ts|const SKILL_VALIDATION_MESSAGE
 packages/desktop/src/shell/skills-model.ts|function closeCreateSkillModal

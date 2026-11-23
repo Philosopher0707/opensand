@@ -1,3 +1,30 @@
+/** Fired whenever sessions may have changed, so the list reloads without a full remount. */
+export const SESSIONS_CHANGED_EVENT = "opensand:sessions_changed";
+
+/** Trim a rename draft; null means it cannot be used as a session title. */
+export function validateSessionTitle(raw: string): string | null {
+  const title = (raw ?? "").trim();
+  return title.length > 0 ? title : null;
+}
+
+/** Plain user-facing text for a failed session-list action. */
+export function formatSessionError(err: unknown, action: string): string {
+  const detail = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  return detail ? `Could not ${action}: ${detail}` : `Could not ${action}. Please try again.`;
+}
+
+/** Request for the registered rename route (PATCH /api/sessions/:id). */
+export function sessionRenameRequest(id: string, title: string): { url: string; init: RequestInit } {
+  return {
+    url: `/api/sessions/${encodeURIComponent(id)}`,
+    init: {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    },
+  };
+}
+
 export interface SessionSummary {
   id: string;
   title?: string;
