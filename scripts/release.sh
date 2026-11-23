@@ -219,10 +219,71 @@ if REMOTE_TAG=$(git ls-remote --tags origin "refs/tags/$TAG" 2>/dev/null); then
   fi
 fi
 
-if [[ "$TAG_EXISTS" -eq 0 ]]; then
+if [[ "$TAG_EXISTS" -eq 1 ]]; then
   if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "DRY RUN: would verify tag $TAG points to commit with package version $VERSION"
+  else
+    # Tag already exists on origin: check that the tag's commit has $VERSION
+    git fetch origin "refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null || git fetch origin --tags 2>/dev/null || git fetch origin 2>/dev/null || true
+    TAG_COMMIT=$(git rev-parse "refs/tags/$TAG^{commit}" 2>/dev/null || git rev-parse "$TAG^{commit}" 2>/dev/null || true)
+    if [[ -z "$TAG_COMMIT" ]]; then
+      TAG_COMMIT=$(echo "$REMOTE_TAG" | awk 'NR==1 {print $1}')
+    fi
+
+    TAG_VERSION=""
+    if [[ -n "$TAG_COMMIT" ]]; then
+      TAG_VERSION=$(git show "$TAG_COMMIT:packages/desktop/package.json" 2>/dev/null | node -e '
+        try {
+          const fs = require("fs");
+          const input = fs.readFileSync(0, "utf-8");
+          console.log(JSON.parse(input).version || "");
+        } catch { process.exit(0); }
+      ' 2>/dev/null || echo "")
+    fi
+
+    if [[ "$TAG_VERSION" != "$VERSION" ]]; then
+      echo "FAIL: release tag $TAG on origin points to commit ${TAG_COMMIT:-unknown} with package version '${TAG_VERSION:-missing}', expected '$VERSION'." >&2
+      echo "  Fix hint: delete the stale tag on origin ('git push origin :refs/tags/$TAG') and locally ('git tag -d $TAG')," >&2
+      echo "            update your local checkout to origin/main ('git pull origin main'), and re-run 'scripts/release.sh $VERSION'." >&2
+      exit 1
+    fi
+    echo "PASS: release tag $TAG commit ($TAG_COMMIT) verified with package version $VERSION."
+  fi
+else
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "DRY RUN: would run 'git fetch origin' and verify HEAD equals origin/main and packages/desktop/package.json equals $VERSION"
     echo "DRY RUN: would create and push tag '$TAG'"
   else
+    echo "Fetching origin to verify checkout before tagging..."
+    if ! git fetch origin; then
+      echo "FAIL: 'git fetch origin' failed before creating tag $TAG." >&2
+      exit 1
+    fi
+
+    LOCAL_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
+    ORIGIN_MAIN=$(git rev-parse origin/main 2>/dev/null || git rev-parse refs/remotes/origin/main 2>/dev/null || true)
+
+    if [[ -z "$LOCAL_HEAD" || -z "$ORIGIN_MAIN" || "$LOCAL_HEAD" != "$ORIGIN_MAIN" ]]; then
+      echo "FAIL: local HEAD (${LOCAL_HEAD:-unknown}) does not match origin/main (${ORIGIN_MAIN:-unknown})." >&2
+      echo "  Refusing to create release tag $TAG on a stale or mismatched checkout." >&2
+      echo "  Update to origin/main first: git checkout main && git pull origin main" >&2
+      exit 1
+    fi
+
+    DESKTOP_PKG="${OPENSAND_DESKTOP_PKG:-$ROOT/packages/desktop/package.json}"
+    PKG_VERSION=$(node -e '
+      try {
+        const pkg = require(process.argv[1]);
+        console.log(pkg.version || "");
+      } catch { process.exit(0); }
+    ' "$DESKTOP_PKG" 2>/dev/null || echo "")
+
+    if [[ "$PKG_VERSION" != "$VERSION" ]]; then
+      echo "FAIL: packages/desktop/package.json version ('$PKG_VERSION') does not match release version '$VERSION'." >&2
+      echo "  Refusing to create release tag $TAG with mismatched package version." >&2
+      exit 1
+    fi
+
     echo "Creating and pushing release tag $TAG..."
     git tag -a "$TAG" -m "Release $TAG"
     git push origin "refs/tags/$TAG:refs/tags/$TAG"
@@ -234,6 +295,9 @@ fi
 echo "==> [Step 5/9] Downloading release artifacts for $TAG..."
 DOWNLOAD_DIR="${RELEASE_DOWNLOAD_DIR:-$ROOT/dist/release-$VERSION}"
 mkdir -p "$DOWNLOAD_DIR"
+
+# Clean up any leftover files from another version so they can never collide or be mistaken for artifacts
+find "$DOWNLOAD_DIR" -type f ! -name "*${VERSION}*" -delete 2>/dev/null || true
 
 ZIP_PATH=""; DMG_PATH=""; APPIMAGE_PATH=""; DEB_PATH=""
 
@@ -272,11 +336,13 @@ else
     DOWNLOAD_POLL_SECONDS="${RELEASE_DOWNLOAD_POLL_SECONDS:-15}"
     MAX_ATTEMPTS=$(( DOWNLOAD_TIMEOUT_SECONDS / DOWNLOAD_POLL_SECONDS + 1 ))
     ATTEMPT=0
+    # Empty download directory before fresh download so no stale or partial files collide
+    find "$DOWNLOAD_DIR" -type f -delete 2>/dev/null || true
     echo "Downloading release assets from GitHub for $TAG (up to ${DOWNLOAD_TIMEOUT_SECONDS}s)..."
     while :; do
       ATTEMPT=$((ATTEMPT + 1))
       DOWNLOAD_ERR=""
-      DOWNLOAD_ERR=$(gh release download "$TAG" -D "$DOWNLOAD_DIR" \
+      DOWNLOAD_ERR=$(gh release download "$TAG" -D "$DOWNLOAD_DIR" --clobber \
         --pattern "*.zip" --pattern "*.dmg" --pattern "*.AppImage" --pattern "*.deb" 2>&1) || true
 
       ZIP_PATH=$(find_any '*.zip'); DMG_PATH=$(find_any '*.dmg')

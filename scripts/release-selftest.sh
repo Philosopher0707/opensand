@@ -15,6 +15,11 @@ set -euo pipefail
 #  12. Post-install health check failure halts the release with exit 2
 #  13. Post-install health check is invoked on the installed app at --install time
 #  18. Stale bump PR base is rebased in release.sh, which exits 3 with re-run instructions
+#  19. Existing tag on origin with mismatched version fails with fix hint
+#  20. Stale local HEAD behind origin/main refuses tag creation before tagging
+#  21. Package version mismatch refuses tag creation before tagging
+#  22. Fresh origin/main with matching version succeeds and creates/pushes tag
+#  23. Step 5 cleans leftover artifacts from another version and downloads with --clobber
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RELEASE_SCRIPT="$ROOT/scripts/release.sh"
@@ -175,15 +180,59 @@ case "$1" in
     /usr/bin/git "$@"
     ;;
   tag)
-    echo "git tag $*" >> "$TEST_CASE_DIR/git_tag.log"
+    echo "git $*" >> "$TEST_CASE_DIR/git_tag.log"
     exit 0
     ;;
   push)
-    echo "git push $*" >> "$TEST_CASE_DIR/git_push.log"
+    echo "git $*" >> "$TEST_CASE_DIR/git_push.log"
     exit 0
     ;;
   checkout|add|commit)
     exit 0
+    ;;
+  fetch)
+    echo "git $*" >> "$TEST_CASE_DIR/git_fetch.log"
+    if [ -f "$TEST_CASE_DIR/fetch_fails" ]; then
+      echo "fatal: unable to access repository" >&2
+      exit 1
+    fi
+    exit 0
+    ;;
+  rev-parse)
+    if [ -f "$TEST_CASE_DIR/tag_exists" ] && [[ "$*" == *"refs/tags/"* || "$*" == *"v0.1."* ]]; then
+      echo "abcdef1234567890"
+      exit 0
+    fi
+    if [ "${2:-}" = "HEAD" ]; then
+      if [ -f "$TEST_CASE_DIR/head_sha" ]; then
+        cat "$TEST_CASE_DIR/head_sha"
+      else
+        echo "1111111111111111111111111111111111111111"
+      fi
+      exit 0
+    fi
+    if [[ "${2:-}" == "origin/main" || "${2:-}" == "refs/remotes/origin/main" ]]; then
+      if [ -f "$TEST_CASE_DIR/origin_main_sha" ]; then
+        cat "$TEST_CASE_DIR/origin_main_sha"
+      else
+        echo "1111111111111111111111111111111111111111"
+      fi
+      exit 0
+    fi
+    /usr/bin/git "$@"
+    ;;
+  show)
+    case "${2:-}" in
+      *:packages/desktop/package.json)
+        if [ -f "$TEST_CASE_DIR/tag_pkg_json" ]; then
+          cat "$TEST_CASE_DIR/tag_pkg_json"
+        else
+          node -p "JSON.stringify({version: '0.1.11'})"
+        fi
+        exit 0
+        ;;
+    esac
+    /usr/bin/git "$@"
     ;;
   *)
     /usr/bin/git "$@"
@@ -263,6 +312,17 @@ run_test() {
     create_mock_app "$dir/mock_dmg_app/OpenSand.app" "0.1.11"
   fi
 
+  # Default desktop_pkg.json matching target version unless case provided one
+  if [ ! -f "$dir/desktop_pkg.json" ]; then
+    local target_ver="0.1.11"
+    for arg in "$@"; do
+      case "$arg" in
+        [0-9]*.[0-9]*.[0-9]*) target_ver="$arg" ;;
+      esac
+    done
+    echo "{\"version\":\"$target_ver\"}" > "$dir/default_desktop_pkg.json"
+  fi
+
   local out status=0
   out=$(
     PATH="$BIN_DIR:$PATH" \
@@ -272,6 +332,7 @@ run_test() {
     OPENSAND_LINUX_SMOKE_SCRIPT="$WORK/mock-smoke-linux.sh" \
     OPENSAND_RELEASE_OS="${CASE_OS:-$(uname -s)}" \
     OPENSAND_HEALTH_CHECK_SCRIPT="$WORK/mock-health.sh" \
+    OPENSAND_DESKTOP_PKG="${CASE_DESKTOP_PKG:-$([ -f "$dir/desktop_pkg.json" ] && echo "$dir/desktop_pkg.json" || echo "$dir/default_desktop_pkg.json")}" \
     OPENSAND_INSTALL_APP_DEST="$dir/Applications/OpenSand.app" \
     OPENSAND_ARCHIVE_DIR_BASE="$dir/archive" \
     RELEASE_DOWNLOAD_DIR="$dir/download" \
@@ -615,6 +676,126 @@ if grep -q "Running scripts/pr-gate.sh" "$dir/run.out"; then
 fi
 if [ "$FAILED" -eq 0 ]; then
   echo "PASS case18-stale-base: rebased stale base, exited 3 without running the gate"
+fi
+
+# --- Case 19: Existing tag on origin has mismatched package version -> exit 1 with fix hint ---
+dir="$WORK/case19-tag-version-mismatch"; mkdir -p "$dir"
+touch "$dir/tag_exists"
+echo '{"version":"0.1.10"}' > "$dir/tag_pkg_json"
+echo '[{"number": 42, "state": "MERGED"}]' > "$dir/pr_list.json"
+echo '{"state": "MERGED"}' > "$dir/pr_view.json"
+run_test "case19-tag-version-mismatch" 1 0.1.11
+if ! grep -q "with package version '0.1.10', expected '0.1.11'" "$dir/run.out" 2>/dev/null; then
+  echo "FAIL case19-tag-version-mismatch: expected mismatched tag version error in output"
+  FAILED=1
+fi
+if ! grep -q "Fix hint: delete the stale tag on origin" "$dir/run.out" 2>/dev/null; then
+  echo "FAIL case19-tag-version-mismatch: expected fix hint in output"
+  FAILED=1
+fi
+if [ -f "$dir/git_tag.log" ]; then
+  echo "FAIL case19-tag-version-mismatch: created tag despite version mismatch"
+  FAILED=1
+fi
+if [ "$FAILED" -eq 0 ]; then
+  echo "PASS case19-tag-version-mismatch: refused stale tag on origin and gave fix hint"
+fi
+
+# --- Case 20: Stale local HEAD behind origin/main refuses tag creation before tagging ---
+dir="$WORK/case20-stale-head"; mkdir -p "$dir"
+echo '[{"number": 42, "state": "MERGED"}]' > "$dir/pr_list.json"
+echo '{"state": "MERGED"}' > "$dir/pr_view.json"
+echo "1111111111111111" > "$dir/head_sha"
+echo "2222222222222222" > "$dir/origin_main_sha"
+run_test "case20-stale-head" 1 0.1.11
+if ! grep -q "local HEAD (1111111111111111) does not match origin/main (2222222222222222)" "$dir/run.out" 2>/dev/null; then
+  echo "FAIL case20-stale-head: expected stale HEAD error in output"
+  FAILED=1
+fi
+if ! grep -q "Refusing to create release tag v0.1.11 on a stale or mismatched checkout" "$dir/run.out" 2>/dev/null; then
+  echo "FAIL case20-stale-head: expected refusal message in output"
+  FAILED=1
+fi
+if [ -f "$dir/git_tag.log" ]; then
+  echo "FAIL case20-stale-head: git tag was run on stale HEAD"
+  FAILED=1
+fi
+if [ -f "$dir/git_push.log" ]; then
+  echo "FAIL case20-stale-head: git push was run on stale HEAD"
+  FAILED=1
+fi
+if [ "$FAILED" -eq 0 ]; then
+  echo "PASS case20-stale-head: refused tagging stale checkout before tag or push"
+fi
+
+# --- Case 21: Package version mismatch refuses tag creation before tagging ---
+dir="$WORK/case21-pkg-mismatch"; mkdir -p "$dir"
+echo '[{"number": 42, "state": "MERGED"}]' > "$dir/pr_list.json"
+echo '{"state": "MERGED"}' > "$dir/pr_view.json"
+echo "1111111111111111" > "$dir/head_sha"
+echo "1111111111111111" > "$dir/origin_main_sha"
+echo '{"version":"0.1.11"}' > "$dir/desktop_pkg.json"
+run_test "case21-pkg-mismatch" 1 0.2.0
+if ! grep -q "packages/desktop/package.json version ('0.1.11') does not match release version '0.2.0'" "$dir/run.out" 2>/dev/null; then
+  echo "FAIL case21-pkg-mismatch: expected package version mismatch error in output"
+  FAILED=1
+fi
+if ! grep -q "Refusing to create release tag v0.2.0 with mismatched package version" "$dir/run.out" 2>/dev/null; then
+  echo "FAIL case21-pkg-mismatch: expected refusal message in output"
+  FAILED=1
+fi
+if [ -f "$dir/git_tag.log" ]; then
+  echo "FAIL case21-pkg-mismatch: git tag was run on mismatched package version"
+  FAILED=1
+fi
+if [ "$FAILED" -eq 0 ]; then
+  echo "PASS case21-pkg-mismatch: refused tagging mismatched package version before tag or push"
+fi
+
+# --- Case 22: Fresh origin/main with matching version succeeds and creates/pushes tag ---
+dir="$WORK/case22-fresh-origin-main"; mkdir -p "$dir/download"
+echo '[{"number": 42, "state": "MERGED"}]' > "$dir/pr_list.json"
+echo '{"state": "MERGED"}' > "$dir/pr_view.json"
+echo "1111111111111111" > "$dir/head_sha"
+echo "1111111111111111" > "$dir/origin_main_sha"
+echo '{"version":"0.1.11"}' > "$dir/desktop_pkg.json"
+echo "existing zip" > "$dir/download/OpenSand-0.1.11-arm64-mac.zip"
+echo "existing dmg" > "$dir/download/OpenSand-0.1.11-arm64.dmg"
+create_mock_app "$dir/mock_dmg_app/OpenSand.app" "0.1.11"
+run_test "case22-fresh-origin-main" 0 0.1.11
+if ! grep -q "tag v0.1.11 pushed to origin" "$dir/run.out" 2>/dev/null; then
+  echo "FAIL case22-fresh-origin-main: expected tag pushed confirmation in output"
+  FAILED=1
+fi
+if ! grep -q "git tag -a v0.1.11 -m Release v0.1.11" "$dir/git_tag.log" 2>/dev/null; then
+  echo "FAIL case22-fresh-origin-main: git tag was not created"
+  FAILED=1
+fi
+if ! grep -q "git push origin refs/tags/v0.1.11:refs/tags/v0.1.11" "$dir/git_push.log" 2>/dev/null; then
+  echo "FAIL case22-fresh-origin-main: git push tag was not invoked"
+  FAILED=1
+fi
+if [ "$FAILED" -eq 0 ]; then
+  echo "PASS case22-fresh-origin-main: fresh origin/main verified and tag created and pushed"
+fi
+
+# --- Case 23: Step 5 cleans leftover artifacts from another version and downloads with --clobber ---
+dir="$WORK/case23-clobber-and-clean"; mkdir -p "$dir/download"
+touch "$dir/tag_exists"
+echo '[{"number": 42, "state": "MERGED"}]' > "$dir/pr_list.json"
+echo '{"state": "MERGED"}' > "$dir/pr_view.json"
+echo "leftover 0.1.10 file" > "$dir/download/OpenSand-0.1.10-arm64-mac.zip"
+run_test "case23-clobber-and-clean" 0 0.1.11
+if [ -f "$dir/download/OpenSand-0.1.10-arm64-mac.zip" ]; then
+  echo "FAIL case23-clobber-and-clean: leftover file from previous version was not cleaned"
+  FAILED=1
+fi
+if ! grep -q -- "--clobber" "$dir/download_args.log" 2>/dev/null; then
+  echo "FAIL case23-clobber-and-clean: download was called without --clobber"
+  FAILED=1
+fi
+if [ "$FAILED" -eq 0 ]; then
+  echo "PASS case23-clobber-and-clean: leftover files cleaned and --clobber passed"
 fi
 
 if [ "$FAILED" -eq 0 ]; then
