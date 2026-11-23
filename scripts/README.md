@@ -16,6 +16,10 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `check-doc-links.sh` | Check that local markdown links under `docs/` resolve to real files | `scripts/verify.sh`, CI | `check-doc-links-selftest.sh` |
 | `check-doc-links-selftest.sh` | Hermetic selftest for the docs link checker | Pre-commit / verification | Self |
 | `check-engine-wrapper-sync.sh` | Validate SHA-256 parity of vendored engine wrapper files against committed PIN and upstream skills | `scripts/verify.sh`, CI | None |
+| `check-dead-exports.sh` | Fail on NEW exported functions/classes/consts under `packages/*/src` that no other file imports or references; today's findings are seeded in `scripts/dead-exports-allow.txt`. Uses the repo's TypeScript compiler; excludes tests, index.ts re-exports and package entry points | `scripts/verify.sh`, CI | `check-dead-exports-selftest.sh` |
+| `check-dead-exports-selftest.sh` | Hermetic selftest: an unreferenced export fails, a seeded allowlist passes, an import clears a finding, and a new dead export fails | Pre-commit / verification | Self |
+| `check-raw-errors.sh` | Fail on NEW places in `packages/desktop` where `err.message` / `String(err)` / a stack reaches the user without a classify/format helper; today's findings are seeded in `scripts/raw-errors-allow.txt` | `scripts/verify.sh`, CI | `check-raw-errors-selftest.sh` |
+| `check-raw-errors-selftest.sh` | Hermetic selftest: raw HTTP/event errors fail, classified/logged/helper lines pass, a seeded allowlist passes, and a new raw error fails | Pre-commit / verification | Self |
 | `check-real-window-nav.sh` | Fail if a real-window test assigns location.hash directly; navigation must go through the shared bounded re-dispatch helper | `scripts/verify.sh`, CI | None |
 | `check-scripts-catalog.sh` | Validate completeness of `scripts/README.md` and selftests | `scripts/verify.sh`, CI | `check-scripts-catalog-selftest.sh` |
 | `check-scripts-catalog-selftest.sh` | Hermetic selftest for scripts catalog checker | Pre-commit / verification | Self |
@@ -109,6 +113,33 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: `0` on match / clean sync, `1` on hash mismatch or drift under `--strict`.
 - **Selftest**: None (`external-engine-runner.test.ts` tests hash mismatch and failure).
 - **Trigger**: `scripts/verify.sh`, CI, PR gate.
+### `check-dead-exports.sh`
+- **Purpose**: List exported functions, classes and consts under `packages/*/src` that no other file imports or references, then fail only on findings not already in `scripts/dead-exports-allow.txt`. This catches a helper written but never wired up (e.g. an error classifier only a test calls). Tests (`*.test.ts`, `*.spec.ts`), index.ts re-exports and package entry points are excluded as findings; imports from any file count as references. Parses source with the repo's own `typescript` compiler (no new dependency); `pnpm install` must have run first.
+- **Usage**: `scripts/check-dead-exports.sh` (`DEAD_EXPORTS_PACKAGES_DIR`, `DEAD_EXPORTS_ALLOW`, `DEAD_EXPORTS_ROOT` override the scan, allowlist and path root for the selftest). Every finding prints as `FINDING <allowlist-key>` and as `path:line: <kind> <name>`; the key is `relative-path|kind name`, so line shifts do not invalidate the allowlist.
+- **Exit Codes**: `0` no new dead exports, `1` a new dead export, `2` bad setup (missing packages dir/allowlist or TypeScript not installed).
+- **Selftest**: `scripts/check-dead-exports-selftest.sh`.
+- **Trigger**: `scripts/verify.sh` (after install, before docs-only exit), CI.
+
+### `check-dead-exports-selftest.sh`
+- **Purpose**: Hermetic temp-dir fixture proving the check finds an unreferenced export while ignoring an imported one, passes once findings are seeded into its allowlist, stops reporting an export once another file imports it, and fails on a newly planted dead export. Point `DEAD_EXPORTS_CHECK_SCRIPT` at a mutant to prove a case sees the breakage.
+- **Usage**: `scripts/check-dead-exports-selftest.sh`
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, verification.
+
+### `check-raw-errors.sh`
+- **Purpose**: Flag lines in `packages/desktop` (renderer, `src/` and IPC/server paths) that send a raw `err.message`, `String(err)` or stack into a user-facing sink — an HTTP `res.end`/`JSON.stringify` error field, an emitted error event, a toast/dialog or a failed-state message. Logging, control-flow reads (`err.message.includes(...)`) and values already routed through `classifyError`/`formatError`/a local formatter are not findings. Fails only on findings absent from `scripts/raw-errors-allow.txt`, using a `path|source-line` key that survives line shifts.
+- **Usage**: `scripts/check-raw-errors.sh` (`RAW_ERRORS_SCAN_DIR`, `RAW_ERRORS_ALLOW`, `RAW_ERRORS_ROOT` override the scan, allowlist and path root for the selftest). Findings print as `FINDING <key>` and `path:line: <source line>`.
+- **Exit Codes**: `0` no new raw error paths, `1` a new raw error path, `2` bad setup.
+- **Selftest**: `scripts/check-raw-errors-selftest.sh`.
+- **Trigger**: `scripts/verify.sh` (after install, before docs-only exit), CI.
+
+### `check-raw-errors-selftest.sh`
+- **Purpose**: Hermetic temp-dir fixture proving raw HTTP response and event errors are found while classified, logged and formatter-helper lines are not; seeding the allowlist passes; a newly planted raw toast error fails and is named. Point `RAW_ERRORS_CHECK_SCRIPT` at a mutant to prove a case sees the breakage.
+- **Usage**: `scripts/check-raw-errors-selftest.sh`
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, verification.
 
 ### `check-real-window-nav.sh`
 - **Purpose**: Fail with file and line when any `*-real-window.test.ts` assigns location.hash directly. The one-shot change is lost when the view's hashchange subscriber mounts a tick after the DOM appears; runners must call the shared navigateToView helper, which re-dispatches with a bounded retry until the target view is visible. `REAL_WINDOW_TEST_DIR` overrides the scanned directory.

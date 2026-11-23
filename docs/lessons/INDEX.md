@@ -102,6 +102,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-23 · [A CLI stub that ignores positional arguments let a duplicate subcommand merge into main](2026-11-23-cli-stubs-must-validate-positional-args.md)
 - 2026-11-23 · [Dead desktop actions: distinguish the two IPC surfaces and keep wiring testable](2026-11-23-dead-actions-need-listeners-and-testable-wiring.md)
 - 2026-11-23 · [Event projection sparse array holes crash transcript formatting](2026-11-23-event-projections-out-of-bounds-holes.md)
+- 2026-11-23 · [A fresh worktree has no dependencies, and a trailing echo hides the verify exit code](2026-11-23-fresh-worktree-needs-install-and-exit-code.md)
 - 2026-11-23 · [A fresh worktree has no node_modules, so SKIP_INSTALL=1 fails at build](2026-11-23-fresh-worktree-skip-install-needs-node-modules.md)
 - 2026-11-23 · [Team review resolution route is POST /api/team-review/resolve, not /api/team-review/:id/resolve](2026-11-23-legacy-resolve-review-item-route-404.md)
 - 2026-11-23 · [Wrapped commands bypassed the destructive-command denylist](2026-11-23-nested-shell-denylist-bypass.md)

@@ -1,0 +1,6 @@
+# A fresh worktree has no dependencies, and a trailing echo hides the verify exit code
+
+- **Trap:** a fresh `worktree.sh new` worktree has no `node_modules`, so `TMPDIR=$(mktemp -d) SKIP_INSTALL=1 bash scripts/verify.sh` died at `tsc: command not found`. A wrapper that appended `EXIT=$?` to the log and then echoed `$?` again reported success, hiding the failure.
+- **Root Cause:** `SKIP_INSTALL=1` reuses dependencies that a new worktree does not have; an `echo ... >> file` resets `$?`, so the second echo is not the verify exit code.
+- **Rule:** after `worktree.sh new`, run `pnpm install --frozen-lockfile` once before any `SKIP_INSTALL=1` verify; write the exit code into the log at the moment the command returns and read that line, never a later `$?`. Two new gates (`scripts/check-dead-exports.sh`, `scripts/check-raw-errors.sh`) now also make "written but never called" and "raw error sent to the user" fail the merge gate.
+- **Also (2026-11-23):** `pnpm --filter @opensand/desktop test` hung 35 min on this machine with MCP servers (rea, senior-engineer) held open by a child test process; kill the process tree and run the gate selftests directly rather than waiting. Checks 1-5 and both new gates had already passed in that log.

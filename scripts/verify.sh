@@ -95,6 +95,16 @@ if [[ "${SKIP_INSTALL:-}" != "1" ]]; then
   pnpm install --frozen-lockfile
 fi
 
+# These two gates catch "small things left out": an error formatter nobody calls, and a raw
+# provider/OS error sent to the user. They run after install because the dead-export check
+# uses the repo's TypeScript compiler; both keep allowlists of today's findings and fail only
+# on new ones (selftests: check-dead-exports-selftest.sh, check-raw-errors-selftest.sh).
+echo "verify: checking for dead exports..."
+bash scripts/check-dead-exports.sh
+
+echo "verify: checking for raw errors reaching the user..."
+bash scripts/check-raw-errors.sh
+
 if [[ "$DOCS_ONLY" -eq 1 ]]; then
   echo "verify: docs-only change; skipping build and tests (repo checks above still ran)"
   exit 0

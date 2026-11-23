@@ -10,7 +10,7 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/opensand-verify-selftest.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 FAILED=0
 
-# make_workspace <dir> <kind>: kind is ok | failing | zero | second-run-fails | parallel-ok | parallel-failing | lint-brief-failing
+# make_workspace <dir> <kind>: kind is ok | failing | zero | second-run-fails | parallel-ok | parallel-failing | lint-brief-failing | lessons-stale | dead-exports-failing | raw-errors-failing
 make_workspace() {
   local dir="$1" kind="$2"
   mkdir -p "$dir/scripts" "$dir/docs" "$dir/packages/good/src" "$dir/packages/target/src"
@@ -21,6 +21,8 @@ make_workspace() {
   printf '#!/usr/bin/env bash\nexit 0\n' > "$dir/scripts/check-scripts-catalog.sh"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$dir/scripts/check-doc-links.sh"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$dir/scripts/check-real-window-nav.sh"
+  printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../.dead-exports-fail" ]] && { echo "FAIL: new dead export" >&2; exit 1; }\nexit 0\n' > "$dir/scripts/check-dead-exports.sh"
+  printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../.raw-errors-fail" ]] && { echo "FAIL: new raw error" >&2; exit 1; }\nexit 0\n' > "$dir/scripts/check-raw-errors.sh"
   printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../.lessons-stale" ]] && { echo "FAIL: docs/lessons/INDEX.md is stale. Run: bash scripts/lessons-index.sh" >&2; exit 1; }\nexit 0\n' > "$dir/scripts/lessons-index.sh"
   printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../.lint-brief-fail" ]] && { echo "FAIL: docs/brief-template.md missing sections: Goal" >&2; exit 1; }\nexit 0\n' > "$dir/scripts/lint-brief.sh"
   printf '# Bot brief template\n\nGoal: the outcome.\n\nDone when: the finish line.\n\nScope: what may be touched.\n\nReport back with: the proof.\n' > "$dir/docs/brief-template.md"
@@ -39,6 +41,10 @@ make_workspace() {
              touch "$dir/.lessons-stale" ;;
     lint-brief-failing) printf "import test from 'node:test';\ntest('target passes', () => {});\n" > "$dir/packages/target/test.mjs"
              touch "$dir/.lint-brief-fail" ;;
+    dead-exports-failing) printf "import test from 'node:test';\ntest('target passes', () => {});\n" > "$dir/packages/target/test.mjs"
+             touch "$dir/.dead-exports-fail" ;;
+    raw-errors-failing) printf "import test from 'node:test';\ntest('target passes', () => {});\n" > "$dir/packages/target/test.mjs"
+             touch "$dir/.raw-errors-fail" ;;
     zero)    printf '{"name":"@fake/target","version":"1.0.0","scripts":{"build":"node -e 0","test":"node zero.mjs"}}\n' > "$dir/packages/target/package.json"
              echo "console.log('# tests 0');" > "$dir/packages/target/zero.mjs" ;;
     # Passes the first time and fails the second: proves the suite is run once, not twice.
@@ -210,6 +216,8 @@ expect single-run second-run-fails 0 "verify: ok"
 expect zero-tests zero 1 "Package @fake/target has TypeScript sources in src/ but reported 0 tests!"
 expect lessons-stale lessons-stale 1 "FAIL: docs/lessons/INDEX.md is stale"
 expect lint-brief-failing lint-brief-failing 1 "FAIL: docs/brief-template.md missing sections: Goal"
+expect dead-exports-failing dead-exports-failing 1 "FAIL: new dead export"
+expect raw-errors-failing raw-errors-failing 1 "FAIL: new raw error"
 expect_parallel_runs
 expect_docs_only docs-only-skip 0 1
 expect_docs_only docs-and-code-runs-full 1 0
