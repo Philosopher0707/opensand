@@ -258,6 +258,11 @@ case "${1:-}" in
           echo "CONFLICT (content): merge conflict" >&2
           exit 1
         fi
+        # rebase_delay=<n>: simulate time passing before the force-push, so the startup
+        # no-checks deadline is stale by the time the gate waits for the rebased SHA.
+        if [ -f "$TEST_CASE_DIR/rebase_delay" ]; then
+          sleep "$(cat "$TEST_CASE_DIR/rebase_delay")"
+        fi
         exit 0
         ;;
       add)
@@ -512,7 +517,8 @@ run_test_case() {
 assert_no_branch_mutation() {
   local label="$1" dir="$2" bad
   [[ -f "$dir/git_calls.log" ]] || return 0
-  bad=$(grep -E '(^| )(push|fetch|tag|worktree) |rebase' "$dir/git_calls.log" || true)
+  # The owner-check guard logs a read-only `git -C <root> rev-parse ...git-common-dir`; it is not a mutation.
+  bad=$(grep -v 'rev-parse --path-format=absolute --git-common-dir' "$dir/git_calls.log" | grep -E '(^| )(push|fetch|tag|worktree) |rebase' || true)
   if [[ -n "$bad" ]]; then
     echo "FAIL $label: the gate changed git refs for an already-merged PR:"
     while IFS= read -r line; do printf '    | %s\n' "$line"; done <<< "$bad"
@@ -1223,5 +1229,25 @@ EXPECT_TAG=0
 NEED_SUBSTRINGS=("PR #42 already merged as bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" "FAIL: main CI red for bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" "Build & test (macOS, Node 22) (FAILURE)")
 run_test_case "case37-merged-pr-red" --when-green 42
 assert_no_branch_mutation "case37" "$dir"
+
+# --- Case 38: --when-green, a rebase force-push restarts the no-checks grace window for the new SHA ---
+# rebase_delay makes the startup deadline stale before the push; checks for the rebased SHA then
+# take two polls to register. Without the reset the gate calls no_checks_fail on the first poll.
+dir="$WORK/case38-rebase-resets-no-checks-window"
+setup_defaults "$dir"
+echo 1 > "$dir/behind_times"
+touch "$dir/base_becomes_current"
+echo 6 > "$dir/rebase_delay"
+echo 2 > "$dir/checks_no_reported_times"
+/usr/bin/perl -pi -e 's/"baseRefOid":\s*"[^"]+"/"baseRefOid": "9999999999999999999999999999999999999999"/' "$dir/pr_view.json"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("base is behind origin/main" "rebase attempt 1/3" "force-pushed job/test" "CI finished green" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+PR_GATE_POLL_SECONDS=1 PR_GATE_NO_CHECKS_GRACE_SECONDS=7 run_test_case "case38-rebase-resets-no-checks-window" --when-green 42
+if [[ "$(wc -l < "$dir/checks_calls.log" 2>/dev/null || echo 0)" -lt 3 ]]; then
+  echo "FAIL case38: gate gave up before checks registered on the rebased SHA (stale no-checks deadline)"
+  FAILED=1
+fi
 
 exit "$FAILED"
