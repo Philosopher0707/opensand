@@ -39,13 +39,13 @@ and loading states, and recovery. Every new export is wired and reachable: an un
 - One job per PR. Never mix unrelated changes.
 - Work in a worktree created by `scripts/worktree.sh new <job-name>`, under `~/dev/_scratch/`. Never in the
   owner checkout (`~/dev/opensand`) or the base clone.
-- While coding, test only the packages you touched.
+- While coding, test only the packages you touched. (CTO standard, 2026-11-23)
 - Once before the PR, run the full gate, with output captured to a file and the exit code printed:
   `TMPDIR=$(mktemp -d) SKIP_INSTALL=1 bash scripts/verify.sh > log 2>&1; echo $?`
   Do not pipe it through `tail` and do not re-run a passing check.
 - Never use `--no-verify`. If a hook is flaky, fix or narrow it in the same change.
 - No lockfile or `.github/` changes without the owner: `scripts/pr-gate.sh` refuses them unless overridden.
-- Never touch `~/dev/opensand`, `~/.opensand` or real chats. Use isolated state and test accounts.
+- Never touch `~/dev/opensand`, `~/.opensand` or the owner's real chats (CTO standard, 2026-11-23). Use isolated state and test accounts.
 - Save with `scripts/worktree.sh save "<message>"`: it stages explicit paths, scans for secrets, commits with
   hooks on, pushes, and opens a draft PR on the first push. Run `gh pr ready <N>` when the work is ready;
   `pr-gate.sh` refuses drafts.
@@ -75,7 +75,7 @@ deliberately broken input — on the same Node major CI uses. A test that has ne
 
 ## 5. Learning
 
-- Every bug the owner finds that the tests missed becomes a regression test or gate in the same PR.
+- Every bug the owner finds that the tests missed becomes a regression test or gate in the same PR. (CTO standard, 2026-11-23)
 - Log each hurdle the same day in `AGENTS_LEARNING.md`: what happened, the cause, and the rule that prevents it.
   New lessons are one file per entry in `docs/lessons/`; regenerate the index with `scripts/lessons-index.sh`.
 - A rule that repeats becomes a script or automatic check, not a line someone must remember.
