@@ -1580,19 +1580,45 @@ export class DesktopServer {
       return;
     }
 
-    // Serve static files from renderer/
-    let filePath = path.join(this.rendererDir, pathname === '/' ? 'index.html' : pathname);
-    const resolvedPath = path.resolve(filePath);
-    if (!resolvedPath.startsWith(path.resolve(this.rendererDir))) {
+    // Serve static files from renderer/. F7: containment follows workspace-file-read.ts —
+    // realpath both sides and compare with path.relative, so symlinks out of the tree
+    // (and sibling directories sharing the prefix) are refused, not just lexical `..`.
+    let realRendererDir: string;
+    try {
+      realRendererDir = fs.realpathSync(this.rendererDir);
+    } catch {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not Found');
+      return;
+    }
+    const insideRenderer = (p: string): boolean => {
+      const rel = path.relative(realRendererDir, p);
+      return rel === '' || (!rel.startsWith('..' + path.sep) && rel !== '..' && !path.isAbsolute(rel));
+    };
+    const requestedPath = path.join(realRendererDir, pathname === '/' ? 'index.html' : pathname);
+    if (!insideRenderer(requestedPath)) {
       res.writeHead(403, { 'Content-Type': 'text/plain' });
       res.end('Forbidden');
       return;
     }
-    if (!fs.existsSync(filePath)) {
-      filePath = path.join(this.rendererDir, 'index.html');
+    let filePath: string | null;
+    try {
+      filePath = fs.realpathSync(requestedPath);
+    } catch {
+      // Missing file: SPA fallback to index.html, which gets the same realpath containment.
+      try {
+        filePath = fs.realpathSync(path.join(realRendererDir, 'index.html'));
+      } catch {
+        filePath = null;
+      }
+    }
+    if (filePath !== null && !insideRenderer(filePath)) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      res.end('Forbidden');
+      return;
     }
 
-    if (fs.existsSync(filePath)) {
+    if (filePath !== null && fs.existsSync(filePath)) {
       const ext = path.extname(filePath);
       const mimeTypes: Record<string, string> = {
         '.html': 'text/html; charset=utf-8',
@@ -1615,6 +1641,9 @@ export class DesktopServer {
         res.writeHead(413, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: err.message }));
       } else if (err.message && err.message.includes('Invalid JSON')) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      } else if (err.message && err.message.includes('requires a non-empty secret')) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: err.message }));
       } else {

@@ -85,6 +85,10 @@ export class WebhookGateway {
   }
 
   public registerWebhook(webhook: Omit<WebhookRegistration, 'createdAt' | 'triggerCount'>): WebhookRegistration {
+    // F4: webhook ingress bypasses the session token, so the secret is the only authentication.
+    if (typeof webhook.secret !== 'string' || webhook.secret.trim() === '') {
+      throw new Error('Webhook registration requires a non-empty secret');
+    }
     const reg: WebhookRegistration = {
       ...webhook,
       createdAt: Date.now(),
@@ -134,13 +138,16 @@ export class WebhookGateway {
       return { success: false, webhookId: webhook.id, status: 'rejected', reason: `Webhook "${name}" is disabled` };
     }
 
-    // Verify Secret if configured
-    if (webhook.secret) {
-      const isValid = this.verifySignature(webhook.secret, payload, headers);
-      if (!isValid) {
-        this.recordDelivery(webhook.id, webhook.name, 'rejected', 'Invalid webhook signature or token');
-        return { success: false, webhookId: webhook.id, status: 'rejected', reason: 'Invalid signature or authorization token' };
-      }
+    // F4 fail closed: a secret-less registration (e.g. legacy data loaded from disk) never
+    // dispatches; signature verification is mandatory, not conditional.
+    if (typeof webhook.secret !== 'string' || webhook.secret.trim() === '') {
+      this.recordDelivery(webhook.id, webhook.name, 'rejected', 'Webhook has no secret configured');
+      return { success: false, webhookId: webhook.id, status: 'rejected', reason: 'Webhook has no secret configured' };
+    }
+    const isValid = this.verifySignature(webhook.secret, payload, headers);
+    if (!isValid) {
+      this.recordDelivery(webhook.id, webhook.name, 'rejected', 'Invalid webhook signature or token');
+      return { success: false, webhookId: webhook.id, status: 'rejected', reason: 'Invalid signature or authorization token' };
     }
 
     // Verify filter event (e.g. GitHub X-GitHub-Event header)
