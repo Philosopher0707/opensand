@@ -293,4 +293,28 @@ describe("Provider error handling with real LLM client and HTTP stub server", ()
     assert.strictEqual(class403.nextAction, "Check your API key permissions and model access in Settings.");
     assert.ok(!class403.nextAction.includes("--"));
   });
+
+  it("ProviderError messages never tell the user to pass CLI flags", async () => {
+    for (const status of [401, 404]) {
+      const mockFetch = async (): Promise<Response> => new Response(
+        JSON.stringify({ error: { message: "Request rejected" } }),
+        { status, headers: { "Content-Type": "application/json" } }
+      );
+      const client = new UniversalLLMClient({
+        baseUrl: "https://api.example.com/v1",
+        model: "test-model",
+        maxRetries: 0,
+        fetch: mockFetch as any,
+      });
+      await assert.rejects(
+        () => client.streamCompletion([{ role: "user", content: "hi" }]),
+        (err: any) => {
+          assert.ok(err instanceof ProviderError, `status ${status} must throw ProviderError`);
+          assert.ok(!err.message.includes(" --"), `status ${status} leaked a CLI flag: ${err.message}`);
+          assert.ok(err.message.includes("Settings"), `status ${status} must point to Settings`);
+          return true;
+        }
+      );
+    }
+  });
 });

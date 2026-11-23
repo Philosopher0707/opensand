@@ -1,3 +1,4 @@
+import { whenElectronExited } from "./helpers/electron-exit.js";
 import test from "node:test";
 import assert from "node:assert";
 import { spawn } from "node:child_process";
@@ -234,7 +235,7 @@ async function runElectron(home: string, workspace: string, opts: RunOptions): P
       const child = spawn(electronBin, [`--user-data-dir=${tmpDir}`, runner], { cwd: workspace, env, stdio: ["ignore", "pipe", "pipe"] });
       child.stdout.on("data", (d) => { stdout += d.toString(); });
       child.stderr.on("data", (d) => { stderr += d.toString(); });
-      return new Promise<number>((resolve) => child.on("close", (c) => resolve(c ?? 0)));
+      return whenElectronExited(child);
     });
     assert.strictEqual(code, 0, `runner failed (${code})\n${stdout}\n${stderr}`);
     const m = stdout.match(/__RESULT__:(.*)/);

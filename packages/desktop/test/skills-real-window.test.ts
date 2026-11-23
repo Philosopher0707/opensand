@@ -1,3 +1,4 @@
+import { whenElectronExited } from "./helpers/electron-exit.js";
 import test from "node:test";
 import assert from "node:assert";
 import { spawn } from "node:child_process";
@@ -248,10 +249,8 @@ test("Preact skills view, creation, preview and deletion at 960x740 and 1920x108
           resolve(code);
         };
         watchdog = setTimeout(() => { child.kill("SIGKILL"); settle(124); }, 180_000);
-        // Electron helpers inherit the stdio pipes and can outlive the main process, so "close"
-        // may never fire. Resolve shortly after "exit" and let stdout drain in the meantime.
-        child.on("exit", (c) => setTimeout(() => settle(c ?? 0), 250));
-        child.on("close", (c) => settle(c ?? 0));
+        // Resolve on process exit; the helper releases pipes held by lingering Electron helpers.
+        void whenElectronExited(child).then(settle);
         child.on("error", (err) => { stderr += String(err); settle(1); });
       });
     });

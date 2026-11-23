@@ -107,6 +107,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-23 · [Wrapped commands bypassed the destructive-command denylist](2026-11-23-nested-shell-denylist-bypass.md)
 - 2026-11-23 · [Bots operating in the owner checkout refused by git common-dir guard](2026-11-23-owner-checkout-guard.md)
 - 2026-11-23 · [Barrel Export Symbol Collisions & Desktop Provider Error Formatting](2026-11-23-provider-error-handling-and-clean-desktop-action.md)
+- 2026-11-23 · [A real-window hang is a child holding stdio pipes, then a lock heartbeat that never goes stale](2026-11-23-real-window-hang-stdio-pipes-and-lock-heartbeat.md)
 - 2026-11-23 · [A one-shot hash fix in one test leaves the same race in every other real-window test](2026-11-23-real-window-hash-navigation-helper.md)
 - 2026-11-23 · [A one-shot hash change loses the view switch, and a plain child kill leaves Electron descendants alive](2026-11-23-real-window-hash-race-and-process-group-kill.md)
 - 2026-11-23 · [A repo-wide guard passes on the branch but fails CI after the gate rebases it onto newer main](2026-11-23-rebase-new-guard-against-latest-main.md)

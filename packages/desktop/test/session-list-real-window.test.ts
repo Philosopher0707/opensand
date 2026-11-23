@@ -1,3 +1,4 @@
+import { whenElectronExited } from "./helpers/electron-exit.js";
 import test from "node:test";
 import assert from "node:assert";
 import { spawn } from "node:child_process";
@@ -408,7 +409,7 @@ test("Preact Sessions list real-window test: search, selection, hydration, unrea
         stderr += d.toString();
         process.stderr.write(d);
       });
-      return new Promise<number>((resolve) => child.on("close", (c) => resolve(c ?? 0)));
+      return whenElectronExited(child);
     });
 
     assert.strictEqual(code, 0, `session-list runner failed (${code})\n${stdout}\n${stderr}`);
