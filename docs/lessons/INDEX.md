@@ -105,5 +105,6 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-23 · [A one-shot hash change loses the view switch, and a plain child kill leaves Electron descendants alive](2026-11-23-real-window-hash-race-and-process-group-kill.md)
 - 2026-11-23 · [A repo-wide guard passes on the branch but fails CI after the gate rebases it onto newer main](2026-11-23-rebase-new-guard-against-latest-main.md)
 - 2026-11-23 · [OpenSand release tagging requires fresh origin/main and matching package version; pr-gate auto-readies worktree drafts](2026-11-23-release-stale-checkout-guard-and-pr-gate-auto-ready.md)
+- 2026-11-23 · [Research findings kept only in chat were interleaved and truncated when the job stopped](2026-11-23-research-findings-must-land-in-a-file.md)
 - 2026-11-23 · [A stale bump-PR base stalls release.sh at the gate instead of rebasing and resuming](2026-11-23-stale-bump-base-stalls-release.md)
 - 2026-11-23 · [Real-window persona deletion races bridge handler over in-memory mocks](2026-11-23-test-bridge-persona-deletion-and-in-memory-mocks.md)
