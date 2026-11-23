@@ -91,7 +91,7 @@ describe('Desktop Server - Policies, Webhooks, and AG-UI Endpoints', () => {
 
   it('manages webhooks via GET / POST / DELETE /api/webhooks and logs delivery', async () => {
     const regRes = await makeRequest('POST', '/api/webhooks', {
-      id: 'wh_test_ci', name: 'ci-webhook', targetType: 'graph', targetId: 'dummy_graph', enabled: true,
+      id: 'wh_test_ci', name: 'ci-webhook', secret: 'ci-webhook-secret', targetType: 'graph', targetId: 'dummy_graph', enabled: true,
     });
     assert.strictEqual(regRes.status, 201);
     assert.strictEqual(regRes.body.name, 'ci-webhook');
@@ -105,6 +105,18 @@ describe('Desktop Server - Policies, Webhooks, and AG-UI Endpoints', () => {
     const delRes = await makeRequest('DELETE', '/api/webhooks/ci-webhook');
     assert.strictEqual(delRes.status, 200);
     assert.strictEqual(delRes.body.success, true);
+  });
+
+  it('rejects webhook registration without a usable secret (F4)', async () => {
+    for (const secret of [undefined, '', '   ']) {
+      const res = await makeRequest('POST', '/api/webhooks', {
+        id: 'wh_nosecret', name: 'no-secret-hook', secret, targetType: 'graph', targetId: 'dummy_graph', enabled: true,
+      });
+      assert.strictEqual(res.status, 400);
+      assert.ok(String(res.body.error).includes('secret'));
+    }
+    const listRes = await makeRequest('GET', '/api/webhooks');
+    assert.ok(!listRes.body.some((w: any) => w.name === 'no-secret-hook'));
   });
 
   it('GET /api/graphs and POST /api/graphs/:id/run executes autonomous cyclical coding loop', async () => {
