@@ -102,6 +102,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-23 · [Event projection sparse array holes crash transcript formatting](2026-11-23-event-projections-out-of-bounds-holes.md)
 - 2026-11-23 · [A fresh worktree has no node_modules, so SKIP_INSTALL=1 fails at build](2026-11-23-fresh-worktree-skip-install-needs-node-modules.md)
 - 2026-11-23 · [Team review resolution route is POST /api/team-review/resolve, not /api/team-review/:id/resolve](2026-11-23-legacy-resolve-review-item-route-404.md)
+- 2026-11-23 · [Wrapped commands bypassed the destructive-command denylist](2026-11-23-nested-shell-denylist-bypass.md)
 - 2026-11-23 · [Bots operating in the owner checkout refused by git common-dir guard](2026-11-23-owner-checkout-guard.md)
 - 2026-11-23 · [Barrel Export Symbol Collisions & Desktop Provider Error Formatting](2026-11-23-provider-error-handling-and-clean-desktop-action.md)
 - 2026-11-23 · [A one-shot hash fix in one test leaves the same race in every other real-window test](2026-11-23-real-window-hash-navigation-helper.md)
