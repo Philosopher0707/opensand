@@ -5283,9 +5283,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Error event
     if (event.type === 'error') {
-      const errMsg = event.data?.message || event.message || 'Unknown error occurred';
+      const d = event.data || {};
+      const errMsg = (d.cause && d.nextAction) ? `${d.cause} ${d.nextAction}` : (d.message || event.message || 'Unknown error occurred');
       if (currentAssistantMessage) {
-        currentAssistantMessage.contentEl.innerHTML += `<div style="color: var(--danger); margin-top: 8px;">Error: ${escapeHtml(errMsg)}</div>`;
+        currentAssistantMessage.contentEl.innerHTML += `<div style="color: var(--danger); margin-top: 8px;">${escapeHtml(errMsg)}</div>`;
       }
       setTurnBusy(false);
       queuedQueries = [];

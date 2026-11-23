@@ -2,6 +2,8 @@
 
 **Document Purpose:** Persistent reference for coding agents working on OpenSand or similar agentic architectures. Captures root causes, verified solutions, and non-obvious failure modes discovered during reverse engineering and clean-room implementation.
 
+Before any job, read [docs/STANDARDS.md](docs/STANDARDS.md) — the condensed definition of done, workflow, evidence, review, learning and error rules.
+
 ---
 
 ## 1. Binary Forensics & Electron Architecture

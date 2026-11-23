@@ -15,6 +15,71 @@ export interface ConsolidatedAssistantResponse {
   tool_calls?: ToolCall[];
 }
 
+export class ProviderError extends Error {
+  public readonly status: number;
+  public readonly statusCode: number;
+  public readonly code?: string;
+  public readonly retryAfterMs?: number;
+  public readonly endpoint: string;
+  public readonly provider?: string;
+  public readonly upstreamDetail?: string;
+  public readonly isProviderError = true;
+
+  constructor(
+    message: string,
+    opts: {
+      status: number;
+      endpoint: string;
+      code?: string;
+      retryAfterMs?: number;
+      provider?: string;
+      upstreamDetail?: string;
+      cause?: unknown;
+    }
+  ) {
+    super(message);
+    this.name = "ProviderError";
+    this.status = opts.status;
+    this.statusCode = opts.status;
+    this.endpoint = opts.endpoint;
+    this.code = opts.code;
+    this.retryAfterMs = opts.retryAfterMs;
+    this.provider = opts.provider;
+    this.upstreamDetail = opts.upstreamDetail;
+    if (opts.cause) {
+      this.cause = opts.cause;
+    }
+  }
+}
+
+export function parseRetryAfterMs(header?: string | null): number | undefined {
+  if (!header) return undefined;
+  const trimmed = header.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const secs = parseInt(trimmed, 10);
+    if (!isNaN(secs) && secs >= 0) {
+      return secs * 1000;
+    }
+  }
+  const parsedDate = Date.parse(trimmed);
+  if (!isNaN(parsedDate)) {
+    const diff = parsedDate - Date.now();
+    return Math.max(0, diff);
+  }
+  return undefined;
+}
+
+export type LLMRetryCallback = (info: {
+  attempt: number;
+  maxRetries: number;
+  delayMs: number;
+  status?: number;
+}) => void;
+
+export interface ExtendedLLMClientConfig extends LLMClientConfig {
+  onRetry?: LLMRetryCallback;
+}
+
 export class NetworkError extends Error {
   public readonly endpoint: string;
   public readonly code?: string;
@@ -153,9 +218,9 @@ export function classifyNetworkError(
 }
 
 export class UniversalLLMClient {
-  private config: LLMClientConfig;
+  private config: ExtendedLLMClientConfig;
 
-  constructor(config: LLMClientConfig) {
+  constructor(config: ExtendedLLMClientConfig) {
     this.config = config;
   }
 
@@ -410,63 +475,124 @@ export class UniversalLLMClient {
         const isRetryableStatus =
           status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 
+        const retryAfter =
+          response.headers?.get?.("retry-after") ??
+          response.headers?.get?.("Retry-After") ??
+          (response.headers as any)?.["retry-after"] ??
+          (response.headers as any)?.["Retry-After"];
+        const retryAfterMs = parseRetryAfterMs(retryAfter);
+
         if (isRetryableStatus && attempt < maxRetries && !signal?.aborted) {
           attempt++;
-          const retryAfter =
-            response.headers?.get?.("retry-after") ??
-            response.headers?.get?.("Retry-After") ??
-            (response.headers as any)?.["retry-after"] ??
-            (response.headers as any)?.["Retry-After"];
           const delayMs = this.calculateBackoff(attempt, retryAfter);
+          if (this.config.onRetry) {
+            this.config.onRetry({ attempt, maxRetries, delayMs, status });
+          }
           await this.sleepWithAbort(delayMs, signal);
           continue;
         }
 
         const errorText = await response.text();
         let detail = errorText;
+        let errorCode: string | undefined;
         try {
           const parsed = JSON.parse(errorText);
           if (parsed.error?.message) {
             detail = parsed.error.message;
+            errorCode = parsed.error.code ? String(parsed.error.code) : undefined;
           } else if (parsed.message) {
             detail = parsed.message;
+            errorCode = parsed.code ? String(parsed.code) : undefined;
           }
         } catch {
           // Retain raw errorText
         }
 
         if (response.status === 401) {
-          throw new Error(
+          throw new ProviderError(
             `Authentication failed (401 Unauthorized) at ${endpoint}.\n` +
             `  Detail: ${detail}\n` +
-            `  Fix: Provide an API key via --api-key, export OPENAI_API_KEY, or use a local model (--endpoint http://127.0.0.1:11434/v1).`
+            `  Fix: Provide an API key via --api-key, export OPENAI_API_KEY, or use a local model (--endpoint http://127.0.0.1:11434/v1).`,
+            {
+              status: 401,
+              endpoint,
+              code: errorCode || "AUTH_FAILED",
+              provider: this.config.provider,
+              upstreamDetail: detail,
+            }
+          );
+        }
+
+        if (response.status === 402) {
+          throw new ProviderError(
+            `Payment required or insufficient credits (402 Payment Required) at ${endpoint}.\n` +
+            `  Detail: ${detail}`,
+            {
+              status: 402,
+              endpoint,
+              code: errorCode || "INSUFFICIENT_CREDITS",
+              provider: this.config.provider,
+              upstreamDetail: detail,
+            }
           );
         }
 
         if (response.status === 403) {
-          throw new Error(
+          throw new ProviderError(
             `Access forbidden (403 Forbidden) at ${endpoint}.\n` +
             `  Detail: ${detail}\n` +
-            `  Fix: Check your API key permissions and model access.`
+            `  Fix: Check your API key permissions and model access.`,
+            {
+              status: 403,
+              endpoint,
+              code: errorCode || "FORBIDDEN",
+              provider: this.config.provider,
+              upstreamDetail: detail,
+            }
           );
         }
 
         if (response.status === 404) {
-          throw new Error(
+          throw new ProviderError(
             `Model or endpoint not found (404 Not Found) at ${endpoint}.\n` +
             `  Detail: ${detail}\n` +
-            `  Fix: Check available models (e.g. 'ollama list') and specify with --model <name>.`
+            `  Fix: Check available models (e.g. 'ollama list') and specify with --model <name>.`,
+            {
+              status: 404,
+              endpoint,
+              code: errorCode || "NOT_FOUND",
+              provider: this.config.provider,
+              upstreamDetail: detail,
+            }
           );
         }
 
         if (response.status === 429) {
-          throw new Error(
+          throw new ProviderError(
             `Rate limit or quota exceeded (429 Too Many Requests) at ${endpoint}.\n` +
-            `  Detail: ${detail}`
+            `  Detail: ${detail}`,
+            {
+              status: 429,
+              endpoint,
+              code: errorCode || "RATE_LIMIT_EXCEEDED",
+              retryAfterMs,
+              provider: this.config.provider,
+              upstreamDetail: detail,
+            }
           );
         }
 
-        throw new Error(`LLM API request failed [${response.status} ${response.statusText}]: ${detail}`);
+        throw new ProviderError(
+          `LLM API request failed [${response.status} ${response.statusText}]: ${detail}`,
+          {
+            status: response.status,
+            endpoint,
+            code: errorCode || `HTTP_${response.status}`,
+            retryAfterMs,
+            provider: this.config.provider,
+            upstreamDetail: detail,
+          }
+        );
       }
 
       break;
