@@ -83,10 +83,11 @@ test("autoAllows: what each mode lets through without asking; unknown fails clos
     assert.equal(autoAllows("auto_edit", q), false, `auto_edit should ask: ${q.name} (${q.effect})`);
   }
 
-  // In "auto" mode: all above proceed
-  for (const q of [readReq, writeReq, editReq, shellReq, shellOutsideReq, delegateReq, netReq, browserReq, memReq, extReq, vcsReq]) {
+  // In "auto" mode: all above proceed except shell_outside (unsandboxed shell always prompts, F1)
+  for (const q of [readReq, writeReq, editReq, shellReq, delegateReq, netReq, browserReq, memReq, extReq, vcsReq]) {
     assert.equal(autoAllows("auto", q), true, `auto should allow: ${q.name} (${q.effect})`);
   }
+  assert.equal(autoAllows("auto", shellOutsideReq), false, "auto must never allow shell_outside");
 
   // Hard stops in EVERY mode: control, spend, self
   for (const effect of ["control", "spend", "self"]) {
@@ -114,6 +115,14 @@ test("autoAllows: what each mode lets through without asking; unknown fails clos
   assert.equal(autoAllows("full", writeReq), false);
   assert.equal(autoAllows("all", writeReq), false);
   assert.equal(autoAllows("", writeReq), false);
+});
+
+test("F1: unsandboxed shell (shell_outside) is never auto-allowed in any mode", () => {
+  assert.equal(autoAllows("auto", { effect: "shell_outside" }), false);
+  assert.equal(autoAllows("auto_edit", { effect: "shell_outside" }), false);
+  assert.equal(autoAllows("ask", { effect: "shell_outside" }), false);
+  // Sandboxed shell in auto mode is unchanged.
+  assert.equal(autoAllows("auto", { effect: "shell" }), true);
 });
 
 test("autoAllows engine_run policy", () => {

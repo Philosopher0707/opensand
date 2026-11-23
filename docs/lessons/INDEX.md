@@ -96,6 +96,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-22 · [Worktree dependencies copied from another branch have stale workspace links](2026-11-22-worktree-donor-node-modules-stale-links.md)
 - 2026-11-22 · [The zero-test guard must not read only the last phase of a multi-phase runner](2026-11-22-zero-test-guard-reads-last-phase.md)
 - 2026-11-23 · [Attachments brief names the wrong nav group and legacy data fields](2026-11-23-attachments-brief-vs-legacy-record.md)
+- 2026-11-23 · [Auto mode auto-approved unsandboxed and destructive shell before the safety checks](2026-11-23-auto-mode-shell-ceiling.md)
 - 2026-11-23 · [Extract screen server routes through client methods and normalized template paths](2026-11-23-brief-route-extraction-client-methods-and-parameterized-paths.md)
 - 2026-11-23 · [Brief helper scripts may exist only on origin/main](2026-11-23-brief-scripts-may-be-branch-local.md)
 - 2026-11-23 · [Event projection sparse array holes crash transcript formatting](2026-11-23-event-projections-out-of-bounds-holes.md)

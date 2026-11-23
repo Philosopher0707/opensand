@@ -4,7 +4,8 @@
 //
 //   ask       every change asks (the "always allow X in this task" button still works) — default
 //   auto_edit file edits, sandboxed shell commands, isolated sub-agents and sandboxed engine runs proceed
-//   auto      everything above plus unsandboxed shell, web, browser, memory, connectors, git commits
+//   auto      everything above plus web, browser, memory, connectors, git commits
+//             (unsandboxed shell / shell_outside always prompts, in every mode)
 
 export const APPROVAL_MODES = ["ask", "auto_edit", "auto"] as const;
 export type ApprovalMode = (typeof APPROVAL_MODES)[number];
@@ -71,6 +72,7 @@ export function autoAllows(mode: string, req: ApprovalCheckRequest = {}): boolea
   if (mode !== "auto_edit" && mode !== "auto") return false;
   const effect = req.effect;
   if (!effect || !EFFECTS[effect] || NEVER_AUTO.has(effect)) return false;
+  if (effect === "shell_outside") return false; // unsandboxed shell is a separate approval, never auto
   if (req.note && SHELLS.has(effect)) return false; // web content was read earlier in this run
   // An engine that cannot ask per action asks once per run: Auto-edit allows it only when the engine's work is held to
   // the folder by a sandbox; otherwise it acts as your user.
