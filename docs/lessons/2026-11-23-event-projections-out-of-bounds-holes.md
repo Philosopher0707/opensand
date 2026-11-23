@@ -1,0 +1,7 @@
+# Event projection sparse array holes crash transcript formatting
+
+**Trap:** When replaying an event log that begins with `turn.started` (missing initial snapshot/baseline), `turn.folded` events with indices past the current message array length create sparse array holes with `undefined` entries. Subsequent projections (`formatHumanReadable`) attempt to read `.role` on these undefined entries, throwing `TypeError: Cannot read properties of undefined (reading 'role')`. Because `writeProjections()` was awaited unconditionally after emitting `turn_completed`, the fatal projection error caused `runTurn` to reject and skipped `dispatchStop`.
+
+**Root Cause:** `projectMessages` directly assigned `messages[change.index] = change.message` without bounds-checking `change.index < messages.length`, and formatting functions did not guard against null or undefined array items. Additionally, non-essential artifact generation (`writeProjections`) was treated as fatal to the agent turn loop even after the LLM response was complete.
+
+**Rule:** In event log projection handlers, always validate that index-based modifications fall strictly within current bounds (`0 <= index < length`) and filter out empty elements; make transcript and text formatters skip null/undefined entries safely. Make post-turn projection file writes (`writeProjections`) non-fatal in the coordinator loop so that auxiliary file export errors never abort delivered turn completions.

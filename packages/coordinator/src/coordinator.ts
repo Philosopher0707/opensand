@@ -325,7 +325,11 @@ export class AgentCoordinator {
       if (!assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {
         const finalContent = assistantMsg.content ?? "";
         this.emit({ type: "turn_completed", finalContent });
-        await this.transcript.writeProjections();
+        try {
+          await this.transcript.writeProjections();
+        } catch {
+          // writeProjections failure is non-fatal to the turn: the reply was already delivered.
+        }
         await this.hookDispatcher.dispatchStop({
           sessionId: this.sessionId,
           finalContent,
@@ -598,7 +602,11 @@ export class AgentCoordinator {
     // Safety circuit breaker hit
     const fallbackMessage = `Execution limit reached: max turn iterations (${this.maxTurnIterations}) reached. Type 'continue' to proceed.`;
     this.emit({ type: "turn_completed", finalContent: fallbackMessage });
-    await this.transcript.writeProjections();
+    try {
+      await this.transcript.writeProjections();
+    } catch {
+      // writeProjections failure is non-fatal to the turn: the reply was already delivered.
+    }
     await this.hookDispatcher.dispatchStop({
       sessionId: this.sessionId,
       finalContent: fallbackMessage,

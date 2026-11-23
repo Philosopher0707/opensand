@@ -49,13 +49,14 @@ export function reconcileTurnInvariants(
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
+    if (!msg) continue;
     result.push(msg);
 
     if (msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0) {
       // Find all immediate tool messages that follow this assistant message
       const toolResponses: ChatMessage[] = [];
       let j = i + 1;
-      while (j < messages.length && messages[j].role === "tool") {
+      while (j < messages.length && messages[j]?.role === "tool") {
         toolResponses.push(messages[j]);
         j++;
       }

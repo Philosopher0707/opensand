@@ -37,8 +37,10 @@ export function projectMessages(events: SessionEvent[]): ChatMessage[] {
         messages.push(data.message as ChatMessage);
         break;
       case EVENT.turnFolded:
-        for (const change of data.changes as FoldChange[]) {
-          messages[change.index] = change.message;
+        for (const change of (data.changes as FoldChange[] | undefined) ?? []) {
+          if (change && typeof change.index === "number" && change.index >= 0 && change.index < messages.length) {
+            messages[change.index] = change.message;
+          }
         }
         break;
       case EVENT.turnRollback:
@@ -46,20 +48,24 @@ export function projectMessages(events: SessionEvent[]): ChatMessage[] {
         break;
       case EVENT.turnCompacted:
         messages = [
-          messages[0],
+          ...(messages[0] ? [messages[0]] : []),
           { role: "user", content: data.summary },
           ...messages.slice(data.keepFrom),
         ];
         break;
     }
   }
-  return messages;
+  return messages.filter(Boolean);
 }
 
 export function formatHumanReadable(messages: ChatMessage[]): string {
   const sections: string[] = [];
 
   for (const msg of messages) {
+    if (!msg || !msg.role) {
+      continue;
+    }
+
     if (msg.role === "system") {
       continue;
     }
@@ -101,15 +107,19 @@ export function projectTranscriptText(events: SessionEvent[]): string {
 export function projectTranscriptJsonl(events: SessionEvent[]): string {
   const lines: string[] = [];
   const pushEntry = (ev: SessionEvent, message: ChatMessage) => {
-    if (message.role === "system") return;
+    if (!message || message.role === "system") return;
     lines.push(JSON.stringify({ timestamp: ev.ts, sessionId: ev.sessionId, ...message }) + "\n");
   };
 
   for (const ev of events) {
     if (ev.kind === EVENT.snapshot) {
-      for (const message of ev.data.messages as ChatMessage[]) pushEntry(ev, message);
+      for (const message of (ev.data.messages as ChatMessage[] | undefined) ?? []) {
+        if (message) pushEntry(ev, message);
+      }
     } else if (ev.kind === EVENT.turnStarted || ev.kind === EVENT.modelCompletion || ev.kind === EVENT.toolCompleted) {
-      pushEntry(ev, ev.data.message as ChatMessage);
+      if (ev.data.message) {
+        pushEntry(ev, ev.data.message as ChatMessage);
+      }
     } else if (LEGACY_EVENT_NAMES[ev.kind]) {
       lines.push(JSON.stringify({ timestamp: ev.ts, sessionId: ev.sessionId, event: LEGACY_EVENT_NAMES[ev.kind], ...ev.data }) + "\n");
     }
