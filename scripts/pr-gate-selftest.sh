@@ -187,7 +187,12 @@ console.log(JSON.stringify(d));
         exit 0
         ;;
       merge)
-        echo "gh pr merge $*" >> "$TEST_CASE_DIR/merge_calls.log"
+        # A duplicate subcommand (e.g. `gh pr merge merge 42`) used to pass this stub silently.
+        if [[ ! "${3:-}" =~ ^[0-9]+$ ]]; then
+          echo "gh stub: pr merge needs a numeric PR number, got '${3:-}'" >&2
+          exit 1
+        fi
+        echo "gh $*" >> "$TEST_CASE_DIR/merge_calls.log"
         if [ -f "$TEST_CASE_DIR/fail_merge" ]; then
           echo "gh pr merge failed" >&2
           exit 1
@@ -516,6 +521,12 @@ run_test_case() {
     if [[ ! -f "$dir/merge_calls.log" ]]; then
       echo "FAIL $label: expected gh pr merge to be called, but merge_calls.log is missing"
       ok=0
+    else
+      first_merge=$(head -n 1 "$dir/merge_calls.log")
+      if [[ ! "$first_merge" =~ ^gh\ pr\ merge\ [0-9]+\ --merge(\ |$) ]]; then
+        echo "FAIL $label: bad merge command: $first_merge"
+        ok=0
+      fi
     fi
   else
     if [[ -f "$dir/merge_calls.log" ]]; then

@@ -740,7 +740,7 @@ fi
 echo "PASS: checkpoint tag $TAG verified on origin pointing to $REMOTE_MAIN_SHA"
 
 echo "==> [Check 5/5] Merging PR #$PR..."
-MERGE_ARGS=(merge "$PR" --merge)
+MERGE_ARGS=("$PR" --merge)
 if [[ "$NO_REVIEW" -eq 1 ]]; then
   MERGE_ARGS+=(--body "Review waiver: $NO_REVIEW_REASON")
 fi
