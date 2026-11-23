@@ -16,6 +16,11 @@ const DANGEROUS_PATTERNS = [
     pattern: /\brm\b(?:\s+--?[a-zA-Z0-9-]+)*\s+-(?:[a-zA-Z]*r[a-zA-Z]*f|[a-zA-Z]*f[a-zA-Z]*r)\b(?:\s+--?[a-zA-Z0-9-]+)*\s+(?:\/|\/\*|~)(?:\s|$)/,
     reason: "Destructive root/home recursive deletion",
   },
+  {
+    // A bare variable (X=/; rm -rf $X) hides the root/home target from the pattern above.
+    pattern: /\brm\b(?:\s+--?[a-zA-Z0-9-]+)*\s+-(?:[a-zA-Z]*r[a-zA-Z]*f|[a-zA-Z]*f[a-zA-Z]*r)\b(?:\s+--?[a-zA-Z0-9-]+)*\s+\$\{?[A-Za-z_][A-Za-z0-9_]*\}?(?:\s|$)/,
+    reason: "Destructive recursive deletion via variable",
+  },
   { pattern: /\bmkfs(?:\.[a-zA-Z0-9]+)?\s+/, reason: "Filesystem formatting command" },
   { pattern: />\s*\/dev\/[srh]d[a-z0-9]/, reason: "Raw device overwrite" },
   { pattern: /\b(?:dd\s+if=.*of=\/dev\/)/, reason: "Raw device write via dd" },
@@ -28,9 +33,11 @@ export function validateBashCommand(command: string): ValidationResult {
     return { valid: false, isDangerous: false, error: "Empty command string" };
   }
 
-  // 1. Check for dangerous destructive patterns
+  // 1. Check for dangerous destructive patterns. Quoting a root/home path (rm -rf "/")
+  // must not dodge the denylist; syntax checks below still use the original text.
+  const forMatching = trimmed.replace(/["'](\/\*?|~)["']/g, "$1");
   for (const { pattern, reason } of DANGEROUS_PATTERNS) {
-    if (pattern.test(trimmed)) {
+    if (pattern.test(forMatching)) {
       return { valid: true, isDangerous: true, dangerReason: reason };
     }
   }
