@@ -187,16 +187,21 @@ if [[ "$WHEN_GREEN" -eq 1 ]]; then
   # queued before GitHub registers any check on the PR, so a queued/in-progress run for the head
   # commit extends the grace period, itself bounded by PR_GATE_QUEUED_RUN_MAX_SECONDS (default 600).
   NO_CHECKS_GRACE_SECONDS="${PR_GATE_NO_CHECKS_GRACE_SECONDS:-300}"
-  NO_CHECKS_DEADLINE=$((SECONDS + NO_CHECKS_GRACE_SECONDS))
-  if [[ "$NO_CHECKS_DEADLINE" -gt "$DEADLINE" ]]; then
-    NO_CHECKS_DEADLINE="$DEADLINE"
-  fi
-  NO_CHECKS_SINCE=$SECONDS
   QUEUED_RUN_MAX_SECONDS="${PR_GATE_QUEUED_RUN_MAX_SECONDS:-600}"
-  NO_CHECKS_HARD_DEADLINE=$((NO_CHECKS_SINCE + QUEUED_RUN_MAX_SECONDS))
-  if [[ "$NO_CHECKS_HARD_DEADLINE" -gt "$DEADLINE" ]]; then
-    NO_CHECKS_HARD_DEADLINE="$DEADLINE"
-  fi
+  # The window starts at the push, not at process start: a rebase force-push produces a new SHA
+  # whose checks need their own grace period. SECONDS, DEADLINE and both limits are in scope here.
+  reset_no_checks_window() {
+    NO_CHECKS_DEADLINE=$((SECONDS + NO_CHECKS_GRACE_SECONDS))
+    if [[ "$NO_CHECKS_DEADLINE" -gt "$DEADLINE" ]]; then
+      NO_CHECKS_DEADLINE="$DEADLINE"
+    fi
+    NO_CHECKS_SINCE=$SECONDS
+    NO_CHECKS_HARD_DEADLINE=$((NO_CHECKS_SINCE + QUEUED_RUN_MAX_SECONDS))
+    if [[ "$NO_CHECKS_HARD_DEADLINE" -gt "$DEADLINE" ]]; then
+      NO_CHECKS_HARD_DEADLINE="$DEADLINE"
+    fi
+  }
+  reset_no_checks_window
   CHECKS_OUT="$(mktemp "${TMPDIR:-/tmp}/pr-gate-checks.XXXXXX")"
   REBASE_DIR=""
   REBASE_WT=""
@@ -461,6 +466,8 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
         echo "FAIL: after the rebase push, origin/$PR_HEAD_BRANCH is ${PUSHED_SHA:-missing}, expected $NEW_HEAD" >&2
         exit 1
       fi
+      # Checks for the new SHA register from now, not from the old deadline at startup.
+      reset_no_checks_window
       echo "PASS: rebased PR #$PR onto origin/main ($FETCHED_MAIN) and force-pushed $PR_HEAD_BRANCH (${PR_HEAD_OID:0:7} -> ${NEW_HEAD:0:7}); waiting for its new CI."
     fi
 
