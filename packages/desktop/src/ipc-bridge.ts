@@ -825,11 +825,6 @@ export class DesktopIpcBridge extends EventEmitter {
       args,
     };
 
-    // Evaluate autoAllows first: auto-allowed requests proceed without creating a prompt card
-    if (autoAllows(mode, reqForCheck)) {
-      return true;
-    }
-
     let mustPrompt = false;
 
     // Safety Ceiling: Destructive shell commands (rm -rf /, raw disks, fork bombs) must never auto-approve
@@ -850,6 +845,19 @@ export class DesktopIpcBridge extends EventEmitter {
         mustPrompt = true;
         reason = reason ? `${reason} (${policy.reason})` : policy.reason;
       }
+    }
+
+    // Unsandboxed shell is a separate approval: never auto, never covered by "always" or autoApprove.
+    if (effect === 'shell_outside') {
+      mustPrompt = true;
+      reason = reason
+        ? `${reason} (Runs outside the sandbox; needs your yes in every mode)`
+        : 'Runs outside the sandbox; needs your yes in every mode';
+    }
+
+    // autoAllows only short-circuits when no safety gate demands a prompt (F1).
+    if (!mustPrompt && autoAllows(mode, reqForCheck)) {
+      return true;
     }
 
     // Safety Ceiling: Skill write/mount and memory write require human confirmation unless autoApprovePersistent is on
