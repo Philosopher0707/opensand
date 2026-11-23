@@ -71,6 +71,13 @@ try {
           ipcRenderer.removeListener('opensand:event', handler);
         };
       },
+      onOpenSettings: (callback: () => void) => {
+        const handler = () => callback();
+        ipcRenderer.on('opensand:openSettings', handler);
+        return () => {
+          ipcRenderer.removeListener('opensand:openSettings', handler);
+        };
+      },
     });
   }
 } catch {

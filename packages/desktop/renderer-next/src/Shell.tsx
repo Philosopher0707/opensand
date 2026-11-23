@@ -44,6 +44,11 @@ import {
 } from "../../src/shell/account-model";
 import { isChatBusy } from "../../src/shell/chat-turn-model";
 import {
+  OPEN_COMPACT_EVENT,
+  OPEN_ROLLBACK_EVENT,
+  sessionActionForEvent,
+} from "../../src/shell/dead-actions-model";
+import {
   authFailed,
   authStarted,
   authSucceeded,
@@ -149,7 +154,7 @@ export function Shell({ data }: ShellProps) {
 
   const capture = useQuickCapture(data);
   // The chat turn lives at the shell level so opening an approval detail does not drop it.
-  const chat = useChatTurn(data, selectedSessionId);
+  const chat = useChatTurn(data, selectedSessionId, activeAgentId);
 
   // Restore saved session from localStorage validated against live sessions
   useEffect(() => {
@@ -302,6 +307,21 @@ export function Shell({ data }: ShellProps) {
       window.removeEventListener("popstate", applyLocation);
     };
   }, []);
+
+  // Inspector rewind/compact fire DOM events; route them to the server actions for the selected session.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const action = sessionActionForEvent(event.type, Boolean(selectedSessionId));
+      const run = action === "rollback" ? data.rollback : action === "compact" ? data.compact : undefined;
+      if (run) void Promise.resolve(run()).catch((err) => console.error("[opensand] session action failed:", err));
+    };
+    window.addEventListener(OPEN_ROLLBACK_EVENT, handler);
+    window.addEventListener(OPEN_COMPACT_EVENT, handler);
+    return () => {
+      window.removeEventListener(OPEN_ROLLBACK_EVENT, handler);
+      window.removeEventListener(OPEN_COMPACT_EVENT, handler);
+    };
+  }, [data, selectedSessionId]);
 
   // A 401 from the server (or an auth_required bridge event) opens the token modal.
   useEffect(() => {
