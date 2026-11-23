@@ -339,7 +339,8 @@ test("Chat turn shows the stopped state with the partial answer when Stop is pre
       const s = r.sizes[tag];
       assertLayout(tag, s, i === 0);
       assert.strictEqual(s.final.status, "stopped", `${tag}: Stop ends the turn as stopped (${s.final.status}: ${s.final.label})`);
-      assert.strictEqual(s.final.label, "Stopped.", `${tag}: the status line says Stopped`);
+      assert.ok(s.final.label?.startsWith("Stopped."), `${tag}: the status line says Stopped (${s.final.label})`);
+      assert.strictEqual(s.final.retryVisible, true, `${tag}: a stopped turn offers Retry`);
       assert.strictEqual(s.final.noteText.includes("Stopped."), true, `${tag}: the turn says it was stopped`);
       assert.ok(s.final.answer.includes(PARTIAL_ANSWER), `${tag}: the text received before Stop stays (${JSON.stringify(s.final.answer)})`);
       assert.ok(!s.final.answer.includes("and more."), `${tag}: nothing arrives after Stop`);

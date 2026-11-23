@@ -14,6 +14,7 @@ import type { Skill, CreateSkillInput } from "../../src/shell/skills-model";
 import type { Attachment } from "../../src/shell/attachments-model";
 import type { VaultSecret, VaultCredential, SecretInput, CredentialInput } from "../../src/shell/vault-model";
 import { persistToken } from "../../src/shell/auth-model";
+import { querySendArgs } from "../../src/shell/query-send-model";
 import type { RoomsData } from "./data/rooms";
 import type { RoutinesData } from "./data/routines";
 import type { SkillsData } from "./data/skills";
@@ -101,8 +102,13 @@ export interface CoreShellData {
   /** Answers one approval; the epoch the request was made at must travel with it. Optional: read-only without it. */
   approveTool?(approvalId: string, decision: { action: "approve_once" | "always_allow" | "reject"; epoch: number }): Promise<unknown>;
   /** Starts a chat turn, as the composer does. Optional: a build without a send channel leaves it out. */
-  sendQuery?(query: string): Promise<{ success: boolean; sessionId: string }>;
+  sendQuery?(query: string, sessionId?: string, agentId?: string): Promise<{ success: boolean; sessionId: string }>;
   cancelTurn?(): Promise<unknown>;
+  /** Menu/tray Settings: the renderer navigates to the settings view when this fires. */
+  onOpenSettings?(callback: () => void): () => void;
+  /** Inspector session controls; the server exposes them at POST /api/rollback and /api/compact. */
+  rollback?(): Promise<{ removedMessages: number; remainingMessages: number }>;
+  compact?(): Promise<{ originalTokens: number; compactedTokens: number; compactedTurnCount: number }>;
   /** Subscribes to every turn event; the caller filters by type and session. Returns the unsubscribe. */
   onTurnEvent?(callback: (event: TurnEvent) => void): () => void;
   /** Loads historical session data (events, transcript, agentId). */
@@ -254,12 +260,12 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
         await bridge.deleteSession(id);
       }
     },
-    async sendQuery(query: string): Promise<{ success: boolean; sessionId: string }> {
+    async sendQuery(query: string, sessionId?: string, agentId?: string): Promise<{ success: boolean; sessionId: string }> {
       const bridge = (window as any).opensand;
       if (!bridge?.sendQuery) {
         throw new Error("Sending is not available in this build");
       }
-      return (await bridge.sendQuery(query)) as { success: boolean; sessionId: string };
+      return (await bridge.sendQuery(...querySendArgs(query, sessionId, agentId))) as { success: boolean; sessionId: string };
     },
     async cancelTurn(): Promise<unknown> {
       const bridge = (window as any).opensand;
@@ -267,6 +273,33 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
         return undefined;
       }
       return bridge.cancelTurn();
+    },
+    onOpenSettings(callback: () => void): () => void {
+      const bridge = (window as any).opensand;
+      if (!bridge?.onOpenSettings) return () => {};
+      return bridge.onOpenSettings(callback);
+    },
+    async rollback(): Promise<{ removedMessages: number; remainingMessages: number }> {
+      const doFetch = http ?? fetch;
+      const res = await doFetch("/api/rollback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ turns: 1 }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error || `Rollback failed (HTTP ${res.status})`);
+      return payload;
+    },
+    async compact(): Promise<{ originalTokens: number; compactedTokens: number; compactedTurnCount: number }> {
+      const doFetch = http ?? fetch;
+      const res = await doFetch("/api/compact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keepRecentTurns: 2 }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error || `Compact failed (HTTP ${res.status})`);
+      return payload;
     },
     onTurnEvent(callback: (event: TurnEvent) => void): () => void {
       const bridge = (window as any).opensand;
