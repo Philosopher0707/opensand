@@ -2,17 +2,32 @@ import test from "node:test";
 import assert from "node:assert";
 import {
   formatBytes,
+  formatDoctorReport,
+  friendlyErrorMessage,
   getFileCategory,
   composePromptWithAttachments,
   applyPromptChip,
   detectTrigger,
   filterSlashCommands,
   insertTriggerSelection,
+  parseSlashCommand,
+  runLocalSlashCommand,
   DEFAULT_PROMPT_CHIPS,
   DEFAULT_SLASH_COMMANDS,
+  type LocalSlashContext,
   type StagedAttachment,
   type SlashCommand,
 } from "../src/shell/composer-model.js";
+
+function slashContext(overrides: Partial<LocalSlashContext> = {}) {
+  const notices: string[] = [];
+  const ctx: LocalSlashContext = {
+    hasSession: true,
+    notice: (message) => notices.push(message),
+    ...overrides,
+  };
+  return { ctx, notices };
+}
 
 test("ComposerModel - formatBytes", () => {
   assert.strictEqual(formatBytes(0), "0 B");
@@ -140,4 +155,114 @@ test("ComposerModel - default constants validity", () => {
   assert.ok(DEFAULT_SLASH_COMMANDS.some((c) => c.title === "/rollback"));
   assert.ok(DEFAULT_SLASH_COMMANDS.some((c) => c.title === "/clear"));
   assert.ok(DEFAULT_SLASH_COMMANDS.some((c) => c.title === "/help"));
+});
+
+test("ComposerModel - parseSlashCommand handles only local commands", () => {
+  assert.deepStrictEqual(parseSlashCommand("/compact"), { action: "compact" });
+  assert.deepStrictEqual(parseSlashCommand("  /ROLLBACK  "), { action: "rollback" });
+  assert.deepStrictEqual(parseSlashCommand("/rewind"), { action: "rollback" });
+  assert.deepStrictEqual(parseSlashCommand("/clear"), { action: "clear" });
+  assert.deepStrictEqual(parseSlashCommand("/doctor"), { action: "doctor" });
+  assert.strictEqual(parseSlashCommand("/help"), null);
+  assert.strictEqual(parseSlashCommand("please /compact the history"), null);
+  assert.strictEqual(parseSlashCommand(""), null);
+});
+
+test("ComposerModel - friendlyErrorMessage never forwards raw error text", () => {
+  assert.strictEqual(
+    friendlyErrorMessage(new Error("ENOENT: /secret/path.txt"), "Could not attach the file."),
+    "Could not attach the file. The file could not be found.",
+  );
+  assert.strictEqual(
+    friendlyErrorMessage(new Error("fetch failed at http://localhost:1234/api"), "Could not load history."),
+    "Could not load history. Check your connection and try again.",
+  );
+  assert.strictEqual(
+    friendlyErrorMessage(new Error("Error: bad token eyJhbGciOiJIUzI1NiJ9"), "Could not load history."),
+    "Could not load history.",
+  );
+});
+
+test("ComposerModel - formatDoctorReport keeps a short read-only summary", () => {
+  const text = Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n");
+  const report = formatDoctorReport({ text, data: { apiKey: "stored" } });
+  assert.ok(report.startsWith("line 0"));
+  assert.ok(report.split("\n").length <= 8);
+  assert.ok(!report.includes("line 8"));
+  assert.ok(!report.includes("apiKey"));
+  assert.match(formatDoctorReport({}), /No details were reported/);
+});
+
+test("ComposerModel - runLocalSlashCommand passes normal text through", async () => {
+  let called = 0;
+  const { ctx, notices } = slashContext({
+    compact: async () => { called++; return {}; },
+  });
+  assert.strictEqual(runLocalSlashCommand("explain this repo", ctx), false);
+  assert.strictEqual(called, 0);
+  assert.strictEqual(notices.length, 0);
+});
+
+test("ComposerModel - compact and rollback run locally", async () => {
+  let compacted = 0;
+  let rolled = 0;
+  const { ctx, notices } = slashContext({
+    compact: async () => { compacted++; return { compactedTurnCount: 3, originalTokens: 900, compactedTokens: 200 }; },
+    rollback: async () => { rolled++; return { removedMessages: 2, remainingMessages: 5 }; },
+  });
+  assert.strictEqual(await runLocalSlashCommand("/compact", ctx), true);
+  assert.strictEqual(compacted, 1);
+  assert.match(notices[0], /3 turns, 900 to 200 tokens/);
+  assert.strictEqual(await runLocalSlashCommand("/rewind", ctx), true);
+  assert.strictEqual(rolled, 1);
+  assert.match(notices[1], /2 messages/);
+});
+
+test("ComposerModel - clear resets the view without a session", async () => {
+  let cleared = 0;
+  const { ctx, notices } = slashContext({
+    hasSession: false,
+    clearView: () => { cleared++; },
+    compact: async () => { throw new Error("must not be called"); },
+  });
+  assert.strictEqual(await runLocalSlashCommand("/clear", ctx), true);
+  assert.strictEqual(cleared, 1);
+  assert.match(notices[0], /Conversation cleared/);
+});
+
+test("ComposerModel - compact without a session shows a plain notice", async () => {
+  let compacted = 0;
+  const { ctx, notices } = slashContext({
+    hasSession: false,
+    compact: async () => { compacted++; return {}; },
+  });
+  assert.strictEqual(await runLocalSlashCommand("/compact", ctx), true);
+  assert.strictEqual(compacted, 0);
+  assert.strictEqual(notices[0], "Select a conversation first.");
+});
+
+test("ComposerModel - doctor shows report text, never fetches the LLM", async () => {
+  let fetches = 0;
+  const { ctx, notices } = slashContext({
+    fetchReport: async () => {
+      fetches++;
+      return { ok: true, json: async () => ({ text: "OpenSand diagnostics\napp: 0.1.14", data: {} }) };
+    },
+  });
+  assert.strictEqual(await runLocalSlashCommand("/doctor", ctx), true);
+  assert.strictEqual(fetches, 1);
+  assert.match(notices[0], /OpenSand diagnostics/);
+  assert.match(notices[0], /app: 0\.1\.14/);
+});
+
+test("ComposerModel - doctor and compact failures stay user-facing", async () => {
+  const failed = slashContext({ fetchReport: async () => ({ ok: false, json: async () => ({}) }) });
+  assert.strictEqual(await runLocalSlashCommand("/doctor", failed.ctx), true);
+  assert.strictEqual(failed.notices[0], "Doctor check is unavailable right now.");
+
+  const thrown = slashContext({
+    compact: async () => { throw new Error("429 raw provider stack at http://localhost:1234"); },
+  });
+  assert.strictEqual(await runLocalSlashCommand("/compact", thrown.ctx), true);
+  assert.strictEqual(thrown.notices[0], "The compact command could not be completed. Try again.");
 });

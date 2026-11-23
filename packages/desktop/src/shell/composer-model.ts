@@ -162,3 +162,98 @@ export function insertTriggerSelection(
   const newCaretPos = before.length + insertText.length;
   return { newText, newCaretPos };
 }
+
+export type LocalSlashAction = "compact" | "rollback" | "clear" | "doctor";
+
+export interface ParsedSlashCommand {
+  action: LocalSlashAction;
+}
+
+/** Commands the composer handles locally instead of sending to the model. */
+export function parseSlashCommand(text: string): ParsedSlashCommand | null {
+  const name = (text || "").trim().toLowerCase();
+  if (name === "/compact") return { action: "compact" };
+  if (name === "/rollback" || name === "/rewind") return { action: "rollback" };
+  if (name === "/clear") return { action: "clear" };
+  if (name === "/doctor") return { action: "doctor" };
+  return null;
+}
+
+/** A fixed, actionable line: raw provider text and stacks never reach the user. */
+export function friendlyErrorMessage(err: unknown, fallback: string): string {
+  const detail = err instanceof Error ? err.message.toLowerCase() : "";
+  if (detail.includes("not found") || detail.includes("enoent")) {
+    return `${fallback} The file could not be found.`;
+  }
+  if (detail.includes("network") || detail.includes("offline") || detail.includes("fetch")) {
+    return `${fallback} Check your connection and try again.`;
+  }
+  return fallback;
+}
+
+/** Shorten the redacted support report to something a status line can show. */
+export function formatDoctorReport(report: unknown): string {
+  const text = report && typeof report === "object" ? (report as { text?: unknown }).text : null;
+  if (typeof text !== "string" || !text.trim()) {
+    return "Doctor check finished. No details were reported.";
+  }
+  return text.trim().split("\n").slice(0, 8).join("\n").slice(0, 600);
+}
+
+export interface LocalSlashContext {
+  compact?: () => Promise<{ compactedTurnCount?: number; originalTokens?: number; compactedTokens?: number }>;
+  rollback?: () => Promise<{ removedMessages?: number; remainingMessages?: number }>;
+  clearView?: () => void;
+  hasSession?: boolean;
+  notice: (message: string) => void;
+  fetchReport?: () => Promise<{ ok?: boolean; json(): Promise<unknown> }>;
+}
+
+/** Runs composer commands locally. Returns false for text that should reach the model. */
+export function runLocalSlashCommand(text: string, ctx: LocalSlashContext): Promise<boolean> | false {
+  const parsed = parseSlashCommand(text);
+  if (!parsed) return false;
+  const { notice, hasSession } = ctx;
+  return (async () => {
+    if (parsed.action === "clear") {
+      ctx.clearView?.();
+      notice("Conversation cleared. Ask something new to start again.");
+      return true;
+    }
+    if (!hasSession) {
+      notice("Select a conversation first.");
+      return true;
+    }
+    try {
+      if (parsed.action === "compact") {
+        if (!ctx.compact) {
+          notice("Compact is not available in this window.");
+          return true;
+        }
+        const res = await ctx.compact();
+        notice(`Conversation compacted: ${res?.compactedTurnCount ?? 0} turns, ${res?.originalTokens ?? 0} to ${res?.compactedTokens ?? 0} tokens.`);
+        return true;
+      }
+      if (parsed.action === "rollback") {
+        if (!ctx.rollback) {
+          notice("Rollback is not available in this window.");
+          return true;
+        }
+        const res = await ctx.rollback();
+        notice(`Rolled back ${res?.removedMessages ?? 0} messages. ${res?.remainingMessages ?? 0} remain.`);
+        return true;
+      }
+      const fetcher = ctx.fetchReport ?? (() => fetch("/api/diagnostics"));
+      const res = await fetcher();
+      if (!res?.ok) {
+        notice("Doctor check is unavailable right now.");
+        return true;
+      }
+      notice(formatDoctorReport(await res.json()));
+      return true;
+    } catch (err) {
+      notice(friendlyErrorMessage(err, `The ${parsed.action} command could not be completed. Try again.`));
+      return true;
+    }
+  })();
+}
