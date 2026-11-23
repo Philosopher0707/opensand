@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { DesktopIpcBridge as BaseDesktopIpcBridge } from '../src/ipc-bridge.js';
 import { workspaceSentinel } from '@opensand/coordinator';
-import { isStandingExecAllowed } from '@opensand/shared';
+import { isStandingExecAllowed, EventLogReader } from '@opensand/shared';
 
 const createdBridges: BaseDesktopIpcBridge[] = [];
 class DesktopIpcBridge extends BaseDesktopIpcBridge {
@@ -992,6 +992,60 @@ test('DesktopIpcBridge - always_allow on shell_outside is never persisted as alw
       grantsContent.grants.filter((g: any) => g.lifetime === 'always' && (g.effect === 'shell_outside' || g.tool === 'shell_outside')).length,
       0
     );
+
+    await bridge.close();
+  } finally {
+    rmTmp(tmpDir);
+  }
+});
+
+test('DesktopIpcBridge - deleteSession clears coordinatorMap and next session builds new coordinator with baseline', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-del-coord-'));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    await bridge.folderTrustStore.setLevel(process.cwd(), 'trusted');
+    bridge.updateSettings({ autoApprove: true, model: 'test-del-model' });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const sessId = 'sess-del-rebuild';
+    const c1 = await bridge.createSessionCoordinator(sessId, undefined);
+    const c1Agent = await bridge.createSessionCoordinator(sessId, 'agent-1');
+    assert.ok(c1);
+    assert.ok(c1Agent);
+    assert.strictEqual(bridge.getCoordinatorFor(sessId, undefined), c1);
+    assert.strictEqual(bridge.getCoordinatorFor(sessId, 'agent-1'), c1Agent);
+
+    // Initialize c1 by running recordBaseline as first turn does
+    await c1.transcript.recordBaseline(c1.history as any, { model: 'test-del-model' });
+
+    // Verify activeAbortController is aborted if current session is deleted
+    bridge['activeAbortController'] = new AbortController();
+    bridge['currentSessionId'] = sessId;
+    const signal = bridge['activeAbortController'].signal;
+    assert.strictEqual(signal.aborted, false);
+
+    // Now delete the session
+    const deleted = await bridge.deleteSession(sessId);
+    assert.strictEqual(deleted, true);
+
+    // Must abort active controller
+    assert.strictEqual(signal.aborted, true, 'activeAbortController must be aborted on deleting current session');
+
+    // After deleteSession, coordinatorMap entries must be removed
+    assert.strictEqual(bridge.getCoordinatorFor(sessId, undefined), null, 'coordinatorMap default entry must be removed');
+    assert.strictEqual(bridge.getCoordinatorFor(sessId, 'agent-1'), null, 'coordinatorMap agent variant entry must be removed');
+
+    // Next createSessionCoordinator for the same sessionId must build a brand new coordinator
+    const c2 = await bridge.createSessionCoordinator(sessId, undefined);
+    assert.notStrictEqual(c2, c1, 'must build a new coordinator instead of reusing deleted coordinator');
+
+    // First turn on new coordinator writes baseline (session.created + snapshot)
+    await c2.transcript.recordBaseline(c2.history as any, { model: 'test-del-model' });
+    const reader = new EventLogReader(c2.transcript.directory);
+    const { events } = await reader.readWithRecovery();
+    assert.ok(events.length >= 2, 'new coordinator must write baseline events to disk');
+    assert.strictEqual(events[0].kind, 'session.created');
+    assert.strictEqual(events[1].kind, 'session.snapshot');
 
     await bridge.close();
   } finally {

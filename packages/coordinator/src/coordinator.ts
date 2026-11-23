@@ -327,8 +327,9 @@ export class AgentCoordinator {
         this.emit({ type: "turn_completed", finalContent });
         try {
           await this.transcript.writeProjections();
-        } catch {
+        } catch (err) {
           // writeProjections failure is non-fatal to the turn: the reply was already delivered.
+          console.warn("[coordinator] writeProjections failed:", err instanceof Error ? err.message : err);
         }
         await this.hookDispatcher.dispatchStop({
           sessionId: this.sessionId,
@@ -604,8 +605,9 @@ export class AgentCoordinator {
     this.emit({ type: "turn_completed", finalContent: fallbackMessage });
     try {
       await this.transcript.writeProjections();
-    } catch {
+    } catch (err) {
       // writeProjections failure is non-fatal to the turn: the reply was already delivered.
+      console.warn("[coordinator] writeProjections failed:", err instanceof Error ? err.message : err);
     }
     await this.hookDispatcher.dispatchStop({
       sessionId: this.sessionId,
