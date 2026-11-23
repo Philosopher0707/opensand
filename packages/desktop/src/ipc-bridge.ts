@@ -1271,11 +1271,20 @@ export class DesktopIpcBridge extends EventEmitter {
     }
 
     if (this.currentSessionId === sessionId) {
+      this.activeAbortController?.abort();
+      this.activeAbortController = null;
       this.currentSessionId = null;
     }
     if (this.coordinator && this.coordinator.sessionId === sessionId) {
       this.coordinator = null;
       this.activeAgentId = undefined;
+    }
+
+    const prefix = `${sessionId}:`;
+    for (const key of this.coordinatorMap.keys()) {
+      if (key === sessionId || key.startsWith(prefix)) {
+        this.coordinatorMap.delete(key);
+      }
     }
 
     if (fs.existsSync(resolvedSessionDir)) {
@@ -1286,9 +1295,12 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async clearAllSessions(): Promise<number> {
+    this.activeAbortController?.abort();
+    this.activeAbortController = null;
     this.currentSessionId = null;
     this.coordinator = null;
     this.activeAgentId = undefined;
+    this.coordinatorMap.clear();
 
     const sessionsDir = path.join(this.baseDir, 'sessions');
     if (!fs.existsSync(sessionsDir)) {
