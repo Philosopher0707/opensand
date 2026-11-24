@@ -125,6 +125,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-24 · [ChatList rename: use the registered verb and update real-window click flows](2026-11-24-chatlist-rename-verb-and-confirm-tests.md)
 - 2026-11-24 · [A dirty base clone blocks worktree.sh, and CLI tests need the engine built](2026-11-24-cli-errors-dirty-base-and-unbuilt-engine.md)
 - 2026-11-24 · [Fake runtime paths must fail closed, including legacy state](2026-11-24-fake-runtime-paths-fail-closed.md)
+- 2026-11-24 · [A shared clone can make gitleaks report secrets that CI does not scan](2026-11-24-gitleaks-scan-all-refs.md)
 - 2026-11-24 · [Job B: re-gating an edit must compare tiers; full verify can stall under load](2026-11-24-job-b-edit-regate-and-verify-contention.md)
 - 2026-11-24 · [PR CI green but main CI red after merge: temp-dir ENOTEMPTY in workspace-default test](2026-11-24-main-ci-red-after-pr-209-merge.md)
 - 2026-11-24 · [Allow owner-approved .github changes in pre-merge gate via explicit flag and label](2026-11-24-pr-gate-allow-github-owner-label.md)

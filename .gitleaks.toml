@@ -1,0 +1,4 @@
+title = "OpenSand secret scan"
+
+[extend]
+useDefault = true
