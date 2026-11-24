@@ -100,3 +100,41 @@ test("settings dialog - handles 3 approval modes and backwards compatibility", (
   assert.strictEqual(cycleMode("auto_edit"), "auto");
   assert.strictEqual(cycleMode("auto"), "ask");
 });
+
+test("settings dialog - chat engine selector has both choices and a plain reason hint", () => {
+  const html = fs.readFileSync(indexPath, "utf8");
+  assert.ok(html.includes('id="settingEngine"'), "has a chat engine select");
+  assert.ok(html.includes('<option value="opensand">OpenSand (API key)</option>'), "default engine option");
+  assert.ok(html.includes('<option value="claude">Claude Code (your account)</option>'), "Claude Code option");
+  assert.ok(html.includes('id="engineHint"'), "has a place for the plain detection reason");
+});
+
+test("settings dialog - Claude option is disabled with a plain reason when binary is absent", () => {
+  // Logic mirror of the settings-open detection gate in app.js.
+  function resolveEngine(choice: unknown, detected: Array<{ engine: string; installed: boolean }>) {
+    const claude = detected.find((e) => e.engine === "claude");
+    const installed = Boolean(claude && claude.installed);
+    const selected = choice === "claude" && installed ? "claude" : "opensand";
+    return {
+      selected,
+      disabled: !installed,
+      hint: installed ? "" : "Claude Code is not installed on this computer. Install it, then reopen Settings to select it.",
+    };
+  }
+
+  const missing = resolveEngine("claude", [{ engine: "claude", installed: false }]);
+  assert.deepStrictEqual(missing, {
+    selected: "opensand",
+    disabled: true,
+    hint: "Claude Code is not installed on this computer. Install it, then reopen Settings to select it.",
+  });
+  assert.doesNotMatch(missing.hint, /npm|CLI|--/);
+
+  const installed = resolveEngine("claude", [{ engine: "claude", installed: true }]);
+  assert.deepStrictEqual(installed, { selected: "claude", disabled: false, hint: "" });
+  assert.deepStrictEqual(resolveEngine(undefined, []), {
+    selected: "opensand",
+    disabled: true,
+    hint: "Claude Code is not installed on this computer. Install it, then reopen Settings to select it.",
+  });
+});

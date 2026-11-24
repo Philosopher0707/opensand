@@ -129,3 +129,4 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-24 · [PR CI green but main CI red after merge: temp-dir ENOTEMPTY in workspace-default test](2026-11-24-main-ci-red-after-pr-209-merge.md)
 - 2026-11-24 · [Allow owner-approved .github changes in pre-merge gate via explicit flag and label](2026-11-24-pr-gate-allow-github-owner-label.md)
 - 2026-11-24 · [Full desktop suite can fail on a pre-existing navigation real-window timeout](2026-11-24-sentinel-full-suite-navigation-timeout.md)
+- 2026-11-24 · [Wiring the Claude Code engine selector: two test hurdles (2026-11-24)](2026-11-24-wire-claude-engine-test-hurdles.md)

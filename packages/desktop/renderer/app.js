@@ -274,6 +274,14 @@ class OpenSandClient {
     return res.json();
   }
 
+  async detectEngines() {
+    if (this.isElectron) {
+      return window.opensand.detectEngines();
+    }
+    const res = await fetch('/api/engines/detect');
+    return res.json();
+  }
+
   async getDiagnostics() {
     const res = await fetch('/api/diagnostics');
     const data = await res.json().catch(() => ({}));
@@ -1161,6 +1169,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnCloseSettings = document.getElementById('btnCloseSettings');
   const btnSaveSettings = document.getElementById('btnSaveSettings');
   const settingProvider = document.getElementById('settingProvider');
+  const settingEngine = document.getElementById('settingEngine');
+  const engineHint = document.getElementById('engineHint');
   const settingEndpoint = document.getElementById('settingEndpoint');
   const settingModel = document.getElementById('settingModel');
   const settingApiKey = document.getElementById('settingApiKey');
@@ -5630,6 +5640,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     settingProvider.value = detectedProvider;
     settingEndpoint.value = s.endpoint || '';
     settingModel.value = s.model || '';
+    if (settingEngine) {
+      settingEngine.value = s.engine === 'claude' ? 'claude' : 'opensand';
+      let detected = [];
+      try { detected = await client.detectEngines(); } catch {}
+      const claude = Array.isArray(detected) ? detected.find((e) => e && e.engine === 'claude') : null;
+      const claudeOption = settingEngine.querySelector('option[value="claude"]');
+      const installed = Boolean(claude && claude.installed);
+      if (claudeOption) claudeOption.disabled = !installed;
+      if (engineHint) {
+        engineHint.textContent = installed
+          ? ''
+          : 'Claude Code is not installed on this computer. Install it, then reopen Settings to select it.';
+      }
+      if (!installed && settingEngine.value === 'claude') settingEngine.value = 'opensand';
+    }
     const hasStoredKey = !!s.apiKey && s.apiKey !== 'none';
     hasStoredApiKey = hasStoredKey;
     settingApiKey.value = '';
@@ -5649,12 +5674,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   btnCloseSettings.onclick = () => settingsModal.classList.add('hidden');
   btnSaveSettings.onclick = async () => {
     const mode = settingApprovalMode ? settingApprovalMode.value : (settingAutoApprove?.checked ? 'auto' : 'ask');
+    const engineOption = settingEngine?.selectedOptions?.[0];
     const payload = {
       provider: settingProvider.value,
       endpoint: settingEndpoint.value,
       model: settingModel.value,
       approvalMode: mode,
       autoApprove: mode === 'auto',
+      engine: engineOption?.disabled ? 'opensand' : (settingEngine?.value || 'opensand'),
     };
     const newKey = settingApiKey.value.trim();
     if (newKey) payload.apiKey = newKey;

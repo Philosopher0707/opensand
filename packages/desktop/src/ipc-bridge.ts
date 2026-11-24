@@ -418,6 +418,7 @@ export class DesktopIpcBridge extends EventEmitter {
       (partial.endpoint !== undefined && partial.endpoint !== this.settings.endpoint) ||
       (partial.apiKey !== undefined && partial.apiKey !== this.settings.apiKey) ||
       (partial.provider !== undefined && partial.provider !== this.settings.provider) ||
+      (partial.engine !== undefined && partial.engine !== this.settings.engine) ||
       (partial.maxContextTokens !== undefined && partial.maxContextTokens !== this.settings.maxContextTokens);
 
     this.settings = { ...this.settings, ...partial };
@@ -653,7 +654,9 @@ export class DesktopIpcBridge extends EventEmitter {
       }
     }
 
-    let engineConfig: ExternalEngineConfig | undefined = (agent as any)?.engineConfig;
+    let engineConfig: ExternalEngineConfig | undefined = this.settings.engine === 'claude'
+      ? { type: 'external', engine: 'claude' }
+      : (agent as any)?.engineConfig;
     if (!engineConfig) {
       if (targetModel?.startsWith("external:")) {
         const parts = targetModel.split(":");
