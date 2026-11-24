@@ -38,6 +38,9 @@
 # 40. rigel-pass label -> review check passes and merges
 # 41. --no-review without a reason -> refused
 # 42. --no-review with a reason -> merges with the reason in the merge commit body
+# 46. --when-green: watch exits 1 with a pending check, then CI succeeds -> waits and merges
+# 47. --when-green: watch exits 1 with a pending check, then a check fails -> names the failure
+# 48. --when-green: repeated pending watch exits stop at the deadline with pending exit 3
 # Usage: scripts/pr-gate-selftest.sh (PR_GATE_SCRIPT=<path> to test another copy)
 set -uo pipefail
 
@@ -160,6 +163,16 @@ console.log(JSON.stringify(d));
           seen_calls=$(wc -l < "$TEST_CASE_DIR/checks_calls.log" | tr -d ' ')
           if [ "$seen_calls" -le "$(cat "$TEST_CASE_DIR/checks_no_reported_times")" ]; then
             echo "no checks reported on the 'job/x' branch" >&2
+            exit 1
+          fi
+        fi
+        # checks_pending_times=N reproduces gh exiting 1 while at least one check is still
+        # pending. The rollup stays pending for those calls; later calls use the normal fixture.
+        if [ -f "$TEST_CASE_DIR/checks_pending_times" ]; then
+          seen_calls=$(wc -l < "$TEST_CASE_DIR/checks_calls.log" | tr -d ' ')
+          if [ "$seen_calls" -le "$(cat "$TEST_CASE_DIR/checks_pending_times")" ]; then
+            cp "$TEST_CASE_DIR/pr_view_pending.json" "$TEST_CASE_DIR/pr_view.json"
+            echo "gh pr checks: one or more checks are pending" >&2
             exit 1
           fi
         fi
@@ -1439,5 +1452,99 @@ NEED_SUBSTRINGS=(
   "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6"
 )
 run_test_case "case45-allow-github-with-label" --allow-github 42
+
+# --- Case 46: --when-green, watch exits 1 while macOS is pending, then CI succeeds -> merges ---
+dir="$WORK/case46-when-green-pending-watch-then-success"
+setup_defaults "$dir"
+cp "$dir/pr_view.json" "$dir/pr_view_after_watch.json"
+cat << 'JSON' > "$dir/pr_view_pending.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": [
+    {"name": "Build & test (Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"},
+    {"name": "Build & test (macOS, Node 22)", "status": "IN_PROGRESS", "conclusion": null}
+  ]
+}
+JSON
+echo 1 > "$dir/checks_pending_times"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("with no failed check reported; CI is still pending" "CI finished green" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+PR_GATE_POLL_SECONDS=1 run_test_case "case46-when-green-pending-watch-then-success" --when-green 42
+if [[ "$(wc -l < "$dir/checks_calls.log" 2>/dev/null || echo 0)" -lt 2 ]]; then
+  echo "FAIL case46: gate did not retry the watch after the pending exit"
+  FAILED=1
+fi
+
+# --- Case 47: --when-green, watch exits 1 while macOS is pending, then macOS fails -> exit 1 ---
+dir="$WORK/case47-when-green-pending-watch-then-failure"
+setup_defaults "$dir"
+cat << 'JSON' > "$dir/pr_view_pending.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": [
+    {"name": "Build & test (Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"},
+    {"name": "Build & test (macOS, Node 22)", "status": "IN_PROGRESS", "conclusion": null}
+  ]
+}
+JSON
+cat << 'JSON' > "$dir/pr_view_after_watch.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": [
+    {"name": "Build & test (Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"},
+    {"name": "Build & test (macOS, Node 22)", "status": "COMPLETED", "conclusion": "FAILURE"}
+  ]
+}
+JSON
+echo 1 > "$dir/checks_pending_times"
+echo 1 > "$dir/checks_exit"
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("with no failed check reported; CI is still pending" "FAIL: CI is red for PR #42" "Build & test (macOS, Node 22) (FAILURE)")
+PR_GATE_POLL_SECONDS=1 run_test_case "case47-when-green-pending-watch-then-failure" --when-green 42
+if [[ "$(wc -l < "$dir/checks_calls.log" 2>/dev/null || echo 0)" -lt 2 ]]; then
+  echo "FAIL case47: gate did not retry the watch after the pending exit"
+  FAILED=1
+fi
+
+# --- Case 48: --when-green, every watch exits 1 with a pending check -> bounded pending exit 3 ---
+dir="$WORK/case48-when-green-pending-watch-timeout"
+setup_defaults "$dir"
+cat << 'JSON' > "$dir/pr_view_pending.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "statusCheckRollup": [
+    {"name": "Build & test (Node 22)", "status": "COMPLETED", "conclusion": "SUCCESS"},
+    {"name": "Build & test (macOS, Node 22)", "status": "IN_PROGRESS", "conclusion": null}
+  ]
+}
+JSON
+echo 9999 > "$dir/checks_pending_times"
+EXPECT_EXIT=3
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("with no failed check reported; CI is still pending" "--when-green timed out after 1 min" "still pending")
+start=$SECONDS
+PR_GATE_POLL_SECONDS=1 PR_GATE_TIMEOUT_UNIT_SECONDS=5 run_test_case "case48-when-green-pending-watch-timeout" --when-green --timeout 1 42
+elapsed=$((SECONDS - start))
+if [[ "$elapsed" -gt 15 ]]; then
+  echo "FAIL case48: pending-watch timeout took ${elapsed}s, expected about 5s"
+  FAILED=1
+fi
 
 exit "$FAILED"
