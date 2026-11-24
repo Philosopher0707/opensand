@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import { LocalExecDaemon } from "@opensand/local-exec-daemon";
 import { AgentCoordinator } from "../src/coordinator.js";
 import type { ExternalEngineConfig } from "../src/engines/types.js";
@@ -24,8 +25,8 @@ interface EngineSlice {
   denial?: { prompt: string; reply: RegExp; noFile?: string };
   /** How read-only intent is enforced when the engine has no interactive approval. */
   planCheck: (log: any) => boolean;
-  /** OS-level hold of a read-only run (macOS, held engines only). */
-  osHold?: { prompt: string; reply: RegExp };
+  /** OS-level hold of a read-only run on macOS; elsewhere the engine's own advisory mode applies. */
+  osHold?: { prompt: string; held: RegExp; advisory: RegExp };
 }
 
 function runSliceSuite(slice: EngineSlice): void {
@@ -166,7 +167,8 @@ function runSliceSuite(slice: EngineSlice): void {
         newLog();
         const coord = coordinator(`slice_${slice.engine}_hold`, { mode: "plan" });
         const reply = await coord.runTurn(slice.osHold!.prompt);
-        assert.match(reply, slice.osHold!.reply);
+        const held = process.platform === "darwin" && existsSync("/usr/bin/sandbox-exec");
+        assert.match(reply, held ? slice.osHold!.held : slice.osHold!.advisory);
       });
     }
   });
@@ -180,5 +182,5 @@ runSliceSuite({
   resumeInLog: (log) => Boolean(log.rpc?.some((e: any) => e.method === "session/load")),
   denial: { prompt: "ASK_WRITE", reply: /ASK_RESULT:reject/, noFile: "acp-wrote.txt" },
   planCheck: (log) => Boolean(log.rpc?.some((e: any) => e.method === "session/set_config_option" && e.configId === "mode" && e.value === "plan")),
-  osHold: { prompt: "TRY_WRITE", reply: /TRY_WRITE:EPERM/ },
+  osHold: { prompt: "TRY_WRITE", held: /TRY_WRITE:EPERM/, advisory: /TRY_WRITE:ok/ },
 });
