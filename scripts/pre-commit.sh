@@ -74,6 +74,12 @@ snapshot_refs="$(git for-each-ref refs/opensand)"
 BUILD_CMD="${OPENSAND_PRECOMMIT_BUILD_CMD:-pnpm run build}"
 TEST_CMD="${OPENSAND_PRECOMMIT_TEST_CMD:-pnpm run test}"
 
+# Real-window tests launch Electron; a commit hook must never take over the owner's screen.
+# CI and verify.sh leave this unset, so they still run the full suite (hidden and harmless).
+if [[ "${OPENSAND_PRECOMMIT_REAL_WINDOW:-}" != "1" ]]; then
+  export OPENSAND_SKIP_REAL_WINDOW=1
+fi
+
 status=0
 echo "==> pre-commit: $BUILD_CMD"
 bash -c "$BUILD_CMD" || status=$?

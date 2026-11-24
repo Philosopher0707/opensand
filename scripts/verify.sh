@@ -45,6 +45,9 @@ bash scripts/lessons-index.sh --check
 echo "verify: checking real-window navigation helper..."
 bash scripts/check-real-window-nav.sh
 
+echo "verify: checking hidden-window Electron spawn helper..."
+bash scripts/check-hidden-window-spawns.sh
+
 echo "verify: checking vendored engine wrapper sync..."
 bash scripts/check-engine-wrapper-sync.sh
 

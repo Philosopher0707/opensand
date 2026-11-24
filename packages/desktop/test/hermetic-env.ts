@@ -12,6 +12,9 @@ export function hermeticElectronEnv(home: string, base: NodeJS.ProcessEnv = proc
   const env: NodeJS.ProcessEnv = { ...base };
   // Run as a real Electron GUI process, not as Node.
   delete env.ELECTRON_RUN_AS_NODE;
+  // Automated launches must never show a window, add a Dock icon or steal focus.
+  // main.ts reads this to create the window hidden and skip the tray/Dock activation.
+  env.OPENSAND_HIDDEN_WINDOW = '1';
   env.HOME = home;
   env.USERPROFILE = home;
   return env;
