@@ -37,6 +37,8 @@ app.on("browser-window-created", (_e, w) => {
       // Row 3: the main-process tray/menu IPC must land on the settings view now.
       w.webContents.send("opensand:openSettings");
       await wait("String(window.location.hash) === '#settings'");
+      // The hashchange subscriber mounts a tick after the hash flips; wait for the view itself.
+      await wait("!document.querySelector('#viewSettings').classList.contains('hidden')");
       const settingsVisible = await js("!document.querySelector('#viewSettings').classList.contains('hidden')");
 
       // Row 6 failure path: the Inspector events must be listened to, not throw, with no session selected.

@@ -1,0 +1,640 @@
+
+> @opensand/desktop@0.1.14 test /Users/philosopher/dev/_scratch/opensand-hidden-window-tests/packages/desktop
+> node ../../scripts/desktop-test.js
+
+desktop-test: 64 non-real-window files (parallel)
+✔ account-model: theme falls back to the OS preference only when storage has no valid value (2.204333ms)
+✔ account-model: toggling theme always flips between the two valid values (0.563875ms)
+✔ account-model: only the literal string 'true' collapses the sidebar (0.713708ms)
+✔ account-model: nextSidebarCollapsed honours an explicit force value, including false (0.5055ms)
+✔ account-model: reads and writes the legacy localStorage keys (2.608083ms)
+✔ account-model: storage errors degrade to defaults instead of throwing (1.725041ms)
+✔ account-model: shortcuts map Cmd/Ctrl keys and ignore bare keys (0.786458ms)
+✔ account-model: Esc closes layers in topmost-first order (0.186625ms)
+✔ approval card - "Approve Once" reaches approveTool without a render option (155.190625ms)
+✔ approval card - "Always Allow" reaches approveTool without a render option (39.656625ms)
+✔ approval card - "Reject" reaches approveTool without a render option (3.666041ms)
+✔ approval card - a failed approveTool keeps the card and its buttons (4.044917ms)
+✔ approval card - hides "Always Allow" for shell_outside (1.0325ms)
+✔ approval card - hides "Always Allow" for hard-stop effects (control, spend, self) (0.366792ms)
+✔ approval card - hides "Always Allow" when tainted is true (0.237584ms)
+✔ approval card - shows "Always Allow" for standard safe effects (0.454917ms)
+✔ attachments-model: validation requires a non-blank file path (3.09675ms)
+✔ attachments-model: size is KB rounded to one decimal (4.121125ms)
+✔ attachments-model: hash label shows a 16-char prefix (0.275167ms)
+✔ attachments-model: card view uses legacy field names (1.148667ms)
+✔ attachments-model: card view uses real bridge field names (0.158958ms)
+✔ attachments-model: card view applies defaults (0.117334ms)
+✔ attachments-model: unstage confirm names the file (0.318541ms)
+✔ attachments-model: modal open/close state machine (0.172625ms)
+✔ attachments-model: empty state mentions the stage button (0.17325ms)
+✔ auth-model: initial state restores the token from sessionStorage (2.036417ms)
+✔ auth-model: storage failures degrade to empty state without throwing (0.355959ms)
+✔ auth-model: only blank input is invalid; tokens are trimmed (196.099834ms)
+✔ auth-model: opening clears the previous input and error, closing resets the lifecycle (0.566583ms)
+✔ auth-model: submit lifecycle disables, clears errors, stores on success and restores on failure (0.280333ms)
+✔ auth-model: Enter submits the token field (0.131583ms)
+✔ validateAgentInput: requires non-empty name and role (1.222292ms)
+✔ defaultSystemPrompt: builds deterministic prompt from name and role (0.24375ms)
+✔ buildAgentPayload: trims fields and generates default prompt or preserves custom prompt (2.275ms)
+✔ validateTaskInput: requires title (0.147541ms)
+✔ validateImportTemplate: validates JSON string and reports errors (0.272083ms)
+✔ agentCardView: computes description snippet, model, and tools label (0.180625ms)
+✔ botItemView: handles default assistant and registered bots with active state (0.143583ms)
+✔ taskItemView: formats title, priority, and completion status (0.108334ms)
+✔ modal state machine: toggles all modals and resets (0.425ms)
+✔ constant strings match requirements (0.443583ms)
+✔ #82-1 edit_file after write_file opens the WHOLE file, not the replacement (154.459791ms)
+✔ #82-1 edit_file seeds from an unbounded read_file, honours replace_all, ignores ranged reads (0.500833ms)
+✔ #82-1 a failed edit opens nothing, and an unseen file is shown as partial, never as the whole file (9.972333ms)
+✔ #82-2 gutter and code share ONE scroll container (no nested scroller) (4.9235ms)
+✔ #82-3 toggleCanvas off then on keeps every open file (3.938042ms)
+✔ #82-3 hideCanvas (Esc / header X) keeps tabs; closeArtifact is the explicit close-all (3.393208ms)
+✔ #82-4 12 files pile up as 12 tabs across turns and only closeTab removes one (0.991625ms)
+✔ #82-4 the active tab is scrolled into view, also when the panel is shown again (5.23025ms)
+✔ canvas model: initial state is closed with no artifacts (4.352ms)
+✔ canvas model: resolveLanguageMeta identifies previewable languages (0.473542ms)
+✔ canvas model: openArtifact adds artifact and sets active (0.36025ms)
+✔ canvas model: openArtifact defaults previewable files to preview mode (0.2995ms)
+✔ canvas model: openArtifact updates existing artifact in-place without duplicate tab (0.519667ms)
+✔ canvas model: selectTab switches active tab (0.239916ms)
+✔ canvas model: closeTab removes tab and updates active tab (2.903375ms)
+✔ canvas model: setViewMode and closeCanvas (0.805333ms)
+✔ canvas model: generateLineNumbers creates 1-indexed numbers (0.422333ms)
+✔ Artifact Canvas tabs - each written file accumulates as its own tab (41.734125ms)
+✔ Artifact Canvas tabs - re-opening the same path updates in place, no duplicate (0.490458ms)
+✔ Artifact Canvas tabs - editing one file does not clobber another tab (0.586667ms)
+✔ Artifact Canvas tabs - closing a tab activates a neighbour, closing all hides canvas (0.581792ms)
+✔ Artifact Canvas tabs - closing an inactive tab keeps the active one (0.338334ms)
+✔ Artifact Canvas tabs - each tab remembers its own view mode (3.809584ms)
+✔ Artifact Canvas tabs - nextTab cycles through open files (1.076042ms)
+✔ Artifact Canvas tabs - tabs without a filePath are keyed by title (1.600583ms)
+✔ Artifact Canvas tabs - tab strip renders one element per open file (1.80425ms)
+✔ Artifact Canvas tabs - clicking a tab selects it, clicking close removes it (6.160833ms)
+✔ Artifact Canvas tabs - an explicit key gives distinct tabs despite a shared title (0.311083ms)
+✔ Artifact Canvas tabs - a title-keyed diff replaces itself rather than accumulating (0.148042ms)
+✔ unseen-1 an edit to an unseen file reads the workspace and shows the WHOLE file with the real hunk (12.80675ms)
+✔ unseen-2 replace_all reverses only when the occurrence count matches; else the whole file with an honest snippet diff (1.989375ms)
+✔ unseen-3 a refused, failed or missing read leaves the partial snippet (null), never a blank tab (0.561958ms)
+✔ Artifact Canvas - resolveLanguageMeta maps known extensions and languages (119.210292ms)
+✔ Artifact Canvas - generateLineNumbers returns sequential lines (0.558958ms)
+✔ Artifact Canvas - parseUnifiedDiff parses chunks, additions, deletions and headers (1.477333ms)
+✔ Artifact Canvas - renderDiffHtml produces escaped rows (0.823875ms)
+✔ Artifact Canvas - createArtifactCanvas lifecycle and tab transitions (54.84375ms)
+▶ Chaos Suite: 20 automated resilience scenarios
+  ✔ 1. Dead Ollama endpoint produces classified error (0.816708ms)
+  ✔ 2. 401 Unauthorized produces classified error (0.169041ms)
+  ✔ 3. 429 Rate limit produces classified error (0.138166ms)
+  ✔ 4. 503 Provider unavailable produces classified error (0.102667ms)
+  ✔ 5. Tool approval denied produces classified error (0.09125ms)
+  ✔ 6. Command timeout produces classified error (0.099458ms)
+  ✔ 7. File not found produces classified error (0.083083ms)
+  ✔ 8. OS permission denied produces classified error (0.092541ms)
+  ✔ 9. Disk full produces classified error (0.184208ms)
+  ✔ 10. Context length exceeded produces classified error (0.151875ms)
+  ✔ 11. State downgrade refused produces classified error (0.158208ms)
+  ✔ 12. Network offline produces classified error (0.091666ms)
+  ✔ 13. Invalid sessionId format rejected with error (255.4045ms)
+  ✔ 14. Rename non-existent session returns false safely (172.478083ms)
+  ✔ 15. Export non-existent session throws expected error (162.881125ms)
+  ✔ 16. Corrupt session transcript JSONL handled gracefully (112.688417ms)
+  ✔ 17. Path traversal attempt in session delete rejected (118.952667ms)
+  ✔ 18. Downgrade migration attempt refused safely (18.044084ms)
+  ✔ 19. Workspace snapshot revert of non-existent turnId throws clear error (1.570125ms)
+  ✔ 20. Workspace snapshot restores deleted file and removes untracked file (18.57275ms)
+✔ Chaos Suite: 20 automated resilience scenarios (866.301958ms)
+✔ a turn goes idle -> sending -> streaming -> done and keeps the transcript (3.173375ms)
+✔ a completed answer with no tokens falls back to the turn's response text (0.263459ms)
+✔ an error marks the turn and keeps any partial answer, and it is not done (0.350791ms)
+✔ Stop keeps the partial answer with a Stopped note and ignores late events (0.264709ms)
+✔ a new turn keeps earlier messages and clears the previous error (0.222375ms)
+✔ an approval pause resumes as streaming on the next token (0.164ms)
+✔ a second send while busy, and an empty send, change nothing (0.168375ms)
+✔ events for another session are dropped, and each bridge type maps to its action (0.503291ms)
+✔ load action hydrates session messages and resets status to idle (0.206708ms)
+✔ reconstructSessionMessages extracts turns from jsonl events (2.957625ms)
+✔ reconstructSessionMessages falls back to transcript text (0.742959ms)
+✔ reconstructSessionMessages handles empty, null, or malformed session data safely (0.222583ms)
+✔ chatEventAction maps thought and tool events (0.23125ms)
+✔ a turn accumulates thought blocks and tracks tool call execution in message parts (0.670917ms)
+✔ streaming text with inline <think> tags extracts thought into structured field (0.265625ms)
+✔ streaming text across paced chunks preserves exact text without dropping deltas (0.1525ms)
+✔ chatlist-actions: delete uses inline confirmation and no blocking dialogs (44.357ms)
+✔ chatlist-actions: rename is wired through validation, the data layer and a plain error (1.568791ms)
+✔ chatlist-actions: list refreshes on the session-change event (4.391917ms)
+✔ chatlist-actions: data layer exposes rename and notifies on session activity (4.552959ms)
+✔ ComposerModel - formatBytes (2.734708ms)
+✔ ComposerModel - getFileCategory (0.579125ms)
+✔ ComposerModel - composePromptWithAttachments (0.321167ms)
+✔ ComposerModel - applyPromptChip (0.19225ms)
+✔ ComposerModel - detectTrigger (1.628125ms)
+✔ ComposerModel - filterSlashCommands (0.303958ms)
+✔ ComposerModel - insertTriggerSelection (0.267458ms)
+✔ ComposerModel - default constants validity (0.192792ms)
+✔ ComposerModel - parseSlashCommand handles only local commands (0.230458ms)
+✔ ComposerModel - friendlyErrorMessage never forwards raw error text (0.497833ms)
+✔ ComposerModel - formatDoctorReport keeps a short read-only summary (0.457917ms)
+✔ ComposerModel - runLocalSlashCommand passes normal text through (2.228875ms)
+✔ ComposerModel - compact and rollback run locally (0.231041ms)
+✔ ComposerModel - clear resets the view without a session (0.103583ms)
+✔ ComposerModel - compact without a session shows a plain notice (0.093292ms)
+✔ ComposerModel - doctor shows report text, never fetches the LLM (0.13525ms)
+✔ ComposerModel - doctor and compact failures stay user-facing (3.344584ms)
+✔ row 3: the Settings menu event navigates the renderer to #settings (1.285708ms)
+✔ row 6: the Inspector rewind event resolves to the rollback action (0.270416ms)
+✔ row 6 failure path: the events do nothing while no session is selected (0.194792ms)
+✔ row 8: sendQuery carries the selected session and active agent to the IPC bridge (0.947125ms)
+✔ row 9: Retry is available for an error and for a stopped turn (0.633459ms)
+✔ row 9 failure path: Retry is hidden without a previous user message (0.17625ms)
+[OpenSand] state schema v0 -> v2
+[OpenSand] state schema v0 -> v2
+✔ DesktopServer - handles REST API endpoints hermetically (2720.47275ms)
+[OpenSand] state schema v0 -> v2
+✔ DesktopServer - exposes read-only pending approvals and live tool discovery (351.228958ms)
+✔ DesktopServer - drives the routines routes through the real handler (278.716875ms)
+[OpenSand] state schema v0 -> v2
+[OpenSand Desktop] server listening: http://127.0.0.1:58023/
+[OpenSand] state schema v0 -> v2
+[OpenSand Desktop] server listening: http://127.0.0.1:58026/
+✔ window IPC handlers drive the same engine as the app server (454.142792ms)
+✔ the approval queue sits inside the chat column, above the composer (0.806791ms)
+✔ opening the window twice registers the bridge event forwarder once (325.518708ms)
+[OpenSand] state schema v0 -> v2
+✔ diagnostics report is redacted and names the local setup (272.997167ms)
+✔ folder trust - session is held before any coordinator exists (399.485541ms)
+✔ folder trust - autoApprove never answers the trust question (352.667709ms)
+✔ folder trust - always_allow persists trusted and builds a workspace-write coordinator (251.798167ms)
+✔ folder trust - reject persists untrusted and builds a read-only coordinator (404.135042ms)
+✔ folder trust - approve_once trusts this bridge only and persists nothing (323.792542ms)
+✔ folder trust - lowering trust while the question is pending makes the answer stale (4001) (403.137917ms)
+✔ folder trust - an answer with no epoch is rejected 4001 and the question stays pending (628.742958ms)
+✔ folder trust - lowering drops the cached coordinator so the next turn re-derives its profile (683.525791ms)
+✔ folder trust - a symlinked workspace is held under its real path (370.512791ms)
+✔ folder trust - a revoke landing mid-answer (always_allow) gives 4001 and the folder is not trusted (369.972584ms)
+✔ folder trust - a revoke landing mid-answer (approve_once) gives 4001 and the folder is not trusted (666.945833ms)
+✔ folder trust - a revoke landing mid-answer (reject) gives 4001 and the folder is not trusted (765.7625ms)
+✔ folder trust - approve_once adds the session trust under the lock: a revoke right after the release cannot be undone (436.628625ms)
+▶ ForkDialog states suite
+  ✔ dialog state: preview lists rendered with deleted first, instruction textarea, and buttons (11.3065ms)
+  ✔ dialog state: instruction passed through on confirm (62.871083ms)
+  ✔ dialog state: blank instruction leaves newInstruction undefined (22.565125ms)
+  ✔ dialog state: cancel calls nothing (calls onCancel, never onConfirm) (0.610917ms)
+  ✔ dialog state: zero changes says Nothing to restore and omits Confirm button (0.30675ms)
+  ✔ error state: -32600 InvalidRequest (untrusted or actively running) (3.302292ms)
+  ✔ error state: -32602 InvalidParams (ref does not belong or missing id) (3.4905ms)
+  ✔ error state: -32603 InternalError with recovery hint (0.643333ms)
+✔ ForkDialog states suite (121.109791ms)
+✔ grants epoch - two approvals pending at the same epoch both succeed; epoch stays (426.9125ms)
+✔ grants epoch - revoke while an approval is pending rejects the answer with StaleEpochError 4001 (282.421083ms)
+[OpenSand] state schema v0 -> v2
+✔ grants epoch - missing epoch fails closed with 4001 and approves nothing (361.291792ms)
+✔ grants epoch - POST /api/approve with a stale epoch returns HTTP 409 code 4001 and stores no grant (385.984667ms)
+✔ real-Electron launch under hermeticElectronEnv writes state to the temp HOME, not the real one (6116.427334ms)
+[OpenSand] state schema v0 -> v2
+[OpenSand Desktop] server listening: http://127.0.0.1:58027/
+✔ isHiddenWindowMode: only truthy flags enable hidden mode (48.240709ms)
+✔ hermeticElectronEnv: every test launch gets the hidden-window flag (1.835041ms)
+[OpenSand] state schema v0 -> v2
+[OpenSand Desktop] server listening: http://127.0.0.1:58034/
+✔ DesktopApp hidden mode: no visible window, Dock icon, tray or focus steal (382.646708ms)
+✔ DesktopApp normal mode keeps the visible, focusable window (240.562041ms)
+✔ highlighter - tokenizing is lossless for every supported language (6.908542ms)
+✔ highlighter - a keyword inside a string or comment is not coloured as a keyword (1.2345ms)
+✔ highlighter - classifies the main token kinds (0.3775ms)
+✔ highlighter - python comments, triple strings and decorators (0.993375ms)
+✔ highlighter - markdown/plain text is not mangled (0.177125ms)
+✔ highlighter - unknown languages fall back to plain text, never throw (0.147084ms)
+✔ highlighter - aliases resolve to a real grammar (0.115208ms)
+✔ highlighter - HTML output is escaped, so it is safe for innerHTML (0.6295ms)
+✔ highlighter - every emitted class is a declared token class (1.309458ms)
+✔ highlighter - handles empty input and unterminated literals without throwing (0.505709ms)
+✔ highlighter - multi-line CSS gets property tokens (0.610125ms)
+✔ highlighter - a bare # does not hang the tokenizer (markdown headings) (0.299125ms)
+▶ Inbox Component suite
+  ✔ badge count renders correctly and reflects pending items (3.05175ms)
+  ✔ empty state displays 'Nothing needs you' when no approvals pending (12.564167ms)
+  ✔ error state shows 'Couldn't load approvals' with Retry button (105.596375ms)
+  ✔ list of 2 items shows asking, wants, time and handles click/keyboard (230.88075ms)
+  ✔ expanded row answers through approveTool with the request epoch, then reloads the list (37.432792ms)
+  ✔ a refused answer shows an alert and keeps the request listed (36.033ms)
+  ✔ without approveTool the expanded row has no decision buttons (34.955042ms)
+  ✔ stale epoch error produces specific stale approval alert (62.278917ms)
+  ✔ ApprovalDecisionButtons with idPrefix='main' renders legacy action button IDs (12.235792ms)
+✔ Inbox Component suite (559.352417ms)
+✔ inbox-model: sortApprovals sorts newest first and breaks ties by id (3.432375ms)
+✔ inbox-model: sortApprovals does not mutate its input (0.190166ms)
+✔ inbox-model: formatApprovalTarget extracts meaningful summaries (0.269208ms)
+✔ inbox-model: formatAsking identifies what is asking (0.099167ms)
+✔ inbox-model: formatTimestamp formats relative time from millisecond epoch (0.386875ms)
+✔ inbox-model: toInboxRow sets active state, labels, and preserves raw request (0.142ms)
+✔ inbox-model: inboxEmptyState returns expected copy (0.150625ms)
+✔ inbox-model: formatBadgeCount formats counts and clamps negatives to 0 (0.090333ms)
+✔ inbox-model: nextIndex handles ArrowDown, ArrowUp, Home, End clamping (0.145667ms)
+✔ InspectorModel - computeTelemetryPct (0.993417ms)
+✔ InspectorModel - getTelemetryMeterColor (0.144417ms)
+✔ InspectorModel - formatMemoryText (0.900208ms)
+✔ InspectorModel - resolvePersona (0.167042ms)
+✔ InspectorModel - resolveAvatarIcon (0.130917ms)
+✔ InspectorModel - defaults export validity (0.138458ms)
+✔ DesktopIpcBridge - manages settings and persistent config (205.783542ms)
+✔ DesktopIpcBridge - always_allow persists a grants.json grant the daemon honors (299.164625ms)
+✔ DesktopIpcBridge - cancelling a turn clears the pending approval and unblocks its waiter (312.343208ms)
+✔ DesktopIpcBridge - always_allow on an unsandboxed command stores no standing grant (322.461ms)
+✔ DesktopIpcBridge - always_allow leaves the legacy standing-allowlist path untouched (429.705084ms)
+✔ DesktopIpcBridge - close() waits for a daemon start that an approval request began (410.095417ms)
+✔ DesktopIpcBridge - handles rejection (216.209958ms)
+✔ DesktopIpcBridge - lists and loads session transcripts (209.255708ms)
+✔ DesktopIpcBridge - loads sessions and infers agentId for legacy sub_agent sessions (161.354833ms)
+✔ DesktopIpcBridge - preserves active coordinator and emits session_started on query (485.498125ms)
+✔ DesktopIpcBridge - cancelTurn aborts the active turn and is safe when idle (291.976041ms)
+✔ DesktopIpcBridge - getTokenTelemetry calculates accurate context windows and handles agent model inheritance (767.568792ms)
+✔ DesktopIpcBridge - config.json never stores the raw apiKey and is written 0o600 atomically (233.934542ms)
+✔ DesktopIpcBridge - legacy plaintext apiKey in config.json is migrated to the vault on load (400.054167ms)
+✔ DesktopIpcBridge - approveTool accepts {action} decisions (string form normalized by renderer) (260.280875ms)
+✔ DesktopIpcBridge - approval reason is optional and tolerated when absent (506.313291ms)
+✔ DesktopIpcBridge - coordinator map is keyed by (sessionId, agentId) (475.224333ms)
+✔ DesktopIpcBridge - a blank endpoint never replaces the working one (159.024875ms)
+✔ DesktopIpcBridge - settings change drops cached per-session coordinators (763.664208ms)
+✔ DesktopIpcBridge - autoApprove safety ceiling enforces prompt on dangerous commands & policy gates (527.48225ms)
+✔ DesktopIpcBridge - autoApprove does not auto-approve persistent skill or memory writes without explicit opt-in (193.874416ms)
+✔ DesktopIpcBridge - lists pending approvals as isolated copies and removes them after approval (224.923875ms)
+✔ DesktopIpcBridge - dispatchTurnEvent forwards subagent delegation as a DesktopEvent (101.9445ms)
+✔ DesktopIpcBridge - dispatchTurnEvent forwards nested subagent delegation preserving parent link (91.147958ms)
+✔ DesktopIpcBridge - tool discovery matches daemon discover_tools parity (146.331375ms)
+✔ DesktopIpcBridge - close() removes workspaceSentinel listener and frees resources (110.720834ms)
+✔ DesktopIpcBridge - ensureDaemon restores stopped and stale daemon automatically (676.502916ms)
+✔ DesktopIpcBridge - approval mode routing and autoAllows bypasses prompt (480.214042ms)
+✔ F1: auto mode never auto-runs a dangerous shell command (sandboxed or unsandboxed) (241.357917ms)
+✔ F3b: auto mode prompts on nested shells and evaluation instead of auto-running them (614.171834ms)
+✔ DesktopIpcBridge - taint handling asks for shell commands even in auto mode (230.768542ms)
+✔ DesktopIpcBridge - always_allow on shell_outside is never persisted as always grant (173.490958ms)
+✔ DesktopIpcBridge - deleteSession clears coordinatorMap and next session builds new coordinator with baseline (478.529042ms)
+✔ desktop prompt - learned rules reach the system prompt fenced (345.269125ms)
+✔ markdown renderer - sanitizes <script> in thinking blocks (XSS defense) (101.124125ms)
+✔ markdown renderer - sanitizes <script> and event handlers in table cells and headers (0.860042ms)
+✔ markdown renderer - neutralizes javascript: protocol in markdown links (0.872ms)
+✔ memories-model: validation requires non-empty text (0.886292ms)
+✔ memories-model: validation restricts scope and tier to select options (0.381791ms)
+✔ memories-model: reviewCardView formats title with action and ellipsis only if >40 chars (1.144166ms)
+✔ memories-model: memoryCardView defaults and formatting (328.063583ms)
+✔ memories-model: modal open/close helpers (0.394375ms)
+✔ memories-model: empty state constants match legacy strings (0.4045ms)
+✔ parseUnifiedDiff keeps hunks and line kinds, drops file headers (2.130708ms)
+✔ parseUnifiedDiff flags binary files and runaway line counts (1.094208ms)
+✔ diffNote words each non-ready state (0.232416ms)
+✔ readMissionFileDiff returns only the requested file's hunks, found by index (1314.063792ms)
+✔ a log without tree ids, or with pruned objects, is 'unavailable' (1433.0225ms)
+✔ a huge diff is 'too-large' (2367.709667ms)
+✔ fork wiring: a real finished mission forks from a step on disk, creates new mission, and updates files (7201.585625ms)
+✔ fork wiring: an untrusted folder is refused by the engine gate and nothing changes (3797.016167ms)
+✔ fork wiring: a snapshot ref of another mission is refused (4020.95375ms)
+✔ fork wiring: a mission whose log has not ended is actively running and refused (3705.735417ms)
+✔ fork wiring: empty ids are rejected before any engine call (0.375042ms)
+✔ canForkStep offers Fork only for steps flagged isRestorable (0.133458ms)
+✔ mission-list-model: sorts newest update first, undated last, stable on ties (189.978916ms)
+✔ mission-list-model: sort does not mutate its input (29.48225ms)
+✔ mission-list-model: each status has its own label (2.133959ms)
+✔ mission-list-model: toMissionRow marks the active row and falls back to id for a blank title (0.437041ms)
+✔ mission-list-model: empty state copy (0.149708ms)
+✔ mission-list-model: arrow keys, Home and End move focus and clamp at the ends (4.3915ms)
+✔ mission-list-source: projects title, status and last update from real mission logs (775.135459ms)
+✔ mission-list-source: no missions directory is an empty list, not an error (3.428875ms)
+✔ buildReceiptView: finished mission yields display fields (20.868708ms)
+✔ buildReceiptView: no receipt yet gives null (0.505083ms)
+✔ buildReceiptView: failed and stopped missions keep their own status (0.317459ms)
+✔ buildReceiptView: unavailable changes carry the reason (2.458375ms)
+✔ displayPath never shows an absolute or home path (0.483708ms)
+✔ formatters (0.254459ms)
+✔ readMissionReceipt validates the id and returns null for unknown or receipt-less missions (252.036666ms)
+✔ receipt summary shows local 24h time, not ISO (34.971167ms)
+✔ restore: the snapshot taken by node.started lands on the step that node completes (4.453292ms)
+✔ restore: a snapshot value that is not a mission ref is dropped, never offered (0.600125ms)
+✔ restore: the confirm dialog names the step, says it overwrites changes, and the undo (1.599708ms)
+✔ restore: errors classify as untrusted folder, running mission, or failure with a clear message (1.630625ms)
+✔ restore: success view counts files and carries the undo target (1.086ms)
+✔ restore: groupPreviewFiles partitions deleted, overwritten, and recreated files correctly (1.401709ms)
+✔ restore: groupPreviewFiles detects zero changes when all lists are empty (0.201417ms)
+✔ restore: Tab and Shift+Tab wrap inside the dialog (0.249667ms)
+✔ restore wiring: a real finished mission restores to a step on disk and Undo brings the files back (7134.361958ms)
+✔ restore wiring: previewRestore returns file lists and counts without modifying disk (4874.250042ms)
+✔ restore wiring: an untrusted folder is refused by the engine gate and nothing changes (3933.686ms)
+✔ restore wiring: a snapshot ref of another mission is refused (2998.575541ms)
+✔ restore wiring: a mission whose log has not ended is "actively running" and nothing changes (2528.219208ms)
+✔ restore wiring: empty ids are rejected before any engine call (0.417708ms)
+✔ timeline: engine event shapes become ordered steps (start, plan, act, check, review, receipt, end) (3.42275ms)
+✔ timeline: waiting-for-you, answered, failed and stopped (0.4015ms)
+✔ timeline: empty and malformed input never throws (0.348291ms)
+✔ timeline: newest 200 are shown and show-earlier reveals the rest (0.474083ms)
+✔ timeline: time is 24h wall clock in the given zone (73.741542ms)
+✔ timeline source: reads one mission, keeps only display fields, rejects unsafe ids (230.905375ms)
+✔ navigateToView re-dispatches until the view is visible (1.184458ms)
+✔ navigateToView fails closed instead of waiting forever (45.04025ms)
+✔ navigation-model: every view has a title and a unique panel id (1.401917ms)
+✔ navigation-model: footer groups match the legacy view mapping (1.630959ms)
+✔ navigation-model: grouped views belong to exactly one group; sentinel and settings are deep-link only (0.277584ms)
+✔ navigation-model: footer active state follows the group, not the exact view (0.168708ms)
+✔ navigation-model: isViewId rejects unknown and empty values (0.119166ms)
+✔ navigation-model: deep links prefer hash, then query, then chat (0.439583ms)
+[OpenSand] state schema v0 -> v2
+✔ needs onboarding when there is no key and no local model server (9.269375ms)
+✔ a running local model needs no onboarding (1.319791ms)
+✔ a stored key means no onboarding, without probing (0.517042ms)
+✔ a deliberately configured local endpoint is not onboarding (0.869ms)
+✔ the onboarding endpoint stores a key through the server (257.08075ms)
+[OpenSand] state schema v0 -> v2
+▶ Desktop Server - Policies, Webhooks, and AG-UI Endpoints
+  ✔ GET /api/policies returns default policy presets (6.078208ms)
+  ✔ POST /api/policies adds a new policy rule and GET /api/policies/audit lists audit logs (3.625459ms)
+  ✔ manages webhooks via GET / POST / DELETE /api/webhooks and logs delivery (7.731416ms)
+  ✔ rejects webhook registration without a usable secret (F4) (1.027583ms)
+  ✔ GET /api/graphs and POST /api/graphs/:id/run executes autonomous cyclical coding loop (6.711833ms)
+✔ Desktop Server - Policies, Webhooks, and AG-UI Endpoints (176.547583ms)
+✔ real-Electron dev window loads preload bridge and exposes window.opensand (4033.872042ms)
+✔ Turn and session recovery: 429 provider error renders cause + nextAction, chat remains usable, next query recovers (10652.843334ms)
+✔ the capture prompt is the one the legacy button sends (2.599416ms)
+✔ a capture goes idle -> sending -> streaming -> done and keeps the streamed text (1.307208ms)
+✔ a second start while a capture is busy changes nothing (0.260708ms)
+✔ a send that resolves after the turn already finished does not reopen the panel (0.288459ms)
+✔ a failed send or a bridge error ends in error with the message (0.2405ms)
+✔ events are ignored when no capture is running (0.159708ms)
+✔ Stop ends a busy capture at once, even with no terminal event from the engine (0.288417ms)
+✔ dismiss clears a finished panel but not a running one (0.1655ms)
+✔ unavailable is its own state, and not a busy one (0.140417ms)
+✔ isBusy is true only while sending, waiting for approval or streaming (0.590959ms)
+✔ an approval request pauses a capture, and the next token resumes it (0.541375ms)
+✔ a send that resolves while the capture waits for approval keeps the wait and takes the session (0.187375ms)
+✔ an approval request after the capture finished does not reopen it (0.163209ms)
+✔ Stop ends a capture that waits for approval (0.538584ms)
+✔ turnEventAction maps tokens, completion and errors, and ignores other events (0.321ms)
+✔ turnEventAction drops an event from another session once this capture knows its session (0.230458ms)
+[OpenSand] OPENSAND_RENDERER=preact but dist/renderer-next is missing; run `pnpm --filter @opensand/desktop build`. Using the default renderer.
+✔ default renderer is used unless OPENSAND_RENDERER=preact (31.848458ms)
+✔ OPENSAND_RENDERER=preact serves dist/renderer-next when built (86.142625ms)
+✔ OPENSAND_RENDERER=preact falls back to the default when not built (37.618209ms)
+▶ RestoreDialog states suite
+  ✔ dialog state: lists renders counts, file lists (deleted first in warning style), and Confirm + Cancel (7.799167ms)
+  ✔ dialog state: zero changes says 'Nothing to restore' and shows no Confirm button (0.616ms)
+  ✔ dialog state: error shows the error message and no Confirm button (0.729292ms)
+  ✔ dialog state: cancel calls nothing (calls onCancel, never onConfirm) (16.5315ms)
+  ✔ dialog state: confirm calls restore once (1.427833ms)
+✔ RestoreDialog states suite (29.756125ms)
+✔ rooms-model: validateCreateRoomInput requires a name and a member (1.474083ms)
+✔ rooms-model: formatRoomCard formats badges, fallback description and topic preview (0.4045ms)
+✔ rooms-model: modal state opens and closes each modal independently (2.272875ms)
+✔ rooms-model: appendTurns accumulates turns and tolerates missing input (0.408875ms)
+✔ rooms-model: formatConsensus falls back when consensus is missing (0.380583ms)
+[OpenSand] state schema v0 -> v2
+✔ DesktopServer - Routines and Rooms REST API Endpoints (696.807792ms)
+✔ routines-model: normalizeIntervalMinutes defaults empty and zero to 60 (2.043625ms)
+✔ routines-model: validateCreateRoutineInput requires name and prompt (0.234042ms)
+✔ routines-model: validateCreateRoutineInput needs a cron expression for cron schedules (0.140542ms)
+✔ routines-model: validateCreateRoutineInput rejects negative intervals and defaults empty ones (0.316625ms)
+✔ routines-model: routineStatusBadge maps every status and an unknown one to Idle (0.926167ms)
+✔ routines-model: routineActionText reads the record prompt and never throws on bad JSON (0.256083ms)
+✔ routines-model: formatNextRun reports Disabled when there is no valid time (23.122834ms)
+✔ routines-model: toggleLabel flips on isEnabled (0.317292ms)
+✔ routines-model: modal state opens and closes the create dialog (0.356875ms)
+✔ routines-model: empty-state copy matches the legacy controller (0.207666ms)
+✔ RpcGateway - registers custom RPC handlers and dispatches calls (146.753292ms)
+✔ createDefaultRpcGateway - handles GrokBotService and SandBoxService wire calls (612.395542ms)
+✔ session-list-model: filterSessions filters by title (2.500292ms)
+✔ session-list-model: filterSessions filters by id when title is empty (0.530083ms)
+✔ session-list-model: filterSessions is case-insensitive and trims whitespace (0.105167ms)
+✔ session-list-model: emptyState returns match and default states (0.3445ms)
+✔ session-list-model: toRow handles title, id, count, and avatar fallbacks (0.609583ms)
+✔ session-list-model: relativeTime formats seconds, minutes, days and handles invalid dates (0.439917ms)
+✔ session-list-model: toRow handles unreadCount (0.241292ms)
+✔ session-list-model: validateSessionTitle trims and rejects empty drafts (0.096625ms)
+✔ session-list-model: formatSessionError yields plain user-facing text (0.158459ms)
+✔ session-list-model: rename request targets the registered PATCH route (0.209917ms)
+✔ DesktopIpcBridge - session rename, export, and search (673.491542ms)
+✔ settings dialog - index.html has 3-way mode selector and no legacy checkbox (2.45025ms)
+✔ settings dialog - handles 3 approval modes and backwards compatibility (0.852208ms)
+✔ every shell HTTP call matches a route registered by the real desktop server (13.388208ms)
+✔ matcher accepts a known-good fixture pair (0.405375ms)
+✔ matcher rejects a known-bad pair (POST vs PATCH) and an unregistered path (0.164167ms)
+✔ createSkill via the bridge stamps origin "user" and ignores the input origin (331.154792ms)
+✔ skills-model: validation requires all three fields (0.739708ms)
+✔ skills-model: whitespace-only fields are rejected (0.114667ms)
+✔ skills-model: card view applies defaults (1.266625ms)
+✔ skills-model: card view uses supplied fields and trimmed values (0.149875ms)
+✔ skills-model: modal open/close and preview helpers (0.165458ms)
+✔ skills-model: empty state mentions the create button (0.124334ms)
+[OpenSand] state schema v0 -> v2
+[OpenSand Desktop] server listening: http://127.0.0.1:58085/
+✔ resolveStateDir: default case resolves to ~/.opensand (1.556792ms)
+✔ resolveStateDir: OPENSAND_STATE_DIR environment override takes effect (13.337ms)
+✔ resolveStateDir: explicit overrideBaseDir takes precedence over environment variable (21.840334ms)
+✔ isSmokeMode: default case is false (0.831667ms)
+✔ isSmokeMode: parses truthy flags (1, true, yes) (0.360041ms)
+[OpenSand] state schema v0 -> v2
+[OpenSand Desktop] server listening: http://127.0.0.1:58087/
+✔ DesktopApp default mode: single-instance lock requested, window visible and focusable (311.093834ms)
+[OpenSand Desktop] server listening: http://127.0.0.1:58094/
+✔ DesktopApp smoke mode: skips single-instance lock, window hidden and unfocusable, writes server.port (227.498458ms)
+[McpManager] Failed to start MCP server [rea]: MCP server [rea] process error: spawn /Users/philosopher/.nvm/versions/node/v26.13.1/bin/npx ENOENT
+[OpenSand] state schema v0 -> v2
+[OpenSand Desktop] server listening: http://127.0.0.1:58105/
+✔ DesktopApp default mode (env {}): never writes server.port and never calls setPath('userData') (716.309958ms)
+✔ DesktopApp with OPENSAND_STATE_DIR (without smoke): writes server.port and sets userData (418.706667ms)
+✔ revoking an "always allow" grant stops the daemon running that command (340.500541ms)
+[OpenSand] state schema v0 -> v2
+▶ DesktopServer - static renderer symlink containment (F7)
+  ✔ refuses a symlinked file that points outside rendererDir (48.2525ms)
+  ✔ refuses a symlinked directory that points outside rendererDir (56.444125ms)
+  ✔ refuses a sibling directory sharing the rendererDir prefix (2.194833ms)
+  ✔ refuses the SPA fallback when index.html itself is a symlink out of the tree (128.723375ms)
+  ✔ still serves regular files and symlinks that stay inside rendererDir (227.68775ms)
+  ✔ falls back to index.html for missing files (SPA routing preserved) (5.829542ms)
+  ✔ returns 404 cleanly when rendererDir does not exist (3.039125ms)
+✔ DesktopServer - static renderer symlink containment (F7) (772.469667ms)
+✔ secret input requires a trimmed name and value (1.824791ms)
+✔ credential input requires title and username, matching the server guard (0.186041ms)
+✔ parseSites trims entries and drops empties (2.295041ms)
+✔ secret card never uses preview or any stored value as the mask (1.138959ms)
+✔ secret card falls back to a neutral description (0.693167ms)
+✔ credential card defaults username and sites, and masks the password (0.463417ms)
+✔ legacy empty-state copy is preserved (0.139709ms)
+✔ Real-Window Harness: default renderer (960x740 and full screen) (4663.277792ms)
+✔ Real-Window Harness: Preact shell frame seeded sessions & search (960x740 and 1920x1080) (5201.2015ms)
+✔ Real-Window Harness: Preact empty home state (960x740 and 1920x1080) (3300.114333ms)
+✔ Real-Window Harness: Preact session delete removes row and disk directory (3629.700041ms)
+✔ Real-Window Harness: Preact mission list reads missions from the hermetic HOME via opensand:listMissions (247056.0065ms)
+✔ Real-Window Harness: Preact selecting a mission shows its timeline from opensand:getMissionTimeline (7057.65ms)
+✔ Real-Window Harness: Preact finished mission shows its receipt; a running mission shows none (4440.296542ms)
+✔ Real-Window Harness: clicking a changed file shows its hunks; a log without tree ids says not available (21878.509416ms)
+✔ Real-Window Harness: Preact inbox approvals list (960x740) (2629.298958ms)
+✔ Real-Window Harness detects forced horizontal overflow (877.159333ms)
+✔ workspace - cwd "/" defaults to the home folder (300.882542ms)
+✔ workspace - an explicit workspaceDir still wins over the default (356.958584ms)
+✔ read: a relative path and an absolute path inside the root return the file text (28.347416ms)
+✔ path-escape: .., a foreign absolute path and a symlink out of the tree are all refused (59.046875ms)
+✔ read: a symlink that stays inside the root is followed (21.1635ms)
+✔ read: bad input, missing file, directory, oversize and binary are reported, never returned (40.520833ms)
+ℹ tests 434
+ℹ suites 2
+ℹ pass 434
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 309878.019833
+desktop-test: real-window account-shortcuts-real-window.test.js (concurrency=1, limit 120s)
+[proof] account real-window screenshots written to: /var/folders/b_/kq7b8w_x5b7308zq183tq_z00000gn/T/opensand-account-proofs-0kqVFZ
+✔ Preact account menu, theme, sidebar and shortcuts real-window test at 960x740 and 1920x1080 (2212.715125ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2264.691625
+desktop-test: real-window account-shortcuts-real-window.test.js 2.3s
+desktop-test: real-window approvals-real-window.test.js (concurrency=1, limit 120s)
+[proof] approvals real-window screenshots written to: /var/folders/b_/kq7b8w_x5b7308zq183tq_z00000gn/T/opensand-approvals-proofs-MHNwjw
+✔ Preact Approvals UI real-window test at 960x740 and 1920x1080 (9961.569292ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10015.591334
+desktop-test: real-window approvals-real-window.test.js 10.1s
+desktop-test: real-window attachments-real-window.test.js (concurrency=1, limit 120s)
+[proof] attachments real-window screenshots written to: /var/folders/b_/kq7b8w_x5b7308zq183tq_z00000gn/T/opensand-attachments-proofs-DCg8SU
+✔ Preact attachments view, stage modal and unstage at 960x740 and 1920x1080 (7532.436625ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7581.693333
+desktop-test: real-window attachments-real-window.test.js 7.6s
+desktop-test: real-window auth-modal-real-window.test.js (concurrency=1, limit 120s)
+[proof] auth modal real-window screenshots written to: /var/folders/b_/kq7b8w_x5b7308zq183tq_z00000gn/T/opensand-auth-proofs-h0a6fD
+✔ Preact auth modal and token exchange real-window test at 960x740 and 1920x1080 (4259.130459ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4308.177833
+desktop-test: real-window auth-modal-real-window.test.js 4.4s
+desktop-test: real-window bots-real-window.test.js (concurrency=1, limit 120s)
+[OpenSand] state schema v0 -> v2
+✔ desktop-server: routes for agents, tasks, and templates return expected responses (49.070667ms)
+[proof] bots real-window screenshots written to: /Users/philosopher/dev/_scratch/proof-logs/bots
+✔ Preact bots & templates view, roster, tasks, and modals at 960x740 and 1920x1080 (6095.312416ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6237.35525
+desktop-test: real-window bots-real-window.test.js 6.3s
+desktop-test: real-window canvas-real-window.test.js (concurrency=1, limit 120s)
+✔ Canvas #82 in the real Electron window: full edited file, aligned gutter, toggle keeps tabs, tabs pile up (2167.1185ms)
+✔ Preact canvas split view, tab switching, and responsiveness at 960x740 and 1920x1080 (3033.998458ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5256.946208
+desktop-test: real-window canvas-real-window.test.js 5.3s
+desktop-test: real-window chat-cards-real-window.test.js (concurrency=1, limit 120s)
+✔ real Electron window renders tool cards, thought accordion, and markdown at 960x740 and 1920x1080 without overflow (9778.531416ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9834.235125
+desktop-test: real-window chat-cards-real-window.test.js 9.9s
+desktop-test: real-window chat-history-real-window.test.js (concurrency=1, limit 120s)
+✔ real Electron window hydrates and renders stored session turns at 960x740 and 1920x1080 (4206.415292ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4259.325375
+desktop-test: real-window chat-history-real-window.test.js 4.3s
+desktop-test: real-window chat-real-window.test.js (concurrency=1, limit 120s)
+chat answer results: {"960x740":{"seen":["sending","waiting","streaming","done"],"status":"done","answer":"CHAT ANSWER: the workspace has three packages.\n\nThe desktop package owns the Electron main process and the bridge; the engine package runs the local model loop and the mission store; the protocol package carries the message shapes both sides share.\n\nFor a first change, start in packages/desktop/src/shell: the models there are pure state machines, so they test without Electron and the views stay thin."},"full-1920x1080":{"seen":["sending","streaming","done"],"status":"done","answer":"CHAT ANSWER: the workspace has three packages.\n\nThe desktop package owns the Electron main process and the bridge; the engine package runs the local model loop and the mission store; the protocol package carries the message shapes both sides share.\n\nFor a first change, start in packages/desktop/src/shell: the models there are pure state machines, so they test without Electron and the views stay thin.\nCHAT ANSWER: the workspace has three packages.\n\nThe desktop package owns the Electron main process and the bridge; the engine package runs the local model loop and the mission store; the protocol package carries the message shapes both sides share.\n\nFor a first change, start in packages/desktop/src/shell: the models there are pure state machines, so they test without Electron and the views stay thin."}}
+✔ Chat turn streams the model's answer in the real window: 960x740 and full screen (8554.192ms)
+chat error results: {"960x740":{"status":"error","label":"Error: The requested model or endpoint was not found. Check your model name and endpoint in Settings.Retry","error":"The requested model or endpoint was not found. Check your model name and endpoint in Settings."},"full-1920x1080":{"status":"error","label":"Error: The requested model or endpoint was not found. Check your model name and endpoint in Settings.Retry","error":"The requested model or endpoint was not found. Check your model name and endpoint in Settings.\nThe requested model or endpoint was not found. Check your model name and endpoint in Settings."}}
+✔ Chat turn shows an error, not a finished answer, when the model is missing (2964.820875ms)
+chat stopped results: {"960x740":{"status":"stopped","answer":"CHAT PARTIAL: reading the files","note":"Stopped."},"full-1920x1080":{"status":"stopped","answer":"CHAT PARTIAL: reading the files\nCHAT PARTIAL: reading the files","note":"Stopped.\nStopped."}}
+✔ Chat turn shows the stopped state with the partial answer when Stop is pressed (8894.789458ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20471.724834
+desktop-test: real-window chat-real-window.test.js 20.5s
+desktop-test: real-window composer-extras-real-window.test.js (concurrency=1, limit 120s)
+[proof] composer real-window screenshots written to: /var/folders/b_/kq7b8w_x5b7308zq183tq_z00000gn/T/opensand-composer-proofs-uQhO7P
+✔ Preact Chat Composer Extras real-window test at 960x740 and 1920x1080 (6690.777541ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6739.799958
+desktop-test: real-window composer-extras-real-window.test.js 6.8s
+desktop-test: real-window dead-actions-real-window.test.js (concurrency=1, limit 120s)
+✖ Dead actions: Settings IPC navigates the real Preact renderer to #settings (8387.082542ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8434.449
+
+✖ failing tests:
+
+test at packages/desktop/dist/test/dead-actions-real-window.test.js:64:1
+✖ Dead actions: Settings IPC navigates the real Preact renderer to #settings (8387.082542ms)
+  AssertionError [ERR_ASSERTION]: settings panel is visible after the Settings IPC
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///Users/philosopher/dev/_scratch/opensand-hidden-window-tests/packages/desktop/dist/test/dead-actions-real-window.test.js:95:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+desktop-test: real-window dead-actions-real-window.test.js 8.5s
+desktop-test: FAIL dead-actions-real-window.test.js exited 1
+/Users/philosopher/dev/_scratch/opensand-hidden-window-tests/packages/desktop:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @opensand/desktop@0.1.14 test: `node ../../scripts/desktop-test.js`
+Exit status 1

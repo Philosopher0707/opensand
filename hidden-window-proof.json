@@ -1,0 +1,3209 @@
+{
+  "result": {
+    "command": [
+      "pnpm",
+      "--filter",
+      "@opensand/desktop",
+      "test"
+    ],
+    "exit_code": 1,
+    "before_focus": "OpenMausBot",
+    "after_focus": "Electron",
+    "samples": 182,
+    "my_visible_windows": 0,
+    "electron_onscreen_any_owner": 2,
+    "failures": [
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "DeepSeek Harness",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Safari",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "during",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      },
+      {
+        "phase": "after",
+        "focus": "Electron",
+        "expected": "OpenMausBot"
+      }
+    ]
+  },
+  "trace": [
+    {
+      "phase": "before",
+      "ts": 1795499174.7288399,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "before-running",
+      "ts": 1795499175.305521,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499177.938145,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499180.6643572,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81180,
+          "owner_pid": 99561,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499183.261079,
+      "frontmost": "Electron",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81190,
+          "owner_pid": 579,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499185.944535,
+      "frontmost": "Electron",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499188.404455,
+      "frontmost": "Electron",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81215,
+          "owner_pid": 1756,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499190.880667,
+      "frontmost": "Electron",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81224,
+          "owner_pid": 2280,
+          "owner": "Electron",
+          "title": "OpenSand",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499193.178041,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499195.452808,
+      "frontmost": "Electron",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81247,
+          "owner_pid": 2895,
+          "owner": "Electron",
+          "title": "OpenSand",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499197.7518442,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499200.172244,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81271,
+          "owner_pid": 3337,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499202.50845,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499204.692705,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499206.867357,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499209.043178,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499211.255889,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499213.422037,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499215.609382,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499217.817413,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499220.016727,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499222.2038279,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499224.417474,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499226.6048372,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499228.8149471,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499230.983264,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499233.1535082,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499235.33326,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499237.5402749,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499239.73559,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499241.923979,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499244.125182,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499246.340681,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499248.540731,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499250.749402,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499252.928245,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499255.125324,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499257.311986,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499259.521326,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499261.700098,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499263.896823,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499266.076469,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499268.279086,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499270.4953952,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499272.6788611,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499274.855176,
+      "frontmost": "OpenMausBot",
+      "onscreen_count": 31,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499277.012772,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499279.2133062,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499281.433116,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499283.643538,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499285.861422,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499288.0772932,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499290.283572,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499292.491615,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499294.6902149,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499296.913789,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499299.198548,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499301.398153,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499303.593248,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499305.803038,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499308.01657,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499310.201497,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499312.4171221,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499314.6291919,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499316.845697,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499319.065622,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        },
+        {
+          "id": 81280,
+          "owner_pid": 3506,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499321.2899652,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499323.476983,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499325.671415,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81302,
+          "owner_pid": 3574,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499327.8613398,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499330.0610151,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499332.258323,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499334.466492,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499336.6402922,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499338.853415,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499341.066596,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499343.2868748,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499345.5010262,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499347.719093,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499349.9177039,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499352.088325,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499354.294302,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499356.486861,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499358.681658,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499360.8822532,
+      "frontmost": "Safari",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499363.082232,
+      "frontmost": "Safari",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499365.294065,
+      "frontmost": "Safari",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499367.5045602,
+      "frontmost": "Safari",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499369.710199,
+      "frontmost": "Safari",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499371.909819,
+      "frontmost": "Safari",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499374.132792,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499376.333805,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499378.540597,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499380.722255,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499382.9190059,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499385.127628,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499387.332712,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499389.541187,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499391.752031,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499393.949075,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499396.154179,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499398.363209,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499400.561038,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499402.755908,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499404.952757,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499407.1592488,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499409.371834,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499411.550967,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499413.7430751,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499415.9400609,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499418.1504042,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499420.326704,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499422.492419,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499424.657984,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499426.825933,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499428.986419,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499431.195387,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499433.404612,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499435.611422,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499437.79953,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499440.014048,
+      "frontmost": "Electron",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81318,
+          "owner_pid": 8192,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499442.201698,
+      "frontmost": "Electron",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81327,
+          "owner_pid": 8250,
+          "owner": "Electron",
+          "title": "OpenSand",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499444.3564448,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499446.534879,
+      "frontmost": "Electron",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81350,
+          "owner_pid": 8345,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499448.69952,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499450.8716228,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499453.08734,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499455.2703118,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499457.4967418,
+      "frontmost": "Electron",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81388,
+          "owner_pid": 9900,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499459.733231,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499461.8999932,
+      "frontmost": "DeepSeek Harness",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499464.0658188,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499466.3688252,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499468.807795,
+      "frontmost": "Electron",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499471.067298,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499473.333353,
+      "frontmost": "Electron",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81444,
+          "owner_pid": 12434,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499475.501656,
+      "frontmost": "Electron",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81453,
+          "owner_pid": 12512,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499477.688501,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499479.96989,
+      "frontmost": "Safari",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499482.157205,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499484.3425212,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499486.534304,
+      "frontmost": "Electron",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81472,
+          "owner_pid": 14917,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499488.717793,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499491.047342,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499493.6864939,
+      "frontmost": "Electron",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81503,
+          "owner_pid": 15089,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499495.929603,
+      "frontmost": "Safari",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499498.147316,
+      "frontmost": "Safari",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499500.332556,
+      "frontmost": "Safari",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499502.50002,
+      "frontmost": "Safari",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499504.7011251,
+      "frontmost": "Safari",
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499506.930308,
+      "frontmost": "Electron",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81528,
+          "owner_pid": 15916,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499509.140896,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499511.311625,
+      "frontmost": "Safari",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499513.49893,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499515.675709,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499517.881103,
+      "frontmost": "Safari",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499520.062648,
+      "frontmost": "Electron",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81552,
+          "owner_pid": 16110,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499522.334285,
+      "frontmost": "Electron",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499524.550551,
+      "frontmost": "Electron",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499526.7479649,
+      "frontmost": "Electron",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81574,
+          "owner_pid": 16377,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499528.951651,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499531.1425679,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499533.338082,
+      "frontmost": "Safari",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499535.5374022,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499537.719174,
+      "frontmost": "Electron",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81592,
+          "owner_pid": 16542,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499539.917823,
+      "frontmost": "Safari",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81592,
+          "owner_pid": 16542,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499542.1167738,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499544.32091,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499546.533074,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499548.709812,
+      "frontmost": "Electron",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81601,
+          "owner_pid": 16614,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499550.9099362,
+      "frontmost": "Electron",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81601,
+          "owner_pid": 16614,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499553.099363,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499555.2990458,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499557.47914,
+      "frontmost": "Electron",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81609,
+          "owner_pid": 16671,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499559.64742,
+      "frontmost": "Safari",
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499561.827913,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499564.003891,
+      "frontmost": "Electron",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81617,
+          "owner_pid": 16742,
+          "owner": "Electron",
+          "title": "OpenSand",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499566.1902568,
+      "frontmost": "Electron",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81617,
+          "owner_pid": 16742,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499568.3887858,
+      "frontmost": "Electron",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81617,
+          "owner_pid": 16742,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499570.589656,
+      "frontmost": "Safari",
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499572.79318,
+      "frontmost": "Electron",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81625,
+          "owner_pid": 16809,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "after",
+      "ts": 1795499572.981075,
+      "frontmost": "Electron",
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "electron_onscreen": [
+        {
+          "id": 81625,
+          "owner_pid": 16809,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    }
+  ]
+}

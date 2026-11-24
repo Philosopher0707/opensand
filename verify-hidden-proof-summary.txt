@@ -1,0 +1,672 @@
+{
+  "command": [
+    "bash",
+    "scripts/verify.sh"
+  ],
+  "exit_code": 1,
+  "before_focus": {
+    "name": "DeepSeek Harness",
+    "pid": 25793
+  },
+  "after_focus": {
+    "name": "Electron",
+    "pid": 8241
+  },
+  "samples": 121,
+  "my_visible_windows": 0,
+  "focus_stolen_by_test": 0,
+  "electron_onscreen_any_owner": 1,
+  "focus_changes_from_other_apps": [
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "Electron",
+        "pid": 38964
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "Electron",
+        "pid": 39762
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    },
+    {
+      "observed": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "baseline": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      }
+    }
+  ],
+  "failures": []
+}

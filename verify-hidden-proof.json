@@ -1,0 +1,2384 @@
+{
+  "result": {
+    "command": [
+      "bash",
+      "scripts/verify.sh"
+    ],
+    "exit_code": 1,
+    "before_focus": {
+      "name": "DeepSeek Harness",
+      "pid": 25793
+    },
+    "after_focus": {
+      "name": "Electron",
+      "pid": 8241
+    },
+    "samples": 121,
+    "my_visible_windows": 0,
+    "focus_stolen_by_test": 0,
+    "electron_onscreen_any_owner": 1,
+    "focus_changes_from_other_apps": [
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 38964
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 8241
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 8241
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 8241
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 39762
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "OpenMausBot",
+          "pid": 99757
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 8241
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 8241
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 8241
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 8241
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 8241
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 8241
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 8241
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 8241
+        },
+        "baseline": {
+          "name": "DeepSeek Harness",
+          "pid": 25793
+        }
+      }
+    ],
+    "failures": []
+  },
+  "trace": [
+    {
+      "phase": "before",
+      "ts": 1795499942.2194188,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "before-running",
+      "ts": 1795499942.526465,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499944.962253,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499947.35883,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499949.840171,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499952.247453,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499954.75776,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499957.2958238,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499959.672213,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499962.06075,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499964.402931,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499966.735467,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499969.109966,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499971.504527,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499973.8308349,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499976.9875479,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499980.452117,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499983.038669,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499985.5931468,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499988.000314,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499990.394048,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499992.808674,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499995.276201,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499997.741339,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500000.1256452,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500002.462595,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500004.96182,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500007.696894,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500010.4888802,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500012.88394,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500015.2941089,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500017.65077,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500020.162451,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500022.529369,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500024.84573,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500027.288023,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500029.719124,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500032.108473,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500034.6701188,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500037.074181,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500039.449045,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500041.83903,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500044.225732,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500046.571604,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500048.922463,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500051.27828,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500053.6746051,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500056.228019,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500058.777565,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500061.1710029,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500064.893867,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500067.3160808,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500069.7583082,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500072.6446888,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500076.159039,
+      "frontmost": {
+        "name": "DeepSeek Harness",
+        "pid": 25793
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500079.493493,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500082.216034,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500085.13651,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500087.733933,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500090.477568,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500092.8994849,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500095.245499,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500097.5824482,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500099.931348,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500102.316009,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500104.6945941,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500107.414222,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500109.8643048,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500112.377722,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500114.747029,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500117.0892391,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500119.4616058,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500121.790078,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500124.129531,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500126.495359,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500128.8142688,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500131.1560519,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500133.529153,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500135.8854709,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500138.2113621,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500140.592075,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500142.930748,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500145.289993,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500147.6535912,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500149.992291,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500152.358728,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500154.694942,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500157.11827,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500159.468092,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795500161.8033211,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 38964
+      },
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81860,
+          "owner_pid": 38964,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500164.1546,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81860,
+          "owner_pid": 38964,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500166.534871,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81860,
+          "owner_pid": 38964,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500168.905443,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81860,
+          "owner_pid": 38964,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500171.25131,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81860,
+          "owner_pid": 38964,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500173.590165,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81860,
+          "owner_pid": 38964,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500175.973495,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81860,
+          "owner_pid": 38964,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500178.27498,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 39762
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500180.578623,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500182.885189,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500185.185666,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500187.513386,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500189.8943949,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500192.268204,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500194.61476,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500196.9703848,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500199.3140259,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500201.697949,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500204.038143,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500206.391019,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500208.765385,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500211.336745,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500213.986337,
+      "frontmost": {
+        "name": "OpenMausBot",
+        "pid": 99757
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500216.422018,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500218.7562711,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500221.174475,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500223.5454621,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500225.8941839,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500228.224721,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500230.5563881,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795500232.937097,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "after",
+      "ts": 1795500233.2391198,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81869,
+          "owner_pid": 39762,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    }
+  ]
+}

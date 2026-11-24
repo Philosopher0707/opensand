@@ -1,0 +1,2056 @@
+{
+  "result": {
+    "command": [
+      "pnpm",
+      "--filter",
+      "@opensand/desktop",
+      "test"
+    ],
+    "exit_code": 0,
+    "before_focus": {
+      "name": "Electron",
+      "pid": 8241
+    },
+    "after_focus": {
+      "name": "Safari",
+      "pid": 90800
+    },
+    "samples": 94,
+    "my_visible_windows": 0,
+    "focus_stolen_by_test": 0,
+    "electron_onscreen_any_owner": 1,
+    "focus_changes_from_other_apps": [
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 21950
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Electron",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      },
+      {
+        "observed": {
+          "name": "Safari",
+          "pid": 90800
+        },
+        "baseline": {
+          "name": "Electron",
+          "pid": 8241
+        }
+      }
+    ],
+    "failures": []
+  },
+  "trace": [
+    {
+      "phase": "before",
+      "ts": 1795499666.570755,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "before-running",
+      "ts": 1795499666.867936,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499669.290189,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499671.5783591,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499673.943253,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499676.307463,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499678.66566,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499681.01824,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499683.386017,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499685.735371,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499688.086394,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499690.4239092,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499692.776829,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499695.132221,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499697.4547808,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499699.806963,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499702.1532989,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499704.5110662,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499706.85921,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499709.219282,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499711.566051,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499713.902542,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499716.260322,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499718.60797,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499720.968683,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499723.3056462,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499725.675951,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499728.021333,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499730.378488,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499732.732264,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499735.098408,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499737.4605,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499739.827667,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499742.185322,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499744.543807,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 8241
+      },
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499746.927364,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 30,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499749.2938209,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499751.6744032,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499754.011646,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499756.381223,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 29,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": [
+        {
+          "id": 81758,
+          "owner_pid": 17936,
+          "owner": "Electron",
+          "title": "OpenSand Agent",
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "phase": "during",
+      "ts": 1795499758.730082,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499761.203414,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499763.605844,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499765.919428,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499768.257399,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499770.580791,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499772.888334,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499775.2186801,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499777.5039942,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499779.83858,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499782.164674,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499784.5122309,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499786.854113,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499789.1788921,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499791.5034099,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499793.8375869,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499796.194068,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499798.537735,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499800.841385,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499803.18961,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499805.49905,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499807.8262138,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499810.1657758,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499812.526249,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499814.827709,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499817.1517,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499819.477293,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499821.813076,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499824.141645,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499826.5822148,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499828.981795,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499831.522586,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 28,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499833.982172,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499836.3357198,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499838.816504,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499841.141004,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499843.4651608,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499845.87638,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499848.289978,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499850.6478322,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499852.988805,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499855.320689,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499857.629745,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499859.988915,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 21950
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499862.499517,
+      "frontmost": {
+        "name": "Electron",
+        "pid": 90800
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499864.8284328,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499867.265877,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499869.6393101,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499871.980997,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499874.3633332,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499876.714553,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499879.180127,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 27,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "during",
+      "ts": 1795499881.544966,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    },
+    {
+      "phase": "after",
+      "ts": 1795499881.866109,
+      "frontmost": {
+        "name": "Safari",
+        "pid": 90800
+      },
+      "onscreen_count": 26,
+      "my_visible_windows": [],
+      "focus_from_test": false,
+      "electron_onscreen": []
+    }
+  ]
+}
