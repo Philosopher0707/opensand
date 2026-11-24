@@ -2369,8 +2369,7 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
         }, null, 2);
       }
 
-      const conn = connectorManager.getConnector(appId);
-      if (!conn || conn.status !== "connected") {
+      if (!githubClient.isConnected()) {
         const msg = args.message || `Please connect your ${provider.name} account to enable this capability.`;
         return connectAppRefusal({
           serverId: appId,
@@ -2380,13 +2379,23 @@ export function registerOrchestratorTools(options: RegisterOrchestratorToolsOpti
           blocked: true,
         });
       }
+      const viewer = await githubClient.getViewer();
+      if ((viewer as { ok?: boolean }).ok === false) {
+        return JSON.stringify({
+          status: "error",
+          app: appId,
+          name: provider.name,
+          message: (viewer as { message?: string }).message,
+        }, null, 2);
+      }
+      const identity = viewer as { login: string; scopes: string[] };
       return JSON.stringify({
         status: "ready",
         app: appId,
         name: provider.name,
-        account: conn.account,
-        connectedAt: conn.connectedAt,
-        scopes: conn.scopes,
+        account: identity.login,
+        scopes: identity.scopes,
+        capability: "live — calls the GitHub REST API",
       }, null, 2);
     },
   });

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import * as assert from "node:assert";
-import { GitHubClient, connectorSourceLabel } from "../src/github-client.js";
+import { GitHubClient, connectorSourceLabel, resolveGitHubToken } from "../src/github-client.js";
 
 /**
  * These tests lock the property that matters most about this client: a success
@@ -29,6 +29,37 @@ describe("GitHubClient", () => {
       const err = res as { unconnected?: boolean; message: string };
       assert.strictEqual(err.unconnected, true);
       assert.match(err.message, /not connected/i);
+    } finally {
+      process.env.PATH = prevPath;
+      if (prevGh !== undefined) process.env.GITHUB_TOKEN = prevGh;
+      if (prevAlt !== undefined) process.env.GH_TOKEN = prevAlt;
+    }
+  });
+
+  it("never treats a legacy OAuth placeholder as a GitHub credential", async () => {
+    const prevPath = process.env.PATH;
+    const prevGh = process.env.GITHUB_TOKEN;
+    const prevAlt = process.env.GH_TOKEN;
+    process.env.PATH = "/nonexistent";
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.GH_TOKEN;
+    let requests = 0;
+    const fakeFetch = (async () => {
+      requests++;
+      return new Response("{}", { status: 200 });
+    }) as typeof globalThis.fetch;
+    const placeholder = "oauth_github_0123456789abcdef01234567";
+
+    try {
+      assert.strictEqual(resolveGitHubToken(placeholder), null);
+      const client = new GitHubClient({ token: placeholder, fetchFn: fakeFetch });
+      assert.strictEqual(client.isConnected(), false);
+      assert.strictEqual(client.describe().connected, false);
+
+      const res = await client.getRepo("acme/repo");
+      assert.strictEqual((res as { ok: boolean }).ok, false);
+      assert.strictEqual((res as { unconnected?: boolean }).unconnected, true);
+      assert.strictEqual(requests, 0, "a placeholder must never be sent to GitHub");
     } finally {
       process.env.PATH = prevPath;
       if (prevGh !== undefined) process.env.GITHUB_TOKEN = prevGh;

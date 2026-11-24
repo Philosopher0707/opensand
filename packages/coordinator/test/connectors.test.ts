@@ -40,50 +40,72 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
     }
   });
 
-  it("initiates OAuth flow with proper scopes, client_id, and state", async () => {
+  it("refuses OAuth until a real client ID is configured", async () => {
     const manager = new ConnectorManager({ storagePath });
-    const flow = await manager.initiateOAuth("slack", "http://127.0.0.1:3456/api/connectors/callback");
-
-    assert.strictEqual(flow.providerId, "slack");
-    assert.ok(flow.state.length >= 16);
-    assert.ok(flow.authUrl.startsWith("https://slack.com/oauth/v2/authorize"));
-    assert.ok(flow.authUrl.includes("client_id="));
-    assert.ok(flow.authUrl.includes("scope=chat%3Awrite"));
-    assert.ok(flow.authUrl.includes(`state=${flow.state}`));
-
-    // Connector is marked as connecting
-    const conn = manager.getConnector("slack");
-    assert.strictEqual(conn?.status, "connecting");
+    await assert.rejects(manager.initiateOAuth("linear"), /OAuth is not configured/);
+    assert.strictEqual(manager.getConnector("linear")?.status, "disconnected");
   });
 
-  it("completes OAuth flow and stores connected state", async () => {
-    const manager = new ConnectorManager({ storagePath });
+  it("never completes OAuth with a placeholder token or connected state", async () => {
+    const oauthStoragePath = path.join(tmpDir, "oauth-configured.json");
+    fs.writeFileSync(oauthStoragePath, JSON.stringify([{
+      id: "linear",
+      status: "disconnected",
+      clientId: "configured-linear-client",
+      scopes: ["read"],
+      authType: "oauth",
+      metadata: {},
+    }]), { mode: 0o600 });
+
+    const manager = new ConnectorManager({ storagePath: oauthStoragePath });
     const flow = await manager.initiateOAuth("linear");
-    const completed = await manager.completeOAuth("linear", "code_12345", flow.state);
+    assert.strictEqual(flow.providerId, "linear");
+    assert.ok(flow.state.length >= 16);
+    assert.ok(flow.authUrl.includes("client_id=configured-linear-client"));
+    assert.ok(flow.authUrl.includes(`state=${flow.state}`));
+    await assert.rejects(
+      manager.completeOAuth("linear", "code_12345", flow.state),
+      /token exchange is not implemented/,
+    );
 
-    assert.strictEqual(completed.status, "connected");
-    assert.strictEqual(completed.id, "linear");
-    assert.strictEqual(completed.authType, "oauth");
-    assert.ok(completed.account);
-    assert.ok(completed.connectedAt);
+    const failed = manager.getConnector("linear");
+    assert.strictEqual(failed?.status, "error");
+    assert.match(failed?.lastError || "", /token exchange is not implemented/);
+    assert.strictEqual(manager.getRawCredentials("linear")?.token, undefined);
 
-    // Verify persistence
-    const reloaded = new ConnectorManager({ storagePath });
+    const reloaded = new ConnectorManager({ storagePath: oauthStoragePath });
     await reloaded.ensureLoaded();
-    const reloadedLinear = reloaded.getConnector("linear");
-    assert.strictEqual(reloadedLinear?.status, "connected");
-    assert.strictEqual(reloadedLinear?.account, completed.account);
+    assert.strictEqual(reloaded.getConnector("linear")?.status, "error");
+    assert.strictEqual(reloaded.getRawCredentials("linear")?.token, undefined);
+  });
 
-    // Verify token round-trip restoration from vault
-    const reloadedCreds = await reloaded.getRawCredentialsAsync("linear");
-    assert.ok(reloadedCreds?.token, "Token must be restored from vault upon reload");
-    assert.strictEqual(reloadedCreds?.token, (manager.getRawCredentials("linear"))?.token);
+  it("demotes legacy placeholder OAuth credentials instead of showing them connected", async () => {
+    const placeholderPath = path.join(tmpDir, "legacy-placeholder.json");
+    const placeholder = "oauth_github_0123456789abcdef01234567";
+    fs.writeFileSync(placeholderPath, JSON.stringify([{
+      id: "github",
+      status: "connected",
+      token: placeholder,
+      account: "github-org/app",
+      connectedAt: "2026-11-13T00:00:00.000Z",
+      scopes: ["repo"],
+      authType: "oauth",
+      metadata: { installedVia: "oauth_flow" },
+    }]), { mode: 0o600 });
 
-    // Verify disk hygiene: token is vaulted, NOT plaintext in connectors.json
-    const diskJson = fs.readFileSync(storagePath, "utf-8");
-    const rawToken = manager.getRawCredentials("linear")?.token;
-    assert.ok(rawToken && rawToken.startsWith("oauth_linear_"));
-    assert.ok(!diskJson.includes(rawToken), "Plaintext token must not exist in connectors.json");
+    const manager = new ConnectorManager({ storagePath: placeholderPath });
+    await manager.ensureLoaded();
+
+    const github = manager.getConnector("github");
+    assert.strictEqual(github?.status, "disconnected");
+    assert.strictEqual(github?.account, undefined);
+    assert.match(github?.lastError || "", /was not completed/i);
+    assert.strictEqual(manager.getRawCredentials("github")?.token, undefined);
+    await assert.rejects(
+      manager.configureToken("github", { token: placeholder }),
+      /placeholder tokens are not valid/,
+    );
+    assert.ok(!fs.readFileSync(placeholderPath, "utf8").includes(placeholder));
   });
 
   it("migrates legacy plaintext tokens in connectors.json to encrypted vault and sanitizes disk file", async () => {
@@ -107,7 +129,8 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
 
     // 1. In memory, token is preserved and connection verified
     const testRes = await manager.testConnection("slack");
-    assert.strictEqual(testRes.ok, true);
+    assert.strictEqual(testRes.ok, false);
+    assert.match(testRes.message, /not implemented/i);
     assert.strictEqual(testRes.account, "Legacy Workspace");
 
     const creds = await manager.getRawCredentialsAsync("slack");
@@ -138,7 +161,8 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
 
     // Test connection
     const testRes = await manager.testConnection("slack");
-    assert.strictEqual(testRes.ok, true);
+    assert.strictEqual(testRes.ok, false);
+    assert.match(testRes.message, /not implemented/i);
     assert.strictEqual(testRes.account, "Acme Slack Workspace");
 
     // Disconnect
@@ -160,13 +184,13 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
     // Calling ensureLoaded sequentially
     await manager.ensureLoaded();
 
-    // Directly calling initiateOAuth internally ensures loaded without issue
-    const flow = await manager.initiateOAuth("github");
-    assert.strictEqual(flow.providerId, "github");
+    // Directly calling an async operation internally ensures loaded without issue.
+    const result = await manager.testConnection("github");
+    assert.strictEqual(result.ok, false);
 
-    // Calling ensureLoaded again after operations is a safe no-op
+    // Calling ensureLoaded again after operations is a safe no-op.
     await manager.ensureLoaded();
-    assert.strictEqual(manager.getConnector("github")?.status, "connecting");
+    assert.strictEqual(manager.getConnector("github")?.status, "disconnected");
   });
 
   it("formats and parses [connect-app] markers for inline cards", () => {
@@ -197,6 +221,39 @@ describe("3rd-Party OAuth Connectors & Connect Cards", () => {
     assert.strictEqual(isParallelSafeTool("slack_post_message"), false);
     assert.strictEqual(isParallelSafeTool("linear_create_issue"), false);
     assert.strictEqual(isParallelSafeTool("github_app_action"), false);
+  });
+
+  it("never reports GitHub ready from a stored OAuth placeholder", async () => {
+    const placeholderPath = path.join(tmpDir, "placeholder-tool.json");
+    fs.writeFileSync(placeholderPath, JSON.stringify([{
+      id: "github",
+      status: "connected",
+      token: "oauth_github_0123456789abcdef01234567",
+      account: "github-org/app",
+      scopes: ["repo"],
+      authType: "oauth",
+      metadata: { installedVia: "oauth_flow" },
+    }]), { mode: 0o600 });
+
+    const manager = new ConnectorManager({ storagePath: placeholderPath });
+    await manager.ensureLoaded();
+    assert.strictEqual(manager.getConnector("github")?.status, "disconnected");
+
+    const daemon = new LocalExecDaemon({ stateDir: path.join(tmpDir, "placeholder-daemon") });
+    try {
+      registerOrchestratorTools({
+        daemon,
+        connectorManager: manager,
+        githubClient: { isConnected: () => false } as any,
+      });
+
+      const result = await daemon.executeTool("show_app_access", { app_id: "github" });
+      assert.ok(typeof result.output === "string");
+      assert.ok(result.output.includes(CONNECT_APP_MARKER));
+      assert.ok(!result.output.includes('"status":"ready"'));
+    } finally {
+      fs.rmSync(path.join(tmpDir, "placeholder-daemon"), { recursive: true, force: true });
+    }
   });
 
   it("executes connector tools in orchestrator and handles connect refusals", async () => {

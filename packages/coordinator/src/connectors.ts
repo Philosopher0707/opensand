@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as crypto from "node:crypto";
 import { VaultStore } from "./vault-store.js";
+import { isPlaceholderConnectorToken } from "./connector-token.js";
 
 export type ConnectorProviderId = "slack" | "linear" | "github";
 
@@ -138,9 +139,15 @@ export function parseConnectPrompt(text: string): { prompt: ConnectPrompt | null
   }
 }
 
+export class OAuthUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OAuthUnavailableError";
+  }
+}
+
 export interface ConnectorManagerOptions {
   storagePath?: string;
-  mockNetwork?: boolean;
   vaultStore?: VaultStore;
 }
 
@@ -148,13 +155,12 @@ export class ConnectorManager {
   private storagePath: string;
   private connectors: Map<ConnectorProviderId, StoredConnectorCredentials> = new Map();
   private pendingStates: Map<string, { providerId: ConnectorProviderId; createdAt: number }> = new Map();
-  private mockNetwork: boolean;
+  private placeholderConnectorIds: Set<ConnectorProviderId> = new Set();
   private vaultStore?: VaultStore;
   private initPromise: Promise<void>;
 
   constructor(options?: ConnectorManagerOptions) {
     this.storagePath = options?.storagePath || path.join(os.homedir(), ".config", "opensand", "connectors.json");
-    this.mockNetwork = options?.mockNetwork ?? true;
     this.vaultStore = options?.vaultStore ?? new VaultStore({ baseDir: path.join(path.dirname(this.storagePath), "vault") });
     this.initializeDefaultConnectors();
     this.loadFromDiskSync();
@@ -188,12 +194,21 @@ export class ConnectorManager {
           for (const item of parsed) {
             if (item && item.id && OAUTH_PROVIDERS[item.id as ConnectorProviderId]) {
               const id = item.id as ConnectorProviderId;
-              // Synchronously restore vaulted token so sync callers never experience a race
-              if (!item.token && this.vaultStore) {
-                const sec = this.vaultStore.getSecretSync(`connector_token_${id}`);
-                if (sec?.value) {
-                  item.token = sec.value;
-                }
+              let token = item.token as string | undefined;
+              // Synchronously restore vaulted token so sync callers never experience a race.
+              if (!token && this.vaultStore) {
+                token = this.vaultStore.getSecretSync(`connector_token_${id}`)?.value;
+              }
+              if (isPlaceholderConnectorToken(token)) {
+                this.placeholderConnectorIds.add(id);
+                item.status = "disconnected";
+                delete item.token;
+                delete item.account;
+                delete item.connectedAt;
+                item.metadata = {};
+                item.lastError = "OAuth authorization was not completed. Configure a token manually.";
+              } else if (token) {
+                item.token = token;
               }
               this.connectors.set(id, item);
             }
@@ -210,6 +225,11 @@ export class ConnectorManager {
     try {
       let needsSave = false;
       for (const [id, cred] of this.connectors.entries()) {
+        if (this.placeholderConnectorIds.has(id)) {
+          await this.vaultStore.deleteSecret(`connector_token_${id}`);
+          needsSave = true;
+          continue;
+        }
         // Issue 3: Stale plaintext migration - if an older connectors.json had a plaintext token, vault it
         if (cred.token) {
           await this.vaultStore.putSecret({
@@ -334,11 +354,14 @@ export class ConnectorManager {
       throw new Error(`Unknown connector provider: ${id}`);
     }
 
+    const creds = this.connectors.get(id);
+    const clientId = creds?.clientId?.trim();
+    if (!clientId) {
+      throw new OAuthUnavailableError(`${provider.name} OAuth is not configured. Add a personal access token instead.`);
+    }
+
     const state = crypto.randomBytes(16).toString("hex");
     this.pendingStates.set(state, { providerId: id, createdAt: Date.now() });
-
-    const creds = this.connectors.get(id);
-    const clientId = creds?.clientId || `opensand-${id}-client`;
     const rUri = redirectUri || creds?.redirectUri || "http://127.0.0.1:3456/api/connectors/callback";
 
     const url = new URL(provider.authorizationUrl);
@@ -363,7 +386,7 @@ export class ConnectorManager {
 
   public async completeOAuth(
     id: ConnectorProviderId,
-    code: string,
+    _code: string,
     state?: string
   ): Promise<ConnectorState> {
     await this.ensureLoaded();
@@ -372,35 +395,17 @@ export class ConnectorManager {
       throw new Error(`Unknown connector provider: ${id}`);
     }
 
-    if (state && !this.pendingStates.has(state)) {
-      // Tolerated if direct flow, but logged
+    if (state) this.pendingStates.delete(state);
+    const message = `${provider.name} OAuth token exchange is not implemented. Add a personal access token instead.`;
+    const creds = this.connectors.get(id);
+    if (creds) {
+      creds.status = "error";
+      creds.lastError = message;
+      delete creds.account;
+      delete creds.connectedAt;
     }
-    if (state) {
-      this.pendingStates.delete(state);
-    }
-
-    // Provision connection
-    const token = `oauth_${id}_${crypto.randomBytes(12).toString("hex")}`;
-    const account = id === "slack" ? "workspace.slack.com" : id === "linear" ? "Acme Engineering" : "github-org/app";
-    
-    const creds: StoredConnectorCredentials = {
-      id,
-      status: "connected",
-      token,
-      account,
-      connectedAt: new Date().toISOString(),
-      scopes: provider.defaultScopes,
-      authType: "oauth",
-      metadata: {
-        installedVia: "oauth_flow",
-        codeSnippet: code.slice(0, 4) + "...",
-      },
-    };
-
-    this.connectors.set(id, creds);
     await this.saveToDisk();
-
-    return this.getConnector(id)!;
+    throw new OAuthUnavailableError(message);
   }
 
   public async configureToken(
@@ -424,6 +429,9 @@ export class ConnectorManager {
     }
 
     const cleanToken = input.token.trim();
+    if (isPlaceholderConnectorToken(cleanToken)) {
+      throw new Error("OAuth placeholder tokens are not valid credentials");
+    }
     let detectedAccount = input.account;
     if (!detectedAccount) {
       if (id === "slack") detectedAccount = "Slack Bot";
@@ -484,10 +492,9 @@ export class ConnectorManager {
       return { ok: false, message: `${provider.name} is not connected.` };
     }
 
-    // In offline or mock mode, confirm token presence and account
     return {
-      ok: true,
-      message: `Successfully verified connection to ${provider.name}.`,
+      ok: false,
+      message: `Live connection testing for ${provider.name} is not implemented; the credential is stored but unverified.`,
       account: creds.account,
     };
   }

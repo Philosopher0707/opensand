@@ -1,14 +1,14 @@
 import { execFileSync } from "node:child_process";
+import { isPlaceholderConnectorToken } from "./connector-token.js";
 
 /**
  * A GitHub client that performs real REST calls with a real token.
  *
  * Why this exists next to `ConnectorManager`: that class owns OAuth *state*
  * (status, scopes, where the token lives on disk). It deliberately does not
- * talk to provider APIs — `connectors.ts` makes no fetches at all, and its
- * `completeOAuth` mints a placeholder token. Everything that needs to actually
- * reach GitHub goes through here, so a caller can never mistake recorded state
- * for a completed call.
+ * talk to provider APIs. Legacy placeholder tokens from its old OAuth stub are
+ * rejected here and by the connector store. Everything that needs to actually
+ * reach GitHub goes through this client.
  *
  * Failures are returned, never invented. There is no success path that does not
  * come from a 2xx response, and no field that is not derived from response data.
@@ -78,6 +78,11 @@ function userAgent(): string {
   return "opensand-github-connector";
 }
 
+function usableGitHubToken(token: string | null | undefined): string | null {
+  const clean = token?.trim();
+  return clean && !isPlaceholderConnectorToken(clean) ? clean : null;
+}
+
 /**
  * Resolve a GitHub token, in priority order:
  *   1. explicit argument (callers that hold one already)
@@ -85,19 +90,21 @@ function userAgent(): string {
  *   3. `gh auth token` — the CLI the operator is already signed in with
  *
  * Returns null when none are available, so callers can report "not connected"
- * rather than failing opaquely mid-call.
+ * rather than failing opaquely mid-call. Legacy OAuth placeholder tokens are
+ * never accepted.
  */
 export function resolveGitHubToken(explicit?: string): string | null {
-  if (explicit && explicit.trim()) return explicit.trim();
-  const env = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-  if (env && env.trim()) return env.trim();
+  const supplied = usableGitHubToken(explicit);
+  if (supplied) return supplied;
+  const env = usableGitHubToken(process.env.GITHUB_TOKEN || process.env.GH_TOKEN);
+  if (env) return env;
   try {
     const out = execFileSync("gh", ["auth", "token"], {
       encoding: "utf-8",
       timeout: 5000,
       stdio: ["ignore", "pipe", "ignore"],
     });
-    if (out && out.trim()) return out.trim();
+    return usableGitHubToken(out);
   } catch {
     // gh absent or not signed in — fall through to "unconnected"
   }

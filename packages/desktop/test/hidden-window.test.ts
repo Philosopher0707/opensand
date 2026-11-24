@@ -35,8 +35,17 @@ test("hermeticElectronEnv: every test launch gets the hidden-window flag", async
 
 function makeFakeElectron() {
   const appEvents = new Map<string, Array<() => void>>();
+  const webContentEvents = new Map<string, (...args: any[]) => any>();
   const windowOptions: any[] = [];
-  const calls = { show: 0, focus: 0, moveTop: 0, activatePolicy: [] as string[], dockHide: 0 };
+  const calls = {
+    show: 0,
+    focus: 0,
+    moveTop: 0,
+    activatePolicy: [] as string[],
+    dockHide: 0,
+    quit: 0,
+    errorBoxes: [] as Array<[string, string]>,
+  };
   let dockIconSet = 0;
 
   class FakeBrowserWindow {
@@ -46,7 +55,9 @@ function makeFakeElectron() {
       this.webContents = {
         send: () => {},
         setWindowOpenHandler: () => {},
-        on: () => {},
+        on: (name: string, callback: (...args: any[]) => any) => {
+          webContentEvents.set(name, callback);
+        },
       };
     }
     loadURL() { return Promise.resolve(); }
@@ -78,14 +89,16 @@ function makeFakeElectron() {
         list.push(cb);
         appEvents.set(name, list);
       },
-      quit: () => {},
+      quit: () => { calls.quit++; },
     },
     BrowserWindow: FakeBrowserWindow,
     ipcMain: { handle: () => {}, on: () => {} },
-    dialog: { showErrorBox: () => {} },
+    dialog: {
+      showErrorBox: (title: string, message: string) => { calls.errorBoxes.push([title, message]); },
+    },
     shell: { openExternal: async () => {} },
   };
-  return { electron, appEvents, windowOptions, calls, dockIconCount: () => dockIconSet };
+  return { electron, appEvents, webContentEvents, windowOptions, calls, dockIconCount: () => dockIconSet };
 }
 
 test("DesktopApp hidden mode: no visible window, Dock icon, tray or focus steal", async () => {
@@ -123,6 +136,32 @@ test("DesktopApp hidden mode: no visible window, Dock icon, tray or focus steal"
       assert.deepStrictEqual(fake.calls.activatePolicy, ["accessory"]);
       assert.strictEqual(fake.calls.dockHide, 1);
     }
+  } finally {
+    await closeThenRemove([(app as any).server], stateDir);
+  }
+});
+
+test("DesktopApp reports a preload failure and quits instead of running without the secure bridge", async (t) => {
+  t.mock.method(console, "error", () => {});
+  const fake = makeFakeElectron();
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-preload-failure-"));
+  const app = new DesktopApp({
+    loadElectron: async () => fake.electron,
+    env: { OPENSAND_HIDDEN_WINDOW: "1", OPENSAND_STATE_DIR: stateDir },
+  });
+
+  try {
+    await app.start();
+    const handler = fake.webContentEvents.get("preload-error");
+    assert.ok(handler, "the window must listen for preload failures");
+
+    handler!({}, "/app/preload.cjs", new Error("bridge exploded"));
+
+    assert.strictEqual(fake.calls.errorBoxes.length, 1, "the owner must see a clear error");
+    assert.match(fake.calls.errorBoxes[0][0], /could not start/i);
+    assert.match(fake.calls.errorBoxes[0][1], /secure desktop bridge failed/i);
+    assert.match(fake.calls.errorBoxes[0][1], /bridge exploded/);
+    assert.strictEqual(fake.calls.quit, 1, "the app must not continue without its secure bridge");
   } finally {
     await closeThenRemove([(app as any).server], stateDir);
   }
