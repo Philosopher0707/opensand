@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pre-merge gate for OpenSand PRs: runs checks 1-5 and merges only when all pass.
-# Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] [--when-green [--timeout <min>]] [--no-post-merge-check] [--no-review "<reason>"] <PR-number>
+# Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] [--allow-github] [--when-green [--timeout <min>]] [--no-post-merge-check] [--no-review "<reason>"] <PR-number>
 #
 # A PR needs the `rigel-pass` label before it can merge; --no-review "<reason>" is the only
 # escape hatch and records the reason in the merge commit body. A stale base (Check 2) is
@@ -40,6 +40,7 @@ cd "$ROOT"
 DRY_RUN=0
 ALLOW_LOCKFILE=0
 ALLOW_BINARY=0
+ALLOW_GITHUB=0
 WHEN_GREEN=0
 POST_MERGE_CHECK=1
 NO_REVIEW=0
@@ -48,7 +49,7 @@ TIMEOUT_MIN=40
 # Seconds per --timeout unit (60 = minutes); only the selftest overrides it.
 TIMEOUT_UNIT_SECONDS="${PR_GATE_TIMEOUT_UNIT_SECONDS:-60}"
 PR=""
-USAGE="Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] [--when-green [--timeout <min>]] [--no-post-merge-check] [--no-review \"<reason>\"] <PR-number>"
+USAGE="Usage: scripts/pr-gate.sh [--dry-run] [--allow-lockfile] [--allow-binary] [--allow-github] [--when-green [--timeout <min>]] [--no-post-merge-check] [--no-review \"<reason>\"] <PR-number>"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -62,6 +63,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --allow-binary)
       ALLOW_BINARY=1
+      shift
+      ;;
+    --allow-github)
+      ALLOW_GITHUB=1
       shift
       ;;
     --when-green)
@@ -639,6 +644,21 @@ const namesRaw = process.argv[1];
 const fullDiff = process.argv[2];
 const allowLockfile = process.argv[3] === "1";
 const allowBinary = process.argv[4] === "1";
+const allowGithub = process.argv[5] === "1";
+const prJsonRaw = process.argv[6];
+const pr = process.argv[7];
+
+let hasOwnerApprovedGithub = false;
+try {
+  const prData = JSON.parse(prJsonRaw || "{}");
+  const labels = (prData.labels || []).map(l => (typeof l === "string" ? l : (l && l.name) || ""));
+  hasOwnerApprovedGithub = labels.includes("owner-approved-github");
+} catch {}
+
+if (allowGithub && !hasOwnerApprovedGithub) {
+  console.error("FAIL: --allow-github requires label owner-approved-github on PR #" + pr + " (owner approval required for .github changes)");
+  process.exit(1);
+}
 
 const files = namesRaw.split("\n").map(s => s.trim()).filter(Boolean);
 
@@ -667,8 +687,12 @@ for (const f of files) {
   }
 
   if (f === ".github" || f.startsWith(".github/")) {
-    console.error("FAIL: forbidden file in diff: " + f + " (changes under .github/ are forbidden)");
-    process.exit(1);
+    if (!allowGithub) {
+      console.error("FAIL: forbidden file in diff: " + f + " (changes under .github/ are forbidden)");
+      process.exit(1);
+    } else {
+      console.log("WARNING: --allow-github passed: allowing .github file in diff: " + f);
+    }
   }
 
   const isBinExt = /\.(png|jpe?g|zip|dmg)$/i.test(f);
@@ -684,7 +708,7 @@ for (const f of files) {
 }
 
 console.log("PASS: no forbidden files in diff (checked lockfile, .github/, and binaries)");
-' "$DIFF_NAMES" "$FULL_DIFF" "$ALLOW_LOCKFILE" "$ALLOW_BINARY" 2>&1) || CHECK3_STATUS=$?
+' "$DIFF_NAMES" "$FULL_DIFF" "$ALLOW_LOCKFILE" "$ALLOW_BINARY" "$ALLOW_GITHUB" "$PR_JSON" "$PR" 2>&1) || CHECK3_STATUS=$?
 
 if [[ "$CHECK3_STATUS" -ne 0 ]]; then
   echo "$CHECK3_OUT" >&2
