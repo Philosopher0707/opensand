@@ -13,6 +13,7 @@ import type { Room, DiscussionResult, CreateRoomInput } from "../../src/shell/ro
 import type { Routine, CreateRoutineInput } from "../../src/shell/routines-model";
 import type { Skill, CreateSkillInput } from "../../src/shell/skills-model";
 import type { Watcher, SentinelLog, CreateWatcherInput } from "../../src/shell/sentinel-model";
+import type { PolicyRule, PolicyAuditEntry, CreateRuleInput } from "../../src/shell/boundaries-model";
 import type { Attachment } from "../../src/shell/attachments-model";
 import type { VaultSecret, VaultCredential, SecretInput, CredentialInput } from "../../src/shell/vault-model";
 import { persistToken } from "../../src/shell/auth-model";
@@ -33,12 +34,10 @@ import type { BotsData } from "./data/bots";
 import type { SentinelData } from "./data/sentinel";
 import { botsData } from "./data/bots";
 import { sentinelData } from "./data/sentinel";
-
-export type { RoomsData, RoutinesData, SkillsData, AttachmentsData, VaultData, MemoriesData, BotsData, SentinelData };
-export { roomsData, routinesData, skillsData, attachmentsData, vaultData, memoriesData, botsData, sentinelData };
-
-
-export type { SessionSummary, SessionRow, MissionSummary, ToolApprovalRequest, PreviewRestoreResult, TimelineForkResult, TurnEvent, Room, DiscussionResult, CreateRoomInput, Routine, CreateRoutineInput, Skill, CreateSkillInput, Attachment, VaultSecret, VaultCredential, SecretInput, CredentialInput, Watcher, SentinelLog, CreateWatcherInput };
+export type { Attachment, AttachmentsData, BotsData, BoundariesData, CreateRoomInput, CreateRoutineInput, CreateRuleInput, CreateSkillInput, CreateWatcherInput, CredentialInput, DiscussionResult, MemoriesData, MissionSummary, PolicyAuditEntry, PolicyRule, PreviewRestoreResult, Room, RoomsData, Routine, RoutinesData, SecretInput, SentinelData, SentinelLog, SessionRow, SessionSummary, Skill, SkillsData, TimelineForkResult, ToolApprovalRequest, TurnEvent, VaultCredential, VaultData, VaultSecret, Watcher };
+export { attachmentsData, botsData, boundariesData, memoriesData, roomsData, routinesData, sentinelData, skillsData, vaultData };
+import type { BoundariesData } from "./data/boundaries";
+import { boundariesData } from "./data/boundaries";
 
 /** sessionStorage can be blocked in a restricted page; keep the token in memory then. */
 function authStorage() {
@@ -146,7 +145,7 @@ export interface CoreShellData {
 
 }
 
-export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & AttachmentsData & VaultData & MemoriesData & BotsData & SentinelData;
+export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & AttachmentsData & VaultData & MemoriesData & BotsData & SentinelData & BoundariesData;
 
 export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
   const b = bridge ?? (typeof window !== "undefined" ? (window as any).opensand : undefined);
@@ -545,5 +544,6 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
     ...memoriesData(b, http),
     ...botsData(b, http),
     ...sentinelData(b, http),
+    ...boundariesData(b, http),
   };
 }
