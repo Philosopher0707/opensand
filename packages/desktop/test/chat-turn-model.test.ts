@@ -5,6 +5,7 @@ import {
   chatEventAction,
   chatTurnReducer,
   isChatBusy,
+  rateLimitRetryLabel,
   reconstructSessionMessages,
   type ChatMessage,
   type ChatTurnState,
@@ -262,4 +263,49 @@ test("streaming text across paced chunks preserves exact text without dropping d
   assert.strictEqual(s.status, "done");
   assert.strictEqual(s.messages[1].text, chunks.join(""));
   assert.strictEqual(s.messages[1]._rawText, undefined);
+});
+
+test("a retry event drives a live rate-limit label and the turn keeps its user message", () => {
+  const now = 1_700_000_000_000;
+  const event = {
+    type: "retry",
+    sessionId: "s1",
+    data: { attempt: 2, maxRetries: 6, delayMs: 7000, status: 429, provider: "openrouter", retryAt: now + 7000 },
+  };
+  assert.deepStrictEqual(chatEventAction(event, "s1"), {
+    type: "retry",
+    notice: { provider: "openrouter", attempt: 2, maxRetries: 6, retryAt: now + 7000 },
+  });
+
+  const busy = run({ type: "start", query: "hi" }, { type: "sent", sessionId: "s1" });
+  const retrying = chatTurnReducer(busy, chatEventAction(event, "s1") as any);
+  assert.strictEqual(retrying.status, "sending");
+  assert.strictEqual(retrying.messages[0].text, "hi", "the user's message stays for Retry");
+  assert.strictEqual(
+    rateLimitRetryLabel(retrying.retry, now),
+    "Rate limited by openrouter — retrying in 7s (attempt 2/6)"
+  );
+  assert.strictEqual(
+    rateLimitRetryLabel(retrying.retry, now + 3000),
+    "Rate limited by openrouter — retrying in 4s (attempt 2/6)"
+  );
+
+  // Stop clears the wait immediately; a late retry event cannot resurrect it.
+  const stopped = chatTurnReducer(retrying, { type: "stopped" });
+  assert.strictEqual(stopped.retry, null);
+  assert.strictEqual(stopped.messages[0].text, "hi");
+  assert.strictEqual(chatTurnReducer(stopped, chatEventAction(event, "s1") as any), stopped);
+});
+
+test("a failed turn clears the retry label and the Retry button becomes available", () => {
+  const retrying = run(
+    { type: "start", query: "hi" },
+    { type: "retry", notice: { attempt: 1, maxRetries: 6, retryAt: 1_700_000_000_000 } }
+  );
+  assert.ok(retrying.retry);
+  const failed = chatTurnReducer(retrying, { type: "failed", message: "still rate limited" });
+  assert.strictEqual(failed.retry, null);
+  assert.strictEqual(failed.status, "error");
+  assert.strictEqual(rateLimitRetryLabel(failed.retry), null);
+  assert.ok(failed.messages.some((m) => m.role === "user"), "the message stays for Retry");
 });

@@ -37,6 +37,13 @@ export interface ChatMessage {
   error?: string;
 }
 
+export interface RetryNotice {
+  provider?: string;
+  attempt: number;
+  maxRetries: number;
+  retryAt: number;
+}
+
 export interface ChatTurnState {
   status: ChatTurnStatus;
   messages: ChatMessage[];
@@ -44,6 +51,8 @@ export interface ChatTurnState {
   sessionId: string | null;
   /** Error message of the last failed turn, for the status line. */
   error: string;
+  /** Live rate-limit countdown for this turn, cleared when the turn ends. */
+  retry: RetryNotice | null;
 }
 
 export const INITIAL_CHAT_TURN: ChatTurnState = {
@@ -51,7 +60,15 @@ export const INITIAL_CHAT_TURN: ChatTurnState = {
   messages: [],
   sessionId: null,
   error: "",
+  retry: null,
 };
+
+/** Plain, live status text built from an onRetry event; `now` is injected for tests. */
+export function rateLimitRetryLabel(retry: RetryNotice | null, now: number = Date.now()): string | null {
+  if (!retry) return null;
+  const secs = Math.max(0, Math.ceil((retry.retryAt - now) / 1000));
+  return `Rate limited by ${retry.provider || "the provider"} — retrying in ${secs}s (attempt ${retry.attempt}/${retry.maxRetries})`;
+}
 
 export type ChatTurnAction =
   | { type: "start"; query: string }
@@ -62,6 +79,7 @@ export type ChatTurnAction =
   | { type: "tool_call"; tool: ToolCallItem }
   | { type: "tool_result"; tool: { id?: string; name?: string; status?: "done" | "error"; result?: any } }
   | { type: "approval" }
+  | { type: "retry"; notice: RetryNotice }
   | { type: "complete"; response?: string }
   | { type: "stopped" }
   | { type: "unavailable" }
@@ -142,6 +160,7 @@ export function chatTurnReducer(state: ChatTurnState = INITIAL_CHAT_TURN, action
         messages: [...state.messages, { role: "user", text: query }, { role: "assistant", text: "" }],
         sessionId: null,
         error: "",
+        retry: null,
       };
     }
     case "sent":
@@ -233,11 +252,15 @@ export function chatTurnReducer(state: ChatTurnState = INITIAL_CHAT_TURN, action
       // The turn is paused until the person answers in the Inbox; the next token or completion resumes it.
       if (!isChatBusy(state.status)) return state;
       return { ...state, status: "waiting" };
+    case "retry":
+      if (!isChatBusy(state.status)) return state;
+      return { ...state, retry: action.notice };
     case "complete": {
       if (!isChatBusy(state.status)) return state;
       return {
         ...state,
         status: "done",
+        retry: null,
         messages: updateAssistant(state, (m) => {
           let text = m.text;
           let thought = m.thought;
@@ -262,6 +285,7 @@ export function chatTurnReducer(state: ChatTurnState = INITIAL_CHAT_TURN, action
         ...state,
         status: "error",
         error: action.message,
+        retry: null,
         messages: updateAssistant(state, (m) => ({ ...m, error: action.message })),
       };
     case "stopped":
@@ -270,6 +294,7 @@ export function chatTurnReducer(state: ChatTurnState = INITIAL_CHAT_TURN, action
       return {
         ...state,
         status: "stopped",
+        retry: null,
         messages: updateAssistant(state, (m) => ({ ...m, note: "Stopped." })),
       };
     case "unavailable":
@@ -338,6 +363,19 @@ export function chatEventAction(event: TurnEvent, sessionId: string | null): Cha
     };
   }
   if (event.type === "approval_required") return { type: "approval" };
+  if (event.type === "retry") {
+    const d = event.data as any;
+    if (!d) return null;
+    return {
+      type: "retry",
+      notice: {
+        ...(d.provider ? { provider: String(d.provider) } : {}),
+        attempt: Number(d.attempt) || 1,
+        maxRetries: Number(d.maxRetries) || 1,
+        retryAt: Number(d.retryAt) || Date.now() + Number(d.delayMs || 0),
+      },
+    };
+  }
   if (event.type === "turn_complete") {
     return { type: "complete", response: event.data?.response || "" };
   }

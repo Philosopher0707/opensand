@@ -438,6 +438,17 @@ Examples:
       baseUrl: targetEndpoint,
       model: targetModel,
       apiKey: config.apiKey,
+      provider: config.provider as any,
+      onRetry: (info) => {
+        if (info.status === 429) {
+          ui.onRateLimitRetry({
+            provider: info.provider || config.provider,
+            attempt: info.attempt,
+            maxRetries: info.maxRetries,
+            retryAt: info.retryAt ?? Date.now() + info.delayMs,
+          });
+        }
+      },
     });
 
     const rulesLoader = new RulesLoader({ workspaceDir: trustedFolder });

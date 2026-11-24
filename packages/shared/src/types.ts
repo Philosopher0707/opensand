@@ -268,6 +268,7 @@ export type DesktopEventType =
   | 'tool_call'
   | 'tool_result'
   | 'approval_required'
+  | 'retry'
   | 'turn_complete'
   | 'turn_cancelled'
   | 'error'

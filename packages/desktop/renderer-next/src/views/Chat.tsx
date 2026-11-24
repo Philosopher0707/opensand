@@ -13,6 +13,7 @@ import {
   formatElapsed,
   isBlankAssistantTurn,
   isChatBusy,
+  rateLimitRetryLabel,
   reconstructSessionMessages,
   retryLabel,
   type ChatMessage,
@@ -129,7 +130,9 @@ export function useChatTurn(
   return { state, available, send, stop, load, dispatch, loadError, clearLoadError: () => setLoadError(null) };
 }
 
-function statusText(state: ChatTurnState): string {
+function statusText(state: ChatTurnState, now: number = Date.now()): string {
+  const rateLimitText = rateLimitRetryLabel(state.retry, now);
+  if (rateLimitText) return rateLimitText;
   switch (state.status) {
     case "sending":
       return "Sending…";
@@ -429,17 +432,22 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
   const [notice, setNotice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [now, setNow] = useState(Date.now());
   const [elapsed, setElapsed] = useState(0);
   const timerRunning = isChatBusy(state.status);
 
-  // One interval per turn: the cleanup runs on done, error, stop and unmount, so none is leaked.
+  // One interval per turn: cleanup runs on done, error, stop and unmount, so none is leaked.
+  // The same tick also drives the rate-limit countdown while the wait is visible.
   useEffect(() => {
     if (!timerRunning) {
       setElapsed(0);
       return;
     }
     const started = Date.now();
-    const tick = () => setElapsed(Math.floor((Date.now() - started) / 1000));
+    const tick = () => {
+      setElapsed(Math.floor((Date.now() - started) / 1000));
+      setNow(Date.now());
+    };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -700,8 +708,8 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
       </div>
       {/* Always mounted, so the first status change is announced. */}
       <div class="chat-status" role="status" aria-live="polite" data-status={state.status} data-elapsed={elapsed}>
-        <span>{statusText(state)}</span>
-        {timerRunning && <span class="chat-elapsed" aria-hidden="true"> {formatElapsed(elapsed)}</span>}
+        <span>{statusText(state, now)}</span>
+        {timerRunning && !state.retry && <span class="chat-elapsed" aria-hidden="true"> {formatElapsed(elapsed)}</span>}
         {notice && <div class="chat-turn-note" data-kind="notice">{notice}</div>}
         {(chat.loadError || loadError) && (
           <div class="chat-turn-error" role="alert">

@@ -20,6 +20,8 @@ export class ProviderError extends Error {
   public readonly statusCode: number;
   public readonly code?: string;
   public readonly retryAfterMs?: number;
+  /** Epoch ms when the provider says its rate-limit window resets. */
+  public readonly resetAt?: number;
   public readonly endpoint: string;
   public readonly provider?: string;
   public readonly upstreamDetail?: string;
@@ -32,6 +34,7 @@ export class ProviderError extends Error {
       endpoint: string;
       code?: string;
       retryAfterMs?: number;
+      resetAt?: number;
       provider?: string;
       upstreamDetail?: string;
       cause?: unknown;
@@ -44,6 +47,7 @@ export class ProviderError extends Error {
     this.endpoint = opts.endpoint;
     this.code = opts.code;
     this.retryAfterMs = opts.retryAfterMs;
+    this.resetAt = opts.resetAt;
     this.provider = opts.provider;
     this.upstreamDetail = opts.upstreamDetail;
     if (opts.cause) {
@@ -69,15 +73,44 @@ export function parseRetryAfterMs(header?: string | null): number | undefined {
   return undefined;
 }
 
+/** 429s get their own patient budget: free-model per-minute limits need far more than 3.5s. */
+const RATE_LIMIT_BACKOFF_MS = [2000, 5000, 10000, 20000, 30000, 30000] as const;
+const RATE_LIMIT_BUDGET_MS = 120_000;
+
+/** Providers send Retry-After and reset headers with inconsistent casing / array shapes. */
+function readHeader(headers: any, name: string): string | undefined {
+  return (
+    headers?.get?.(name) ??
+    headers?.get?.(name.toLowerCase()) ??
+    headers?.[name.toLowerCase()] ??
+    headers?.[name]
+  );
+}
+
+/** X-RateLimit-Reset arrives as epoch ms (OpenRouter), epoch seconds, or seconds from now. */
+function parseRateLimitReset(header?: string | null): number | undefined {
+  if (!header) return undefined;
+  const value = Number(header.trim());
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+  if (value > 1e12) return value;
+  if (value > 1e9) return value * 1000;
+  return Date.now() + value * 1000;
+}
+
 export type LLMRetryCallback = (info: {
   attempt: number;
   maxRetries: number;
   delayMs: number;
   status?: number;
+  provider?: string;
+  /** Epoch ms when the next attempt is due, for a live countdown in the UI. */
+  retryAt?: number;
 }) => void;
 
 export interface ExtendedLLMClientConfig extends LLMClientConfig {
   onRetry?: LLMRetryCallback;
+  /** Test seam: injectable wait; production uses the abortable timer below. */
+  sleepFn?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
 export class NetworkError extends Error {
@@ -284,7 +317,39 @@ export class UniversalLLMClient {
     return Math.min(base + jitter, maxBackoff);
   }
 
+  /**
+   * Plan one 429 retry. A reset further away than the remaining wall budget means a
+   * daily quota: waiting cannot help, so the caller fails at once and names the reset.
+   */
+  private planRateLimitRetry(
+    response: Response,
+    startedAt: number,
+    attempt: number
+  ): { delayMs: number; resetAt?: number; giveUp?: boolean } {
+    const now = Date.now();
+    const remaining = RATE_LIMIT_BUDGET_MS - (now - startedAt);
+    const parsedReset = parseRateLimitReset(readHeader(response.headers, "x-ratelimit-reset"));
+    const resetAt = parsedReset && parsedReset > now ? parsedReset : undefined;
+
+    if (resetAt && resetAt - now > remaining) {
+      return { delayMs: 0, resetAt, giveUp: true };
+    }
+
+    const retryAfterMs = parseRetryAfterMs(readHeader(response.headers, "retry-after"));
+    let delayMs = retryAfterMs ?? RATE_LIMIT_BACKOFF_MS[attempt - 1] ?? RATE_LIMIT_BACKOFF_MS[RATE_LIMIT_BACKOFF_MS.length - 1];
+    if (resetAt) {
+      // Never retry before the provider says the window resets.
+      delayMs = Math.max(delayMs, resetAt - now);
+    }
+    if (delayMs > remaining) {
+      if (resetAt) return { delayMs: 0, resetAt, giveUp: true };
+      delayMs = remaining;
+    }
+    return { delayMs: Math.max(0, delayMs), resetAt };
+  }
+
   private async sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+    if (this.config.sleepFn) return this.config.sleepFn(ms, signal);
     if (signal?.aborted) {
       const err = new Error("This operation was aborted");
       err.name = "AbortError";
@@ -427,7 +492,14 @@ export class UniversalLLMClient {
       : this.buildOpenAIPayload(messages, tools);
 
     const maxRetries = this.config.maxRetries ?? 3;
+    // maxRetries: 0 still means "do not retry" for 429; the schedule is the default budget.
+    const maxRateAttempts = this.config.maxRetries === undefined
+      ? RATE_LIMIT_BACKOFF_MS.length
+      : Math.min(this.config.maxRetries, RATE_LIMIT_BACKOFF_MS.length);
+    const startedAt = Date.now();
     let attempt = 0;
+    let rateAttempt = 0;
+    let rateResetAt: number | undefined;
     const fetchFn = this.config.fetch ?? globalThis.fetch;
     const timeoutMs = this.config.timeoutMs ?? 120000;
     let response!: Response;
@@ -480,26 +552,6 @@ export class UniversalLLMClient {
 
       if (!response.ok) {
         const status = response.status;
-        const isRetryableStatus =
-          status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
-
-        const retryAfter =
-          response.headers?.get?.("retry-after") ??
-          response.headers?.get?.("Retry-After") ??
-          (response.headers as any)?.["retry-after"] ??
-          (response.headers as any)?.["Retry-After"];
-        const retryAfterMs = parseRetryAfterMs(retryAfter);
-
-        if (isRetryableStatus && attempt < maxRetries && !signal?.aborted) {
-          attempt++;
-          const delayMs = this.calculateBackoff(attempt, retryAfter);
-          if (this.config.onRetry) {
-            this.config.onRetry({ attempt, maxRetries, delayMs, status });
-          }
-          await this.sleepWithAbort(delayMs, signal);
-          continue;
-        }
-
         const errorText = await response.text();
         let detail = errorText;
         let errorCode: string | undefined;
@@ -514,6 +566,40 @@ export class UniversalLLMClient {
           }
         } catch {
           // Retain raw errorText
+        }
+        const retryAfter = readHeader(response.headers, "retry-after");
+        const retryAfterMs = parseRetryAfterMs(retryAfter);
+
+        if (status === 429 && rateAttempt < maxRateAttempts && !signal?.aborted) {
+          const plan = this.planRateLimitRetry(response, startedAt, rateAttempt + 1);
+          rateResetAt = plan.resetAt;
+          if (!plan.giveUp) {
+            rateAttempt++;
+            const delayMs = plan.delayMs;
+            if (this.config.onRetry) {
+              this.config.onRetry({
+                attempt: rateAttempt,
+                maxRetries: maxRateAttempts,
+                delayMs,
+                status,
+                provider: this.config.provider,
+                retryAt: Date.now() + delayMs,
+              });
+            }
+            await this.sleepWithAbort(delayMs, signal);
+            continue;
+          }
+        }
+
+        const isRetryableStatus = status === 500 || status === 502 || status === 503 || status === 504;
+        if (isRetryableStatus && attempt < maxRetries && !signal?.aborted) {
+          attempt++;
+          const delayMs = this.calculateBackoff(attempt, retryAfter);
+          if (this.config.onRetry) {
+            this.config.onRetry({ attempt, maxRetries, delayMs, status });
+          }
+          await this.sleepWithAbort(delayMs, signal);
+          continue;
         }
 
         if (response.status === 401) {
@@ -576,14 +662,18 @@ export class UniversalLLMClient {
         }
 
         if (response.status === 429) {
+          const resetHint = rateResetAt
+            ? `\n  Rate limit resets at ${new Date(rateResetAt).toLocaleTimeString()}. Wait for the reset, or switch to another model in Settings.`
+            : "";
           throw new ProviderError(
             `Rate limit or quota exceeded (429 Too Many Requests) at ${endpoint}.\n` +
-            `  Detail: ${detail}`,
+            `  Detail: ${detail}${resetHint}`,
             {
               status: 429,
               endpoint,
               code: errorCode || "RATE_LIMIT_EXCEEDED",
               retryAfterMs,
+              resetAt: rateResetAt,
               provider: this.config.provider,
               upstreamDetail: detail,
             }

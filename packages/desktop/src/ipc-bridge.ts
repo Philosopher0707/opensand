@@ -678,6 +678,9 @@ export class DesktopIpcBridge extends EventEmitter {
           model: targetModel,
           apiKey: this.settings.apiKey,
           provider: this.settings.provider,
+          onRetry: (info) => {
+            if (info.status === 429) this.emitEvent('retry', info);
+          },
         });
 
     const learnedRules = await this.habitExtractor.getLearnedRulesPromptContext();

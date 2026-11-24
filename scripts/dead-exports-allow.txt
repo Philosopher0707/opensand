@@ -131,6 +131,7 @@ packages/desktop/src/shell/chat-turn-model.ts|function extractThinking
 packages/desktop/src/shell/chat-turn-model.ts|function formatElapsed
 packages/desktop/src/shell/chat-turn-model.ts|function isBlankAssistantTurn
 packages/desktop/src/shell/chat-turn-model.ts|function isChatBusy
+packages/desktop/src/shell/chat-turn-model.ts|function rateLimitRetryLabel
 packages/desktop/src/shell/chat-turn-model.ts|function parseTranscriptText
 packages/desktop/src/shell/chat-turn-model.ts|function reconstructSessionMessages
 packages/desktop/src/shell/chat-turn-model.ts|function retryLabel
