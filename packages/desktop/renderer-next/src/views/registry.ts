@@ -10,6 +10,8 @@ import { MemoriesView } from "./MemoriesView";
 import { BotsView } from "./BotsView";
 import { SentinelView } from "./SentinelView";
 import { BoundariesView } from "./BoundariesView";
+import { SettingsView } from "./SettingsView";
+import { WelcomeView } from "./WelcomeView";
 
 export interface ViewProps {
   data: ShellData;
@@ -28,4 +30,6 @@ export const VIEW_COMPONENTS: Partial<Record<ViewId, ComponentType<ViewProps>>> 
   templates: BotsView,
   sentinel: SentinelView,
   boundaries: BoundariesView,
+  settings: SettingsView,
+  welcome: WelcomeView,
 };

@@ -135,7 +135,7 @@ export function Shell({ data }: ShellProps) {
   const [canvasState, setCanvasState] = useState<CanvasState>(createInitialCanvasState());
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [currentView, setCurrentView] = useState<ViewId>(() =>
-    parseViewFromLocation(window.location.search, window.location.hash)
+    parseViewFromLocation(window.location.search, window.location.hash, window.location.pathname)
   );
   const [theme, setTheme] = useState<Theme>(() => {
     let prefersDark = false;
@@ -298,7 +298,7 @@ export function Shell({ data }: ShellProps) {
   // Deep links: `?view=...` on first load, then #hash and back/forward navigation.
   useEffect(() => {
     const applyLocation = () => {
-      setCurrentView(parseViewFromLocation(window.location.search, window.location.hash));
+      setCurrentView(parseViewFromLocation(window.location.search, window.location.hash, window.location.pathname));
     };
     window.addEventListener("hashchange", applyLocation);
     window.addEventListener("popstate", applyLocation);
