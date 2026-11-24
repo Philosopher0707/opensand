@@ -245,6 +245,17 @@ packages/desktop/src/shell/sentinel-model.ts|function parseDebounce
 packages/desktop/src/shell/sentinel-model.ts|function sentinelLogView
 packages/desktop/src/shell/sentinel-model.ts|function validateCreateWatcherInput
 packages/desktop/src/shell/sentinel-model.ts|function watcherCardView
+packages/desktop/src/shell/boundaries-model.ts|const AUDIT_EMPTY_STATE
+packages/desktop/src/shell/boundaries-model.ts|const POLICY_EMPTY_STATE
+packages/desktop/src/shell/boundaries-model.ts|const RULE_VALIDATION_MESSAGE
+packages/desktop/src/shell/boundaries-model.ts|function auditEntryView
+packages/desktop/src/shell/boundaries-model.ts|function closeCreateRuleModal
+packages/desktop/src/shell/boundaries-model.ts|function createInitialModalState
+packages/desktop/src/shell/boundaries-model.ts|function openCreateRuleModal
+packages/desktop/src/shell/boundaries-model.ts|function parseList
+packages/desktop/src/shell/boundaries-model.ts|function policyActionClass
+packages/desktop/src/shell/boundaries-model.ts|function policyCardView
+packages/desktop/src/shell/boundaries-model.ts|function validateCreateRuleInput
 packages/desktop/src/shell/session-list-model.ts|const RELATIVE_UNITS
 packages/desktop/src/shell/session-list-model.ts|const SESSIONS_CHANGED_EVENT
 packages/desktop/src/shell/session-list-model.ts|function emptyState
