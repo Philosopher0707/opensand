@@ -194,3 +194,13 @@ runSliceSuite({
   resumeInLog: (log) => Boolean(log.args?.includes("resume")),
   planCheck: (log) => Boolean(log.args?.some((a: string) => a === 'sandbox_mode="read-only"')),
 });
+
+runSliceSuite({
+  engine: "codex",
+  label: "Codex",
+  fake: "codex",
+  reply: /done by codex/,
+  resumeReply: /resumed thread-abc/,
+  resumeInLog: (log) => Boolean(log.args?.includes("resume")),
+  planCheck: (log) => Boolean(log.args?.some((a: string) => a === 'sandbox_mode="read-only"')),
+});
