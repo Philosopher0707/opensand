@@ -1,0 +1,25 @@
+# Per-finding ignores: exact commits/positions only. A new key in any of these files gets a new fingerprint and fails the scan.
+# Recorded Copilot transcript used as a parser fixture: opaque apiCallId looks like a generic API key.
+687ad934e2846f831b5d9a4afd250b00b73f3012:packages/coordinator/test/fixtures/engines/fixtures/copilot-1.0.107-subagent.jsonl:generic-api-key:3
+# Recorded Copilot transcript used as a parser fixture: opaque apiCallId looks like a generic API key.
+687ad934e2846f831b5d9a4afd250b00b73f3012:packages/coordinator/test/fixtures/engines/fixtures/copilot-1.0.107-subagent.jsonl:generic-api-key:10
+# Recorded Copilot transcript used as a parser fixture: opaque apiCallId looks like a generic API key.
+687ad934e2846f831b5d9a4afd250b00b73f3012:packages/coordinator/test/fixtures/engines/fixtures/copilot-1.0.107-subagent.jsonl:generic-api-key:45
+# Recorded Copilot transcript used as a parser fixture: opaque apiCallId looks like a generic API key.
+687ad934e2846f831b5d9a4afd250b00b73f3012:packages/coordinator/test/fixtures/engines/fixtures/copilot-1.0.107-subagent.jsonl:generic-api-key:76
+# Fake token material in git staging/commit unit tests.
+a449867bf689429e4c0cdbad6fe85003a5444fa0:packages/coordinator/test/git-manager.test.ts:generic-api-key:79
+# Hard-coded fake GitHub PAT in a unit test asserting 401 handling and describe() redaction.
+21c2e2315b66a66b258482391960465196f61025:packages/coordinator/test/github-client.test.ts:github-pat:40
+# Hard-coded fake GitHub PAT in a unit test asserting 401 handling and describe() redaction.
+907d8c1c79f4f509d8edb096b2b9ca0c7f8abb8d:packages/coordinator/test/github-client.test.ts:github-pat:41
+# Hard-coded fake GitHub PAT in a unit test asserting 401 handling and describe() redaction.
+21c2e2315b66a66b258482391960465196f61025:packages/coordinator/test/github-client.test.ts:github-pat:51
+# Literal fake secret in a timing-attack unit test.
+e03195403786004f610d28a2e4cc0fc5707d4f35:packages/coordinator/test/webhook-gateway.test.ts:generic-api-key:126
+# Fake session ids/tokens in IPC bridge unit tests.
+b773d967c2fe2900fb917086dad9a68c7083be09:packages/desktop/test/ipc-bridge.test.ts:generic-api-key:287
+# Fake session ids/tokens in IPC bridge unit tests.
+b773d967c2fe2900fb917086dad9a68c7083be09:packages/desktop/test/ipc-bridge.test.ts:generic-api-key:302
+# Fake session ids/tokens in IPC bridge unit tests.
+b773d967c2fe2900fb917086dad9a68c7083be09:packages/desktop/test/ipc-bridge.test.ts:generic-api-key:308
