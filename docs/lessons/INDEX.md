@@ -130,4 +130,5 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-24 · [OS sandbox-hold tests must assert the platform's real behavior](2026-11-24-os-sandbox-hold-test-must-be-platform-aware.md)
 - 2026-11-24 · [Allow owner-approved .github changes in pre-merge gate via explicit flag and label](2026-11-24-pr-gate-allow-github-owner-label.md)
 - 2026-11-24 · [Full desktop suite can fail on a pre-existing navigation real-window timeout](2026-11-24-sentinel-full-suite-navigation-timeout.md)
+- 2026-11-24 · [An embedded form needs its own ids, and a remount reloads its fields](2026-11-24-inline-settings-form-ids-and-remount-race.md)
 - 2026-11-24 · [A brief's base ref can be stale locally, and the shared worktree base can be dirty](2026-11-24-settings-welcome-worktree-setup.md)

@@ -264,6 +264,11 @@ packages/desktop/src/shell/session-list-model.ts|function formatSessionError
 packages/desktop/src/shell/session-list-model.ts|function sessionRenameRequest
 packages/desktop/src/shell/session-list-model.ts|function toRow
 packages/desktop/src/shell/session-list-model.ts|function validateSessionTitle
+packages/desktop/src/shell/settings-model.ts|function maskedKey
+packages/desktop/src/shell/settings-model.ts|function saveErrorMessage
+packages/desktop/src/shell/settings-model.ts|function settingsPayload
+packages/desktop/src/shell/settings-model.ts|function validateSettingsForm
+packages/desktop/src/shell/settings-model.ts|function welcomeState
 packages/desktop/src/shell/skills-model.ts|const SKILL_EMPTY_STATE
 packages/desktop/src/shell/skills-model.ts|const SKILL_VALIDATION_MESSAGE
 packages/desktop/src/shell/skills-model.ts|function closeCreateSkillModal

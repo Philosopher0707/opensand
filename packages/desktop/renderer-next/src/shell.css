@@ -2032,6 +2032,33 @@
 @media (max-width: 600px) {
   .sentinel-view-container { padding: 16px; }
   #createWatcherModal { padding: 8px; }
+/* Provider setup: first-run /welcome and the Settings view share this form. */
+.settings-view-container, .welcome-view-container { padding: 24px; max-width: 820px; }
+.settings-form { display: grid; gap: 14px; max-width: 560px; }
+.settings-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.settings-field label { font-size: 13px; font-weight: 600; }
+.settings-field input, .settings-field select {
+  width: 100%; box-sizing: border-box; padding: 8px 10px;
+  border: 1px solid var(--border, rgba(128,128,128,.35));
+  border-radius: 6px; background: var(--bg-input, inherit); color: inherit;
+}
+.settings-field input:focus-visible, .settings-field select:focus-visible {
+  outline: 2px solid var(--accent, #4c8dff); outline-offset: 1px;
+}
+.settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-hint, .welcome-status { color: var(--text-muted, rgba(128,128,128,.9)); font-size: 13px; }
+.settings-error { color: #d93025; font-size: 13px; }
+.settings-success { color: #1a7f37; font-size: 13px; }
+.settings-loading, .welcome-loading { color: var(--text-muted, rgba(128,128,128,.9)); font-size: 13px; }
+.welcome-choices { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.welcome-choice, .welcome-inline-settings {
+  border: 1px solid var(--border, rgba(128,128,128,.35)); border-radius: 8px; padding: 16px; min-width: 0;
+}
+.welcome-choice h3, .welcome-inline-settings h3 { margin: 0 0 6px; font-size: 15px; }
+.welcome-choice p { margin: 0 0 12px; font-size: 13px; }
+@media (max-width: 600px) {
+  .settings-view-container, .welcome-view-container { padding: 16px; }
+  .settings-form { max-width: none; }
 }
 /* Phase 5 Row 23: Fail-Closed Boundaries grid, audit feed and create modal. */
 .boundaries-view-container { box-sizing: border-box; max-width: 100%; }

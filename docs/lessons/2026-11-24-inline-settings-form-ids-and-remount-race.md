@@ -1,0 +1,5 @@
+# An embedded form needs its own ids, and a remount reloads its fields
+
+**Trap:** The Welcome view rendered the Settings form inline while the registered Settings view stayed mounted and hidden. Both forms used the same input ids, so `label for` was ambiguous and a real-window runner could click the hidden copy. Reopening the inline form after Cancel remounted it: settings loaded again and overwrote a value the runner had just typed, so an empty-endpoint validation check silently passed instead of erroring.
+**Root Cause:** Opening an extra copy of a component does not unmount the original; duplicate ids are legal DOM but break label association and selector intent. A component that loads data in an effect reloads it on every mount, including a cancel/reopen cycle.
+**Rule:** Give an embedded copy a distinct id prefix for every field and button, and scope real-window selectors to its container. Wait for the form's inputs to become enabled after each (re)mount before typing, and assert an error is actually visible instead of assuming the click landed. [checked: `settings-welcome-real-window.test.ts`]

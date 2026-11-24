@@ -17,6 +17,8 @@ import type { PolicyRule, PolicyAuditEntry, CreateRuleInput } from "../../src/sh
 import type { Attachment } from "../../src/shell/attachments-model";
 import type { VaultSecret, VaultCredential, SecretInput, CredentialInput } from "../../src/shell/vault-model";
 import { persistToken } from "../../src/shell/auth-model";
+import type { OnboardingState } from "../../src/onboarding";
+import type { DesktopSettings } from "../../src/types";
 import { querySendArgs } from "../../src/shell/query-send-model";
 import type { RoomsData } from "./data/rooms";
 import type { RoutinesData } from "./data/routines";
@@ -136,6 +138,14 @@ export interface CoreShellData {
   stageAttachment?(filePath: string): Promise<{ id: string } | null>;
   listAttachments?(): Promise<any[]>;
   deleteAttachment?(id: string): Promise<void>;
+
+  // Setup / provider settings (Preact Settings and Welcome views)
+  /** Sanitized settings: the API key is a mask, never the stored secret. */
+  getSettings?(): Promise<DesktopSettings>;
+  saveSettings?(patch: Partial<DesktopSettings>): Promise<DesktopSettings>;
+  getOnboardingState?(): Promise<OnboardingState>;
+  saveOnboarding?(input: { mode: "ollama"; model?: string } | { mode: "key"; endpoint: string; model: string; apiKey: string }): Promise<{ ok: boolean }>;
+  testConnection?(input: { endpoint: string; model: string; apiKey: string; provider?: string }): Promise<{ ok: boolean; error?: string }>;
 
   // Phase 5 Row 12: Auth modal and token exchange
   /** Exchange a server token for a session cookie and remember it for later requests. */
@@ -299,6 +309,46 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
       const bridge = (window as any).opensand;
       if (!bridge?.onOpenSettings) return () => {};
       return bridge.onOpenSettings(callback);
+    },
+    async getSettings(): Promise<DesktopSettings> {
+      const res = await (http ?? fetch)("/api/settings");
+      if (!res.ok) throw new Error("Settings are unavailable");
+      return (await res.json()) as DesktopSettings;
+    },
+    async saveSettings(patch: Partial<DesktopSettings>): Promise<DesktopSettings> {
+      const res = await (http ?? fetch)("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error || `Settings save failed (HTTP ${res.status})`);
+      return payload as DesktopSettings;
+    },
+    async getOnboardingState(): Promise<OnboardingState> {
+      const res = await (http ?? fetch)("/api/onboarding");
+      if (!res.ok) throw new Error("Setup check is unavailable");
+      return (await res.json()) as OnboardingState;
+    },
+    async saveOnboarding(input): Promise<{ ok: boolean }> {
+      const res = await (http ?? fetch)("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error || `Setup failed (HTTP ${res.status})`);
+      return payload as { ok: boolean };
+    },
+    async testConnection(input): Promise<{ ok: boolean; error?: string }> {
+      const res = await (http ?? fetch)("/api/settings/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, error: payload?.error || "Could not test the connection." };
+      return payload as { ok: boolean; error?: string };
     },
     async rollback(): Promise<{ removedMessages: number; remainingMessages: number }> {
       const doFetch = http ?? fetch;
