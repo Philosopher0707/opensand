@@ -69,7 +69,7 @@ import {
   ExternalEngineConfig,
   EngineDetectionResult,
 } from '@opensand/coordinator';
-import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand, skillWriteNeedsGate, memoryWriteNeedsGate } from '@opensand/local-exec-daemon';
+import { LocalExecDaemon, StateManager, PolicyRule, PolicyAuditEntry, validateBashCommand, NESTED_SHELL_RE, skillWriteNeedsGate, memoryWriteNeedsGate } from '@opensand/local-exec-daemon';
 import { registerNativeTools } from '@opensand/native-bridge';
 import {
   EVENT,
@@ -85,12 +85,7 @@ import {
   effectOf,
   type ApprovalMode,
 } from '@opensand/shared';
-import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, SessionSummary, DesktopEvent, ToolDiscoverySummary } from './types.js';
-
-// A nested shell or runtime evaluation can assemble any command after this point,
-// so a regex denylist cannot see through it. Force a human prompt in every mode,
-// including auto. This is a prompt (mustPrompt), never a silent deny.
-const NESTED_SHELL_RE = /\b(?:sh|bash|zsh|dash)\b[^\n]*\s-[a-zA-Z]*c\b|\beval\b|\$\(|`|\|\s*(?:sh|bash|zsh|dash)\b|\bbase64\b[^\n]*\s-[a-zA-Z]*d\b[^\n]*\||\bsource\b|(?:^|[\s;&|])\.\s+\S+/;
+import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, ApprovalOutcome, SessionSummary, DesktopEvent, ToolDiscoverySummary } from './types.js';
 
 export interface IpcBridgeOptions {
   baseDir?: string;
@@ -148,7 +143,7 @@ export class DesktopIpcBridge extends EventEmitter {
   private coordinatorMap: Map<string, AgentCoordinator> = new Map();
   private activeApprovals: Map<string, {
     request: ToolApprovalRequest;
-    resolve: (approved: boolean) => void;
+    resolve: (outcome: ApprovalOutcome) => void;
     /** Set only for folder.trust requests: the answer is a trust level, not a yes/no. */
     resolveTrust?: (level: TrustLevel) => void;
   }> = new Map();
@@ -716,7 +711,9 @@ export class DesktopIpcBridge extends EventEmitter {
         rulesContext,
       },
       onApprovalRequired: async (req: ApprovalRequest) => {
-        return this.requestUserApproval(req.toolName, req.arguments, req.reason, req);
+        const outcome = await this.requestApprovalOutcome(req.toolName, req.arguments, req.reason, req);
+        if (outcome.modifiedArgs) req.modifiedArgs = outcome.modifiedArgs;
+        return outcome.approved;
       },
       isTainted: () => this.tainted,
       onEvent: (event: TurnEvent) => {
@@ -831,7 +828,7 @@ export class DesktopIpcBridge extends EventEmitter {
   private clearPendingApprovalsOnAbort(): void {
     for (const [approvalId, pending] of this.activeApprovals) {
       this.activeApprovals.delete(approvalId);
-      pending.resolve(false);
+      pending.resolve({ approved: false });
       pending.resolveTrust?.('prompt');
     }
   }
@@ -846,12 +843,22 @@ export class DesktopIpcBridge extends EventEmitter {
     return { success: true, cancelled: true };
   }
 
+  /** Backwards-compatible boolean view; the coordinator path uses requestApprovalOutcome to carry edits. */
   public async requestUserApproval(
     toolName: string,
     args: Record<string, unknown>,
     reason?: string,
     reqExtra?: { effect?: string; sandboxed?: boolean; note?: string }
   ): Promise<boolean> {
+    return (await this.requestApprovalOutcome(toolName, args, reason, reqExtra)).approved;
+  }
+
+  public async requestApprovalOutcome(
+    toolName: string,
+    args: Record<string, unknown>,
+    reason?: string,
+    reqExtra?: { effect?: string; sandboxed?: boolean; note?: string }
+  ): Promise<ApprovalOutcome> {
     if (this.daemon && !this.daemon.running && !this.backgroundDaemonStart) {
       const start: Promise<void> = this.ensureDaemon().then(
         () => {},
@@ -921,7 +928,7 @@ export class DesktopIpcBridge extends EventEmitter {
 
     // autoAllows only short-circuits when no safety gate demands a prompt (F1).
     if (!mustPrompt && autoAllows(mode, reqForCheck)) {
-      return true;
+      return { approved: true };
     }
 
     // Safety Ceiling: Skill write/mount and memory write require human confirmation unless autoApprovePersistent is on
@@ -935,7 +942,7 @@ export class DesktopIpcBridge extends EventEmitter {
     }
 
     if (this.settings.autoApprove && !mustPrompt) {
-      return true;
+      return { approved: true };
     }
 
     const approvalId = `appr-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
@@ -951,7 +958,7 @@ export class DesktopIpcBridge extends EventEmitter {
       note,
     };
 
-    return new Promise<boolean>((resolve) => {
+    return new Promise<ApprovalOutcome>((resolve) => {
       this.activeApprovals.set(approvalId, { request, resolve });
       this.emitEvent('approval_required', request);
     });
@@ -1038,6 +1045,7 @@ export class DesktopIpcBridge extends EventEmitter {
     }
     this.activeApprovals.delete(approvalId);
     pending.resolveTrust?.(level);
+    this.emitEvent('approval_resolved', { approvalId, action: decision.action });
     return { success: true };
   }
 
@@ -1066,6 +1074,12 @@ export class DesktopIpcBridge extends EventEmitter {
     if (pending.request.toolName === 'folder.trust') {
       return this.answerFolderTrust(approvalId, pending, decision);
     }
+
+    const wantsEdit = decision.action === 'approve_modified';
+    const modifiedArgs = wantsEdit ? decision.modifiedArgs : undefined;
+    // An edit must carry a real object; never fall back to the original args on a malformed edit.
+    const editValid = !wantsEdit || (!!modifiedArgs && typeof modifiedArgs === 'object' && !Array.isArray(modifiedArgs));
+    const approved = decision.action === 'approve_once' || decision.action === 'always_allow' || (wantsEdit && editValid);
 
     // Fail closed: an answer without the current epoch grants nothing. The check and the grant
     // write share one grants.lock hold (withEpoch), so a revoke cannot land between them.
@@ -1103,25 +1117,18 @@ export class DesktopIpcBridge extends EventEmitter {
     } catch (err) {
       if (err instanceof StaleEpochError && err.requestEpoch !== undefined) {
         this.activeApprovals.delete(approvalId);
-        pending.resolve(false);
+        pending.resolve({ approved: false });
+        // No approval_resolved here: a stale 409 must leave the answering card open for a retry.
       }
       throw err;
     }
 
     this.activeApprovals.delete(approvalId);
-
-    if (decision.action === 'always_allow') {
-      pending.resolve(true);
-      return { success: true };
-    }
-
-    if (decision.action === 'approve_once') {
-      pending.resolve(true);
-      return { success: true };
-    }
-
-    // Reject
-    pending.resolve(false);
+    pending.resolve(approved
+      ? { approved: true, ...(modifiedArgs ? { modifiedArgs } : {}) }
+      : { approved: false });
+    // One terminal event per answer, whichever surface answered (Inbox or chat).
+    this.emitEvent('approval_resolved', { approvalId, action: approved ? decision.action : 'reject' });
     return { success: true };
   }
 

@@ -425,6 +425,11 @@ export class DesktopServer {
       // Accept the epoch either inside the decision or beside it; the decision's own wins.
       const rawDecision = typeof body.decision === 'string' ? { action: body.decision } : (body.decision ?? {});
       const decision = { ...rawDecision, epoch: rawDecision.epoch ?? body.epoch };
+      if (decision.action === 'approve_modified' && (decision.modifiedArgs === null || typeof decision.modifiedArgs !== 'object' || Array.isArray(decision.modifiedArgs))) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'An edited approval needs modifiedArgs as an object.' }));
+        return;
+      }
       try {
         const result = await this.bridge.approveTool(body.approvalId, decision);
         res.writeHead(200, { 'Content-Type': 'application/json' });

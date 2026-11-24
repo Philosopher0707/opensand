@@ -154,6 +154,8 @@ export interface ApprovalRequest {
   effect?: string;
   sandboxed?: boolean;
   note?: string;
+  /** Per-decision arg edit from the answering surface; the turn loop must re-gate it before use. */
+  modifiedArgs?: Record<string, unknown>;
 }
 
 export type ApprovalDecision = "allow_once" | "allow_session" | "deny";
@@ -271,7 +273,8 @@ export type DesktopEventType =
   | 'error'
   | 'status'
   | 'sentinel'
-  | 'subagent';
+  | 'subagent'
+  | 'approval_resolved';
 
 export interface DesktopEvent {
   type: DesktopEventType;
