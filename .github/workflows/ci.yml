@@ -41,6 +41,45 @@ jobs:
       - name: Verify
         run: SKIP_INSTALL=1 bash scripts/verify.sh
 
+  security-gates:
+    name: Security gates (audit + secret scan)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # Third-party actions are pinned to full commit SHAs, never to a moving tag.
+      - name: Check out full history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10
+
+      - name: Dependency audit
+        run: pnpm audit --audit-level=high --prod
+
+      - name: Install pinned gitleaks
+        run: |
+          set -euo pipefail
+          version=8.30.1
+          checksum=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          archive="gitleaks_${version}_linux_x64.tar.gz"
+          curl -fsSLO "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}"
+          echo "${checksum}  ${archive}" | sha256sum -c -
+          tar -xzf "${archive}" gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+
+      - name: Secret scan (full history)
+        run: gitleaks detect --no-banner --redact --config .gitleaks.toml
+
   build-and-test-macos:
     name: Build & test (macOS, Node 22)
     runs-on: macos-latest
