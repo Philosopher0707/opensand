@@ -35,7 +35,7 @@ Scope: `origin/main` at the time of this audit (worktree base SHA `0b295506da246
 
 ### F5 fix verification
 
-- PR: pending link
+- PR: https://github.com/Philosopher0707/opensand/pull/216
 - Green `security-gates` run on the PR: pending run id
 - Red run proving the gate catches a fake AWS-style key on a throwaway branch (commit deleted, branch removed, never merged): pending run id
 
