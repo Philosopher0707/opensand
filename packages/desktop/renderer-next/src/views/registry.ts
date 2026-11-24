@@ -12,6 +12,7 @@ import { SentinelView } from "./SentinelView";
 import { BoundariesView } from "./BoundariesView";
 import { SettingsView } from "./SettingsView";
 import { WelcomeView } from "./WelcomeView";
+import { GraphsView } from "./GraphsView";
 
 export interface ViewProps {
   data: ShellData;
@@ -32,4 +33,5 @@ export const VIEW_COMPONENTS: Partial<Record<ViewId, ComponentType<ViewProps>>> 
   boundaries: BoundariesView,
   settings: SettingsView,
   welcome: WelcomeView,
+  graphs: GraphsView,
 };

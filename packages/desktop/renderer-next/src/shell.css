@@ -2097,3 +2097,34 @@
 #createRuleModal { padding: 16px; box-sizing: border-box; }
 #createRuleModal .modal-card { max-width: min(520px, 100%); box-sizing: border-box; }
 @media (max-width: 600px) { .boundaries-view-container { padding: 16px; } #createRuleModal { padding: 8px; } }
+/* Phase 5 Row 22: Agent Graphs grid and execution trace. */
+.graphs-view-container { box-sizing: border-box; max-width: 100%; }
+.graphs-view-container .dashboard-header { flex-wrap: wrap; gap: 12px; }
+.graphs-view-container .card-grid { min-width: 0; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
+.graphs-view-container .dashboard-card { min-width: 0; }
+.graphs-view-container .card-desc { min-width: 0; overflow-wrap: anywhere; }
+.graphs-view-container .card-footer { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.graphs-nodes { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.graph-node-badge { background: rgba(99, 102, 241, .15); color: #818cf8; }
+.graphs-section-title { font-size: 14px; margin: 20px 0 8px; }
+.graphs-empty, .graphs-loading {
+  grid-column: 1 / -1; text-align: center; color: var(--text-muted);
+  font-size: 13px; padding: 40px 12px; overflow-wrap: anywhere;
+}
+.graphs-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--danger, #dc2626); font-size: 13px; overflow-wrap: anywhere; }
+.graphs-feed { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-width: 100%; }
+.graph-item {
+  min-width: 0; max-width: 100%; box-sizing: border-box;
+  border: 1px solid var(--border-color, rgba(128,128,128,.3)); border-radius: 6px;
+  padding: 10px 12px; font-size: 12px; overflow-wrap: anywhere;
+}
+.graph-header-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.graph-trigger { margin-left: 8px; }
+.graph-time, .graphs-step { color: var(--text-muted); }
+.graph-output-box, .graph-proposal-box {
+  margin-top: 6px; padding: 8px; border-radius: 4px; max-width: 100%;
+  overflow-wrap: anywhere; white-space: pre-wrap;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--bg-code, rgba(0,0,0,.3));
+}
+@media (max-width: 600px) { .graphs-view-container { padding: 16px; } }

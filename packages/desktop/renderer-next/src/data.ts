@@ -14,6 +14,7 @@ import type { Routine, CreateRoutineInput } from "../../src/shell/routines-model
 import type { Skill, CreateSkillInput } from "../../src/shell/skills-model";
 import type { Watcher, SentinelLog, CreateWatcherInput } from "../../src/shell/sentinel-model";
 import type { PolicyRule, PolicyAuditEntry, CreateRuleInput } from "../../src/shell/boundaries-model";
+import type { AgentGraph, GraphRunResult, GraphTraceEvent } from "../../src/shell/graphs-model";
 import type { Attachment } from "../../src/shell/attachments-model";
 import type { VaultSecret, VaultCredential, SecretInput, CredentialInput } from "../../src/shell/vault-model";
 import { persistToken } from "../../src/shell/auth-model";
@@ -34,10 +35,12 @@ import type { MemoriesData } from "./data/memories";
 import { memoriesData } from "./data/memories";
 import type { BotsData } from "./data/bots";
 import type { SentinelData } from "./data/sentinel";
+import type { GraphsData } from "./data/graphs";
 import { botsData } from "./data/bots";
 import { sentinelData } from "./data/sentinel";
-export type { Attachment, AttachmentsData, BotsData, BoundariesData, CreateRoomInput, CreateRoutineInput, CreateRuleInput, CreateSkillInput, CreateWatcherInput, CredentialInput, DiscussionResult, MemoriesData, MissionSummary, PolicyAuditEntry, PolicyRule, PreviewRestoreResult, Room, RoomsData, Routine, RoutinesData, SecretInput, SentinelData, SentinelLog, SessionRow, SessionSummary, Skill, SkillsData, TimelineForkResult, ToolApprovalRequest, TurnEvent, VaultCredential, VaultData, VaultSecret, Watcher };
-export { attachmentsData, botsData, boundariesData, memoriesData, roomsData, routinesData, sentinelData, skillsData, vaultData };
+import { graphsData } from "./data/graphs";
+export type { AgentGraph, Attachment, AttachmentsData, BotsData, BoundariesData, CreateRoomInput, CreateRoutineInput, CreateRuleInput, CreateSkillInput, CreateWatcherInput, CredentialInput, DiscussionResult, GraphRunResult, GraphsData, GraphTraceEvent, MemoriesData, MissionSummary, PolicyAuditEntry, PolicyRule, PreviewRestoreResult, Room, RoomsData, Routine, RoutinesData, SecretInput, SentinelData, SentinelLog, SessionRow, SessionSummary, Skill, SkillsData, TimelineForkResult, ToolApprovalRequest, TurnEvent, VaultCredential, VaultData, VaultSecret, Watcher };
+export { attachmentsData, botsData, boundariesData, graphsData, memoriesData, roomsData, routinesData, sentinelData, skillsData, vaultData };
 import type { BoundariesData } from "./data/boundaries";
 import { boundariesData } from "./data/boundaries";
 
@@ -157,7 +160,7 @@ export interface CoreShellData {
 
 }
 
-export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & AttachmentsData & VaultData & MemoriesData & BotsData & SentinelData & BoundariesData;
+export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & AttachmentsData & VaultData & MemoriesData & BotsData & SentinelData & BoundariesData & GraphsData;
 
 export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
   const b = bridge ?? (typeof window !== "undefined" ? (window as any).opensand : undefined);
@@ -602,5 +605,6 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
     ...botsData(b, http),
     ...sentinelData(b, http),
     ...boundariesData(b, http),
+    ...graphsData(b, http),
   };
 }
