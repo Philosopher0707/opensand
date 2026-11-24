@@ -47,6 +47,10 @@ app.on("browser-window-created", (_e, w) => {
   w.webContents.on("did-finish-load", async () => {
     try {
       await wait("document.querySelector('#promptInput') && document.querySelector('#btnAttachFile') && document.body.classList.contains('is-electron')");
+      // A first run without a model opens /welcome, which hides the chat panel. Land on chat
+      // explicitly so the composer metrics measure the composer, not a hidden panel.
+      await js("location.hash = '#chat'");
+      await wait("document.querySelector('#promptInput').getBoundingClientRect().width > 0");
 
       const result = { sizes: {}, chipInteraction: false, popoverInteraction: false, dragDropInteraction: false, attachmentInteraction: false };
       const SIZES = [[960, 740, "compact"], [1920, 1080, "wide"]];
