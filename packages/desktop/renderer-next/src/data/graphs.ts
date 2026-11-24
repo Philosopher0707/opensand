@@ -42,14 +42,17 @@ export function graphsData(bridge?: any, http?: typeof fetch): GraphsData {
           // fall through to the HTTP route
         }
       }
-      const init = {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task: task || "" }),
-      };
       const res = http
-        ? await http(`/api/graphs/${encodeURIComponent(graphId)}/run`, init)
-        : await fetch(`/api/graphs/${encodeURIComponent(graphId)}/run`, init);
+        ? await http(`/api/graphs/${encodeURIComponent(graphId)}/run`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ task: task || "" }),
+          })
+        : await fetch(`/api/graphs/${encodeURIComponent(graphId)}/run`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ task: task || "" }),
+          });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || `Could not run graph (HTTP ${res.status})`);
       return data as GraphRunResult;
