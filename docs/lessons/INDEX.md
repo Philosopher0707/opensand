@@ -126,6 +126,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-24 · [A dirty base clone blocks worktree.sh, and CLI tests need the engine built](2026-11-24-cli-errors-dirty-base-and-unbuilt-engine.md)
 - 2026-11-24 · [Composer real-window test must leave the first-run welcome view](2026-11-24-composer-real-window-must-leave-welcome.md)
 - 2026-11-24 · [Fake runtime paths must fail closed, including legacy state](2026-11-24-fake-runtime-paths-fail-closed.md)
+- 2026-11-24 · [Gallery real-window test must stub the bridge, not a private hook](2026-11-24-gallery-real-window-stub-the-bridge.md)
 - 2026-11-24 · [A shared clone can make gitleaks report secrets that CI does not scan](2026-11-24-gitleaks-scan-all-refs.md)
 - 2026-11-24 · [An embedded form needs its own ids, and a remount reloads its fields](2026-11-24-inline-settings-form-ids-and-remount-race.md)
 - 2026-11-24 · [Job B: re-gating an edit must compare tiers; full verify can stall under load](2026-11-24-job-b-edit-regate-and-verify-contention.md)

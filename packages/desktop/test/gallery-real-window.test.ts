@@ -44,7 +44,7 @@ app.on("browser-window-created", (_e, w) => {
   win = w;
   w.webContents.on("did-finish-load", async () => {
     try {
-      await wait("document.querySelector('#galleryCardGrid') && document.body.classList.contains('is-electron')");
+      await wait("document.querySelector('#galleryCardGrid') && document.body.classList.contains('is-electron') && window.opensand");
       await js("(() => {\n" +
         "window.__gallery = [\n" +
           " { id: 'tpl-1', name: 'Code Reviewer', role: 'Reviewer', category: 'engineering', description: 'Reviews diffs', tags: ['review', 'qa'], rating: 4.5, downloads: 1234, author: 'Team', isCurated: true },\n" +
@@ -55,6 +55,7 @@ app.on("browser-window-created", (_e, w) => {
         "window.__installed = false;\n" +
         "window.__published = null;\n" +
         "window.__testGalleryTemplates = function (params) { window.__lastParams = params; if (!params || !params.query) return window.__gallery; return window.__gallery.filter((t) => (t.name || '').toLowerCase().includes(params.query.toLowerCase())); };\n" +
+        "window.opensand.getGalleryTemplates = async (params) => window.__testGalleryTemplates(params);\n" +
         "window.__testAgents = window.__agents;\n" +
         "const orig = window.fetch.bind(window);\n" +
         "window.fetch = async (input, init) => {\n" +

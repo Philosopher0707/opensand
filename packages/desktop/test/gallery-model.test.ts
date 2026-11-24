@@ -71,3 +71,32 @@ test("gallery-model: publish helpers", () => {
   assert.ok(PUBLISH_FALLBACK_AUTHOR.length > 0);
   assert.ok(GALLERY_EMPTY_STATE.includes("No agent templates"));
 });
+
+test("gallery-model: stub data source is used when set", async () => {
+  const { galleryData } = await import("../../renderer-next/src/data/gallery." + "ts");
+  const previousWindow = (globalThis as any).window;
+  const stub = [
+    { id: "tpl-1", name: "Code Reviewer" },
+    { id: "tpl-2", name: "Security Auditor" },
+  ];
+  let seenParams: unknown;
+  let networkCalls = 0;
+  (globalThis as any).window = {
+    __testGalleryTemplates: (params: unknown) => {
+      seenParams = params;
+      return stub;
+    },
+  };
+  const data = galleryData(undefined, (async () => {
+    networkCalls++;
+    throw new Error("network must not be used when a stub is set");
+  }) as typeof fetch);
+  try {
+    assert.deepStrictEqual(await data.getGalleryTemplates({ category: "all", query: "review" }), stub);
+    assert.deepStrictEqual(seenParams, { category: "all", query: "review" });
+    assert.strictEqual(networkCalls, 0);
+  } finally {
+    if (previousWindow === undefined) delete (globalThis as any).window;
+    else (globalThis as any).window = previousWindow;
+  }
+});
