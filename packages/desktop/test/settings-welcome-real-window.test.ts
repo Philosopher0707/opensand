@@ -1,3 +1,5 @@
+// CI only until hidden-window mode lands (Dex). A local run opens a real Electron window on the
+// owner's screen, so this test skips outside CI; GitHub's CI job still runs it.
 import { whenElectronExited } from "./helpers/electron-exit.js";
 import test from "node:test";
 import assert from "node:assert";
@@ -117,7 +119,11 @@ app.on("browser-window-created", (_e, w) => {
 await import(process.env.OPENSAND_MAIN);
 `;
 
-test("Preact welcome → save → chat and Settings menu real-window path", async (t) => {
+test("Preact welcome → save → chat and Settings menu real-window path (CI only until hidden-window mode lands)", async (t) => {
+  if (!process.env.CI && !process.env.OPENSAND_ALLOW_LOCAL_REAL_WINDOW) {
+    t.skip("CI only until hidden-window mode lands (Dex): local runs take over the screen");
+    return;
+  }
   const reason = skipReason();
   if (reason) {
     t.skip(reason);
