@@ -8,6 +8,7 @@ import { AttachmentsView } from "./AttachmentsView";
 import { VaultView } from "./VaultView";
 import { MemoriesView } from "./MemoriesView";
 import { BotsView } from "./BotsView";
+import { GalleryView } from "./GalleryView";
 import { SentinelView } from "./SentinelView";
 import { BoundariesView } from "./BoundariesView";
 import { SettingsView } from "./SettingsView";
@@ -30,6 +31,7 @@ export const VIEW_COMPONENTS: Partial<Record<ViewId, ComponentType<ViewProps>>> 
   templates: BotsView,
   sentinel: SentinelView,
   boundaries: BoundariesView,
+  gallery: GalleryView,
   settings: SettingsView,
   welcome: WelcomeView,
 };
