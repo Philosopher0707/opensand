@@ -164,6 +164,8 @@ export interface CoreShellData {
   getOnboardingState?(): Promise<OnboardingState>;
   saveOnboarding?(input: { mode: "ollama"; model?: string } | { mode: "key"; endpoint: string; model: string; apiKey: string }): Promise<{ ok: boolean }>;
   testConnection?(input: { endpoint: string; model: string; apiKey: string; provider?: string }): Promise<{ ok: boolean; error?: string }>;
+  /** Passive engine detection: binary lookup and version only, never credential files. */
+  detectEngines?(): Promise<Array<{ engine: string; installed: boolean }>>;
 
   // Phase 5 Row 12: Auth modal and token exchange
   /** Exchange a server token for a session cookie and remember it for later requests. */
@@ -352,6 +354,11 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error || `Settings save failed (HTTP ${res.status})`);
       return payload as DesktopSettings;
+    },
+    async detectEngines(): Promise<Array<{ engine: string; installed: boolean }>> {
+      const res = await (http ?? fetch)("/api/engines/detect");
+      if (!res.ok) return [];
+      return (await res.json()) as Array<{ engine: string; installed: boolean }>;
     },
     async getOnboardingState(): Promise<OnboardingState> {
       const res = await (http ?? fetch)("/api/onboarding");

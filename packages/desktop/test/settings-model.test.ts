@@ -1,13 +1,18 @@
 import test from "node:test";
 import assert from "node:assert";
 import {
+  ENGINE_OPTIONS,
   MASKED_KEY,
   connectionError,
+  enginePayload,
+  isExternalEngine,
   maskedKey,
+  resolveEngineChoice,
   saveErrorMessage,
   settingsPayload,
   validateSettingsForm,
   welcomeState,
+  type EngineId,
   type SettingsForm,
 } from "../src/shell/settings-model.js";
 
@@ -86,4 +91,41 @@ test("settings-model: welcome state reflects whether Ollama was found", () => {
   assert.strictEqual(missing.ollamaDetected, false);
   assert.strictEqual(missing.localEnabled, false);
   assert.match(missing.message, /not detected/i);
+});
+
+test("settings-model: engine choices disable missing binaries with a plain reason", () => {
+  assert.strictEqual(ENGINE_OPTIONS.length, 7);
+  assert.deepStrictEqual(ENGINE_OPTIONS.map((o) => o.id), [
+    "opensand", "claude", "opencode", "codex", "copilot", "antigravity", "workbuddy",
+  ]);
+  assert.strictEqual(isExternalEngine("opensand"), false);
+  assert.strictEqual(isExternalEngine("claude"), true);
+  assert.deepStrictEqual(enginePayload("opencode"), { engine: "opencode" });
+
+  const none = resolveEngineChoice("claude", []);
+  assert.strictEqual(none.selected, "opensand", "a missing engine falls back to the default");
+  assert.strictEqual(none.missing.length, 6);
+  assert.match(none.hint, /Claude Code is not installed on this computer/);
+  assert.match(none.hint, /WorkBuddy is not installed on this computer/);
+  assert.doesNotMatch(none.hint, /npm|CLI|--/);
+
+  const all = resolveEngineChoice("claude", ENGINE_OPTIONS.filter((o) => o.id !== "opensand").map((o) => ({ engine: o.id, installed: true })));
+  assert.strictEqual(all.selected, "claude");
+  assert.deepStrictEqual(all.missing, []);
+  assert.strictEqual(all.hint, "");
+
+  const partial = resolveEngineChoice("codex", [
+    { engine: "claude", installed: true },
+    { engine: "codex", installed: true },
+  ]);
+  assert.strictEqual(partial.selected, "codex");
+  assert.strictEqual(partial.missing.length, 4);
+});
+
+test("settings-model: external engines skip provider-field validation", () => {
+  const empty = form({ endpoint: "", model: "", apiKey: "" });
+  assert.match(validateSettingsForm(empty, false)!, /endpoint/i);
+  const engine: EngineId = "claude";
+  assert.strictEqual(validateSettingsForm(empty, false, engine), null);
+  assert.strictEqual(validateSettingsForm(empty, false, "opensand") !== null, true);
 });
