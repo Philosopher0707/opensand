@@ -1141,6 +1141,14 @@
           <input type="password" id="settingApiKey" class="form-control" placeholder="sk-... (blank = keep saved key)" autocomplete="off">
         </div>
         <div class="form-group">
+          <label for="settingEngine">Chat Engine</label>
+          <select id="settingEngine" class="form-control">
+            <option value="opensand">OpenSand (API key)</option>
+            <option value="claude">Claude Code (your account)</option>
+          </select>
+          <div id="engineHint" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;"></div>
+        </div>
+        <div class="form-group">
           <label for="settingApprovalMode">Approval Mode</label>
           <select id="settingApprovalMode" class="form-control">
             <option value="ask">Ask every time</option>
