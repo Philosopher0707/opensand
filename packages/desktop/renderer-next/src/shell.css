@@ -2056,6 +2056,7 @@
 }
 .welcome-choice h3, .welcome-inline-settings h3 { margin: 0 0 6px; font-size: 15px; }
 .welcome-choice p { margin: 0 0 12px; font-size: 13px; }
+.settings-form button:disabled, .welcome-choice button:disabled { opacity: .55; cursor: not-allowed; }
 @media (max-width: 600px) {
   .settings-view-container, .welcome-view-container { padding: 16px; }
   .settings-form { max-width: none; }

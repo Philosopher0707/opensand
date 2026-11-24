@@ -39,6 +39,7 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
   const id = (suffix: string) => (embedded ? `welcomeSettings${suffix}` : `settings${suffix}`);
 
   useEffect(() => {
+    if (!active && !embedded) return; // no request from the hidden registry panel
     let live = true;
     if (!data.getSettings) {
       setError("Settings are not available in this build.");
@@ -64,7 +65,7 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
     return () => {
       live = false;
     };
-  }, [data]);
+  }, [data, active, embedded]);
 
   const form: SettingsForm = { provider, endpoint, model, apiKey };
   const disabled = loading || busy !== null;
