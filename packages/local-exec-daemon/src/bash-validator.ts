@@ -35,6 +35,10 @@ const DANGEROUS_PATTERNS = [
   { pattern: /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/, reason: "Fork bomb detected" },
 ];
 
+// A nested shell or runtime evaluation can assemble any command after this point,
+// so a regex denylist cannot see through it. Force a human prompt in every mode.
+export const NESTED_SHELL_RE = /\b(?:sh|bash|zsh|dash)\b[^\n]*\s-[a-zA-Z]*c\b|\beval\b|\$\(|`|\|\s*(?:sh|bash|zsh|dash)\b|\bbase64\b[^\n]*\s-[a-zA-Z]*d\b[^\n]*\||\bsource\b|(?:^|[\s;&|])\.\s+\S+/;
+
 export function validateBashCommand(command: string): ValidationResult {
   const trimmed = command.trim();
   if (trimmed.length === 0) {

@@ -8,7 +8,7 @@ import {
   RevertResult,
   effectOf,
 } from "@opensand/shared";
-import { LocalExecDaemon, ToolExecutionResult, PolicyDecision, ToolDefinition, memoryWriteNeedsGate, skillWriteNeedsGate } from "@opensand/local-exec-daemon";
+import { LocalExecDaemon, ToolExecutionResult, PolicyDecision, ToolDefinition, memoryWriteNeedsGate, skillWriteNeedsGate, validateBashCommand, NESTED_SHELL_RE } from "@opensand/local-exec-daemon";
 import { wrapUntrusted, untrustedSourceFor, isStandingExecAllowed, escapeUntrustedText, neutraliseSystemLines } from "@opensand/shared";
 import { isParallelSafeTool } from "./tool-parallelism.js";
 import { UniversalLLMClient, ConsolidatedAssistantResponse } from "./llm-client.js";
@@ -201,6 +201,34 @@ export class AgentCoordinator {
       toolDefs = selectActiveTools(toolDefs, userQuery, this.toolScopeMode);
     }
     return toolDefs;
+  }
+
+  /**
+   * An edited answer is a one-off override: re-run the arg-dependent gates before using it.
+   * Returns a plain-language denial reason, or undefined when the edit may run.
+   */
+  private async denyModifiedArgs(toolName: string, args: Record<string, unknown>, originalAction: PolicyDecision["action"]): Promise<string | undefined> {
+    const gates = await this.daemon.getGates();
+    const policy: PolicyDecision = this.daemon.evaluatePolicy(toolName, args as Record<string, any>);
+    if (policy.action === 'DENY') return `The edited arguments were denied by policy: ${policy.reason}`;
+    if (policy.action === 'REQUIRE_APPROVAL' && originalAction !== 'REQUIRE_APPROVAL') {
+      return 'The edited arguments need a fresh approval.';
+    }
+
+    if (toolName === 'exec_command') {
+      const cmd = typeof args.command === 'string' ? args.command.trim() : '';
+      const validation = validateBashCommand(cmd);
+      if (!validation.valid || validation.isDangerous) {
+        return `The edited command is not allowed: ${validation.dangerReason ?? validation.error}`;
+      }
+      if (NESTED_SHELL_RE.test(cmd)) return 'The edited command runs another shell or evaluates text; it needs a fresh approval.';
+      if (args.unsandboxed === true) return 'The edited command runs outside the sandbox; it needs a fresh approval.';
+    }
+    if (memoryWriteNeedsGate(toolName, args as Record<string, any>) && !gates.memoryWriteAllowed) {
+      return 'The edited arguments write to memory; that needs a fresh approval.';
+    }
+    if (skillWriteNeedsGate(toolName)) return 'The edited arguments change a skill; that needs a fresh approval.';
+    return undefined;
   }
 
   /**
@@ -489,6 +517,23 @@ export class AgentCoordinator {
 
           this.emit({ type: "approval_requested", request: req });
           approvalGranted = await this.onApprovalRequired(req);
+
+          if (approvalGranted && req.modifiedArgs) {
+            // The person edited the args. Those edits never bypass a gate: re-check
+            // them and use them as the args of this one tool call only.
+            const denyReason = await this.denyModifiedArgs(tc.function.name, req.modifiedArgs, policy.action);
+            if (denyReason) {
+              prepared.push({
+                tc,
+                blockedResult: {
+                  status: "error",
+                  error: { code: "PERMISSION_DENIED", reason: "safety_gate", message: denyReason },
+                },
+              });
+              continue;
+            }
+            args = req.modifiedArgs as Record<string, any>;
+          }
 
           if (!approvalGranted) {
             const rejectedResult: ToolExecutionResult = {

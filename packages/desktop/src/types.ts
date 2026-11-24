@@ -30,9 +30,17 @@ export interface ToolDiscoverySummary {
 }
 
 export interface ApprovalDecision {
-  action: 'approve_once' | 'always_allow' | 'reject';
+  action: 'approve_once' | 'always_allow' | 'reject' | 'approve_modified';
   epoch?: number;
   reason?: string;
+  /** Edit applies to this decision only; never persisted as a standing grant. */
+  modifiedArgs?: Record<string, unknown>;
+}
+
+/** What a person's answer resolves to inside the bridge; the turn loop re-gates modifiedArgs. */
+export interface ApprovalOutcome {
+  approved: boolean;
+  modifiedArgs?: Record<string, unknown>;
 }
 
 export interface OpenSandBridgeApi {
