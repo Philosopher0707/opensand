@@ -109,13 +109,14 @@ test("settings dialog - chat engine selector has both choices and a plain reason
   assert.ok(html.includes('<option value="opencode" data-label="OpenCode">OpenCode (your account)</option>'), "OpenCode option");
   assert.ok(html.includes('<option value="codex" data-label="Codex">Codex (your account)</option>'), "Codex option");
   assert.ok(html.includes('<option value="copilot" data-label="GitHub Copilot">GitHub Copilot (your account)</option>'), "GitHub Copilot option");
+  assert.ok(html.includes('<option value="antigravity" data-label="Antigravity">Antigravity (your account)</option>'), "Antigravity option");
   assert.ok(html.includes('id="engineHint"'), "has a place for the plain detection reason");
 });
 
 test("settings dialog - each option is disabled with a plain reason when its binary is absent", () => {
   // Logic mirror of the settings-open detection gate in app.js.
-  const choices = ["claude", "opencode", "codex", "copilot"];
-  const labels: Record<string, string> = { claude: "Claude Code", opencode: "OpenCode", codex: "Codex", copilot: "GitHub Copilot" };
+  const choices = ["claude", "opencode", "codex", "copilot", "antigravity"];
+  const labels: Record<string, string> = { claude: "Claude Code", opencode: "OpenCode", codex: "Codex", copilot: "GitHub Copilot", antigravity: "Antigravity" };
   function resolveEngine(choice: unknown, detected: Array<{ engine: string; installed: boolean }>) {
     const missing = choices.filter((id) => detected.find((e) => e.engine === id)?.installed !== true);
     const selected = choice && !missing.includes(String(choice)) ? String(choice) : "opensand";
@@ -129,7 +130,7 @@ test("settings dialog - each option is disabled with a plain reason when its bin
 
   const missing = resolveEngine("opencode", []);
   assert.strictEqual(missing.selected, "opensand");
-  assert.deepStrictEqual(missing.disabled, ["claude", "opencode", "codex", "copilot"]);
+  assert.deepStrictEqual(missing.disabled, ["claude", "opencode", "codex", "copilot", "antigravity"]);
   assert.match(missing.hint, /OpenCode is not installed on this computer/);
   assert.doesNotMatch(missing.hint, /npm|CLI|--/);
 
@@ -138,6 +139,7 @@ test("settings dialog - each option is disabled with a plain reason when its bin
     { engine: "opencode", installed: true },
     { engine: "codex", installed: true },
     { engine: "copilot", installed: true },
+    { engine: "antigravity", installed: true },
   ]);
   assert.strictEqual(installed.selected, "opencode");
   assert.deepStrictEqual(installed.disabled, []);
@@ -145,7 +147,7 @@ test("settings dialog - each option is disabled with a plain reason when its bin
 
   assert.deepStrictEqual(resolveEngine("claude", [{ engine: "claude", installed: true }]), {
     selected: "claude",
-    disabled: ["opencode", "codex", "copilot"],
-    hint: "OpenCode is not installed on this computer. Codex is not installed on this computer. GitHub Copilot is not installed on this computer. Install what you want to use, then reopen Settings to select it.",
+    disabled: ["opencode", "codex", "copilot", "antigravity"],
+    hint: "OpenCode is not installed on this computer. Codex is not installed on this computer. GitHub Copilot is not installed on this computer. Antigravity is not installed on this computer. Install what you want to use, then reopen Settings to select it.",
   });
 });
