@@ -248,7 +248,7 @@ export interface DesktopSettings {
   theme: 'dark' | 'light' | 'system';
   maxContextTokens?: number;
   approvalMode?: ApprovalMode;
-  engine?: 'opensand' | 'claude' | 'opencode';
+  engine?: 'opensand' | 'claude' | 'opencode' | 'codex';
 }
 
 export interface SessionSummary {
