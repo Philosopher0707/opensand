@@ -256,6 +256,13 @@ packages/desktop/src/shell/boundaries-model.ts|function parseList
 packages/desktop/src/shell/boundaries-model.ts|function policyActionClass
 packages/desktop/src/shell/boundaries-model.ts|function policyCardView
 packages/desktop/src/shell/boundaries-model.ts|function validateCreateRuleInput
+packages/desktop/src/shell/boot-model.ts|const ACTIVE_AGENT_KEY
+packages/desktop/src/shell/boot-model.ts|const BOOT_PHASES
+packages/desktop/src/shell/boot-model.ts|const SESSION_KEY
+packages/desktop/src/shell/boot-model.ts|function bootStatus
+packages/desktop/src/shell/boot-model.ts|function needsAuthProbe
+packages/desktop/src/shell/boot-model.ts|function resolveActiveAgent
+packages/desktop/src/shell/boot-model.ts|function resolveSessionRestore
 packages/desktop/src/shell/session-list-model.ts|const RELATIVE_UNITS
 packages/desktop/src/shell/session-list-model.ts|const SESSIONS_CHANGED_EVENT
 packages/desktop/src/shell/session-list-model.ts|function emptyState

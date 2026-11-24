@@ -61,6 +61,14 @@ import {
   validateToken,
   type AuthState,
 } from "../../src/shell/auth-model";
+import {
+  ACTIVE_AGENT_KEY,
+  needsAuthProbe,
+  resolveActiveAgent,
+  resolveSessionRestore,
+  bootStatus,
+  type BootPhase,
+} from "../../src/shell/boot-model";
 
 export const SESSION_KEY = "opensand-session-id";
 
@@ -148,6 +156,9 @@ export function Shell({ data }: ShellProps) {
   const [isAccountPopupOpen, setAccountPopupOpen] = useState(false);
   const [authState, setAuthState] = useState<AuthState>(() => createInitialAuthState(sessionAuthStorage()));
   const [dataRev, setDataRev] = useState(0);
+  const [bootLoading, setBootLoading] = useState(true);
+  const [bootError, setBootError] = useState(false);
+  const [bootPhase, setBootPhase] = useState<BootPhase>("auth");
 
   const didRestoreRef = useRef(false);
   const authInputRef = useRef<HTMLInputElement>(null);
@@ -175,15 +186,12 @@ export function Shell({ data }: ShellProps) {
         }
         setSessionTitles((prev) => ({ ...prev, ...titleMap }));
 
-        if (savedId) {
-          const matching = list.find((s) => s.id === savedId);
-          if (matching) {
-            setSelectedSessionId(matching.id);
-          } else {
-            try {
-              localStorage.removeItem(SESSION_KEY);
-            } catch {}
-          }
+        const restored = resolveSessionRestore(savedId, list);
+        if (restored.sessionId) setSelectedSessionId(restored.sessionId);
+        if (restored.clearPersisted) {
+          try {
+            localStorage.removeItem(SESSION_KEY);
+          } catch {}
         }
       } catch {
         if (savedId) {
@@ -193,6 +201,66 @@ export function Shell({ data }: ShellProps) {
         }
       } finally {
         didRestoreRef.current = true;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [data]);
+
+  // Boot: HTTP auth probe, then validate the persisted active agent against the live roster.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setBootLoading(true);
+        setBootError(false);
+        setBootPhase("auth");
+        const isElectron = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron");
+        const token = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("opensand_token") : null;
+        if (needsAuthProbe(isElectron, token)) {
+          try {
+            const res = await fetch("/api/settings");
+            if (res.status === 401) setAuthState((prev) => openAuthModal(prev));
+          } catch {
+            setAuthState((prev) => openAuthModal(prev));
+          }
+        }
+        if (cancelled) return;
+
+        setBootPhase("agents");
+        let savedAgent: string | null = null;
+        try {
+          savedAgent = localStorage.getItem(ACTIVE_AGENT_KEY);
+        } catch {}
+        if (savedAgent && data.getAgents) {
+          try {
+            const live = await data.getAgents();
+            if (cancelled) return;
+            const resolved = resolveActiveAgent(savedAgent, Array.isArray(live) ? live : []);
+            if (resolved.agent) {
+              setActiveAgentId(resolved.agent.id);
+            } else {
+              setActiveAgentId(null);
+              try {
+                localStorage.removeItem(ACTIVE_AGENT_KEY);
+              } catch {}
+            }
+          } catch {
+            // A failed agent hydration leaves the persisted id alone for the next boot.
+          }
+        }
+
+        setBootPhase("sessions");
+        setBootPhase("restore");
+      } catch {
+        if (!cancelled) setBootError(true);
+      } finally {
+        if (!cancelled) {
+          setBootPhase("ready");
+          setBootLoading(false);
+          didRestoreRef.current = true;
+        }
       }
     })();
     return () => {
@@ -211,6 +279,15 @@ export function Shell({ data }: ShellProps) {
       }
     } catch {}
   }, [selectedSessionId]);
+
+  // Persist the active agent so the next boot can validate and restore it.
+  useEffect(() => {
+    if (bootLoading) return;
+    try {
+      if (activeAgentId) localStorage.setItem(ACTIVE_AGENT_KEY, activeAgentId);
+      else localStorage.removeItem(ACTIVE_AGENT_KEY);
+    } catch {}
+  }, [activeAgentId, bootLoading]);
 
   useEffect(() => {
     if (!selectedSessionId || !data.loadSession) {
@@ -435,7 +512,7 @@ export function Shell({ data }: ShellProps) {
     : "New Session";
 
   return (
-    <div class="app-layout">
+    <div class="app-layout" data-boot-status={bootStatus(bootLoading, bootError)} data-boot-phase={bootPhase}>
       {isAccountPopupOpen && (
         <div class="account-popup-backdrop" aria-hidden="true" onClick={() => setAccountPopupOpen(false)} />
       )}

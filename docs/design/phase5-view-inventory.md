@@ -58,7 +58,7 @@ These are Phase 5 views that do not come from `app.js` and need no move:
 | 26 | **Settings** (model suggestions, save, invalidate cache) | L5476–5599, 1138–1150 | `settingsModal` L1112 | none | none | |
 | 27 | **Learned rules** | L1126–1133, 5449–5463 | `learnedRulesModal` L1092 | none | none | |
 | 28 | **BTW side question, rollback, compact** | BTW L552–579 and L5600–5640; rollback L5641–5681; compact L5682–5722 | `btwModal` L1160, `rollbackModal` L1187, `compactModal` L1216 | none | none | |
-| 29 | **Boot sequence** (theme, probe, hydrate bots/tasks/sessions, restore session) | L5983–6041, validation L5997–6020, state L1151–1194 | n/a | none | none | Needed before any view can open. |
+| 29 | **Boot sequence** (theme, probe, hydrate bots/tasks/sessions, restore session) | L6031–6094, state L1151–1194 | n/a | `boot-model.ts` + `Shell.tsx` | done | Ordered boot phases (auth probe, agents, sessions, restore, ready) with an observable `data-boot-status`/`data-boot-phase` on the app root; HTTP-only 401 probe, persisted active-agent and session validation against live lists with stale-key cleanup, theme applied from storage, and approvals hydrated by the Inbox. Tested by `boot-model.test.ts` and `boot-real-window.test.ts` at 960×740 and 1920×1080 with zero horizontal overflow. |
 
 ## Files that go with `app.js` (delete in the final PR)
 
