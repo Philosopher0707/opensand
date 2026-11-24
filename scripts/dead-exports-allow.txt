@@ -296,6 +296,12 @@ packages/desktop/src/shell/webhooks-model.ts|function openCreateWebhookModal
 packages/desktop/src/shell/webhooks-model.ts|function validateCreateWebhookInput
 packages/desktop/src/shell/webhooks-model.ts|function webhookCardView
 packages/desktop/src/shell/webhooks-model.ts|function webhookUrlPath
+packages/desktop/src/shell/learned-rules-model.ts|const LEARNED_RULES_DONE
+packages/desktop/src/shell/learned-rules-model.ts|const LEARNED_RULES_EMPTY
+packages/desktop/src/shell/learned-rules-model.ts|const LEARNED_RULES_LOADING
+packages/desktop/src/shell/learned-rules-model.ts|const LEARNED_RULES_REFRESHING
+packages/desktop/src/shell/learned-rules-model.ts|function reportSummary
+packages/desktop/src/shell/learned-rules-model.ts|function rulesContent
 packages/desktop/src/shell/session-list-model.ts|const RELATIVE_UNITS
 packages/desktop/src/shell/session-list-model.ts|const SESSIONS_CHANGED_EVENT
 packages/desktop/src/shell/session-list-model.ts|function emptyState
