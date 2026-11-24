@@ -3,6 +3,7 @@
 // `node <script> -p --output-format stream-json --permission-mode <plan|default> [--append-system-prompt S] [--model M]
 // [--resume ID] <prompt>`. It speaks Claude Code's stream-json on stdout. It reads no stdin (the wrapper ignores it).
 //   FAIL_AUTH   the reply it gives when signed out: an assistant text, then an error result, exit 0
+//   HANG        prints nothing and never exits
 //   anything    a normal answer
 // Every run logs argv, the stdin kind, pid and cwd to $FAKE_LOG.
 import fs from "node:fs";
@@ -22,10 +23,12 @@ if (process.env.FAKE_LOG) {
 const out = (o) => process.stdout.write(`${JSON.stringify(o)}\n`);
 
 out({ type: "system", subtype: "init", session_id: sid, model: "default-model", permissionMode: opt("--permission-mode") });
-if (/FAIL_AUTH/.test(prompt)) {
+if (/HANG/.test(prompt)) { setInterval(() => {}, 1000); }
+else if (/FAIL_AUTH/.test(prompt)) {
   out({ type: "assistant", message: { content: [{ type: "text", text: "Authentication required. Please use /login command to sign in." }] }, session_id: sid });
   out({ type: "result", subtype: "error_during_execution", is_error: true, session_id: sid });
   process.exit(0);
+} else {
+  out({ type: "assistant", message: { content: [{ type: "text", text: resume ? `codebuddy continued ${resume}` : "codebuddy says hello" }] }, session_id: sid });
+  out({ type: "result", subtype: "success", is_error: false, result: "ok", session_id: sid, usage: { input_tokens: 3, output_tokens: 2 } });
 }
-out({ type: "assistant", message: { content: [{ type: "text", text: resume ? `codebuddy continued ${resume}` : "codebuddy says hello" }] }, session_id: sid });
-out({ type: "result", subtype: "success", is_error: false, result: "ok", session_id: sid, usage: { input_tokens: 3, output_tokens: 2 } });
