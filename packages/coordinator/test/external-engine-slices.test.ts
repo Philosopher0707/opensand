@@ -27,6 +27,8 @@ interface EngineSlice {
   planCheck: (log: any) => boolean;
   /** OS-level hold of a read-only run on macOS; elsewhere the engine's own advisory mode applies. */
   osHold?: { prompt: string; held: RegExp; advisory: RegExp };
+  /** The CLI prints its result then lingers; the turn must still end and the child must die. */
+  lingers?: boolean;
 }
 
 function runSliceSuite(slice: EngineSlice): void {
@@ -171,6 +173,22 @@ function runSliceSuite(slice: EngineSlice): void {
         assert.match(reply, held ? slice.osHold!.held : slice.osHold!.advisory);
       });
     }
+
+    if (slice.lingers) {
+      it("ends the turn and kills the child when the CLI lingers after its result", async () => {
+        newLog();
+        const coord = coordinator(`slice_${slice.engine}_linger`);
+        const reply = await coord.runTurn("LINGER");
+        assert.match(reply, slice.reply);
+        const pid: number = (await readLog()).pid;
+        let dead = false;
+        for (let i = 0; i < 120; i++) {
+          try { process.kill(pid, 0); await new Promise((r) => setTimeout(r, 100)); }
+          catch (err: any) { if (err?.code === "ESRCH") { dead = true; break; } }
+        }
+        assert.equal(dead, true, `lingering child ${pid} survived the turn`);
+      });
+    }
   });
 }
 
@@ -196,11 +214,12 @@ runSliceSuite({
 });
 
 runSliceSuite({
-  engine: "codex",
-  label: "Codex",
-  fake: "codex",
-  reply: /done by codex/,
-  resumeReply: /resumed thread-abc/,
-  resumeInLog: (log) => Boolean(log.args?.includes("resume")),
-  planCheck: (log) => Boolean(log.args?.some((a: string) => a === 'sandbox_mode="read-only"')),
+  engine: "copilot",
+  label: "GitHub Copilot",
+  fake: "copilot",
+  reply: /copilot says hello/,
+  resumeReply: /continued cop-session-1/,
+  resumeInLog: (log) => Boolean(log.args?.includes("--resume")),
+  planCheck: (log) => Boolean(log.args?.includes("--deny-tool") && log.args?.includes("shell")),
+  lingers: true,
 });
