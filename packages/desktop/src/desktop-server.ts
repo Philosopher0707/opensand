@@ -577,6 +577,9 @@ export class DesktopServer {
       const engines = await this.bridge.detectEngines();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(engines));
+      return;
+    }
+
     // API: POST /api/settings/test (verify entered credentials without saving them)
     if (pathname === '/api/settings/test' && req.method === 'POST') {
       const body = await this.readJsonBody(req);
