@@ -145,7 +145,7 @@ export interface CoreShellData {
 
 }
 
-export type ShellData = AttachmentsData & BotsData & BoundariesData; & MemoriesData & RoomsData & RoutinesData & SentinelData; & SkillsData & VaultData & export type ShellData = CoreShellData;
+export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & AttachmentsData & VaultData & MemoriesData & BotsData & SentinelData & BoundariesData;
 
 export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
   const b = bridge ?? (typeof window !== "undefined" ? (window as any).opensand : undefined);
