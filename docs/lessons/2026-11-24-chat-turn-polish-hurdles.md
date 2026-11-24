@@ -15,3 +15,11 @@
 - **Trap:** The new stop→resume real-window test passed but took 119s, then 237s on later runs, and a whole-file run exceeded a 10-minute shell timeout; a diagnostic run failed with `[runner] timeout` and `Render frame was disposed before the request completed`.
 - **Root Cause:** Electron real-window tests share a global mkdir lock in `/tmp` with other worktrees. Another bot was launching its own Electron tests concurrently, so `withElectronLock` waited while the runner's own 150s deadline started only after the lock was acquired. An open SSE stream from the resumed turn also kept the stub server's `close()` waiting.
 - **Rule:** When a real-window test resumes a streaming turn, stop it again before quitting so the stub's connection closes. Attribute multi-minute wall times to lock contention before changing assertions: check `/tmp/opensand-electron-tests.lock` and other bots' Electron processes, then re-run the single test with `--test-name-pattern`. Keep the assertions unchanged when the test itself passes.
+
+- **Trap:** The required `TMPDIR=$(mktemp -d) SKIP_INSTALL=1 bash scripts/verify.sh` failed twice on two different *untouched* real-window files (`chat-history`, then `account-shortcuts`) at the 120s per-file ceiling, while the same whole suite passed with `OPENSAND_REAL_WINDOW_LIMIT_MS=300000` (my changed file took 20.2s).
+- **Root Cause:** All real-window files across worktrees serialise on one `/tmp` mkdir lock; a concurrent bot's Electron run starves whichever file waits next, and the 120s ceiling counts the wait.
+- **Rule:** When verify fails on a real-window file you did not change, check the global lock and other bots' Electron processes before editing tests. Keep one raised-ceiling green run as evidence, let isolated CI give the authoritative result, and stop after two such failures instead of retrying.
+
+- **Trap:** `check-dead-exports.sh` reported five new dead exports although all five are imported by `Chat.tsx`.
+- **Root Cause:** The checker scans only `packages/*/src` for findings *and* references; `renderer-next/src` is outside that scan, so view-only helpers look unused (210 desktop entries are already seeded for the same reason).
+- **Rule:** Add view-only shell helpers to `scripts/dead-exports-allow.txt` in sorted order and keep the unit tests as the proof they are exercised.

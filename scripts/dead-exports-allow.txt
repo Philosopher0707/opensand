@@ -122,14 +122,18 @@ packages/desktop/src/shell/canvas-model.ts|function openArtifact
 packages/desktop/src/shell/canvas-model.ts|function resolveLanguageMeta
 packages/desktop/src/shell/canvas-model.ts|function selectTab
 packages/desktop/src/shell/canvas-model.ts|function setViewMode
+packages/desktop/src/shell/chat-ansi.ts|function parseAnsi
 packages/desktop/src/shell/chat-turn-model.ts|const INITIAL_CHAT_TURN
 packages/desktop/src/shell/chat-turn-model.ts|function canRetryTurn
 packages/desktop/src/shell/chat-turn-model.ts|function chatEventAction
 packages/desktop/src/shell/chat-turn-model.ts|function chatTurnReducer
 packages/desktop/src/shell/chat-turn-model.ts|function extractThinking
+packages/desktop/src/shell/chat-turn-model.ts|function formatElapsed
+packages/desktop/src/shell/chat-turn-model.ts|function isBlankAssistantTurn
 packages/desktop/src/shell/chat-turn-model.ts|function isChatBusy
 packages/desktop/src/shell/chat-turn-model.ts|function parseTranscriptText
 packages/desktop/src/shell/chat-turn-model.ts|function reconstructSessionMessages
+packages/desktop/src/shell/chat-turn-model.ts|function retryLabel
 packages/desktop/src/shell/composer-model.ts|const DEFAULT_PROMPT_CHIPS
 packages/desktop/src/shell/composer-model.ts|const DEFAULT_SLASH_COMMANDS
 packages/desktop/src/shell/composer-model.ts|function applyPromptChip
@@ -142,6 +146,7 @@ packages/desktop/src/shell/composer-model.ts|function friendlyErrorMessage
 packages/desktop/src/shell/composer-model.ts|function getFileCategory
 packages/desktop/src/shell/composer-model.ts|function insertTriggerSelection
 packages/desktop/src/shell/composer-model.ts|function parseSlashCommand
+packages/desktop/src/shell/composer-model.ts|function previewErrorMessage
 packages/desktop/src/shell/composer-model.ts|function runLocalSlashCommand
 # Consumed from packages/desktop/renderer-next/src, outside the packages/*/src scan root.
 packages/desktop/src/shell/dead-actions-model.ts|const OPEN_COMPACT_EVENT
