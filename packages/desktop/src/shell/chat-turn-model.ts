@@ -3,6 +3,7 @@
 // Encapsulates message streaming, thought blocks, tool execution cards, and session history hydration.
 
 import type { TurnEvent } from "./quick-capture-model.js";
+import type { ToolApprovalRequest } from "../types.js";
 
 export type ChatTurnStatus =
   | "idle"
@@ -53,6 +54,10 @@ export interface ChatTurnState {
   error: string;
   /** Live rate-limit countdown for this turn, cleared when the turn ends. */
   retry: RetryNotice | null;
+  /** Approval awaiting an answer in this chat; the Inbox and the card share this one record. */
+  approval?: ToolApprovalRequest | null;
+  /** The last turn stopped with an open card, so the status line says the approval was cancelled. */
+  approvalCancelled?: boolean;
 }
 
 export const INITIAL_CHAT_TURN: ChatTurnState = {
@@ -61,6 +66,8 @@ export const INITIAL_CHAT_TURN: ChatTurnState = {
   sessionId: null,
   error: "",
   retry: null,
+  approval: null,
+  approvalCancelled: false,
 };
 
 /** Plain, live status text built from an onRetry event; `now` is injected for tests. */
@@ -78,7 +85,8 @@ export type ChatTurnAction =
   | { type: "thought"; text: string }
   | { type: "tool_call"; tool: ToolCallItem }
   | { type: "tool_result"; tool: { id?: string; name?: string; status?: "done" | "error"; result?: any } }
-  | { type: "approval" }
+  | { type: "approval"; request?: ToolApprovalRequest | null }
+  | { type: "approval_resolved"; approvalId: string }
   | { type: "retry"; notice: RetryNotice }
   | { type: "complete"; response?: string }
   | { type: "stopped" }
@@ -108,6 +116,18 @@ export function isBlankAssistantTurn(state: ChatTurnState): boolean {
   const last = state.messages[state.messages.length - 1];
   if (!last || last.role !== "assistant" || last.text || last.thought) return false;
   return !last.toolCalls || last.toolCalls.length === 0;
+}
+
+export function approvalErrorMessage(error: unknown): string {
+  const err = error as { code?: number | string; status?: number; message?: string; name?: string } | null | undefined;
+  const text = `${err?.message ?? ""} ${err?.name ?? ""}`;
+  if (err?.code === 4001 || err?.status === 409 || /stale epoch|stale/i.test(text)) {
+    return "That approval changed; reload and try again.";
+  }
+  if (/timed?\s*out|timeout/i.test(text)) {
+    return "The approval took too long to go through. Try again.";
+  }
+  return "That approval did not go through. Try again.";
 }
 
 /** A stopped turn resumes; only a genuinely failed turn retries. */
@@ -161,6 +181,8 @@ export function chatTurnReducer(state: ChatTurnState = INITIAL_CHAT_TURN, action
         sessionId: null,
         error: "",
         retry: null,
+        approval: null,
+        approvalCancelled: false,
       };
     }
     case "sent":
@@ -250,8 +272,19 @@ export function chatTurnReducer(state: ChatTurnState = INITIAL_CHAT_TURN, action
     }
     case "approval":
       // The turn is paused until the person answers in the Inbox; the next token or completion resumes it.
-      if (!isChatBusy(state.status)) return state;
-      return { ...state, status: "waiting" };
+      // A bare pause only applies to a live turn; a bridge payload (even null) opens the shared card.
+      if (action.request === undefined && !isChatBusy(state.status)) return state;
+      return { ...state, status: "waiting", approval: action.request ?? state.approval ?? null, approvalCancelled: false };
+    case "approval_resolved": {
+      // One surface answers, both clear. A duplicate or a different id is a no-op, so the card clears once.
+      if (!state.approval || state.approval.approvalId !== action.approvalId) return state;
+      return {
+        ...state,
+        status: state.messages.length > 0 ? "streaming" : "idle",
+        approval: null,
+        approvalCancelled: false,
+      };
+    }
     case "retry":
       if (!isChatBusy(state.status)) return state;
       return { ...state, retry: action.notice };
@@ -295,7 +328,9 @@ export function chatTurnReducer(state: ChatTurnState = INITIAL_CHAT_TURN, action
         ...state,
         status: "stopped",
         retry: null,
-        messages: updateAssistant(state, (m) => ({ ...m, note: "Stopped." })),
+        approval: null,
+        approvalCancelled: Boolean(state.approval),
+        messages: updateAssistant(state, (m) => ({ ...m, note: state.approval ? "Approval cancelled." : "Stopped." })),
       };
     case "unavailable":
       return { ...INITIAL_CHAT_TURN, status: "unavailable" };
@@ -362,7 +397,14 @@ export function chatEventAction(event: TurnEvent, sessionId: string | null): Cha
       },
     };
   }
-  if (event.type === "approval_required") return { type: "approval" };
+  if (event.type === "approval_required") {
+    const request = (event.data ?? (event as any).request) as ToolApprovalRequest | null | undefined;
+    return { type: "approval", request: request ?? null };
+  }
+  if (event.type === "approval_resolved") {
+    const approvalId = event.data?.approvalId ?? (event as any).approvalId;
+    return approvalId ? { type: "approval_resolved", approvalId: String(approvalId) } : null;
+  }
   if (event.type === "retry") {
     const d = event.data as any;
     if (!d) return null;

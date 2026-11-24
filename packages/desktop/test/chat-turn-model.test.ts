@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert";
+import type { ToolApprovalRequest } from "../src/types.js";
 import {
   INITIAL_CHAT_TURN,
+  approvalErrorMessage,
   chatEventAction,
   chatTurnReducer,
   isChatBusy,
@@ -68,12 +70,62 @@ test("a new turn keeps earlier messages and clears the previous error", () => {
   assert.deepStrictEqual(s.messages.map((m) => m.text), ["one", "", "two", ""]);
 });
 
+const approvalRequest = (): ToolApprovalRequest => ({
+  approvalId: "appr-1",
+  toolName: "exec_command",
+  args: { cmd: "echo hi" },
+  reason: "Run the check",
+  timestamp: 1,
+  epoch: 7,
+});
+
 test("an approval pause resumes as streaming on the next token", () => {
-  const waiting = run({ type: "start", query: "q" }, { type: "approval" });
+  const waiting = run({ type: "start", query: "q" }, { type: "approval", request: null });
   assert.strictEqual(waiting.status, "waiting");
   assert.strictEqual(isChatBusy(waiting.status), true);
   const s = chatTurnReducer(waiting, { type: "delta", text: "ok" });
   assert.strictEqual(s.status, "streaming");
+});
+
+test("approval_required keeps the payload and approval_resolved clears the card exactly once", () => {
+  const req = approvalRequest();
+  const waiting = chatTurnReducer(run({ type: "start", query: "q" }), {
+    type: "approval",
+    request: req,
+  });
+  assert.strictEqual(waiting.status, "waiting");
+  assert.deepStrictEqual(waiting.approval, req);
+
+  const resolved = chatEventAction(
+    { type: "approval_resolved", data: { approvalId: req.approvalId, action: "approve_modified" } },
+    null,
+  );
+  assert.deepStrictEqual(resolved, { type: "approval_resolved", approvalId: "appr-1" });
+  const cleared = chatTurnReducer(waiting, resolved!);
+  assert.strictEqual(cleared.approval, null);
+  assert.strictEqual(cleared.status, "streaming");
+  // A duplicate event, or one for another card, must not clear anything twice.
+  assert.strictEqual(chatTurnReducer(cleared, resolved!), cleared);
+  assert.strictEqual(chatTurnReducer(waiting, { type: "approval_resolved", approvalId: "other" }), waiting);
+});
+
+test("a cancelled turn closes an open card with a plain cancelled note", () => {
+  const waiting = chatTurnReducer(run({ type: "start", query: "q" }), {
+    type: "approval",
+    request: approvalRequest(),
+  });
+  const stopped = chatTurnReducer(waiting, { type: "stopped" });
+  assert.strictEqual(stopped.approval, null);
+  assert.strictEqual(stopped.status, "stopped");
+  assert.strictEqual(stopped.approvalCancelled, true);
+  assert.strictEqual(stopped.messages[stopped.messages.length - 1].note, "Approval cancelled.");
+});
+
+test("approval failures get plain words and keep the card open for a retry", () => {
+  assert.strictEqual(approvalErrorMessage({ code: 4001, message: "stale epoch" }), "That approval changed; reload and try again.");
+  assert.strictEqual(approvalErrorMessage({ status: 409 }), "That approval changed; reload and try again.");
+  assert.strictEqual(approvalErrorMessage(new Error("Request timed out")), "The approval took too long to go through. Try again.");
+  assert.strictEqual(approvalErrorMessage(new Error("socket gone")), "That approval did not go through. Try again.");
 });
 
 test("a second send while busy, and an empty send, change nothing", () => {
@@ -89,7 +141,12 @@ test("events for another session are dropped, and each bridge type maps to its a
     type: "delta",
     text: "a",
   });
-  assert.deepStrictEqual(chatEventAction({ type: "approval_required" }, null), { type: "approval" });
+  assert.deepStrictEqual(chatEventAction({ type: "approval_required" }, null), { type: "approval", request: null });
+  const req = approvalRequest();
+  assert.deepStrictEqual(chatEventAction({ type: "approval_required", data: { ...req } }, null), {
+    type: "approval",
+    request: req,
+  });
   assert.deepStrictEqual(chatEventAction({ type: "turn_complete", data: { response: "done" } }, null), {
     type: "complete",
     response: "done",

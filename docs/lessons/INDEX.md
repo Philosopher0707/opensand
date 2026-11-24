@@ -128,6 +128,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-24 · [A fixed sleep after setContentSize let the composer viewport measurement race the resize](2026-11-24-composer-real-window-resize-settle-wait.md)
 - 2026-11-24 · [Fake runtime paths must fail closed, including legacy state](2026-11-24-fake-runtime-paths-fail-closed.md)
 - 2026-11-24 · [A shared clone can make gitleaks report secrets that CI does not scan](2026-11-24-gitleaks-scan-all-refs.md)
+- 2026-11-24 · [Job C: inline approval card — payload, hidden-window state and the global Escape shortcut](2026-11-24-inline-approval-card-hurdles.md)
 - 2026-11-24 · [Named fetch options hide the HTTP verb from the route contract gate](2026-11-24-inline-fetch-options-for-route-contract.md)
 - 2026-11-24 · [An embedded form needs its own ids, and a remount reloads its fields](2026-11-24-inline-settings-form-ids-and-remount-race.md)
 - 2026-11-24 · [Job B: re-gating an edit must compare tiers; full verify can stall under load](2026-11-24-job-b-edit-regate-and-verify-contention.md)

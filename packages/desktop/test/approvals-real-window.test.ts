@@ -33,6 +33,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let win;
 const js = (code) => win.webContents.executeJavaScript(code).catch((e) => { console.error("[js failed] " + String(code).slice(0, 120)); throw e; });
 const wait = async (fn) => { for (let i = 0; i < 150; i++) { if (await js("Boolean(" + fn + ")")) return; await sleep(100); } throw new Error("wait timed out: " + fn); };
+const waitLong = async (fn) => { for (let i = 0; i < 110; i++) { await sleep(300); if (await js("Boolean(" + fn + ")")) return; } throw new Error("wait timed out: " + fn); };
 
 async function shot(label) {
   if (!shotDir) return;
@@ -60,12 +61,154 @@ app.on("browser-window-created", (_e, w) => {
         rejectResolution: false,
         alwaysAllowResolution: false,
         backendStates: {},
+        inlineCard: {},
+        cardSizes: {},
+        inlineEditApprove: {},
+        stale: {},
+        malformed: {},
+        timeout: {},
+        cancelled: {},
+        keyboard: {},
       };
 
       // 1. Check initial empty state
       await wait("document.querySelector('.inbox-empty-title')");
       const initialBadge = await js("document.querySelector('.inbox-badge-count')?.textContent?.trim()");
       result.initialEmpty = (initialBadge === "0");
+
+      // A. Inline card in chat: payload, two viewports, edit + approve, both surfaces clear.
+      await js("(() => { delete window.__testApproveTool; return true; })()");
+      const inlinePromise = bridge.requestApproval(
+        "exec_command",
+        { command: "echo inline" },
+        "Inline card check"
+      );
+      await wait("document.querySelector('.approval-card')");
+      await sleep(300);
+      result.inlineCard = {
+        tool: await js("document.querySelector('#approvalCardToolName')?.textContent?.trim()"),
+        summary: await js("document.querySelector('.approval-card-summary')?.textContent?.includes('echo inline')"),
+        status: await js("document.querySelector('.chat-status span')?.textContent?.includes('Approval needed')"),
+        buttons: await js("Boolean(document.querySelector('#btnApproveInChat') && document.querySelector('#btnEditApproveInChat') && document.querySelector('#btnDenyInChat'))"),
+        aria: await js("document.querySelector('.approval-card')?.getAttribute('aria-label')"),
+      };
+      for (const [width, height, tag] of [[960, 740, "compact"], [1920, 1080, "wide"]]) {
+        win.setContentSize(width, height);
+        await sleep(400);
+        result.cardSizes[tag] = await js("(() => { const c = document.querySelector('.approval-card'); const r = c && c.getBoundingClientRect(); return { visible: Boolean(r && r.width > 0 && r.height > 0), noOverflow: document.documentElement.scrollWidth <= window.innerWidth, scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth }; })()");
+      }
+      await shot("inline-approval-card");
+      win.setContentSize(960, 740);
+      await js("document.querySelector('#btnEditApproveInChat').click()");
+      await waitLong("document.querySelector('#approvalCardArgs')?.tagName === 'TEXTAREA'");
+      await js("(() => { const t = document.querySelector('#approvalCardArgs'); t.value = JSON.stringify({ command: 'echo edited' }); t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+      await sleep(120);
+      await js("document.querySelector('#btnApproveInChat').click()");
+      const inlineResolved = await inlinePromise;
+      await waitLong("!document.querySelector('.approval-card')");
+      result.inlineEditApprove = {
+        resolved: inlineResolved === true,
+        inboxCleared: (await js("document.querySelector('.inbox-badge-count')?.textContent?.trim()")) === "0",
+        pendingCleared: (await bridge.listPendingApprovals()).length === 0,
+      };
+
+      // B. Stale epoch (409): plain message; the card stays open for a retry.
+      const stalePromise = bridge.requestApproval("exec_command", { command: "echo stale" }, "Stale check");
+      await wait("document.querySelector('.approval-card')");
+      await sleep(300);
+      await sleep(400);
+      await js("(() => { window.__staleCalls = 0; window.__testApproveTool = () => { window.__staleCalls++; return Promise.reject({ code: 4001, name: 'StaleEpochError', message: 'stale epoch' }); }; return true; })()");
+      await js("document.querySelector('#btnApproveInChat').click()");
+      await waitLong("document.querySelector('.approval-card-error')");
+      result.stale = {
+        message: await js("document.querySelector('.approval-card-error')?.textContent?.trim()"),
+        calls: await js("window.__staleCalls"),
+        cardStillOpen: await js("Boolean(document.querySelector('.approval-card'))"),
+      };
+      await js("(() => { delete window.__testApproveTool; return true; })()");
+      await js("document.querySelector('#btnDenyInChat').click()");
+      await stalePromise;
+      await waitLong("!document.querySelector('.approval-card')");
+
+      // C. Malformed edited args: inline validation, no send.
+      const malformedPromise = bridge.requestApproval("write_file", { path: "src/x.txt", content: "hello" }, "Bad args check");
+      await wait("document.querySelector('.approval-card')");
+      await sleep(300);
+      await js("(() => { window.__approveCalls = 0; window.__testApproveTool = () => { window.__approveCalls++; return Promise.reject(new Error('should not be called')); }; return true; })()");
+      await js("document.querySelector('#btnEditApproveInChat').click()");
+      await waitLong("document.querySelector('#approvalCardArgs')?.tagName === 'TEXTAREA'");
+      await js("(() => { const t = document.querySelector('#approvalCardArgs'); t.value = '{ not json'; t.dispatchEvent(new Event('input', { bubbles: true })); })()");
+      await js("document.querySelector('#btnApproveInChat').click()");
+      await waitLong("document.querySelector('.approval-card-error')?.textContent?.includes('Nothing was sent')");
+      result.malformed = {
+        message: await js("document.querySelector('.approval-card-error')?.textContent?.trim()"),
+        notSent: (await js("window.__approveCalls")) === 0,
+        cardStillOpen: await js("Boolean(document.querySelector('.approval-card'))"),
+      };
+      await js("(() => { delete window.__testApproveTool; return true; })()");
+      await js("document.querySelector('#btnDenyInChat').click()");
+      await malformedPromise;
+      await waitLong("!document.querySelector('.approval-card')");
+
+      // D. An answer that never arrives: the 15s guard gives a plain timeout message.
+      const timeoutPromise = bridge.requestApproval("exec_command", { command: "echo slow" }, "Timeout check");
+      await wait("document.querySelector('.approval-card')");
+      await sleep(300);
+      await js("(() => { window.__testApproveTool = () => new Promise(() => {}); return true; })()");
+      await js("document.querySelector('#btnApproveInChat').click()");
+      await waitLong("document.querySelector('.approval-card-error')?.textContent?.includes('too long')");
+      result.timeout = {
+        message: await js("document.querySelector('.approval-card-error')?.textContent?.trim()"),
+        cardStillOpen: await js("Boolean(document.querySelector('.approval-card'))"),
+      };
+      await js("(() => { delete window.__testApproveTool; return true; })()");
+      await js("document.querySelector('#btnDenyInChat').click()");
+      await timeoutPromise;
+      await waitLong("!document.querySelector('.approval-card')");
+
+      // E. Turn cancelled with the card open: card closes, status says cancelled.
+      const cancelPromise = bridge.requestApproval("exec_command", { command: "echo cancel" }, "Cancel check");
+      await wait("document.querySelector('.approval-card')");
+      await sleep(300);
+      bridge.emitEvent("turn_cancelled", { message: "Turn cancelled by user." });
+      await waitLong("!document.querySelector('.approval-card')");
+      result.cancelled = {
+        status: await js("document.querySelector('.chat-status span')?.textContent?.trim()"),
+      };
+      for (const pending of await bridge.listPendingApprovals()) {
+        await js("window.opensand.approveTool(" + JSON.stringify(pending.approvalId) + ", { action: 'reject', epoch: " + pending.epoch + " })");
+      }
+      await cancelPromise;
+
+      // F. Keyboard: Enter on the focused card approves; Esc from the composer does not deny.
+      const keyboardPromise = bridge.requestApproval("exec_command", { command: "echo keyboard" }, "Keyboard check");
+      await wait("document.querySelector('.approval-card')");
+      await sleep(300);
+      await js("(() => { const c = document.querySelector('.approval-card'); if (c) c.focus(); return Boolean(c); })()");
+      const enterSent = await js("(() => { const c = document.querySelector('.approval-card'); if (c) c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return Boolean(c); })()");
+      await sleep(500);
+      const keyboardResolved = await Promise.race([keyboardPromise, sleep(6000).then(() => "timeout")]);
+      await waitLong("!document.querySelector('.approval-card')");
+      result.keyboard.enterApproved = keyboardResolved === true;
+
+      const escPromise = bridge.requestApproval("exec_command", { command: "echo esc" }, "Esc check");
+      await wait("document.querySelector('.approval-card')");
+      await sleep(300);
+      await js("document.querySelector('#promptInput').focus()");
+      await js("document.querySelector('#promptInput').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))");
+      await sleep(200);
+      result.keyboard.composerEscIgnored = await js("Boolean(document.querySelector('.approval-card'))");
+      await js("(() => { const c = document.querySelector('.approval-card'); if (c) c.focus(); return Boolean(c); })()");
+      await js("(() => { const c = document.querySelector('.approval-card'); if (c) c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); return Boolean(c); })()");
+      const escResolved = await Promise.race([escPromise, sleep(6000).then(() => "timeout")]);
+      await waitLong("!document.querySelector('.approval-card')");
+      result.keyboard.cardEscDenied = escResolved === false;
+
+      // The card phases above leave no pending approvals; clear any straggler before the Inbox flow.
+      for (const pending of await bridge.listPendingApprovals()) {
+        await js("window.opensand.approveTool(" + JSON.stringify(pending.approvalId) + ", { action: 'reject', epoch: " + pending.epoch + " })");
+      }
+      await wait("document.querySelector('.inbox-empty-title')");
 
       // 2. Request Approval 1 on backend bridge (exec_command)
       const approval1Promise = bridge.requestApproval(
@@ -252,6 +395,36 @@ test("Preact Approvals UI real-window test at 960x740 and 1920x1080", async (t) 
 
     // Pending approval rendering from bridge/IPC
     assert.strictEqual(res.renderedPending, true, "pending approval renders in inbox with correct tool & summary");
+
+    // Inline card: visible at both sizes, editable, and one answer clears both surfaces.
+    assert.strictEqual(res.inlineCard.tool, "exec_command", "card shows the tool name");
+    assert.strictEqual(res.inlineCard.summary, true, "card shows a plain command summary");
+    assert.strictEqual(res.inlineCard.status, true, "status no longer sends the user to the Inbox");
+    assert.strictEqual(res.inlineCard.buttons, true, "card has Approve, Edit & approve and Deny");
+    assert.ok(String(res.inlineCard.aria).includes("exec_command"), "card has an aria label");
+    for (const tag of ["compact", "wide"]) {
+      const c = res.cardSizes[tag];
+      assert.ok(c, `${tag} card metrics present`);
+      assert.strictEqual(c.visible, true, `${tag} card visible`);
+      assert.strictEqual(c.noOverflow, true, `${tag} zero horizontal overflow (${c.scrollWidth} <= ${c.innerWidth})`);
+    }
+    assert.strictEqual(res.inlineEditApprove.resolved, true, "edited approval resolves through the bridge");
+    assert.strictEqual(res.inlineEditApprove.inboxCleared, true, "chat decision clears the Inbox badge");
+    assert.strictEqual(res.inlineEditApprove.pendingCleared, true, "chat decision clears the backend queue");
+
+    // Four failure paths, each in plain words, none losing the card.
+    assert.strictEqual(res.stale.calls, 1, "stale answer reached the approve path");
+    assert.ok(String(res.stale.message).includes("changed"), "stale epoch gets a plain message");
+    assert.strictEqual(res.stale.cardStillOpen, true, "stale answer keeps the card open");
+    assert.ok(String(res.malformed.message).includes("Nothing was sent"), "malformed args get inline validation");
+    assert.strictEqual(res.malformed.notSent, true, "malformed args are never sent");
+    assert.strictEqual(res.malformed.cardStillOpen, true, "malformed args keep the card open");
+    assert.ok(String(res.timeout.message).includes("too long"), "timeout gets a plain message");
+    assert.strictEqual(res.timeout.cardStillOpen, true, "timeout keeps the card open");
+    assert.ok(String(res.cancelled.status).toLowerCase().includes("cancelled"), "cancel closes the card with a cancelled message");
+    assert.strictEqual(res.keyboard.enterApproved, true, "Enter on the focused card approves");
+    assert.strictEqual(res.keyboard.composerEscIgnored, true, "Esc in the composer leaves the card open");
+    assert.strictEqual(res.keyboard.cardEscDenied, true, "Esc on the focused card denies");
 
     // Detail view metrics
     assert.strictEqual(res.detailViewMetrics.tool, "exec_command", "detail view shows tool name");
