@@ -120,6 +120,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-23 · [Real-window persona deletion races bridge handler over in-memory mocks](2026-11-23-test-bridge-persona-deletion-and-in-memory-mocks.md)
 - 2026-11-23 · [Vendored plain .mjs assets in compiled packages and CommonJS test fakes](2026-11-23-vendored-mjs-assets-and-commonjs-fakes.md)
 - 2026-11-23 · [Optional webhook secrets fail open and prefix checks leak through symlinks](2026-11-23-webhook-secret-and-static-symlink-containment.md)
+- 2026-11-24 · [Chat turn polish: worktree entry point, build order and escape-rule ordering](2026-11-24-chat-turn-polish-hurdles.md)
 - 2026-11-24 · [ChatList rename: use the registered verb and update real-window click flows](2026-11-24-chatlist-rename-verb-and-confirm-tests.md)
 - 2026-11-24 · [A dirty base clone blocks worktree.sh, and CLI tests need the engine built](2026-11-24-cli-errors-dirty-base-and-unbuilt-engine.md)
 - 2026-11-24 · [PR CI green but main CI red after merge: temp-dir ENOTEMPTY in workspace-default test](2026-11-24-main-ci-red-after-pr-209-merge.md)

@@ -191,6 +191,11 @@ export function friendlyErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
+/** A failed preview is a notice, not a failed attachment: the file is still staged. */
+export function previewErrorMessage(name: string): string {
+  return `Could not make a preview for ${name}. The file is still attached.`;
+}
+
 /** Shorten the redacted support report to something a status line can show. */
 export function formatDoctorReport(report: unknown): string {
   const text = report && typeof report === "object" ? (report as { text?: unknown }).text : null;
