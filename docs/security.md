@@ -24,4 +24,4 @@ tar -xzf gitleaks_8.30.1_darwin_arm64.tar.gz
 ./gitleaks detect --no-banner --redact --config .gitleaks.toml
 ```
 
-The CI job uses `gitleaks_8.30.1_linux_x64.tar.gz` with checksum `551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb`. `.gitleaks.toml` allowlists only five known synthetic test fixtures, each with a comment.
+The CI job uses `gitleaks_8.30.1_linux_x64.tar.gz` with checksum `551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb`. Synthetic fixtures are ignored **per finding** in `.gitleaksignore`: 12 exact commit/file/rule/line fingerprints, each with a comment. There is no whole-file allowlist, so a new secret planted in one of those fixture files gets a new fingerprint and fails the scan.

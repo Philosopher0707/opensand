@@ -2,18 +2,3 @@ title = "OpenSand secret scan"
 
 [extend]
 useDefault = true
-
-[allowlist]
-description = "Synthetic secrets in unit tests and recorded engine fixtures; no live credentials"
-paths = [
-  # Recorded Copilot transcript used as a parser fixture: opaque apiCallId values look like generic API keys.
-  '''packages/coordinator/test/fixtures/engines/fixtures/copilot-1\.0\.107-subagent\.jsonl''',
-  # Unit test passes a hard-coded fake GitHub PAT to prove 401 handling and describe() redaction.
-  '''packages/coordinator/test/github-client\.test\.ts''',
-  # Unit test uses a literal fake secret to exercise constant-time comparison.
-  '''packages/coordinator/test/webhook-gateway\.test\.ts''',
-  # Unit test uses fake token material for git staging and commit assertions.
-  '''packages/coordinator/test/git-manager\.test\.ts''',
-  # Unit test uses fake session ids/tokens for IPC bridge assertions.
-  '''packages/desktop/test/ipc-bridge\.test\.ts''',
-]
