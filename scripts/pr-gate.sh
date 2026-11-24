@@ -8,8 +8,9 @@
 #
 # --when-green  First wait for pending CI with `gh pr checks --watch` (bounded by
 #               --timeout minutes, default 40), then run the normal 5 checks and merge.
-#               Red CI exits 1 and names the failing job; a timeout exits 3. "No checks
-#               reported" is pending for up to 5 min (or --timeout, if sooner); a queued or
+#               Red CI exits 1 and names the failing job; a watch exit with no failed check is
+#               retried as pending until the deadline, then exits 3. "No checks reported" is
+#               pending for up to 5 min (or --timeout, if sooner); a queued or
 #               in-progress workflow run for the head commit (read from the per-run Jobs API,
 #               since `gh run list` status can lag) extends that wait, bounded by
 #               PR_GATE_QUEUED_RUN_MAX_SECONDS (default 600), then exits 3 with
@@ -366,10 +367,16 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
       fi
       if [[ -n "$RED_JOBS" ]]; then
         echo "FAIL: CI is red for PR #$PR: $RED_JOBS" >&2
-      else
-        echo "FAIL: gh pr checks --watch exited $WATCH_STATUS for PR #$PR and no failing job could be identified" >&2
+        exit 1
       fi
-      exit 1
+      # gh can exit 1 while another job is still queued/in progress. No failed check means
+      # pending, not red; retry within the existing deadline instead of failing the gate.
+      if [[ "$SECONDS" -ge "$DEADLINE" ]]; then
+        echo "FAIL: --when-green timed out after ${TIMEOUT_MIN} min: CI for PR #$PR is still pending" >&2
+        exit 3
+      fi
+      echo "==> [when-green] gh pr checks --watch exited $WATCH_STATUS with no failed check reported; CI is still pending for PR #$PR; retrying..."
+      sleep "$POLL_SECONDS"
     done
     echo "PASS: [when-green] CI finished green for PR #$PR; continuing with the normal checks."
   }
