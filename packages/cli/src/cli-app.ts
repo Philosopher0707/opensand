@@ -31,6 +31,7 @@ import { parseCliArgs, CliConfig, probeLocalOllama, validateConfig } from "./con
 import { runMissionCommand } from "./mission.js";
 import { TerminalUI } from "./terminal-ui.js";
 import { decideCliApproval } from "./approval-policy.js";
+import { clientCommandResult, formatTurnError } from "./repl-control.js";
 import { runDoctorProbes } from "./doctor.js";
 import { getFleetStatus } from "./status.js";
 import {
@@ -72,6 +73,8 @@ Interactive REPL Commands:
   /tools                   List all active registered tools
   /bots                    List all registered bot personas
   /bot <name>              Switch active bot persona on the fly
+  /model [name]            Show or switch the model for the next turn
+  /endpoint <url>          Switch the API endpoint for the next turn
   /tasks                   List active agent tasks
   /rules                   View learned continuous user guidelines
   /clear                   Clear terminal screen
@@ -725,6 +728,8 @@ Available OpenSand REPL Commands:
   /tools              List all active OS, orchestrator, and native tools
   /bots, /agents      List all registered bot personas in Agent Store
   /bot <name>         Switch active bot persona (e.g. '/bot cto' or '/bot default')
+  /model [name]       Show or switch the model for the next turn
+  /endpoint <url>     Switch the API endpoint for the next turn (http/https)
   /btw <question>     Ask ephemeral side-question using current work context (BTW parity)
   /rollback [turns]   Roll back conversation history by N turns (RollBack parity)
   /compact [keep]     Compact older conversation turns into a dense summary
@@ -920,6 +925,22 @@ Available OpenSand REPL Commands:
             console.log(`     \x1b[2mModel: ${a.model ?? "default"} | Tools: ${a.allowedTools ? a.allowedTools.join(", ") : "all"}\x1b[0m`);
           });
         }
+        continue;
+      }
+
+      const clientCommand = clientCommandResult(trimmed, {
+        model: coordinator.llmClient?.model ?? config.model,
+        endpoint: config.endpoint,
+      });
+      if (clientCommand) {
+        if (clientCommand.model) {
+          config.model = clientCommand.model;
+          coordinator.llmClient?.setModel(clientCommand.model);
+        } else if (clientCommand.endpoint) {
+          config.endpoint = clientCommand.endpoint;
+          coordinator.llmClient?.setEndpoint(clientCommand.endpoint);
+        }
+        ui.printInfo(clientCommand.message);
         continue;
       }
 
@@ -1247,7 +1268,7 @@ Available OpenSand REPL Commands:
         } else if (err?.isNetworkError || err?.name === "NetworkError") {
           ui.printError(`Network failure: ${err.message}\n(REPL ready for your next command)`);
         } else {
-          ui.printError(`Turn failed: ${err.message}`);
+          ui.printError(formatTurnError(err, config.apiKey));
         }
       } finally {
         activeTurnAbort = null;
