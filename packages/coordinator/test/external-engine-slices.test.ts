@@ -29,6 +29,8 @@ interface EngineSlice {
   osHold?: { prompt: string; held: RegExp; advisory: RegExp };
   /** The CLI prints its result then lingers; the turn must still end and the child must die. */
   lingers?: boolean;
+  /** App-bundled Node script: stdin is ignored and the run goes through the local Node runtime. */
+  bundledScript?: boolean;
 }
 
 function runSliceSuite(slice: EngineSlice): void {
@@ -87,6 +89,7 @@ function runSliceSuite(slice: EngineSlice): void {
       const reply = await coord.runTurn("hello");
       assert.match(reply, slice.reply);
       assert.match(deltas.join(""), slice.reply);
+      if (slice.bundledScript) assert.equal((await readLog()).stdin, "null", "bundled script must ignore stdin");
     });
 
     it("resumes the same engine session on a second turn", async () => {
@@ -233,4 +236,15 @@ runSliceSuite({
   resumeInLog: (log) => Boolean(log.args?.includes("--conversation")),
   planCheck: (log) => Boolean(log.args?.includes("--sandbox") && log.args?.includes("plan")),
   osHold: { prompt: "TRY_WRITE", held: /TRY_WRITE:EPERM/, advisory: /TRY_WRITE:ok/ },
+});
+
+runSliceSuite({
+  engine: "workbuddy",
+  label: "WorkBuddy",
+  fake: "codebuddy.mjs",
+  reply: /codebuddy says hello/,
+  resumeReply: /codebuddy continued cb-sess-1/,
+  resumeInLog: (log) => Boolean(log.args?.includes("--resume")),
+  planCheck: (log) => Boolean(log.args?.includes("plan")),
+  bundledScript: true,
 });
