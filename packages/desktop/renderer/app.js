@@ -6,6 +6,7 @@ import { renderMarkdown, renderMarkdownCached, escapeHtml } from './modules/chat
 import { createApprovalQueue } from './modules/chat/approval-queue.js';
 import { createArtifactCanvas } from './modules/chat/canvas.js';
 import { createFileModel, artifactForToolResult, wholeFileForPartialEdit } from './modules/chat/file-model.js';
+import { formatRetryStatus } from './modules/chat/retry-status.js';
 
 // Native title bar is hiddenInset on macOS; CSS keys traffic-light clearance off this.
 // Detected via userAgent for instant CSS styling, and via window.opensand for IPC bridge.
@@ -896,6 +897,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   const botStatusAvatar = document.getElementById('botStatusAvatar');
   const botStatusText = document.getElementById('botStatusText');
 
+  // A 429 wait shows a live line beside the turn status. Stop and the next
+  // token/completion/error clear it so the countdown never overwrites a new state.
+  let retryNotice = null;
+  let retryTimer = null;
+  function clearRetryNotice() {
+    if (retryTimer) { clearInterval(retryTimer); retryTimer = null; }
+    retryNotice = null;
+    if (botStatusText) delete botStatusText.dataset.retry;
+  }
+  function showRetryNotice(info) {
+    if (!botStatusText) return;
+    clearRetryNotice();
+    retryNotice = info || {};
+    botStatusText.dataset.retry = '1';
+    const paint = () => { botStatusText.textContent = formatRetryStatus(retryNotice); };
+    paint();
+    retryTimer = setInterval(paint, 1000);
+  }
+
   // Floating Composer & Detail Inspector Elements (OpenBot / Grok Bot Parity)
   const inputWrapper = document.getElementById('inputWrapper');
   const attachmentStrip = document.getElementById('attachmentStrip');
@@ -1221,6 +1241,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function forceResetTurnState(reason = '') {
     setTurnBusy(false);
+    clearRetryNotice();
     if (currentAssistantMessage) {
       const shimmer = currentAssistantMessage.contentEl.querySelector('.typing-shimmer');
       if (shimmer) shimmer.remove();
@@ -4853,6 +4874,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     promptInput.value = '';
     promptInput.style.height = 'auto';
+    clearRetryNotice();
     setTurnBusy(true);
     setBotAvatar('busy');
     botStatusText.textContent = 'Thinking...';
@@ -5026,6 +5048,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Real-time Event Stream Handling
   client.onEvent((event) => {
+    // Rate-limit wait: onRetry from the bridge carries attempt/maxRetries/retryAt.
+    if (event.type === 'retry') {
+      showRetryNotice(event.data || event);
+      return;
+    }
     if (event.type === 'session_started') {
       const sessId = event.data?.sessionId || event.sessionId;
       if (sessId && currentSessionId !== sessId) {
@@ -5051,6 +5078,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     // Token delta stream
     if (event.type === 'token' || event.type === 'text_delta') {
+      clearRetryNotice();
       const delta = event.data?.token || event.token || event.text || '';
       if (delta && currentAssistantMessage) {
         const shimmer = currentAssistantMessage.msgDiv.querySelector('.typing-shimmer');
@@ -5105,6 +5133,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Thought delta stream
     if (event.type === 'thought') {
+      clearRetryNotice();
       const thought = event.data?.thought || event.thought || '';
       if (thought && currentAssistantMessage) {
         const shimmer = currentAssistantMessage.msgDiv.querySelector('.typing-shimmer');
@@ -5219,6 +5248,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Turn completed
     if (event.type === 'turn_complete') {
+      clearRetryNotice();
       if (currentAssistantMessage) {
         // Finalize active text block or content element
         if (currentAssistantMessage.activeTextBlock && currentAssistantMessage.currentSegmentText) {
@@ -5265,6 +5295,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Turn cancelled (user pressed Stop / Esc)
     if (event.type === 'turn_cancelled') {
+      clearRetryNotice();
       if (currentAssistantMessage) {
         if (!currentAssistantText.trim() && !currentAssistantThought.trim()) {
           currentAssistantMessage.contentEl.innerHTML = '';
@@ -5283,6 +5314,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Error event
     if (event.type === 'error') {
+      clearRetryNotice();
       const d = event.data || {};
       const errMsg = (d.cause && d.nextAction) ? `${d.cause} ${d.nextAction}` : (d.message || event.message || 'Unknown error occurred');
       if (currentAssistantMessage) {

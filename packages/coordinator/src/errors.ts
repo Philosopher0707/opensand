@@ -24,6 +24,23 @@ export function classifyError(err: unknown): ActionableError {
 
   // 1. Rate Limits & Quotas (429)
   if (status === 429 || lower.includes("429") || lower.includes("rate limit") || lower.includes("quota exceeded")) {
+    // A reset far in the future is a daily quota: waiting in this turn cannot help.
+    const resetAt = (err as any)?.resetAt;
+    if (typeof resetAt === "number" && resetAt > Date.now()) {
+      const when = new Date(resetAt).toLocaleTimeString();
+      const farAway = resetAt - Date.now() > 5 * 60_000;
+      return {
+        code: "RATE_LIMIT_EXCEEDED",
+        cause: `The model provider's rate limit resets at ${when}.`,
+        nextAction: farAway
+          ? "Switch to another model in Settings to keep working."
+          : "Wait for the reset, or switch to another model in Settings.",
+        isUserFixable: true,
+        statusCode: 429,
+        rawMessage: msg,
+        retryAfterMs: resetAt - Date.now(),
+      };
+    }
     const isProviderReturnedError =
       detailLower.includes("provider returned error") ||
       lower.includes("provider returned error");

@@ -37,6 +37,7 @@ export class TerminalUI {
   private turnStartedAtMs: number | null = null;
   private thinkingBuffer = "";
   private approvalNoticeShown = false;
+  private retryTimer: NodeJS.Timeout | null = null;
 
   setVerbosity(v: Verbosity): void {
     this.verbosity = v;
@@ -70,6 +71,7 @@ export class TerminalUI {
   }
 
   printError(text: string): void {
+    this.clearRetryTimer();
     console.error(`${RED}✖ ${text}${RESET}`);
   }
 
@@ -179,6 +181,7 @@ export class TerminalUI {
   }
 
   onTurnStarted(): void {
+    this.clearRetryTimer();
     this.turnStartedAtMs = Date.now();
     this.toolCount = 0;
     this.thinkingBuffer = "";
@@ -187,6 +190,7 @@ export class TerminalUI {
   }
 
   onTurnCompleted(finalContent?: string): void {
+    this.clearRetryTimer();
     this.inStreamToken = false;
     this.spinner.clear();
     this.running.clear();
@@ -210,6 +214,7 @@ export class TerminalUI {
   }
 
   onCancelled(): void {
+    this.clearRetryTimer();
     this.spinner.clear();
     this.running.clear();
     this.inStreamToken = false;
@@ -250,6 +255,32 @@ export class TerminalUI {
       }
     } finally {
       rl.close();
+    }
+  }
+
+  /** Live countdown while the client waits out a provider 429. */
+  onRateLimitRetry(info: { provider?: string; attempt: number; maxRetries: number; retryAt: number }): void {
+    const label = (): string => {
+      const secs = Math.max(0, Math.ceil((info.retryAt - Date.now()) / 1000));
+      return `Rate limited by ${info.provider || "provider"} — retrying in ${secs}s (attempt ${info.attempt}/${info.maxRetries})`;
+    };
+    this.clearRetryTimer();
+    console.log(`${YELLOW}⚠️  ${label()}${RESET}`);
+    if (!this.spinner.animated) return;
+    this.spinner.onPhaseChange(label(), "thinking");
+    this.retryTimer = setInterval(() => {
+      if (Date.now() >= info.retryAt) {
+        this.clearRetryTimer();
+        return;
+      }
+      this.spinner.onPhaseChange(label(), "thinking");
+    }, 1000);
+  }
+
+  private clearRetryTimer(): void {
+    if (this.retryTimer) {
+      clearInterval(this.retryTimer);
+      this.retryTimer = null;
     }
   }
 
