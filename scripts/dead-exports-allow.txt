@@ -304,6 +304,10 @@ packages/desktop/src/shell/session-list-model.ts|function formatSessionError
 packages/desktop/src/shell/session-list-model.ts|function sessionRenameRequest
 packages/desktop/src/shell/session-list-model.ts|function toRow
 packages/desktop/src/shell/session-list-model.ts|function validateSessionTitle
+packages/desktop/src/shell/settings-model.ts|const ENGINE_OPTIONS
+packages/desktop/src/shell/settings-model.ts|function isExternalEngine
+packages/desktop/src/shell/settings-model.ts|function enginePayload
+packages/desktop/src/shell/settings-model.ts|function resolveEngineChoice
 packages/desktop/src/shell/settings-model.ts|function maskedKey
 packages/desktop/src/shell/settings-model.ts|function saveErrorMessage
 packages/desktop/src/shell/settings-model.ts|function settingsPayload

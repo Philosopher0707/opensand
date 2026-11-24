@@ -5,6 +5,8 @@ import { isOllamaEndpoint, type OllamaStatus } from "../onboarding.js";
 
 export type ProviderId = "openai" | "anthropic" | "openrouter";
 
+export type EngineId = "opensand" | "claude" | "opencode" | "codex" | "copilot" | "antigravity" | "workbuddy";
+
 /** The only representation of a saved key that may reach the renderer. */
 export const MASKED_KEY = "********";
 
@@ -33,8 +35,9 @@ export function settingsPayload(form: SettingsForm): Record<string, string> {
   return payload;
 }
 
-/** Plain validation message, or null when the form can be saved. */
-export function validateSettingsForm(form: SettingsForm, hasSavedKey: boolean): string | null {
+/** Plain validation message, or null when the form can be saved. External engines use their own account. */
+export function validateSettingsForm(form: SettingsForm, hasSavedKey: boolean, engine: EngineId = "opensand"): string | null {
+  if (isExternalEngine(engine)) return null;
   const endpoint = form.endpoint.trim();
   if (!/^https?:\/\//i.test(endpoint)) return "Enter an http or https endpoint.";
   if (!form.model.trim()) return "Enter a model name.";
@@ -92,4 +95,37 @@ export function welcomeState(ollama: OllamaStatus): WelcomeViewState {
     localEnabled: true,
     message: `Ollama is running with ${ollama.models[0]}. You can use it with no API key.`,
   };
+}
+
+export const ENGINE_OPTIONS: Array<{ id: EngineId; label: string; short: string }> = [
+  { id: "opensand", label: "OpenSand (API key)", short: "OpenSand" },
+  { id: "claude", label: "Claude Code (your account)", short: "Claude Code" },
+  { id: "opencode", label: "OpenCode (your account)", short: "OpenCode" },
+  { id: "codex", label: "Codex (your account)", short: "Codex" },
+  { id: "copilot", label: "GitHub Copilot (your account)", short: "GitHub Copilot" },
+  { id: "antigravity", label: "Antigravity (your account)", short: "Antigravity" },
+  { id: "workbuddy", label: "WorkBuddy (your account)", short: "WorkBuddy" },
+];
+
+export function isExternalEngine(id: EngineId): boolean {
+  return id !== "opensand";
+}
+
+export function enginePayload(engine: EngineId): { engine: EngineId } {
+  return { engine };
+}
+
+/** Disable unauthenticated/absent engine choices with a plain reason; never select one that is missing. */
+export function resolveEngineChoice(
+  saved: unknown,
+  detected: Array<{ engine: string; installed: boolean }>
+): { selected: EngineId; missing: EngineId[]; hint: string } {
+  const external = ENGINE_OPTIONS.filter((o) => isExternalEngine(o.id));
+  const missing = external.filter((o) => !detected.find((d) => d.engine === o.id)?.installed).map((o) => o.id);
+  const requested = ENGINE_OPTIONS.find((o) => o.id === saved)?.id ?? "opensand";
+  const selected = requested !== "opensand" && missing.includes(requested) ? "opensand" : requested;
+  const hint = missing.length
+    ? `${missing.map((id) => `${ENGINE_OPTIONS.find((o) => o.id === id)!.short} is not installed on this computer.`).join(" ")} Install what you want to use, then reopen Settings to select it.`
+    : "";
+  return { selected, missing, hint };
 }

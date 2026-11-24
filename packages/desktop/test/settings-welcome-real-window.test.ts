@@ -42,7 +42,7 @@ async function shot(label) {
   fs.writeFileSync(path.join(shotDir, label + ".png"), (await win.webContents.capturePage()).toPNG());
 }
 
-const result = { welcomeMessage: "", localDisabled: null, keyInputType: "", keyInitiallyEmpty: null, validationError: "", testSuccess: "", testBodyUsesEnteredKey: null, keyMaskedAfterSave: null, chatAfterSave: null, settingsViaMenu: null, secretInDom: null, sizes: {} };
+const result = { welcomeMessage: "", localDisabled: null, keyInputType: "", keyInitiallyEmpty: null, validationError: "", testSuccess: "", testBodyUsesEnteredKey: null, keyMaskedAfterSave: null, chatAfterSave: null, settingsViaMenu: null, secretInDom: null, engine: null, sizes: {} };
 
 app.on("browser-window-created", (_e, w) => {
   win = w;
@@ -96,11 +96,15 @@ app.on("browser-window-created", (_e, w) => {
       await wait("document.querySelector('#settingsEndpoint') && !document.querySelector('#settingsEndpoint').disabled");
       result.settingsViaMenu = await js("String(window.location.hash).includes('#settings') && document.querySelector('#viewChat').classList.contains('hidden')");
 
+      // The same engine choice as the legacy dialog: every absent binary is disabled with a plain reason.
+      await wait("document.querySelector('#settingsEngine')");
+      result.engine = await js("(() => { const s = document.querySelector('#settingsEngine'); const h = document.querySelector('#settingsEngineHint'); return { count: s.options.length, value: s.value, disabled: Array.from(s.options).filter((o) => o.disabled).map((o) => o.value), hint: h ? h.textContent.trim() : '' }; })()");
+
       const SIZES = [[960, 740, "compact"], [1920, 1080, "wide"]];
       for (const [width, height, tag] of SIZES) {
         win.setContentSize(width, height);
         await sleep(350);
-        result.sizes[tag] = await js("(() => { const f = document.querySelector('#viewSettings .settings-form'); const r = f ? f.getBoundingClientRect() : null; return { visible: Boolean(r && r.width > 0 && r.height > 0), fits: Boolean(r && r.left >= -1 && r.right <= window.innerWidth + 1), noOverflow: document.documentElement.scrollWidth <= window.innerWidth }; })()");
+        result.sizes[tag] = await js("(() => { const f = document.querySelector('#viewSettings .settings-form'); const r = f ? f.getBoundingClientRect() : null; const e = document.querySelector('#settingsEngine'); const er = e ? e.getBoundingClientRect() : null; return { visible: Boolean(r && r.width > 0 && r.height > 0), fits: Boolean(r && r.left >= -1 && r.right <= window.innerWidth + 1), noOverflow: document.documentElement.scrollWidth <= window.innerWidth, engineVisible: Boolean(er && er.width > 0 && er.height > 0), engineFits: Boolean(er && er.left >= -1 && er.right <= window.innerWidth + 1) }; })()");
         await shot("settings-" + tag + "-" + width + "x" + height);
       }
 
@@ -188,6 +192,12 @@ test("Preact welcome → save → chat and Settings menu real-window path (CI on
     assert.strictEqual(res.chatAfterSave, true, "saving finishes on Chat");
     assert.strictEqual(res.secretInDom, true, "the raw key never appears in the page text");
     assert.strictEqual(res.settingsViaMenu, true, "menu/tray IPC opens the real Settings form");
+    assert.strictEqual(res.engine.count, 7, "Settings offers the default plus six coding agents");
+    assert.strictEqual(res.engine.value, "opensand", "an unavailable engine falls back to the default");
+    const missingCount = (res.engine.hint.match(/is not installed on this computer/g) || []).length;
+    assert.strictEqual(res.engine.disabled.length, missingCount, "each disabled option has a plain reason");
+    assert.strictEqual(res.engine.disabled.includes("opensand"), false, "the default engine is never disabled");
+    assert.doesNotMatch(res.engine.hint, /npm|CLI|--/);
 
     for (const [tag] of [["compact"], ["wide"]] as const) {
       const size = res.sizes[tag];
@@ -195,6 +205,8 @@ test("Preact welcome → save → chat and Settings menu real-window path (CI on
       assert.strictEqual(size.visible, true, `${tag}: settings form visible`);
       assert.strictEqual(size.fits, true, `${tag}: settings form fits the viewport`);
       assert.strictEqual(size.noOverflow, true, `${tag}: no horizontal overflow`);
+      assert.strictEqual(size.engineVisible, true, `${tag}: engine select visible`);
+      assert.strictEqual(size.engineFits, true, `${tag}: engine select fits the viewport`);
     }
     console.log("[proof] welcome/settings real-window screenshots:", proofDir);
   } finally {
