@@ -46,12 +46,14 @@ function skipReason(): string | undefined {
 // A local OpenAI-compatible server in the shape llm-client.ts parses: SSE lines with
 // choices[0].delta, then [DONE]. The slow model sends one chunk, then holds the stream so a person
 // (or this test) can press Stop. Any other model name gets a 404 with an Ollama-style error body.
-async function startStub(): Promise<{ endpoint: string; close: () => Promise<void> }> {
+async function startStub(): Promise<{ endpoint: string; count: () => number; close: () => Promise<void> }> {
   const timers = new Set<NodeJS.Timeout>();
+  let count = 0;
   const server = http.createServer((req, res) => {
     let raw = "";
     req.on("data", (d) => { raw += d; });
     req.on("end", () => {
+      count += 1;
       if (req.method !== "POST" || req.url !== "/v1/chat/completions") {
         res.writeHead(404).end();
         return;
@@ -104,6 +106,7 @@ async function startStub(): Promise<{ endpoint: string; close: () => Promise<voi
   const { port } = server.address() as AddressInfo;
   return {
     endpoint: `http://127.0.0.1:${port}/v1/chat/completions`,
+    count: () => count,
     close: () =>
       new Promise<void>((resolve) => {
         for (const t of timers) clearTimeout(t);
@@ -125,6 +128,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let win;
 const js = (code) => win.webContents.executeJavaScript(code).catch((e) => { console.error("[js failed] " + String(code).slice(0, 90)); throw e; });
 const wait = async (fn) => { for (let i = 0; i < 100; i++) { if (await js("Boolean(" + fn + ")")) return; await sleep(100); } throw new Error("wait timed out: " + fn); };
+const BUSY = ["sending", "waiting", "streaming"];
 async function shot(label) {
   if (!shotDir) return;
   fs.mkdirSync(shotDir, { recursive: true });
@@ -145,7 +149,7 @@ const approveFromInbox = async () => {
   await js("[...document.querySelectorAll('.inbox-decision-row button')].find((b) => b.textContent === 'Approve Once').click()");
   return id;
 };
-const METRICS = "(() => { const root = document.querySelector('.chat-view'); const send = document.querySelector('#btnSend'); const stop = document.querySelector('#btnStop'); const status = document.querySelector('.chat-status'); const input = document.querySelector('#promptInput'); const feed = document.querySelector('#messageFeed'); const retry = document.querySelector('.chat-retry'); const sr = root ? root.getBoundingClientRect() : null; const ir = input ? input.getBoundingClientRect() : null; return { status: root ? root.dataset.status : null, screen: root ? root.dataset.state : null, label: status ? status.textContent : null, statusRegion: status ? status.getAttribute('role') + '/' + status.getAttribute('aria-live') : null, emptyHint: !!document.querySelector('.chat-empty'), thinking: !!document.querySelector('.chat-thinking'), retryVisible: !!retry, sendVisible: !!send, sendDisabled: send ? send.disabled : null, stopVisible: !!stop, answer: feed ? [...feed.querySelectorAll('.message-assistant .chat-text')].map((e) => e.textContent).join('\\n') : '', userText: feed ? [...feed.querySelectorAll('.message-user .chat-text')].map((e) => e.textContent).join('\\n') : '', errorText: feed ? [...feed.querySelectorAll('.chat-turn-error')].map((e) => e.textContent).join('\\n') : '', noteText: feed ? [...feed.querySelectorAll('.chat-turn-note')].map((e) => e.textContent).join('\\n') : '', inViewport: sr ? (sr.width > 0 && sr.height > 0 && sr.top >= 0 && sr.bottom <= window.innerHeight) : false, inputInViewport: ir ? (ir.width > 0 && ir.top >= 0 && ir.bottom <= window.innerHeight) : false, noOverflow: document.documentElement.scrollWidth <= window.innerWidth }; })()";
+const METRICS = "(() => { const root = document.querySelector('.chat-view'); const send = document.querySelector('#btnSend'); const stop = document.querySelector('#btnStop'); const status = document.querySelector('.chat-status'); const input = document.querySelector('#promptInput'); const feed = document.querySelector('#messageFeed'); const retry = document.querySelector('.chat-retry'); const retryLabel = retry ? retry.textContent.trim() : null; const sr = root ? root.getBoundingClientRect() : null; const ir = input ? input.getBoundingClientRect() : null; return { status: root ? root.dataset.status : null, screen: root ? root.dataset.state : null, label: status ? status.textContent : null, elapsedAttr: status ? status.getAttribute('data-elapsed') : null, statusRegion: status ? status.getAttribute('role') + '/' + status.getAttribute('aria-live') : null, retryLabel: retryLabel, emptyHint: !!document.querySelector('.chat-empty'), thinking: !!document.querySelector('.chat-thinking'), retryVisible: !!retry, sendVisible: !!send, sendDisabled: send ? send.disabled : null, stopVisible: !!stop, answer: feed ? [...feed.querySelectorAll('.message-assistant .chat-text')].map((e) => e.textContent).join('\\n') : '', userText: feed ? [...feed.querySelectorAll('.message-user .chat-text')].map((e) => e.textContent).join('\\n') : '', errorText: feed ? [...feed.querySelectorAll('.chat-turn-error')].map((e) => e.textContent).join('\\n') : '', noteText: feed ? [...feed.querySelectorAll('.chat-turn-note')].map((e) => e.textContent).join('\\n') : '', inViewport: sr ? (sr.width > 0 && sr.height > 0 && sr.top >= 0 && sr.bottom <= window.innerHeight) : false, inputInViewport: ir ? (ir.width > 0 && ir.top >= 0 && ir.bottom <= window.innerHeight) : false, noOverflow: document.documentElement.scrollWidth <= window.innerWidth }; })()";
 app.on("browser-window-created", (_e, w) => {
   win = w;
   w.webContents.on("did-finish-load", async () => {
@@ -167,6 +171,8 @@ app.on("browser-window-created", (_e, w) => {
         let thinkingSeen = null;
         let stoppedAt = null;
         let final = null;
+        let stoppedElapsedLater = null;
+        let resumed = null;
         for (let i = 0; i < 600; i++) {
           const m = await js(METRICS);
           if (duringClick === null) duringClick = m;
@@ -183,7 +189,26 @@ app.on("browser-window-created", (_e, w) => {
             stoppedAt = m;
           }
           const terminal = stoppedAt ? m.status === "stopped" : (m.status === "done" || m.status === "error");
-          if (terminal) { final = m; break; }
+          if (terminal) {
+            final = m;
+            if (process.env.OPENSAND_CHAT_RESUME_AFTER_STOP === "1" && stoppedAt) {
+              await shot(tag + "-stopped");
+              // The timer must freeze at Stop: a leaked interval would keep changing this value.
+              await sleep(1200);
+              stoppedElapsedLater = (await js(METRICS)).elapsedAttr;
+              await js("(() => { const b = document.querySelector('.chat-retry'); if (b) b.click(); })()");
+              for (let k = 0; k < 100; k++) {
+                const r = await js(METRICS);
+                if (BUSY.includes(r.status)) { resumed = r; break; }
+                await sleep(100);
+              }
+              await shot(tag + "-resumed");
+              // Abort the resumed stream before quitting: an open SSE keeps the stub's server.close() waiting.
+              await js("(() => { const b = document.querySelector('#btnStop'); if (b) b.click(); })()");
+              await wait("document.querySelector('.chat-view') && document.querySelector('.chat-view').dataset.status === 'stopped'");
+            }
+            break;
+          }
           await sleep(100);
         }
         if (!final) {
@@ -192,7 +217,7 @@ app.on("browser-window-created", (_e, w) => {
         }
         await shot(tag + "-final");
         const evts = await js("JSON.stringify(window.__evts)");
-        result.sizes[tag] = { before, seen, final, duringClick, thinkingSeen, approvals, stoppedAt, evts: JSON.parse(evts) };
+        result.sizes[tag] = { before, seen, final, duringClick, thinkingSeen, approvals, stoppedAt, stoppedElapsedLater, resumed, evts: JSON.parse(evts) };
       }
       console.log("__RESULT__:" + JSON.stringify(result));
       clearTimeout(timeout); app.quit(); process.exit(0);
@@ -209,6 +234,7 @@ interface RunOptions {
   model: string;
   sizes: Array<[number, number, string]>;
   stopAtStreaming?: boolean;
+  resumeAfterStop?: boolean;
   prompt?: string;
 }
 
@@ -225,6 +251,7 @@ async function runElectron(home: string, workspace: string, opts: RunOptions): P
   env.OPENSAND_CHAT_SIZES = JSON.stringify(opts.sizes);
   env.OPENSAND_CHAT_PROMPT = opts.prompt || "Summarize the workspace.";
   env.OPENSAND_CHAT_STOP_AT_STREAMING = opts.stopAtStreaming ? "1" : "0";
+  env.OPENSAND_CHAT_RESUME_AFTER_STOP = opts.resumeAfterStop ? "1" : "0";
   env.OPENSAND_ENDPOINT = opts.endpoint;
   env.OPENSAND_MODEL = opts.model;
   env.OPENSAND_API_KEY = "stub-key-not-secret";
@@ -349,6 +376,40 @@ test("Chat turn shows the stopped state with the partial answer when Stop is pre
       assert.ok(fs.existsSync(path.join(shotDir, `${tag}-final.png`)), `${tag}: stopped screenshot written`);
     }
     console.log("chat stopped results:", JSON.stringify(Object.fromEntries(Object.entries(r.sizes).map(([k, v]: [string, any]) => [k, { status: v.final.status, answer: v.final.answer, note: v.final.noteText }]))));
+  } finally {
+    await stub.close();
+    fs.rmSync(workspace, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("Chat turn freezes its timer on Stop and resumes the last message in the real window", async (t) => {
+  const reason = skipReason();
+  if (reason) return t.skip(reason);
+  const home = makeTempHome("opensand-resume-home-");
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-resume-ws-"));
+  const stub = await startStub();
+  const tag = "resume";
+  const oneSize: Array<[number, number, string]> = [[960, 740, tag]];
+  try {
+    const r = await runElectron(home, workspace, {
+      endpoint: stub.endpoint,
+      model: SLOW_MODEL,
+      sizes: oneSize,
+      stopAtStreaming: true,
+      resumeAfterStop: true,
+    });
+    const s = r.sizes[tag];
+    assertLayout(tag, s, true);
+    assert.strictEqual(s.final.status, "stopped", `${tag}: Stop ends the turn (${s.final.status})`);
+    assert.strictEqual(s.final.retryLabel, "Resume", `${tag}: a stopped turn offers Resume (${s.final.retryLabel})`);
+    assert.strictEqual(s.stoppedElapsedLater, s.final.elapsedAttr, `${tag}: the elapsed timer freezes on Stop (${s.final.elapsedAttr} -> ${s.stoppedElapsedLater})`);
+    assert.ok(s.resumed, `${tag}: Resume puts the turn back in a busy state`);
+    assert.ok(["sending", "waiting", "streaming"].includes(s.resumed.status), `${tag}: the resumed turn is running (${s.resumed.status})`);
+    assert.ok(stub.count() >= 2, `${tag}: Resume re-sends the last user message to the model (${stub.count()} requests)`);
+    assert.ok(fs.existsSync(path.join(shotDir, `${tag}-stopped.png`)), `${tag}: stopped screenshot written`);
+    assert.ok(fs.existsSync(path.join(shotDir, `${tag}-resumed.png`)), `${tag}: resumed screenshot written`);
+    console.log("chat resume results:", JSON.stringify({ stopped: s.final.status, label: s.final.retryLabel, elapsed: [s.final.elapsedAttr, s.stoppedElapsedLater], resumed: s.resumed.status, requests: stub.count() }));
   } finally {
     await stub.close();
     fs.rmSync(workspace, { recursive: true, force: true });

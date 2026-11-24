@@ -699,7 +699,7 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
         )}
       </div>
       {/* Always mounted, so the first status change is announced. */}
-      <div class="chat-status" role="status" aria-live="polite" data-status={state.status}>
+      <div class="chat-status" role="status" aria-live="polite" data-status={state.status} data-elapsed={elapsed}>
         <span>{statusText(state)}</span>
         {timerRunning && <span class="chat-elapsed" aria-hidden="true"> {formatElapsed(elapsed)}</span>}
         {notice && <div class="chat-turn-note" data-kind="notice">{notice}</div>}
