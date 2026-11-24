@@ -6,6 +6,7 @@ import * as os from 'node:os';
 import { DesktopIpcBridge as BaseDesktopIpcBridge } from '../src/ipc-bridge.js';
 import { workspaceSentinel } from '@opensand/coordinator';
 import { isStandingExecAllowed, EventLogReader } from '@opensand/shared';
+import { closeThenRemove } from './teardown.js';
 
 const createdBridges: BaseDesktopIpcBridge[] = [];
 class DesktopIpcBridge extends BaseDesktopIpcBridge {
@@ -20,12 +21,7 @@ const pendingTmpDirs: string[] = [];
 // Bridges close before their directories are removed, so no daemon or heartbeat is
 // still writing into state/ while it is deleted (the Linux-only ENOTEMPTY flake).
 test.afterEach(async () => {
-  while (createdBridges.length) {
-    await createdBridges.pop()?.close();
-  }
-  while (pendingTmpDirs.length) {
-    fs.rmSync(pendingTmpDirs.pop()!, { recursive: true, force: true });
-  }
+  await closeThenRemove(createdBridges.splice(0), ...pendingTmpDirs.splice(0));
 });
 import { StateManager } from '@opensand/local-exec-daemon';
 
@@ -186,7 +182,7 @@ test('DesktopIpcBridge - close() waits for a daemon start that an approval reque
     await new Promise((resolve) => setTimeout(resolve, 100));
     assert.strictEqual(bridge.daemon.running, false, 'daemon left running after close()');
     // Nothing may still be writing: a plain rm (no retries) must succeed.
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    await closeThenRemove([], tmpDir);
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.strictEqual(fs.existsSync(tmpDir), false, 'state written after close()');
   } finally {

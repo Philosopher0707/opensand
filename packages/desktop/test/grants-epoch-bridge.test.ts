@@ -6,6 +6,7 @@ import * as os from 'node:os';
 import { DesktopIpcBridge as BaseDesktopIpcBridge } from '../src/ipc-bridge.js';
 import { DesktopServer } from '../src/desktop-server.js';
 import { EventEmitter } from 'node:events';
+import { closeThenRemove } from './teardown.js';
 
 const createdBridges: BaseDesktopIpcBridge[] = [];
 const tmpDirs: string[] = [];
@@ -21,8 +22,7 @@ function makeBridge() {
 }
 
 test.afterEach(async () => {
-  while (createdBridges.length) await createdBridges.pop()?.close();
-  while (tmpDirs.length) fs.rmSync(tmpDirs.pop()!, { recursive: true, force: true });
+  await closeThenRemove(createdBridges.splice(0), ...tmpDirs.splice(0));
 });
 
 async function pendingIds(bridge: BaseDesktopIpcBridge): Promise<Array<{ approvalId: string; epoch: number }>> {

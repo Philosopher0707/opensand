@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { DesktopIpcBridge } from '../src/ipc-bridge.js';
+import { closeThenRemove } from './teardown.js';
 
 // A skill created from the desktop UI is the person's own. The renderer cannot pick
 // the origin, so it cannot claim "user" for something else or "agent" for its own.
@@ -30,7 +31,6 @@ test('createSkill via the bridge stamps origin "user" and ignores the input orig
     assert.doesNotMatch(prompt, /written by the AI/);
     assert.doesNotMatch(prompt, /origin not recorded/);
   } finally {
-    await bridge.close();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    await closeThenRemove([bridge], tmpDir);
   }
 });

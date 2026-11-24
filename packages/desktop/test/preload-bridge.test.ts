@@ -1,3 +1,4 @@
+import { closeThenRemove } from './teardown.js';
 import test from 'node:test';
 import assert from 'node:assert';
 import { spawn } from 'node:child_process';
@@ -108,7 +109,6 @@ await import(${JSON.stringify(mainScript)});
       `Expected ASSERTIONS_PASSED in stdout, got:\n${stdout}\nstderr:\n${stderr}`
     );
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    fs.rmSync(tmpHome, { recursive: true, force: true });
+    await closeThenRemove([], tmpDir, tmpHome);
   }
 });

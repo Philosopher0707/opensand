@@ -1,7 +1,9 @@
 import * as fs from 'node:fs';
 
 export interface Closable {
-  close(): Promise<void>;
+  close?: () => Promise<void>;
+  /** Servers (DesktopServer, DesktopApp) shut down with stop() instead of close(). */
+  stop?: () => Promise<void>;
 }
 
 /**
@@ -13,7 +15,8 @@ export interface Closable {
 export async function closeThenRemove(closables: Array<Closable | undefined>, ...dirs: string[]): Promise<void> {
   try {
     for (const closable of closables) {
-      await closable?.close();
+      if (closable?.close) await closable.close();
+      else await closable?.stop?.();
     }
   } finally {
     for (const dir of dirs) {

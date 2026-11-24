@@ -1,3 +1,4 @@
+import { closeThenRemove } from './teardown.js';
 import test from "node:test";
 import * as assert from "node:assert";
 import * as fs from "node:fs";
@@ -18,7 +19,7 @@ test("isHiddenWindowMode: only truthy flags enable hidden mode", () => {
   assert.strictEqual(isHiddenWindowMode({ OPENSAND_HIDDEN_WINDOW: " YES " }), true);
 });
 
-test("hermeticElectronEnv: every test launch gets the hidden-window flag", () => {
+test("hermeticElectronEnv: every test launch gets the hidden-window flag", async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-hidden-env-"));
   try {
     const env = hermeticElectronEnv(home, { PATH: "/usr/bin", ELECTRON_RUN_AS_NODE: "1", KEEP_ME: "yes" });
@@ -28,7 +29,7 @@ test("hermeticElectronEnv: every test launch gets the hidden-window flag", () =>
     assert.strictEqual(env.ELECTRON_RUN_AS_NODE, undefined);
     assert.strictEqual(env.KEEP_ME, "yes");
   } finally {
-    fs.rmSync(home, { recursive: true, force: true });
+    await closeThenRemove([], home);
   }
 });
 
@@ -123,9 +124,7 @@ test("DesktopApp hidden mode: no visible window, Dock icon, tray or focus steal"
       assert.strictEqual(fake.calls.dockHide, 1);
     }
   } finally {
-    const server = (app as any).server;
-    await server?.stop();
-    fs.rmSync(stateDir, { recursive: true, force: true });
+    await closeThenRemove([(app as any).server], stateDir);
   }
 });
 
@@ -144,8 +143,6 @@ test("DesktopApp normal mode keeps the visible, focusable window", async () => {
     assert.strictEqual(fake.windowOptions[0].focusable, true);
     assert.deepStrictEqual(fake.calls.activatePolicy, [], "normal launches must not change activation policy");
   } finally {
-    const server = (app as any).server;
-    await server?.stop();
-    fs.rmSync(stateDir, { recursive: true, force: true });
+    await closeThenRemove([(app as any).server], stateDir);
   }
 });

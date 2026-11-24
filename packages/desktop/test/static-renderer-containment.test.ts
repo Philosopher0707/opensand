@@ -67,8 +67,7 @@ describe('DesktopServer - static renderer symlink containment (F7)', () => {
   });
 
   after(async () => {
-    await closeThenRemove([server?.getBridge()], tmpDir);
-    fs.rmSync(root, { recursive: true, force: true });
+    await closeThenRemove([server?.getBridge()], tmpDir, root);
   });
 
   async function get(pathname: string): Promise<{ status: number; body: string }> {

@@ -158,7 +158,7 @@ test('Chaos Suite: 20 automated resilience scenarios', async (t) => {
   });
 
   // 18. Downgrade migration attempt refused safely
-  await t.test('18. Downgrade migration attempt refused safely', () => {
+  await t.test('18. Downgrade migration attempt refused safely', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-chaos-'));
     try {
       const stateDir = path.join(tmpDir, 'state');
@@ -168,24 +168,24 @@ test('Chaos Suite: 20 automated resilience scenarios', async (t) => {
         runStateMigrations(stateDir);
       }, /Refusing/i);
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      await closeThenRemove([], tmpDir);
     }
   });
 
   // 19. Workspace snapshot revert of non-existent turnId throws clear error
-  await t.test('19. Workspace snapshot revert of non-existent turnId throws clear error', () => {
+  await t.test('19. Workspace snapshot revert of non-existent turnId throws clear error', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-chaos-'));
     try {
       assert.throws(() => {
         revertWorkspaceSnapshot(tmpDir, 'non-existent-turn');
       }, /Snapshot manifest not found/);
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      await closeThenRemove([], tmpDir);
     }
   });
 
   // 20. Workspace snapshot restores deleted file and removes untracked
-  await t.test('20. Workspace snapshot restores deleted file and removes untracked file', () => {
+  await t.test('20. Workspace snapshot restores deleted file and removes untracked file', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-chaos-ws-'));
     try {
       const testFile = path.join(tmpDir, 'important.txt');
@@ -203,7 +203,7 @@ test('Chaos Suite: 20 automated resilience scenarios', async (t) => {
       assert.deepStrictEqual(res.restored, ['important.txt']);
       assert.deepStrictEqual(res.deleted, ['rogue.sh']);
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      await closeThenRemove([], tmpDir);
     }
   });
 });

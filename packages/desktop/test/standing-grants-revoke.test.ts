@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { DesktopIpcBridge } from '../src/ipc-bridge.js';
+import { closeThenRemove } from './teardown.js';
 
 // The headline bug: "always allow" wrote grants.json AND standing-allowlist.json, but revoke only
 // shrank grants.json, so the daemon (which read the legacy file) kept running the command.
@@ -29,7 +30,6 @@ test('revoking an "always allow" grant stops the daemon running that command', a
     const after = await daemon.executeTool('exec_command', { command: 'echo revoke-me' });
     assert.strictEqual(after.status, 'permission_pending');
   } finally {
-    await bridge.close();
-    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
+    await closeThenRemove([bridge], tmpDir);
   }
 });

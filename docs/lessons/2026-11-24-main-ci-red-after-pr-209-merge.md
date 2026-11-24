@@ -1,0 +1,11 @@
+# PR CI green but main CI red after merge: temp-dir ENOTEMPTY in workspace-default test
+
+**Trap:** PR #209 passed both CI jobs on its head (`c23a342`), and `pr-gate.sh 209` merged it with exit 4 — the post-merge main CI run 45243667584 failed on macOS while Linux passed. The failing subtest was `not ok 358 - workspace - an explicit workspaceDir still wins over the default`, with `ENOTEMPTY: directory not empty, rmdir .../opensand-workspace-default-oZDaTm`.
+
+**Root Cause:** (confirmed) `DesktopIpcBridge`'s constructor starts `ensureApiKeyResolved()` fire-and-forget; that resolves the vault secret through `VaultStore.loadPayload()`, whose first await is `fs.promises.mkdir(<baseDir>/vault, { recursive: true })`. `close()` did not await that promise, so the mkdir could land after `close()` resolved and while the test's `rmSync(home)` was walking the tree: rimraf removes `.opensand`, the mkdir recreates `.opensand/vault`, and `rmdir(home)` then fails `ENOTEMPTY`. `maxRetries`/`retryDelay` cannot save it because rimraf's sync retries recurse immediately, before the pending promise ever runs. The flake was latent in every test that awaited `close()` and then deleted the bridge's home, not only in `workspace-default.test.ts`.
+
+Evidence: a probe that constructs the bridge, awaits `close()` and lists the temp home printed no `vault/` immediately after close and `vault/` ~10 ms later; after the fix the `vault/` directory is already there when `close()` resolves.
+
+Related leak found by the same sweep: several desktop tests removed a bridge home without closing the bridge or server at all (`provider-error-recovery.test.ts`, and the `DesktopServer` handler tests in `bots-real-window.test.ts` / `memories-real-window.test.ts`), leaving the routine timer, MCP start and vault mkdir running into the `rm`.
+
+**Rule:** A closable that starts asynchronous work in its constructor must await that work in `close()`; a test that owns a bridge or server tears it down through `packages/desktop/test/teardown.ts` `closeThenRemove()` instead of a hand-written `rmSync`, and `scripts/check-test-teardown.sh` (wired into `scripts/verify.sh`) fails when it does not. [checked: `scripts/check-test-teardown-selftest.sh`, 30× macOS loop of `workspace-default.test.ts`, the probe before/after `close()`]
