@@ -223,3 +223,14 @@ runSliceSuite({
   planCheck: (log) => Boolean(log.args?.includes("--deny-tool") && log.args?.includes("shell")),
   lingers: true,
 });
+
+runSliceSuite({
+  engine: "antigravity",
+  label: "Antigravity",
+  fake: "agy",
+  reply: /says hello/,
+  resumeReply: /continued conv-agy-1/,
+  resumeInLog: (log) => Boolean(log.args?.includes("--conversation")),
+  planCheck: (log) => Boolean(log.args?.includes("--sandbox") && log.args?.includes("plan")),
+  osHold: { prompt: "TRY_WRITE", held: /TRY_WRITE:EPERM/, advisory: /TRY_WRITE:ok/ },
+});
