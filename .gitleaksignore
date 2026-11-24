@@ -23,3 +23,5 @@ b773d967c2fe2900fb917086dad9a68c7083be09:packages/desktop/test/ipc-bridge.test.t
 b773d967c2fe2900fb917086dad9a68c7083be09:packages/desktop/test/ipc-bridge.test.ts:generic-api-key:302
 # Fake session ids/tokens in IPC bridge unit tests.
 b773d967c2fe2900fb917086dad9a68c7083be09:packages/desktop/test/ipc-bridge.test.ts:generic-api-key:308
+# Synthetic Slack-style token in a hermetic Electron UI test; the test asserts it is not leaked.
+62340a7714aee87fb9ac05b016d9922ad9c6df8e:packages/desktop/test/connectors-real-window.test.ts:generic-api-key:66
