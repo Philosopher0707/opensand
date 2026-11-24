@@ -4,13 +4,17 @@
 
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import type { ShellData } from "../data";
+import { parseAnsi, type AnsiSpan } from "../../../src/shell/chat-ansi";
 import {
   INITIAL_CHAT_TURN,
   chatEventAction,
   chatTurnReducer,
   canRetryTurn,
+  formatElapsed,
+  isBlankAssistantTurn,
   isChatBusy,
   reconstructSessionMessages,
+  retryLabel,
   type ChatMessage,
   type ChatTurnAction,
   type ChatTurnState,
@@ -31,6 +35,7 @@ import {
   friendlyErrorMessage,
   getFileCategory,
   insertTriggerSelection,
+  previewErrorMessage,
   runLocalSlashCommand,
   type PromptChip,
   type SlashCommand,
@@ -239,6 +244,26 @@ export function ThoughtAccordion({ thought, isStreaming }: { thought?: string; i
   );
 }
 
+/** Renders parsed SGR spans as text and styles; never as HTML. */
+export function AnsiText({ spans }: { spans: AnsiSpan[] }) {
+  return (
+    <>
+      {spans.map((span, i) => (
+        <span
+          key={i}
+          style={{
+            color: span.color,
+            backgroundColor: span.background,
+            fontWeight: span.bold ? 700 : undefined,
+          }}
+        >
+          {span.text}
+        </span>
+      ))}
+    </>
+  );
+}
+
 export function ToolCard({
   tool,
   onOpenArtifact,
@@ -305,13 +330,13 @@ export function ToolCard({
         {formattedArgs ? (
           <>
             <div class="tool-details-header">Parameters:</div>
-            <pre class="tool-details-pre">{formattedArgs}</pre>
+            <pre class="tool-details-pre"><AnsiText spans={parseAnsi(formattedArgs)} /></pre>
           </>
         ) : null}
         {formattedResult ? (
           <>
             <div class="tool-details-header" style="margin-top: 8px;">Result:</div>
-            <pre class="tool-details-pre tool-result-pre">{formattedResult}</pre>
+            <pre class="tool-details-pre tool-result-pre"><AnsiText spans={parseAnsi(formattedResult)} /></pre>
           </>
         ) : null}
         {fileInfo && onOpenArtifact && (
@@ -397,12 +422,28 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
   const { state } = chat;
   const busy = isChatBusy(state.status);
   const view = screenState(state);
+  const hideBlankEnd = state.status === "stopped" && isBlankAssistantTurn(state);
   const [draft, setDraft] = useState("");
   const [stagedAttachments, setStagedAttachments] = useState<StagedAttachment[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const timerRunning = isChatBusy(state.status);
+
+  // One interval per turn: the cleanup runs on done, error, stop and unmount, so none is leaked.
+  useEffect(() => {
+    if (!timerRunning) {
+      setElapsed(0);
+      return;
+    }
+    const started = Date.now();
+    const tick = () => setElapsed(Math.floor((Date.now() - started) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [timerRunning]);
 
   // Autocomplete / Slash trigger state
   const [triggerMatch, setTriggerMatch] = useState<TriggerMatch | null>(null);
@@ -439,7 +480,9 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
       if (isImg && typeof URL !== "undefined" && URL.createObjectURL) {
         try {
           previewUrl = URL.createObjectURL(f);
-        } catch {}
+        } catch {
+          setNotice(previewErrorMessage(f.name));
+        }
       }
       const item: StagedAttachment = {
         name: f.name,
@@ -467,6 +510,7 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
       const next = [...prev];
       const removed = next.splice(index, 1)[0];
       if (removed?.previewUrl && typeof URL !== "undefined" && URL.revokeObjectURL) {
+        // Cleanup only: a failed revoke leaves no state behind, so there is nothing to report.
         try { URL.revokeObjectURL(removed.previewUrl); } catch {}
       }
       if (removed?.serverId && data?.deleteAttachment) {
@@ -640,21 +684,24 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
           </p>
         ) : (
           <div class="message-feed" role="list" aria-label="Messages">
-            {state.messages.map((m, i) => (
-              <ChatMessageRow
-                key={i}
-                message={m}
-                isLastAssistant={m.role === "assistant" && i === state.messages.length - 1}
-                turnBusy={busy}
-                onOpenArtifact={onOpenArtifact}
-              />
-            ))}
+            {state.messages.map((m, i) =>
+              hideBlankEnd && i === state.messages.length - 1 ? null : (
+                <ChatMessageRow
+                  key={i}
+                  message={m}
+                  isLastAssistant={m.role === "assistant" && i === state.messages.length - 1}
+                  turnBusy={busy}
+                  onOpenArtifact={onOpenArtifact}
+                />
+              )
+            )}
           </div>
         )}
       </div>
       {/* Always mounted, so the first status change is announced. */}
-      <div class="chat-status" role="status" aria-live="polite" data-status={state.status}>
-        {statusText(state)}
+      <div class="chat-status" role="status" aria-live="polite" data-status={state.status} data-elapsed={elapsed}>
+        <span>{statusText(state)}</span>
+        {timerRunning && <span class="chat-elapsed" aria-hidden="true"> {formatElapsed(elapsed)}</span>}
         {notice && <div class="chat-turn-note" data-kind="notice">{notice}</div>}
         {(chat.loadError || loadError) && (
           <div class="chat-turn-error" role="alert">
@@ -674,7 +721,7 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
         )}
         {canRetryTurn(state) && (
           <button type="button" class="btn btn-sm chat-retry" onClick={retry}>
-            Retry
+            {retryLabel(state.status)}
           </button>
         )}
       </div>

@@ -78,6 +78,25 @@ export function canRetryTurn(state: ChatTurnState): boolean {
   return state.messages.some((message) => message.role === "user");
 }
 
+/** Seconds since a turn started, as a short status-line label. */
+export function formatElapsed(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const mins = Math.floor(total / 60);
+  return mins > 0 ? `${mins}m ${String(total % 60).padStart(2, "0")}s` : `${total}s`;
+}
+
+/** A last assistant message with no answer to show: hide it instead of showing "Thinking…". */
+export function isBlankAssistantTurn(state: ChatTurnState): boolean {
+  const last = state.messages[state.messages.length - 1];
+  if (!last || last.role !== "assistant" || last.text || last.thought) return false;
+  return !last.toolCalls || last.toolCalls.length === 0;
+}
+
+/** A stopped turn resumes; only a genuinely failed turn retries. */
+export function retryLabel(status: ChatTurnStatus): string {
+  return status === "stopped" ? "Resume" : "Retry";
+}
+
 /**
  * Extracts <think>...</think> or <thinking>...</thinking> blocks from raw text.
  * Also handles unclosed tags during streaming.
