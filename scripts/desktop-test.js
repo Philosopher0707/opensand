@@ -12,9 +12,11 @@ const TEST_DIR = process.env.OPENSAND_DESKTOP_TEST_DIR
   ? resolve(process.env.OPENSAND_DESKTOP_TEST_DIR)
   : join(ROOT, 'packages/desktop/dist/test');
 const LIMIT_MS = Number(process.env.OPENSAND_REAL_WINDOW_LIMIT_MS ?? 120_000);
+// Pre-commit sets this so a bot's commit never launches Electron on the owner's screen.
+const SKIP_REAL_WINDOW = process.env.OPENSAND_SKIP_REAL_WINDOW === '1';
 
 const files = readdirSync(TEST_DIR).filter((f) => f.endsWith('.test.js')).sort();
-const realWindow = files.filter((f) => f.endsWith('-real-window.test.js'));
+const realWindow = SKIP_REAL_WINDOW ? [] : files.filter((f) => f.endsWith('-real-window.test.js'));
 const other = files.filter((f) => !f.endsWith('-real-window.test.js'));
 
 function run(label, args, timeoutMs = 0) {
@@ -75,4 +77,4 @@ for (const file of realWindow) {
   }
 }
 
-console.log(`desktop-test: done (${other.length} parallel, ${realWindow.length} serial)`);
+console.log(`desktop-test: done (${other.length} parallel, ${realWindow.length} serial${SKIP_REAL_WINDOW ? ', real-window skipped by OPENSAND_SKIP_REAL_WINDOW' : ''})`);

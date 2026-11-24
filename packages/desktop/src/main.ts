@@ -52,6 +52,17 @@ export function isSmokeMode(env: NodeJS.ProcessEnv = process.env): boolean {
   return val === '1' || val === 'true' || val === 'yes';
 }
 
+/**
+ * Parses the OPENSAND_HIDDEN_WINDOW flag.
+ * Truthy values: '1', 'true', 'yes' (case-insensitive).
+ * When active the app creates a hidden, non-focusable window, has no Dock icon or tray on macOS,
+ * and never calls show()/focus(), so automated launches cannot take over the owner's screen.
+ */
+export function isHiddenWindowMode(env: NodeJS.ProcessEnv = process.env): boolean {
+  const val = env.OPENSAND_HIDDEN_WINDOW?.trim().toLowerCase();
+  return val === '1' || val === 'true' || val === 'yes';
+}
+
 export class DesktopApp {
   private bridge!: DesktopIpcBridge;
   private missionRestore?: RestoreFn;
@@ -64,6 +75,7 @@ export class DesktopApp {
   private loadElectron: () => Promise<any>;
   private baseDir: string;
   private isSmoke: boolean;
+  private isHidden: boolean;
 
   constructor(deps: DesktopAppDeps = {}) {
     // Dynamic import keeps this module loadable in plain Node (tests, web mode);
@@ -71,6 +83,7 @@ export class DesktopApp {
     this.loadElectron = deps.loadElectron ?? (() => import('electron'));
     const env = deps.env ?? process.env;
     this.isSmoke = isSmokeMode(env);
+    this.isHidden = isHiddenWindowMode(env);
     this.baseDir = resolveStateDir(env, deps.baseDir);
   }
 
@@ -116,9 +129,19 @@ export class DesktopApp {
 
     await app.whenReady();
 
+    // Hidden automation launches: no Dock icon and no activation, so the owner's Mac is untouched.
+    if (this.isHidden && process.platform === 'darwin') {
+      try {
+        app.setActivationPolicy?.('accessory');
+        app.dock?.hide?.();
+      } catch {
+        // Non-fatal: the window is still hidden and unfocusable.
+      }
+    }
+
     // Packaged builds get their icon from the app bundle; an unpackaged `electron .`
     // dev run otherwise shows the generic Electron icon in the Dock.
-    if (!app.isPackaged && process.platform === 'darwin' && app.dock) {
+    if (!this.isHidden && !app.isPackaged && process.platform === 'darwin' && app.dock) {
       try {
         app.dock.setIcon(fileURLToPath(new URL('../../../../build/icon.png', import.meta.url)));
       } catch {
@@ -127,7 +150,7 @@ export class DesktopApp {
     }
 
     app.on('second-instance', () => {
-      if (this.isSmoke) return;
+      if (this.isSmoke || this.isHidden) return;
       if (this.mainWindow) {
         if (this.mainWindow.isMinimized()) this.mainWindow.restore();
         this.mainWindow.focus();
@@ -210,8 +233,8 @@ export class DesktopApp {
       title: 'OpenSand',
       backgroundColor: '#18181b',
       titleBarStyle: 'hiddenInset',
-      show: !this.isSmoke,
-      focusable: !this.isSmoke,
+      show: !this.isSmoke && !this.isHidden,
+      focusable: !this.isSmoke && !this.isHidden,
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
@@ -374,7 +397,7 @@ export class DesktopApp {
   }
 
   private setupTray(): void {
-    if (this.isSmoke) return;
+    if (this.isSmoke || this.isHidden) return;
     this.trayManager = new DesktopTrayManager({
       onToggleWindow: () => {
         if (this.mainWindow) {

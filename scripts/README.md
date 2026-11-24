@@ -14,6 +14,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `bench-cold-start.ts` | Benchmark daemon startup latency | Manual performance testing | None |
 | `bench-first-token.ts` | Benchmark engine model time-to-first-token | Manual performance testing | None |
 | `check-doc-links.sh` | Check that local markdown links under `docs/` resolve to real files | `scripts/verify.sh`, CI | `check-doc-links-selftest.sh` |
+| `check-hidden-window-spawns.sh` | Fail if a desktop test or helper script spawns Electron without the shared `hermeticElectronEnv` (which sets `OPENSAND_HIDDEN_WINDOW=1`); packaged-app shell launches must set the hidden/smoke flag | `scripts/verify.sh`, CI | `check-hidden-window-spawns-selftest.sh` |
+| `check-hidden-window-spawns-selftest.sh` | Hermetic selftest: raw spawn/fork refused, helper-built spawn allowed, packaged launch needs the flag, missing root refused | Pre-commit / verification | Self |
 | `check-doc-links-selftest.sh` | Hermetic selftest for the docs link checker | Pre-commit / verification | Self |
 | `check-engine-wrapper-sync.sh` | Validate SHA-256 parity of vendored engine wrapper files against committed PIN and upstream skills | `scripts/verify.sh`, CI | None |
 | `check-dead-exports.sh` | Fail on NEW exported functions/classes/consts under `packages/*/src` that no other file imports or references; today's findings are seeded in `scripts/dead-exports-allow.txt`. Uses the repo's TypeScript compiler; excludes tests, index.ts re-exports and package entry points | `scripts/verify.sh`, CI | `check-dead-exports-selftest.sh` |
@@ -140,6 +142,20 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
 - **Trigger**: Pre-commit hook, verification.
+
+### `check-hidden-window-spawns.sh`
+- **Purpose**: Fail with file and line when a file under `packages/desktop/test` or `scripts` spawns Electron without building its env through `hermeticElectronEnv` (which sets `OPENSAND_HIDDEN_WINDOW=1`, so main.ts creates a hidden window, no Dock icon and no focus steal). Packaged-app shell launches must set `OPENSAND_HIDDEN_WINDOW=1` or `OPENSAND_SMOKE=1`. `HIDDEN_SPAWN_SCAN_DIRS` overrides the scan roots.
+- **Usage**: `scripts/check-hidden-window-spawns.sh`
+- **Exit Codes**: `0` no bypasses, `1` a bypass was found, `2` a scan root is missing.
+- **Selftest**: `scripts/check-hidden-window-spawns-selftest.sh`.
+- **Trigger**: `scripts/verify.sh`, CI.
+
+### `check-hidden-window-spawns-selftest.sh`
+- **Purpose**: Hermetic selftest with temp files: raw Electron spawn and fork are refused, helper-built spawn is allowed, packaged-app launch needs the hidden flag, missing scan root is refused, and the real tree passes.
+- **Usage**: `scripts/check-hidden-window-spawns-selftest.sh`
+- **Exit Codes**: `0` all cases pass, `1` a case failed.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit / verification.
 
 ### `check-real-window-nav.sh`
 - **Purpose**: Fail with file and line when any `*-real-window.test.ts` assigns location.hash directly. The one-shot change is lost when the view's hashchange subscriber mounts a tick after the DOM appears; runners must call the shared navigateToView helper, which re-dispatches with a bounded retry until the target view is visible. `REAL_WINDOW_TEST_DIR` overrides the scanned directory.
