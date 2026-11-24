@@ -243,6 +243,16 @@ export class DesktopApp {
       },
     });
 
+    this.mainWindow.webContents.on('preload-error', (_event: any, preloadPath: string, error: Error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[OpenSand Desktop] Secure preload bridge failed:', preloadPath, message);
+      this.electron?.dialog?.showErrorBox?.(
+        'OpenSand could not start',
+        `The secure desktop bridge failed to load. OpenSand will close rather than run without IPC.\n\n${message}`,
+      );
+      this.electron?.app?.quit?.();
+    });
+
     void this.mainWindow.loadURL(serverUrl);
 
     // Keep navigation inside the local server; send everything else to the browser.

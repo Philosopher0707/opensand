@@ -6,7 +6,7 @@ import * as crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DesktopIpcBridge } from './ipc-bridge.js';
 import { createDefaultRpcGateway, RpcGateway } from './rpc-gateway.js';
-import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient, classifyError } from '@opensand/coordinator';
+import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, AnthropicClient, classifyError, OAuthUnavailableError } from '@opensand/coordinator';
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 import { runStateMigrations, readSchemaVersion } from '@opensand/shared';
 import { buildDiagnosticsReport } from './diagnostics.js';
@@ -293,6 +293,8 @@ export class DesktopServer {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'no-referrer');
+    // F6: style-src still needs 'unsafe-inline' because both renderers use inline
+    // style attributes and dynamically generated markup. script-src stays 'self'.
     res.setHeader(
       'Content-Security-Policy',
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:* http://localhost:*; img-src 'self' data:;"
@@ -1487,7 +1489,12 @@ export class DesktopServer {
     if (pathname.startsWith('/api/connectors/') && pathname.endsWith('/callback') && req.method === 'POST') {
       const id = pathname.replace('/api/connectors/', '').replace('/callback', '') as any;
       const body = await this.readJsonBody(req);
-      const result = await this.bridge.completeOAuth(id, body.code || 'mock_code', body.state);
+      if (typeof body.code !== 'string' || !body.code.trim()) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'OAuth callback requires a non-empty code.' }));
+        return;
+      }
+      const result = await this.bridge.completeOAuth(id, body.code, body.state);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
       return;
@@ -1642,6 +1649,9 @@ export class DesktopServer {
         res.end(JSON.stringify({ error: err.message }));
       } else if (err.message && err.message.includes('Invalid JSON')) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      } else if (err instanceof OAuthUnavailableError) {
+        res.writeHead(501, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: err.message }));
       } else if (err.message && err.message.includes('requires a non-empty secret')) {
         res.writeHead(400, { 'Content-Type': 'application/json' });

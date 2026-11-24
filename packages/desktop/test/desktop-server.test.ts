@@ -641,18 +641,40 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     assert.strictEqual(slackConn.id, 'slack');
     assert.strictEqual(slackConn.status, 'disconnected');
 
-    // Test Connector API: POST /api/connectors/linear/connect (initiate OAuth)
+    // Unconfigured OAuth fails closed instead of sending a placeholder client ID.
     const reqLinearOAuth = new MockIncomingMessage('POST', '/api/connectors/linear/connect');
     const resLinearOAuth = new MockServerResponse();
     const linearOAuthPromise = (server as any).handleRequest(reqLinearOAuth, resLinearOAuth);
     reqLinearOAuth.emit('data', JSON.stringify({}));
     reqLinearOAuth.emit('end');
     await linearOAuthPromise;
-    assert.strictEqual(resLinearOAuth.statusCode, 200);
-    const linearFlow = JSON.parse(resLinearOAuth.body);
-    assert.strictEqual(linearFlow.providerId, 'linear');
-    assert.ok(linearFlow.authUrl.includes('linear.app/oauth/authorize'));
-    assert.ok(linearFlow.state);
+    assert.strictEqual(resLinearOAuth.statusCode, 501);
+    assert.match(JSON.parse(resLinearOAuth.body).error, /OAuth is not configured/);
+
+    // A callback without a code is rejected; a code cannot mint a fake connection.
+    const reqMissingCode = new MockIncomingMessage('POST', '/api/connectors/linear/callback');
+    const resMissingCode = new MockServerResponse();
+    const missingCodePromise = (server as any).handleRequest(reqMissingCode, resMissingCode);
+    reqMissingCode.emit('data', JSON.stringify({}));
+    reqMissingCode.emit('end');
+    await missingCodePromise;
+    assert.strictEqual(resMissingCode.statusCode, 400);
+
+    const reqMockCallback = new MockIncomingMessage('POST', '/api/connectors/linear/callback');
+    const resMockCallback = new MockServerResponse();
+    const mockCallbackPromise = (server as any).handleRequest(reqMockCallback, resMockCallback);
+    reqMockCallback.emit('data', JSON.stringify({ code: 'mock_code' }));
+    reqMockCallback.emit('end');
+    await mockCallbackPromise;
+    assert.strictEqual(resMockCallback.statusCode, 501);
+    assert.match(JSON.parse(resMockCallback.body).error, /token exchange is not implemented/);
+
+    const reqLinearAfter = new MockIncomingMessage('GET', '/api/connectors/linear');
+    const resLinearAfter = new MockServerResponse();
+    await (server as any).handleRequest(reqLinearAfter, resLinearAfter);
+    const linearAfter = JSON.parse(resLinearAfter.body);
+    assert.notStrictEqual(linearAfter.status, 'connected');
+    assert.strictEqual(linearAfter.account, undefined);
 
     // Test Connector API: POST /api/connectors/slack/connect (token configuration)
     const reqSlackToken = new MockIncomingMessage('POST', '/api/connectors/slack/connect');
@@ -675,7 +697,8 @@ test('DesktopServer - handles REST API endpoints hermetically', async () => {
     await slackTestPromise;
     assert.strictEqual(resSlackTest.statusCode, 200);
     const slackTestResult = JSON.parse(resSlackTest.body);
-    assert.strictEqual(slackTestResult.ok, true);
+    assert.strictEqual(slackTestResult.ok, false);
+    assert.match(slackTestResult.message, /not implemented/i);
     assert.strictEqual(slackTestResult.account, 'Acme Slack');
 
     // Test Connector API: POST /api/connectors/slack/disconnect
