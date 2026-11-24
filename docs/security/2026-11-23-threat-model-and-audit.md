@@ -40,8 +40,8 @@ Scope: `origin/main` at the time of this audit (worktree base SHA `0b295506da246
 ### F5 fix verification
 
 - PR: https://github.com/Philosopher0707/opensand/pull/216
-- Green `security-gates` run on the PR: pending run id
-- Red run proving the gate catches a fake AWS-style key on a throwaway branch (commit deleted, branch removed, never merged): pending run id
+- Green `security-gates` run on the PR: [45334358765](https://github.com/Philosopher0707/opensand/actions/runs/45334358765)
+- Red run proving the gate catches a fake AWS-style key on a throwaway branch (PR #217, branch and commit deleted, never merged): [45334421656](https://github.com/Philosopher0707/opensand/actions/runs/45334421656)
 
 ### F1 PoC transcript (extracted-function reproduction, no files touched)
 
