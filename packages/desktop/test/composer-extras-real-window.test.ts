@@ -5,11 +5,12 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { withElectronLock } from "./electron-lock.js";
 import { hermeticElectronEnv, makeTempHome } from "./hermetic-env.js";
 
 const pkgRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const NAV_HELPER_URL = pathToFileURL(path.join(pkgRoot, "dist/test/helpers/navigate-view.js")).href;
 
 function skipReason(): string | undefined {
   if (process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
@@ -24,6 +25,7 @@ const RUNNER_SCRIPT = String.raw`
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import { navigateToView } from "${NAV_HELPER_URL}";
 
 const shotDir = process.env.OPENSAND_COMPOSER_SHOT_DIR || "";
 const TIMEOUT_MS = Number(process.env.OPENSAND_COMPOSER_TIMEOUT_MS || 90000);
@@ -49,7 +51,7 @@ app.on("browser-window-created", (_e, w) => {
       await wait("document.querySelector('#promptInput') && document.querySelector('#btnAttachFile') && document.body.classList.contains('is-electron')");
       // A first run without a model opens /welcome, which hides the chat panel. Land on chat
       // explicitly so the composer metrics measure the composer, not a hidden panel.
-      await js("location.hash = '#chat'");
+      await navigateToView({ js, sleep }, "#chat", "#viewChat");
       await wait("document.querySelector('#promptInput').getBoundingClientRect().width > 0");
 
       const result = { sizes: {}, chipInteraction: false, popoverInteraction: false, dragDropInteraction: false, attachmentInteraction: false };
