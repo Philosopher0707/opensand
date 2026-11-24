@@ -184,3 +184,13 @@ runSliceSuite({
   planCheck: (log) => Boolean(log.rpc?.some((e: any) => e.method === "session/set_config_option" && e.configId === "mode" && e.value === "plan")),
   osHold: { prompt: "TRY_WRITE", held: /TRY_WRITE:EPERM/, advisory: /TRY_WRITE:ok/ },
 });
+
+runSliceSuite({
+  engine: "codex",
+  label: "Codex",
+  fake: "codex",
+  reply: /done by codex/,
+  resumeReply: /resumed thread-abc/,
+  resumeInLog: (log) => Boolean(log.args?.includes("resume")),
+  planCheck: (log) => Boolean(log.args?.some((a: string) => a === 'sandbox_mode="read-only"')),
+});
