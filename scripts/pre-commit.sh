@@ -42,6 +42,15 @@ fi
 
 echo "==> pre-commit: pnpm run build"
 pnpm run build
-echo "==> pre-commit: pnpm run test"
-pnpm run test
+# Real-window tests launch Electron and steal the owner's focus. Locally, override
+# with a command that skips them; CI runs the full suite including real-window tests.
+# e.g. OPENSAND_PRECOMMIT_TEST_CMD="cd packages/desktop && node --test --test-skip-pattern='[Rr]eal-[Ww]indow|[Rr]eal-[Ee]lectron' 'dist/test/**/*.test.js'"
+# The test flag must precede the file glob: on Node 26 a flag appended by pnpm's `--` is ignored.
+if [[ -n "${OPENSAND_PRECOMMIT_TEST_CMD:-}" ]]; then
+  echo "==> pre-commit: OPENSAND_PRECOMMIT_TEST_CMD=$OPENSAND_PRECOMMIT_TEST_CMD"
+  bash -c "$OPENSAND_PRECOMMIT_TEST_CMD"
+else
+  echo "==> pre-commit: pnpm run test"
+  pnpm run test
+fi
 echo "pre-commit passed"
