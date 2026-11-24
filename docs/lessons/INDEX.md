@@ -124,3 +124,4 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-24 · [ChatList rename: use the registered verb and update real-window click flows](2026-11-24-chatlist-rename-verb-and-confirm-tests.md)
 - 2026-11-24 · [A dirty base clone blocks worktree.sh, and CLI tests need the engine built](2026-11-24-cli-errors-dirty-base-and-unbuilt-engine.md)
 - 2026-11-24 · [PR CI green but main CI red after merge: temp-dir ENOTEMPTY in workspace-default test](2026-11-24-main-ci-red-after-pr-209-merge.md)
+- 2026-11-24 · [Full desktop suite can fail on a pre-existing navigation real-window timeout](2026-11-24-sentinel-full-suite-navigation-timeout.md)
