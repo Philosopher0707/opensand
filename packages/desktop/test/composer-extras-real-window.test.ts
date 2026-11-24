@@ -59,7 +59,8 @@ app.on("browser-window-created", (_e, w) => {
 
       for (const [w, h, tag] of SIZES) {
         win.setContentSize(w, h);
-        await sleep(400);
+        // Wait for the renderer viewport to reflect the resize before measuring layout.
+        await wait("window.innerWidth === " + w + " && window.innerHeight === " + h);
 
         const metrics = await js("(() => {\n" +
           "const input = document.querySelector('#promptInput');\n" +

@@ -1,0 +1,7 @@
+# A fixed sleep after setContentSize let the composer viewport measurement race the resize
+
+**Trap:** `composer-extras-real-window.test.js` failed macOS CI on an unrelated PR (Pixel's Settings work, run 45335841999 / job 138247589008) at `dist/test/composer-extras-real-window.test.js:224` with `input field within viewport at 960x740` — `strictEqual` expected true, got false after 5.6 s. It passed locally on the owner's Mac and on earlier heads.
+
+**Root Cause:** The Electron runner called `win.setContentSize(w, h)` then `await sleep(400)` before reading `getBoundingClientRect()` and comparing `ir.bottom <= window.innerHeight`. On a loaded CI runner the renderer had not applied the new content size within 400 ms, so the input was measured against the old layout and read as out of viewport. A fixed delay is not a condition: the slower the runner, the more likely the measurement lands before layout settles.
+
+**Rule:** After `setContentSize` in a real-window runner, wait on the settled renderer viewport with the existing bounded `wait` helper (for example `await wait("window.innerWidth === " + w + " && window.innerHeight === " + h)`), never a fixed `sleep`. Keep the assertion strict. This matches `account-shortcuts-real-window.test.ts`, which already waits on `window.innerWidth === width` after each resize. [checked: packages/desktop/test/composer-extras-real-window.test.ts RUNNER_SCRIPT]
