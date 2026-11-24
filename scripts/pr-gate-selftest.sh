@@ -1371,4 +1371,73 @@ if ! grep -qF -- "--body Review waiver: incident INC-42" "$dir/merge_calls.log" 
   FAILED=1
 fi
 
+# --- Case 43: .github file in diff without --allow-github -> fail ---
+dir="$WORK/case43-github-diff-no-flag"
+setup_defaults "$dir"
+cat << 'NAMES' > "$dir/pr_diff_names"
+packages/desktop/src/main.ts
+.github/workflows/ci.yml
+NAMES
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("FAIL: forbidden file in diff: .github/workflows/ci.yml" "changes under .github/ are forbidden")
+run_test_case "case43-github-diff-no-flag" 42
+
+# --- Case 44: .github file in diff with --allow-github but missing owner-approved-github label -> fail ---
+dir="$WORK/case44-allow-github-no-label"
+setup_defaults "$dir"
+cat << 'NAMES' > "$dir/pr_diff_names"
+packages/desktop/src/main.ts
+.github/workflows/ci.yml
+NAMES
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("FAIL: --allow-github requires label owner-approved-github on PR #42")
+run_test_case "case44-allow-github-no-label" --allow-github 42
+
+# --- Case 45: .github file in diff with --allow-github and owner-approved-github label -> pass with warning ---
+dir="$WORK/case45-allow-github-with-label"
+setup_defaults "$dir"
+cat << 'NAMES' > "$dir/pr_diff_names"
+packages/desktop/src/main.ts
+.github/workflows/ci.yml
+.github/dependabot.yml
+NAMES
+cat << 'JSON' > "$dir/pr_view.json"
+{
+  "state": "OPEN",
+  "mergeable": "MERGEABLE",
+  "baseRefOid": "1111111111111111111111111111111111111111",
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "labels": [
+    { "name": "rigel-pass" },
+    { "name": "owner-approved-github" }
+  ],
+  "statusCheckRollup": [
+    {
+      "name": "Build & test (Node 22)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "Build & test (macOS, Node 22)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    }
+  ]
+}
+JSON
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=(
+  "WARNING: --allow-github passed: allowing .github file in diff: .github/workflows/ci.yml"
+  "WARNING: --allow-github passed: allowing .github file in diff: .github/dependabot.yml"
+  "PASS: no forbidden files in diff (checked lockfile, .github/, and binaries)"
+  "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6"
+)
+run_test_case "case45-allow-github-with-label" --allow-github 42
+
 exit "$FAILED"
