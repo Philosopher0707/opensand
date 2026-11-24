@@ -5,6 +5,7 @@ import * as os from "node:os";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DesktopIpcBridge } from "../src/ipc-bridge.js";
+import { closeThenRemove } from "./teardown.js";
 import {
   chatTurnReducer,
   chatEventAction,
@@ -49,8 +50,10 @@ test("Turn and session recovery: 429 provider error renders cause + nextAction, 
   const port = (server.address() as any).port;
   const endpoint = `http://127.0.0.1:${port}/v1`;
 
+  // Assigned in the try; the finally still removes the dir if the constructor threw.
+  let bridge!: DesktopIpcBridge;
   try {
-    const bridge = new DesktopIpcBridge({
+    bridge = new DesktopIpcBridge({
       baseDir: tmpDir,
       defaultSettings: {
         endpoint,
@@ -149,7 +152,6 @@ test("Turn and session recovery: 429 provider error renders cause + nextAction, 
   } finally {
     (server as any).closeAllConnections?.();
     await new Promise<void>((resolve) => server.close(() => resolve()));
-    await new Promise((r) => setTimeout(r, 100));
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    await closeThenRemove([bridge], tmpDir);
   }
 });

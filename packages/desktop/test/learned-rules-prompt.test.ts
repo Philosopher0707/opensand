@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { DesktopIpcBridge } from '../src/ipc-bridge.js';
+import { closeThenRemove } from './teardown.js';
 
 /**
  * The desktop prompt path must hand the model the fenced learned rules, not the
@@ -40,7 +41,6 @@ test('desktop prompt - learned rules reach the system prompt fenced', async () =
       'the raw learned rules must never reach the system prompt',
     );
   } finally {
-    await bridge.close();
-    fs.rmSync(home, { recursive: true, force: true });
+    await closeThenRemove([bridge], home);
   }
 });

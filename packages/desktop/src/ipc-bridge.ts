@@ -123,6 +123,9 @@ export class DesktopIpcBridge extends EventEmitter {
   // otherwise it sees running === false, skips stop(), and the start finishes afterwards.
   private backgroundDaemonStart: Promise<void> | null = null;
   private backgroundMcpStart: Promise<void> | null = null;
+  // The constructor's key resolve creates the vault directory asynchronously; close() waits for it,
+  // otherwise that mkdir lands during the caller's rmdir of baseDir and the teardown fails ENOTEMPTY.
+  private backgroundKeyResolve: Promise<void> | null = null;
   public daemon: LocalExecDaemon;
   public stateManager: StateManager;
   // The bridge is the only writer of grants.json; daemon and coordinator only read.
@@ -195,7 +198,9 @@ export class DesktopIpcBridge extends EventEmitter {
     // (sendQuery / createSessionCoordinator / getTokenTelemetry) — the
     // constructor is sync. Also kick off a best-effort resolve so
     // GET /api/settings shows the saved state immediately after startup.
-    this.ensureApiKeyResolved().catch(() => {});
+    this.backgroundKeyResolve = this.ensureApiKeyResolved().catch(() => {}).finally(() => {
+      this.backgroundKeyResolve = null;
+    });
 
     // Setup daemon and native tools
     const stateDir = path.join(this.baseDir, 'state');
@@ -292,6 +297,13 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async close(): Promise<void> {
+    if (this.backgroundKeyResolve) {
+      try {
+        await this.backgroundKeyResolve;
+      } catch {
+        // ignore
+      }
+    }
     if (this.sentinelListener) {
       workspaceSentinel.removeListener('diagnostic', this.sentinelListener);
       this.sentinelListener = null;

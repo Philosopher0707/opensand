@@ -10,6 +10,7 @@ import { EventEmitter } from "node:events";
 import { withElectronLock } from "./electron-lock.js";
 import { hermeticElectronEnv, makeTempHome } from "./hermetic-env.js";
 import { DesktopServer } from "../src/desktop-server.js";
+import { closeThenRemove } from "./teardown.js";
 
 const pkgRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const NAV_HELPER_URL = pathToFileURL(path.join(pkgRoot, "dist/test/helpers/navigate-view.js")).href;
@@ -67,8 +68,9 @@ class MockServerResponse extends EventEmitter {
 
 test("memories: approve sends POST /api/team-review/resolve with {itemId, decision:approve} through real handler", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-memories-handler-"));
+  let server: DesktopServer | undefined;
   try {
-    const server = new DesktopServer({ baseDir: tmpDir });
+    server = new DesktopServer({ baseDir: tmpDir });
     let resolvedCall: { itemId: string; decision: string; reviewerId?: string } | null = null;
     const fakeBridge: any = {
       resolveReviewItem: async (itemId: string, decision: string, reviewerId?: string) => {
@@ -105,7 +107,7 @@ test("memories: approve sends POST /api/team-review/resolve with {itemId, decisi
     await badPromise;
     assert.strictEqual(resBad.statusCode, 400);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    await closeThenRemove([server], tmpDir);
   }
 });
 
@@ -416,8 +418,6 @@ test("Preact memories view, team review queue and creation at 960x740 and 1920x1
 
     console.log("[proof] memories real-window screenshots written to:", proofDir);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    fs.rmSync(home, { recursive: true, force: true });
-    fs.rmSync(ws, { recursive: true, force: true });
+    await closeThenRemove([], tmpDir, home, ws);
   }
 });

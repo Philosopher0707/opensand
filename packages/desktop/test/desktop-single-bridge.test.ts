@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { DesktopApp } from "../src/main.js";
+import { closeThenRemove } from "./teardown.js";
 
 /**
  * Regression for the installed v0.1.6 bug: DesktopApp built a second
@@ -112,8 +113,7 @@ test("window IPC handlers drive the same engine as the app server", async () => 
       server.getBridge().listPendingApprovals = realList;
     }
   } finally {
-    await server?.stop();
-    fs.rmSync(home, { recursive: true, force: true });
+    await closeThenRemove([server], home);
   }
 });
 
@@ -144,7 +144,6 @@ test("opening the window twice registers the bridge event forwarder once", async
     const delivered = latest.webContents.sent.some(([channel]) => channel === "opensand:event");
     assert.ok(delivered, "bridge events must reach the live window");
   } finally {
-    await server?.stop();
-    fs.rmSync(home, { recursive: true, force: true });
+    await closeThenRemove([server], home);
   }
 });

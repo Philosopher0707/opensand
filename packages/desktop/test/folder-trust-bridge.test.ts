@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { StaleEpochError, type GrantsStore } from '@opensand/shared';
 import { DesktopIpcBridge } from '../src/ipc-bridge.js';
+import { closeThenRemove } from './teardown.js';
 
 const bridges: DesktopIpcBridge[] = [];
 const tmpDirs: string[] = [];
@@ -27,8 +28,7 @@ function makeBridge(opts: { autoApprove?: boolean; link?: boolean } = {}) {
 }
 
 test.afterEach(async () => {
-  while (bridges.length) await bridges.pop()?.close();
-  while (tmpDirs.length) fs.rmSync(tmpDirs.pop()!, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
+  await closeThenRemove(bridges.splice(0), ...tmpDirs.splice(0));
 });
 
 // Poll until the trust question is open; a fixed sleep is flaky when other packages' tests run alongside.

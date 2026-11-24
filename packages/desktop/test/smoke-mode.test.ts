@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { DesktopApp, resolveStateDir, isSmokeMode } from "../src/main.js";
+import { closeThenRemove } from "./teardown.js";
 
 function makeFakeElectron() {
   const handlers = new Map<string, (...args: any[]) => any>();
@@ -82,17 +83,17 @@ test("resolveStateDir: default case resolves to ~/.opensand", () => {
   assert.strictEqual(resolveStateDir({ OPENSAND_STATE_DIR: "   " }), expectedDefault);
 });
 
-test("resolveStateDir: OPENSAND_STATE_DIR environment override takes effect", () => {
+test("resolveStateDir: OPENSAND_STATE_DIR environment override takes effect", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-state-test-"));
   try {
     const customDir = path.join(tmp, "custom-state");
     assert.strictEqual(resolveStateDir({ OPENSAND_STATE_DIR: customDir }), path.resolve(customDir));
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    await closeThenRemove([], tmp);
   }
 });
 
-test("resolveStateDir: explicit overrideBaseDir takes precedence over environment variable", () => {
+test("resolveStateDir: explicit overrideBaseDir takes precedence over environment variable", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-state-test-"));
   try {
     const envDir = path.join(tmp, "env-state");
@@ -102,7 +103,7 @@ test("resolveStateDir: explicit overrideBaseDir takes precedence over environmen
       path.resolve(explicitDir)
     );
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    await closeThenRemove([], tmp);
   }
 });
 
@@ -141,9 +142,7 @@ test("DesktopApp default mode: single-instance lock requested, window visible an
     assert.strictEqual(winOpts.show, true, "window must be shown by default");
     assert.strictEqual(winOpts.focusable, true, "window must be focusable by default");
   } finally {
-    const server = (app as any).server;
-    await server?.stop();
-    fs.rmSync(tmp, { recursive: true, force: true });
+    await closeThenRemove([(app as any).server], tmp);
   }
 });
 
@@ -187,9 +186,7 @@ test("DesktopApp smoke mode: skips single-instance lock, window hidden and unfoc
     const tokenStr = fs.readFileSync(tokenFilePath, "utf8").trim();
     assert.ok(tokenStr.length >= 32, "server.token must be at least 32 characters");
   } finally {
-    const server = (app as any).server;
-    await server?.stop();
-    fs.rmSync(tmpState, { recursive: true, force: true });
+    await closeThenRemove([(app as any).server], tmpState);
   }
 });
 
@@ -219,9 +216,7 @@ test("DesktopApp default mode (env {}): never writes server.port and never calls
     // With env {}, isSmoke is false and baseDir is ~/.opensand.
     assert.strictEqual(fs.existsSync(path.join(os.homedir(), ".opensand", "server.port")), false, "server.port must not be created in default state dir");
   } finally {
-    const server = (app as any).server;
-    await server?.stop();
-    fs.rmSync(tmp, { recursive: true, force: true });
+    await closeThenRemove([(app as any).server], tmp);
   }
 });
 
@@ -253,8 +248,6 @@ test("DesktopApp with OPENSAND_STATE_DIR (without smoke): writes server.port and
     const portNum = parseInt(fs.readFileSync(portFilePath, "utf8").trim(), 10);
     assert.ok(!isNaN(portNum) && portNum > 0, "server.port must contain valid port number");
   } finally {
-    const server = (app as any).server;
-    await server?.stop();
-    fs.rmSync(tmpState, { recursive: true, force: true });
+    await closeThenRemove([(app as any).server], tmpState);
   }
 });

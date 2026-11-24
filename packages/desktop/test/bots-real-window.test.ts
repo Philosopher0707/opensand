@@ -10,6 +10,7 @@ import { EventEmitter } from "node:events";
 import { withElectronLock } from "./electron-lock.js";
 import { hermeticElectronEnv, makeTempHome } from "./hermetic-env.js";
 import { DesktopServer } from "../src/desktop-server.js";
+import { closeThenRemove } from "./teardown.js";
 
 const pkgRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const NAV_HELPER_URL = pathToFileURL(path.join(pkgRoot, "dist/test/helpers/navigate-view.js")).href;
@@ -67,8 +68,9 @@ class MockServerResponse extends EventEmitter {
 
 test("desktop-server: routes for agents, tasks, and templates return expected responses", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-bots-server-"));
+  let server: DesktopServer | undefined;
   try {
-    const server = new DesktopServer({ baseDir: tmpDir });
+    server = new DesktopServer({ baseDir: tmpDir });
     const agentsStore: any[] = [{ id: "agent-cto", name: "CTO", role: "Architect" }];
     const tasksStore: any[] = [{ id: "task-1", title: "Task 1", priority: "medium" }];
 
@@ -192,7 +194,7 @@ test("desktop-server: routes for agents, tasks, and templates return expected re
       assert.strictEqual(JSON.parse(res.body).id, "agent-imported");
     }
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    await closeThenRemove([server], tmpDir);
   }
 });
 
@@ -566,8 +568,6 @@ test("Preact bots & templates view, roster, tasks, and modals at 960x740 and 192
 
     console.log("[proof] bots real-window screenshots written to:", proofDir);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    fs.rmSync(home, { recursive: true, force: true });
-    fs.rmSync(ws, { recursive: true, force: true });
+    await closeThenRemove([], tmpDir, home, ws);
   }
 });
