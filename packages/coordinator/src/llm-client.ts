@@ -228,6 +228,14 @@ export class UniversalLLMClient {
     return this.config.model;
   }
 
+  setModel(model: string): void {
+    this.config.model = model;
+  }
+
+  setEndpoint(baseUrl: string): void {
+    this.config.baseUrl = baseUrl;
+  }
+
   private resolveEndpoint(): string {
     const baseUrl = this.config.baseUrl?.trim();
     if (!baseUrl) {
