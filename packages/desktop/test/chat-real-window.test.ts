@@ -383,7 +383,11 @@ test("Chat turn shows the stopped state with the partial answer when Stop is pre
   }
 });
 
+// CI only until hidden-window mode lands (Dex is building it): a local launch steals the owner's screen.
 test("Chat turn freezes its timer on Stop and resumes the last message in the real window", async (t) => {
+  if (process.env.CI !== "true" && process.env.GITHUB_ACTIONS !== "true") {
+    return t.skip("CI only until hidden-window mode lands");
+  }
   const reason = skipReason();
   if (reason) return t.skip(reason);
   const home = makeTempHome("opensand-resume-home-");

@@ -23,3 +23,7 @@
 - **Trap:** `check-dead-exports.sh` reported five new dead exports although all five are imported by `Chat.tsx`.
 - **Root Cause:** The checker scans only `packages/*/src` for findings *and* references; `renderer-next/src` is outside that scan, so view-only helpers look unused (210 desktop entries are already seeded for the same reason).
 - **Rule:** Add view-only shell helpers to `scripts/dead-exports-allow.txt` in sorted order and keep the unit tests as the proof they are exercised.
+
+- **Trap:** Repeated local real-window runs popped Electron windows on the owner's screen and blocked their work; my own multi-minute runs were caused by another bot's competing Electron tests, so retrying made the screen problem worse.
+- **Root Cause:** Every `*-real-window.test.ts` launches a visible Electron window by design, and the default `pnpm test` / `verify.sh` runs them locally. A shared `/tmp` lock only serialises them; it does not hide them.
+- **Rule:** Never launch OpenSand/Electron windows on the owner's Mac for verification. Mark new real-window tests "CI only until hidden-window mode lands" (skip unless `CI`/`GITHUB_ACTIONS` is set), commit with `OPENSAND_PRECOMMIT_TEST_CMD` pointing at a runner whose `OPENSAND_DESKTOP_TEST_DIR` excludes `*-real-window.test.js`, and use GitHub CI as the authoritative proof. Never use `--no-verify`.
