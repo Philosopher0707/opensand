@@ -143,6 +143,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-24 · [Full desktop suite can fail on a pre-existing navigation real-window timeout](2026-11-24-sentinel-full-suite-navigation-timeout.md)
 - 2026-11-24 · [A modal's reset effect can race an immediate real-window click](2026-11-24-session-actions-modal-effect-race.md)
 - 2026-11-24 · [A brief's base ref can be stale locally, and the shared worktree base can be dirty](2026-11-24-settings-welcome-worktree-setup.md)
+- 2026-11-24 · [Stale Electron harnesses cause ENOTEMPTY teardown races; a stub endpoint must never reach verify.sh](2026-11-24-stale-electron-harness-teardown-and-verify-endpoint.md)
 - 2026-11-24 · [Wiring the Claude Code engine selector: two test hurdles (2026-11-24)](2026-11-24-wire-claude-engine-test-hurdles.md)
 - 2026-11-25 · [macOS Bash 3.2 aborts on an empty array under `set -u`, and CI tokens hide it](2026-11-25-bash32-empty-array-set-u.md)
 - 2026-11-25 · [Chat send queue: keep follow-ups at shell level and never surface a raw send error](2026-11-25-chat-send-queue-keep-at-shell-level.md)
