@@ -654,8 +654,8 @@ export class DesktopIpcBridge extends EventEmitter {
       }
     }
 
-    let engineConfig: ExternalEngineConfig | undefined = this.settings.engine === 'claude'
-      ? { type: 'external', engine: 'claude' }
+    let engineConfig: ExternalEngineConfig | undefined = this.settings.engine && this.settings.engine !== 'opensand'
+      ? { type: 'external', engine: this.settings.engine as ExternalEngineConfig['engine'] }
       : (agent as any)?.engineConfig;
     if (!engineConfig) {
       if (targetModel?.startsWith("external:")) {

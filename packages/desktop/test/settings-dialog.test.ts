@@ -105,36 +105,43 @@ test("settings dialog - chat engine selector has both choices and a plain reason
   const html = fs.readFileSync(indexPath, "utf8");
   assert.ok(html.includes('id="settingEngine"'), "has a chat engine select");
   assert.ok(html.includes('<option value="opensand">OpenSand (API key)</option>'), "default engine option");
-  assert.ok(html.includes('<option value="claude">Claude Code (your account)</option>'), "Claude Code option");
+  assert.ok(html.includes('<option value="claude" data-label="Claude Code">Claude Code (your account)</option>'), "Claude Code option");
+  assert.ok(html.includes('<option value="opencode" data-label="OpenCode">OpenCode (your account)</option>'), "OpenCode option");
   assert.ok(html.includes('id="engineHint"'), "has a place for the plain detection reason");
 });
 
-test("settings dialog - Claude option is disabled with a plain reason when binary is absent", () => {
+test("settings dialog - each option is disabled with a plain reason when its binary is absent", () => {
   // Logic mirror of the settings-open detection gate in app.js.
+  const choices = ["claude", "opencode"];
+  const labels: Record<string, string> = { claude: "Claude Code", opencode: "OpenCode" };
   function resolveEngine(choice: unknown, detected: Array<{ engine: string; installed: boolean }>) {
-    const claude = detected.find((e) => e.engine === "claude");
-    const installed = Boolean(claude && claude.installed);
-    const selected = choice === "claude" && installed ? "claude" : "opensand";
+    const missing = choices.filter((id) => detected.find((e) => e.engine === id)?.installed !== true);
+    const selected = choice && !missing.includes(String(choice)) ? String(choice) : "opensand";
+    const reasons = missing.map((id) => `${labels[id]} is not installed on this computer.`);
     return {
       selected,
-      disabled: !installed,
-      hint: installed ? "" : "Claude Code is not installed on this computer. Install it, then reopen Settings to select it.",
+      disabled: missing,
+      hint: reasons.length ? `${reasons.join(" ")} Install what you want to use, then reopen Settings to select it.` : "",
     };
   }
 
-  const missing = resolveEngine("claude", [{ engine: "claude", installed: false }]);
-  assert.deepStrictEqual(missing, {
-    selected: "opensand",
-    disabled: true,
-    hint: "Claude Code is not installed on this computer. Install it, then reopen Settings to select it.",
-  });
+  const missing = resolveEngine("opencode", []);
+  assert.strictEqual(missing.selected, "opensand");
+  assert.deepStrictEqual(missing.disabled, ["claude", "opencode"]);
+  assert.match(missing.hint, /OpenCode is not installed on this computer/);
   assert.doesNotMatch(missing.hint, /npm|CLI|--/);
 
-  const installed = resolveEngine("claude", [{ engine: "claude", installed: true }]);
-  assert.deepStrictEqual(installed, { selected: "claude", disabled: false, hint: "" });
-  assert.deepStrictEqual(resolveEngine(undefined, []), {
-    selected: "opensand",
-    disabled: true,
-    hint: "Claude Code is not installed on this computer. Install it, then reopen Settings to select it.",
+  const installed = resolveEngine("opencode", [
+    { engine: "claude", installed: true },
+    { engine: "opencode", installed: true },
+  ]);
+  assert.strictEqual(installed.selected, "opencode");
+  assert.deepStrictEqual(installed.disabled, []);
+  assert.strictEqual(installed.hint, "");
+
+  assert.deepStrictEqual(resolveEngine("claude", [{ engine: "claude", installed: true }]), {
+    selected: "claude",
+    disabled: ["opencode"],
+    hint: "OpenCode is not installed on this computer. Install what you want to use, then reopen Settings to select it.",
   });
 });

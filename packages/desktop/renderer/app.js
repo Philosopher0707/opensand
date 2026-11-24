@@ -5641,19 +5641,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     settingEndpoint.value = s.endpoint || '';
     settingModel.value = s.model || '';
     if (settingEngine) {
-      settingEngine.value = s.engine === 'claude' ? 'claude' : 'opensand';
+      const choices = Array.from(settingEngine.options).filter((o) => o.value !== 'opensand');
+      settingEngine.value = choices.some((o) => o.value === s.engine) ? s.engine : 'opensand';
       let detected = [];
       try { detected = await client.detectEngines(); } catch {}
-      const claude = Array.isArray(detected) ? detected.find((e) => e && e.engine === 'claude') : null;
-      const claudeOption = settingEngine.querySelector('option[value="claude"]');
-      const installed = Boolean(claude && claude.installed);
-      if (claudeOption) claudeOption.disabled = !installed;
-      if (engineHint) {
-        engineHint.textContent = installed
-          ? ''
-          : 'Claude Code is not installed on this computer. Install it, then reopen Settings to select it.';
+      const reasons = [];
+      for (const option of choices) {
+        const found = Array.isArray(detected) ? detected.find((e) => e && e.engine === option.value) : null;
+        const installed = Boolean(found && found.installed);
+        option.disabled = !installed;
+        if (!installed) reasons.push(`${option.dataset.label || option.textContent.trim()} is not installed on this computer.`);
       }
-      if (!installed && settingEngine.value === 'claude') settingEngine.value = 'opensand';
+      if (settingEngine.selectedOptions[0]?.disabled) settingEngine.value = 'opensand';
+      if (engineHint) {
+        engineHint.textContent = reasons.length
+          ? `${reasons.join(' ')} Install what you want to use, then reopen Settings to select it.`
+          : '';
+      }
     }
     const hasStoredKey = !!s.apiKey && s.apiKey !== 'none';
     hasStoredApiKey = hasStoredKey;
