@@ -67,6 +67,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `release-check.sh` | Full release verification and smoke test gate | Pre-release sanity gate | None |
 | `release-selftest.sh` | Hermetic selftest for automated release pipeline | Pre-commit / verification | Self |
 | `smoke-packaged.sh` | Packaged application launch verification in isolated state | CI / release smoke gate | None |
+| `engine-smoke.sh` | Packaged application outside engine smoke test: verifies all 7 engines in Settings (#settingEngine) in isolated state | CI / pre-release verification | `engine-smoke-selftest.sh` |
+| `engine-smoke-selftest.sh` | Hermetic selftest for engine-smoke.sh verifying help, missing paths, and error handling | Pre-commit / verification | Self |
 | `smoke-linux.sh` | Linux `.deb` smoke: extract, reject Mach-O, launch packaged app under xvfb with isolated state, require `/api/diagnostics` version | `release.sh` Step 7 on Linux / release CI | `smoke-linux-selftest.sh` |
 | `smoke-linux-selftest.sh` | Hermetic selftest for `smoke-linux.sh` with fake dpkg-deb/xvfb/app/diagnostics fixtures | Pre-commit / verification | Self |
 | `status-report.sh` | Read-only owner summary: recent merges, open PRs + CI/behind, main CI, latest release, disk; `--json` for the same data | Manual / owner status report | `status-report-selftest.sh` |
