@@ -115,6 +115,33 @@ export function enginePayload(engine: EngineId): { engine: EngineId } {
   return { engine };
 }
 
+/** Save body: an external engine sends only `{ engine }` (no provider fields, no typed key). */
+export function savePayload(form: SettingsForm, engine: EngineId): Record<string, string> {
+  return isExternalEngine(engine) ? { ...enginePayload(engine) } : { ...settingsPayload(form), ...enginePayload(engine) };
+}
+
+/** Public shape of one engine status: explicit flags only, never paths, versions or CLI messages. */
+export interface EngineStatus { engine: string; installed: boolean; signedIn: boolean }
+
+/** Allowlist projection for the HTTP route: a new field on the detector never leaks by default. */
+export function toEngineStatus(results: Array<{ engine: string; installed: boolean; authenticated?: boolean }>): EngineStatus[] {
+  return results.map((r) => ({ engine: String(r.engine), installed: r.installed === true, signedIn: r.authenticated === true }));
+}
+
+/** Detection must never block Settings: a failure keeps OpenSand selectable and says so plainly. */
+export const ENGINE_STATUS_UNAVAILABLE = "Engine status is unavailable right now. OpenSand stays selected; reopen Settings to try again.";
+
+export async function loadEngineStatus(
+  detect: (() => Promise<Array<{ engine: string; installed: boolean }>>) | undefined
+): Promise<{ detected: Array<{ engine: string; installed: boolean }>; unavailable: boolean }> {
+  if (!detect) return { detected: [], unavailable: false };
+  try {
+    return { detected: await detect(), unavailable: false };
+  } catch {
+    return { detected: [], unavailable: true };
+  }
+}
+
 /** Disable unauthenticated/absent engine choices with a plain reason; never select one that is missing. */
 export function resolveEngineChoice(
   saved: unknown,

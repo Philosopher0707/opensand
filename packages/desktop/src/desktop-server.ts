@@ -11,7 +11,7 @@ import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js
 import { runStateMigrations, readSchemaVersion } from '@opensand/shared';
 import { buildDiagnosticsReport } from './diagnostics.js';
 import { getOnboardingState, probeOllama, isOllamaEndpoint, OLLAMA_CHAT_ENDPOINT } from './onboarding.js';
-import { connectionError, MASKED_KEY } from './shell/settings-model.js';
+import { connectionError, MASKED_KEY, toEngineStatus } from './shell/settings-model.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -574,7 +574,7 @@ export class DesktopServer {
 
     // API: GET /api/engines/detect (passive detection; no credential files are read)
     if (pathname === '/api/engines/detect' && req.method === 'GET') {
-      const engines = await this.bridge.detectEngines();
+      const engines = toEngineStatus(await this.bridge.detectEngines());
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(engines));
       return;
