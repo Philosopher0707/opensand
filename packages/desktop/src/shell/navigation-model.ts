@@ -3,6 +3,7 @@
 
 export type ViewId =
   | "chat"
+  | "welcome"
   | "rooms"
   | "routines"
   | "skills"
@@ -20,6 +21,7 @@ export type ViewId =
 
 export const VIEW_IDS: readonly ViewId[] = [
   "chat",
+  "welcome",
   "rooms",
   "routines",
   "skills",
@@ -38,6 +40,7 @@ export const VIEW_IDS: readonly ViewId[] = [
 
 export const VIEW_TITLES: Record<ViewId, string> = {
   chat: "Chat & Dialogue",
+  welcome: "Welcome & Setup",
   rooms: "Multi-Agent Collaborative Rooms",
   routines: "Scheduled Background Routines",
   skills: "Modular Recipe Skills Library",
@@ -136,13 +139,15 @@ export function viewPanelId(view: ViewId): string {
 
 /**
  * View requested by the URL: the hash wins (`#graphs`), then `?view=sentinel`,
- * then chat. Unknown values fall back to chat rather than an empty shell.
+ * then the first-run `/welcome` path, then chat. An explicit hash/query always
+ * wins over the path, so leaving onboarding by switching views cannot bounce back.
  */
-export function parseViewFromLocation(search: string, hash: string): ViewId {
+export function parseViewFromLocation(search: string, hash: string, pathname = ""): ViewId {
   const fromHash = (hash || "").replace(/^#/, "").trim();
   if (isViewId(fromHash)) return fromHash;
   const fromQuery = new URLSearchParams(search || "").get("view");
   if (isViewId(fromQuery)) return fromQuery;
+  if ((pathname || "").replace(/\/+$/, "").endsWith("/welcome")) return "welcome";
   return "chat";
 }
 

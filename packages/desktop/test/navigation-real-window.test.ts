@@ -79,6 +79,10 @@ app.on("browser-window-created", (_e, w) => {
 
         result.initial = await js(SNAPSHOT("initial"));
 
+        // First run opens Welcome; the rest of this suite is about chat and the footer views.
+        await navigateToView({ js, sleep }, "#chat", "#viewChat");
+        result.chat = await js(SNAPSHOT("chat"));
+
         for (const [w2, h2, tag] of [[960, 740, "compact"], [1920, 1080, "wide"]]) {
           win.setContentSize(w2, h2);
           await sleep(400);
@@ -201,12 +205,21 @@ test("Preact navigation footer and view switching real-window test at 960x740 an
     assert.ok(match, `no result in stdout:\n${stdout}\n${stderr}`);
     const res = JSON.parse(match[1]);
 
-    // Initial view
-    assert.strictEqual(res.initial.activePanelId, "viewChat", "default view is chat");
-    assert.strictEqual(res.initial.title, "Chat & Dialogue", "chat header title");
-    assert.strictEqual(res.initial.backVisible, false, "back-to-chat hidden on chat");
-    assert.deepStrictEqual(res.initial.activeNav, [], "no footer nav active on chat");
-    assert.strictEqual(res.initial.subnavCount, 0, "chat has no subnav");
+    // Initial view: an unconfigured first run opens Welcome; a configured one opens Chat.
+    // CI has no key and no local model; a local machine may have Ollama running.
+    const expectWelcome = Boolean(process.env.OPENSAND_ENDPOINT || process.env.CI);
+    assert.strictEqual(res.initial.activePanelId, expectWelcome ? "viewWelcome" : "viewChat", "default view");
+    assert.strictEqual(res.initial.title, expectWelcome ? "Welcome & Setup" : "Chat & Dialogue", "initial header title");
+    assert.strictEqual(res.initial.backVisible, expectWelcome, "back-to-chat visibility on initial view");
+    assert.deepStrictEqual(res.initial.activeNav, [], "no footer nav active on initial view");
+    assert.strictEqual(res.initial.subnavCount, 0, "initial view has no subnav");
+
+    // Chat after explicit navigation
+    assert.strictEqual(res.chat.activePanelId, "viewChat", "navigating to chat opens chat");
+    assert.strictEqual(res.chat.title, "Chat & Dialogue", "chat header title");
+    assert.strictEqual(res.chat.backVisible, false, "back-to-chat hidden on chat");
+    assert.deepStrictEqual(res.chat.activeNav, [], "no footer nav active on chat");
+    assert.strictEqual(res.chat.subnavCount, 0, "chat has no subnav");
 
     // Footer navigation
     assert.strictEqual(res.footer.bots.activePanelId, "viewTemplates", "Bots opens templates");

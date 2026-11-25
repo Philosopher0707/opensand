@@ -10,7 +10,8 @@ import { handleAgUiRunRequest, AgUiEventPayload, defaultOpenRouterCatalog, Anthr
 import type { DesktopEvent, ApprovalDecision, DesktopSettings } from './types.js';
 import { runStateMigrations, readSchemaVersion } from '@opensand/shared';
 import { buildDiagnosticsReport } from './diagnostics.js';
-import { getOnboardingState, probeOllama, OLLAMA_CHAT_ENDPOINT } from './onboarding.js';
+import { getOnboardingState, probeOllama, isOllamaEndpoint, OLLAMA_CHAT_ENDPOINT } from './onboarding.js';
+import { connectionError, MASKED_KEY } from './shell/settings-model.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -576,6 +577,45 @@ export class DesktopServer {
       const engines = await this.bridge.detectEngines();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(engines));
+      return;
+    }
+
+    // API: POST /api/settings/test (verify entered credentials without saving them)
+    if (pathname === '/api/settings/test' && req.method === 'POST') {
+      const body = await this.readJsonBody(req);
+      const endpoint = typeof body?.endpoint === 'string' ? body.endpoint.trim() : '';
+      const apiKey = typeof body?.apiKey === 'string' ? body.apiKey.trim() : '';
+      if (!/^https?:\/\//i.test(endpoint)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Enter an http or https endpoint.' }));
+        return;
+      }
+      let ok = false;
+      let error = connectionError();
+      try {
+        if (isOllamaEndpoint(endpoint)) {
+          ok = (await probeOllama()).available;
+          if (!ok) error = connectionError(undefined, 'ollama not answering');
+        } else {
+          // A blank or masked key means "test the saved one", so the form never sends it back.
+          let key = apiKey;
+          if (!key || key === MASKED_KEY) {
+            await this.bridge.ensureApiKeyResolved();
+            key = this.bridge.getSettings().apiKey;
+          }
+          if (!key || key === 'none') {
+            error = connectionError(401);
+          } else {
+            // A model list proves the endpoint and key work; the key never leaves this process.
+            ok = Array.isArray(await defaultOpenRouterCatalog.fetchModels(endpoint, key));
+            if (!ok) error = connectionError(undefined, 'provider returned no model list');
+          }
+        }
+      } catch (err: any) {
+        error = connectionError(typeof err?.status === 'number' ? err.status : undefined, String(err?.message ?? err));
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(ok ? { ok: true } : { ok: false, error }));
       return;
     }
 
