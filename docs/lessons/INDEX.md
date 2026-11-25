@@ -146,6 +146,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-24 · [Stale Electron harnesses cause ENOTEMPTY teardown races; a stub endpoint must never reach verify.sh](2026-11-24-stale-electron-harness-teardown-and-verify-endpoint.md)
 - 2026-11-24 · [The navigation real-window hang came from an unbounded frame settle](2026-11-24-navigation-shot-frame-settle.md)
 - 2026-11-24 · [Wiring the Claude Code engine selector: two test hurdles (2026-11-24)](2026-11-24-wire-claude-engine-test-hurdles.md)
+- 2026-11-25 · [A PR branch can lead its worktree, and a missing .bin symlink silently skips GUI tests](2026-11-25-stale-pr-head-and-missing-bin-symlink.md)
 - 2026-11-25 · [A bundled-artifact preflight that tests only an existing file fails open](2026-11-25-engine-smoke-preflight-fail-open.md)
 - 2026-11-25 · [A clean rebase can still push a stale generated lessons index](2026-11-25-pr-gate-clean-rebase-stale-index.md)
 - 2026-11-25 · [A generated lessons index kept stopping rebases until Git owned its merge](2026-11-25-lessons-index-merge-driver.md)
