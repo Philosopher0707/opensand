@@ -84,8 +84,33 @@ flowchart TD
 | **IPC & Security Boundary Enforcement** | `Desktop Server & Bridge` | `packages/desktop/src/desktop-server.ts:1` & `packages/desktop/src/ipc-bridge.ts:69` | Validates local loopback origins, ensures authentication tokens for sensitive endpoints, and prevents renderer execution context from executing unsanctioned system APIs. |
 | **Presentation & User Input** | `Renderer Next UI` | `packages/desktop/renderer-next/src/main.tsx:1` | Renders conversational streams, interactive approval requests, diagnostic summaries, and model selection menus. |
 ## 3. Migration order
-Migration step #2 is Section 4 (Hotfix path). The remaining migration steps are TODO.
 
+The transition to Architecture v2 proceeds in 5 ordered, test-verified slices:
+
+### Step 1: Dynamic Engine Model Discovery & Selector UI
+- **Scope**: Implement dynamic model catalog discovery in `packages/coordinator/src/engines/` and `/api/engines/detect` in `packages/desktop/src/desktop-server.ts:576`. Probes provider endpoints (`/models`) and CLIs (`opencode models --verbose`, `claude`) to populate engine options and qualified model identifiers. Updates `packages/desktop/renderer-next/` with a dynamic model dropdown for each configured engine account.
+- **Done-When Test**: `packages/desktop/test/engine-model-discovery.test.ts` passes: mocked provider and CLI responses yield a populated model catalog in `GET /api/engines/detect`, and selecting a model persists across subsequent turn queries.
+
+### Step 2: Hotfix Path & Release Pipeline Hardening
+- **Scope**: Full implementation of Section 4:
+  1. `release.sh:518` terminates active running `/Applications/OpenSand.app`, relaunches new bundle, and verifies live `/api/version` and `/api/engines/detect` match the release tag.
+  2. Eliminates standalone version-bump PRs from `release.sh:107-209`; CI on `main` builds and tests release artifacts for direct tag promotion.
+  3. Inserts owed `(cd "$REBASE_WT" && bash "$ROOT/scripts/setup-git.sh")` into `scripts/pr-gate.sh:437` to activate the `INDEX.md` merge driver.
+  4. Adds automated PNG test-artifact rejection to `scripts/pre-commit.sh:31` and reinforces Check 3 in `scripts/pr-gate.sh:729-738`.
+  5. Configures a hotfix bot on an independent provider with automated 429 quota error classification in `packages/coordinator/src/errors.ts:36` and instant fallback switching.
+- **Done-When Test**: `scripts/release-check.sh`, `scripts/install-health-check-selftest.sh`, `scripts/pre-commit-selftest.sh`, and `scripts/pr-gate-selftest.sh` pass green without manual intervention.
+
+### Step 3: Pluggable Driver Registry & Capability Matrix
+- **Scope**: Decompose monolithic `ExternalEngineTurnRunner` (`packages/coordinator/src/engines/external-engine-runner.ts`) into dedicated drivers (`ClaudeDriver`, `OpenCodeDriver`, `OpenAIDriver`, `CustomAcpDriver`). Create central driver registry and capability matrix (`resume`, `nativeReviewer`, `stepCap`) modeled after OpenMausBot (`server/runtime/capabilities.ts:20` and `server/engine-versions.ts:25`).
+- **Done-When Test**: `packages/coordinator/test/engine-registry.test.ts` passes: each driver registers, advertises capabilities, executes isolated mock turns, and cleanly resumes sessions.
+
+### Step 4: Strict Policy Daemon IPC & Security Sandbox
+- **Scope**: Enforce rigid process and IPC isolation for `packages/local-exec-daemon/src/policy-engine.ts`. All file operations, command executions, and privilege requests must route through structured RPC calls. Policy evaluation runs strictly offline without LLM dependencies.
+- **Done-When Test**: `packages/local-exec-daemon/test/policy-ipc-isolation.test.ts` passes: unapproved destructive commands fail closed across IPC boundaries, and prompt-injection attacks cannot grant tool access.
+
+### Step 5: Unified Session Inbox & Renderer-Next Cutover
+- **Scope**: Complete the cutover from legacy `packages/desktop/renderer` to `packages/desktop/renderer-next`. Deliver unified session inbox, live token streaming, interactive approval modals, and real-time support diagnostics.
+- **Done-When Test**: `packages/desktop/test/settings-welcome-real-window.test.ts` and visual smoke verification pass with all views rendered exclusively by `renderer-next`.
 ## 4. Hotfix path
 
 Target: Under 2 hours from bug report to fix installed.
