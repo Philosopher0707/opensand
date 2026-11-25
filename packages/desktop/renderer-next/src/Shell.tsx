@@ -834,6 +834,7 @@ export function Shell({ data }: ShellProps) {
                 <Chat
                   chat={chat}
                   selectedSessionId={selectedSessionId}
+                  activeAgentId={activeAgentId}
                   data={data}
                   onOpenArtifact={handleOpenArtifact}
                 />

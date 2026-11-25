@@ -1,0 +1,5 @@
+# A fail-closed sanitizer changes every consumer's display contract
+
+- **Trap:** The three touched test files passed after mapping classified errors to fixed friendly lines, but the full desktop suite failed `provider-error-recovery.test.ts`, which asserted the chat error equals the bridge event's detailed `cause + nextAction` (including "Wait 1s before retrying").
+- **Root Cause:** `friendlyChatError` is shared by `chatEventAction` and several display paths; a code-to-fixed-phrase allowlist is safe but replaces dynamic text other tests and screens treat as part of the error contract. Narrow test selection did not cover that consumer.
+- **Rule:** After changing a shared sanitizer, grep all consumers and run the whole package's non-real-window suite once before pushing; update the consumer contract to the fixed allowlisted line and keep a regression test that raw bridge text never reaches chat. [checked: packages/desktop/test/friendly-chat-error.test.ts, packages/desktop/test/provider-error-recovery.test.ts]

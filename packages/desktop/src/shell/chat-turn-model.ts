@@ -4,6 +4,7 @@
 
 import type { TurnEvent } from "./quick-capture-model.js";
 import type { ToolApprovalRequest } from "../types.js";
+import { friendlyChatError } from "./composer-model.js";
 
 export type ChatTurnStatus =
   | "idle"
@@ -434,7 +435,7 @@ export function chatEventAction(event: TurnEvent, sessionId: string | null): Cha
     } else {
       text = "Unknown error occurred";
     }
-    return { type: "failed", message: text };
+    return { type: "failed", message: friendlyChatError(text, d?.code) };
   }
   return null;
 }

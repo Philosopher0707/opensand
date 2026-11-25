@@ -191,6 +191,70 @@ export function friendlyErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
+export type ComposerApprovalMode = "ask" | "auto_edit" | "auto";
+
+/** The composer's mode matches the settings the legacy renderer reads. */
+export function composerApprovalMode(settings?: { approvalMode?: unknown; autoApprove?: boolean } | null): ComposerApprovalMode {
+  const mode = settings?.approvalMode;
+  if (mode === "ask" || mode === "auto_edit" || mode === "auto") return mode;
+  return settings?.autoApprove === true ? "auto" : "ask";
+}
+
+/** Safe Mode -> Auto-Edit -> Auto-Approve -> Safe Mode, as before. */
+export function nextComposerApprovalMode(mode: ComposerApprovalMode): ComposerApprovalMode {
+  return mode === "ask" ? "auto_edit" : mode === "auto_edit" ? "auto" : "ask";
+}
+
+/** Compact token count for the composer's context badge. */
+export function formatContextCount(value: unknown): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "0";
+  if (value >= 1_000_000) {
+    const m = value / 1_000_000;
+    return `${m >= 10 ? m.toFixed(1) : m.toFixed(2).replace(/\.?0+$/, "")}M`;
+  }
+  if (value >= 10_000) return `${(value / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  return value.toLocaleString();
+}
+
+/** Bridge error text is untrusted: only fixed phrases authored here can reach chat. */
+const CHAT_ERROR_FALLBACK = "The agent could not finish that turn. Try again, or use Retry.";
+
+/** Codes map to fixed lines; UNKNOWN_ERROR is absent because it wraps raw bridge text. */
+const CHAT_ERROR_BY_CODE: Readonly<Record<string, string>> = Object.freeze({
+  RATE_LIMIT_EXCEEDED: "The model provider's rate limit was reached. Wait a moment or switch models in Settings.",
+  INSUFFICIENT_CREDITS: "Your model provider account is out of credits. Add credits or switch models in Settings.",
+  AUTH_INVALID_KEY: "The model provider rejected your API key. Check it in Settings.",
+  AUTH_FORBIDDEN: "The model provider denied access. Check your account or switch models in Settings.",
+  MODEL_NOT_FOUND: "The requested model or endpoint was not found. Check it in Settings.",
+  PROVIDER_UNAVAILABLE: "The model provider is temporarily unavailable. Try again in a few minutes.",
+  OLLAMA_UNREACHABLE: "Local Ollama is not running. Start Ollama or run ollama serve in a terminal.",
+  NETWORK_OFFLINE: "Could not connect to the remote server. Check your internet connection and proxy settings.",
+  EXECUTION_TIMEOUT: "The operation timed out. Try a smaller prompt or a faster model in Settings.",
+  TOOL_APPROVAL_DENIED: "The tool was denied by policy or approval. Rephrase your request or approve the card.",
+  FILE_NOT_FOUND: "The requested file or directory does not exist. Check the path in your workspace.",
+  FS_PERMISSION_DENIED: "Permission was denied for that file or folder. Check its permissions.",
+  DISK_FULL: "Your disk is out of free space. Free some space and retry.",
+  CONTEXT_LENGTH_EXCEEDED: "This conversation is too long for the model. Compact history or start a new session.",
+  STATE_DOWNGRADE_REFUSED: "Your state files came from a newer version of OpenSand. Update OpenSand to open them.",
+});
+
+/** Fixed lines our own layers emit, safe to pass through unchanged. */
+const SAFE_CHAT_ERRORS: ReadonlySet<string> = new Set([
+  CHAT_ERROR_FALLBACK,
+  "The message did not send. Try again.",
+  "Unknown error occurred",
+]);
+
+/** Fails closed: a known code or an exact safe phrase, never the bridge's raw text. */
+export function friendlyChatError(message: string, code?: unknown): string {
+  const safeForCode = typeof code === "string" && Object.hasOwn(CHAT_ERROR_BY_CODE, code)
+    ? CHAT_ERROR_BY_CODE[code]
+    : undefined;
+  if (safeForCode) return safeForCode;
+  const text = typeof message === "string" ? message.trim() : "";
+  return SAFE_CHAT_ERRORS.has(text) ? text : CHAT_ERROR_FALLBACK;
+}
+
 /** A failed preview is a notice, not a failed attachment: the file is still staged. */
 export function previewErrorMessage(name: string): string {
   return `Could not make a preview for ${name}. The file is still attached.`;
