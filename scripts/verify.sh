@@ -42,6 +42,9 @@ bash scripts/check-doc-links.sh
 echo "verify: checking lessons index is up to date..."
 bash scripts/lessons-index.sh --check
 
+echo "verify: checking generated lessons-index rebase merge..."
+bash scripts/lessons-index-merge-selftest.sh
+
 echo "verify: checking real-window navigation helper..."
 bash scripts/check-real-window-nav.sh
 

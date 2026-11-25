@@ -150,6 +150,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-25 · [renderer-next imports are invisible to the dead-export gate (2026-11-25)](2026-11-25-dictation-exports-dead-export-gate.md)
 - 2026-11-25 · [A truthy state string kept Dictate stuck in "Listening" (2026-11-25)](2026-11-25-dictation-state-string-kept-listening.md)
 - 2026-11-25 · [A bundled-artifact preflight that tests only an existing file fails open](2026-11-25-engine-smoke-preflight-fail-open.md)
+- 2026-11-25 · [A generated lessons index kept stopping rebases until Git owned its merge](2026-11-25-lessons-index-merge-driver.md)
 - 2026-11-25 · [Inline approval card: CI opened /welcome, so the chat panel was hidden](2026-11-25-nova-approval-card-resize-settle.md)
 - 2026-11-25 · [Legacy line numbers live in the worktree, not the owner checkout (2026-11-25)](2026-11-25-nova-dictation-worktree-line-numbers.md)
 - 2026-11-25 · [Nova: rebase conflicts — regenerate the generated index, keep both import sides](2026-11-25-nova-rebase-keeps-both-sides.md)
@@ -157,4 +158,5 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-25 · [A regenerated lessons index can leave an empty commit that blocks the rebase](2026-11-25-pr-gate-empty-commit-after-index-regen.md)
 - 2026-11-25 · [PR #248: auth fallback needs the engine's real error, and render tests must drive the form](2026-11-25-pr248-auth-recovery-and-render-contracts.md)
 - 2026-11-25 · [Showing the app version needs the current main, both Settings screens, and a real app directory](2026-11-25-show-version-in-both-settings-screens.md)
+- 2026-11-25 · [A verifier fixture went stale when verify.sh gained new checks](2026-11-25-verify-selftest-stubs-every-check.md)
 - 2026-11-25 · [Prune whole worktrees before the disk guard, not just their caches](2026-11-25-worktree-prune-before-disk-guard.md)

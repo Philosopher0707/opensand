@@ -32,8 +32,10 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `install-health-check.sh` | Post-install health check: launch the installed app in isolation and prove it answers with the expected version | `release.sh` Step 9 after `--install` | `install-health-check-selftest.sh` |
 | `install-health-check-selftest.sh` | Hermetic selftest for the post-install health check using a stub app in a temp dir | Pre-commit / verification | Self |
 | `mutate.sh` | Thin wrapper kept for the older name; forwards every argument to `mutation-probe.sh` | Automated job proof / mutation testing | `proof-selftest.sh` |
-| `lessons-index.sh` | Generate `docs/lessons/INDEX.md` from the one-file-per-lesson entries; `--check` fails when the index is stale | `scripts/verify.sh` (`--check`), developer after adding a lesson | `lessons-index-selftest.sh` |
-| `lessons-index-selftest.sh` | Hermetic selftest for the lessons index generator and its staleness check | Pre-commit / verification | Self |
+| `lessons-index.sh` | Generate `docs/lessons/INDEX.md` from the one-file-per-lesson entries; `--check` fails when the index is stale, `--stdout` emits without writing, and `--merge <theirs-index>` includes an incoming generated index | `scripts/verify.sh` (`--check`), developer after adding a lesson, `setup-git.sh` merge driver | `lessons-index-selftest.sh` |
+| `lessons-index-selftest.sh` | Hermetic selftest for the lessons index generator, stdout mode, merge mode, and its staleness check | Pre-commit / verification | Self |
+| `lessons-index-merge-selftest.sh` | Hermetic two-branch rebase proving the custom merge driver retains both lessons and leaves a current index; red when the `.gitattributes` rule is absent | `verify.sh`, CI, pre-commit / verification | Self |
+| `setup-git.sh` | Register the idempotent `lessons-index` merge driver in the current repository; called by `worktree.sh new` | `worktree.sh new`, manual clone setup | `lessons-index-merge-selftest.sh` |
 | `mesh-judge-probe.sh` | Mutation probe for the Phase 7 mesh judge: flips the Stage 0 exit-code check in the judge source via `mutation-probe.sh`, requires the mesh-judge suite red, then green after restore | Phase 7 S3 verification | `mutation-probe.sh` (via) |
 | `mesh-tournament-probe.sh` | Mutation probe for the Phase 7 tournament runner: flips the attempt outcome's check verdict in the engine tournament source via `mutation-probe.sh`, requires the mesh-tournament suite red, then green after restore | Phase 7 S4 verification | `mutation-probe.sh` (via) |
 | `mesh-routing-probe.sh` | Mutation probe for the Phase 7 start-rung routing: loosens the §2.3 qualification check in the engine routing source via `mutation-probe.sh`, requires the mesh-routing suite red, then green after restore | Phase 7 S5 verification | `mutation-probe.sh` (via) |
@@ -79,7 +81,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `verify-linux.sh` | Run verification suite inside isolated Linux container | Local pre-CI cross-platform test | None |
 | `verify-selftest.sh` | Hermetic selftest for verify.sh guardrails | Verification test suite | Self |
 | `verify.sh` | Core repository verification gate (versions, build, tests, tripwires) | CI, pre-commit, manual | `verify-selftest.sh` |
-| `worktree.sh` | OpenSand automated worktree lifecycle manager (base, new, save, review, done, list, prune); `new` runs `worktree-prune.sh --apply` before its free-space guard on the writable data volume, and no command acts on the main checkout | Developer, bots, release automation | `worktree-selftest.sh` |
+| `worktree.sh` | OpenSand automated worktree lifecycle manager (base, new, save, review, done, list, prune); `new` registers the lessons-index merge driver, runs `worktree-prune.sh --apply` before its free-space guard on the writable data volume, and no command acts on the main checkout | Developer, bots, release automation | `worktree-selftest.sh` |
 | `worktree-selftest.sh` | Hermetic selftest suite for worktree lifecycle manager, including the main-checkout guard (cwd, symlink, source repo, target) and the regenerated-screenshot skip | Pre-commit / verification | Self |
 | `worktree-prune.sh` | Remove only merged-PR (or branch-deleted-after-merge), clean, 2h-unchanged scratch worktrees and stale temp folders; dry-run by default, `--apply` to delete; reports free space before/after | `worktree.sh new` (automatic), manual / low disk space | `worktree-prune-selftest.sh` |
 | `worktree-prune-selftest.sh` | Hermetic selftest for disk pruning: merged+clean removed, dirty/recent/unmerged/base kept, deleted-branch case, temp folders and gh-failure fail-closed | Pre-commit / verification | Self |
@@ -445,7 +447,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Test verification.
 
 ### `verify.sh`
-- **Purpose**: Primary repository gate validating package versions, test tmpdirs, scripts catalog, builds, package unit tests, and git tripwires.
+- **Purpose**: Primary repository gate validating package versions, test tmpdirs, scripts catalog, generated lessons index and its two-branch rebase merge, builds, package unit tests, and git tripwires.
 - **Usage**: `scripts/verify.sh`
 - **Exit Codes**: `0` on healthy repository, `1` on guardrail violation or test failure.
 - **Selftest**: `scripts/verify-selftest.sh`.
@@ -453,17 +455,31 @@ All scripts in this directory are cataloged below. Automated verification is enf
 
 ### `lessons-index.sh`
 - **Purpose**: Lessons are one file each in `docs/lessons/YYYY-MM-DD-slug.md` (`# Title`, then **Trap**, **Root Cause**, **Rule**), so two PRs never conflict on a shared file. This script validates every entry and generates `docs/lessons/INDEX.md` (sorted by filename). `scripts/verify.sh` runs it with `--check`, which fails while the index is stale. `AGENTS_LEARNING.md` history is not rewritten.
-- **Usage**: `scripts/lessons-index.sh [--check]` (`OPENSAND_LESSONS_DIR` overrides the directory, for the selftest)
-- **Exit Codes**: `0` index written or up to date; `1` a malformed entry, a missing or stale index, or bad usage.
+- **Usage**: `scripts/lessons-index.sh [--check|--stdout|--merge <theirs-index>]` (`OPENSAND_LESSONS_DIR` overrides the directory, for the selftest). `--stdout` emits the generated bytes without writing the file. `--merge` unions the current lesson files with entries from an incoming generated index, because Git can invoke a merge driver before checking out the incoming lesson file.
+- **Exit Codes**: `0` index written, emitted, merged, or up to date; `1` a malformed entry, a missing/stale/invalid index, or bad usage.
 - **Selftest**: `scripts/lessons-index-selftest.sh`.
-- **Trigger**: Developer after adding a lesson (regenerate; after a merge conflict in `INDEX.md` take either side and regenerate); `verify.sh`, CI.
+- **Trigger**: Developer after adding a lesson (regenerate); `verify.sh`, CI; `setup-git.sh` merge driver.
 
 ### `lessons-index-selftest.sh`
-- **Purpose**: Hermetic selftest for `lessons-index.sh`: generation, sort order, stale detection (new lesson, hand edit, trailing newline), malformed entries, and that the repository's own index is current.
+- **Purpose**: Hermetic selftest for `lessons-index.sh`: generation, sort order, stale detection (new lesson, hand edit, trailing newline), stdout without writes, incoming-index merge mode and its failure paths, malformed entries, and that the repository's own index is current.
 - **Usage**: `scripts/lessons-index-selftest.sh` (`LESSONS_INDEX_SCRIPT=<path>` tests a mutated copy)
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
 - **Trigger**: Pre-commit hook, test verification.
+
+### `lessons-index-merge-selftest.sh`
+- **Purpose**: Hermetic two-branch rebase with one new lesson on each branch. It registers the driver twice to prove idempotency, rebases, and asserts both lessons and their index entries survive with a clean worktree and a current `scripts/lessons-index.sh --check`. Removing the `.gitattributes` rule makes it fail on the expected `docs/lessons/INDEX.md` conflict.
+- **Usage**: `scripts/lessons-index-merge-selftest.sh`
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: `verify.sh`, CI, pre-commit hook, test verification.
+
+### `setup-git.sh`
+- **Purpose**: Register `merge.lessons-index.driver` in the current repository. The driver runs `scripts/lessons-index.sh --merge %B > %A`, so Git's three-way merge produces a deterministic index without touching the worktree before incoming files are checked out. Re-running it is idempotent.
+- **Usage**: `scripts/setup-git.sh` from any directory inside the repository; `worktree.sh new` invokes it automatically for each new job worktree.
+- **Exit Codes**: `0` on success, `1` when the repository or generator is unavailable.
+- **Selftest**: `scripts/lessons-index-merge-selftest.sh`.
+- **Trigger**: `worktree.sh new`, manual clone setup.
 
 ### `mesh-judge-probe.sh`
 - **Purpose**: Mutation probe for the Phase 7 mesh judge (design §10 S3). Delegates to `mutation-probe.sh`: flips the Stage 0 exit-code check (`return checkExit === 0;` → `!==`) in the engine's mesh judge source at packages/engine/src/mesh/judge.ts, requires the mesh-judge suite to go RED, restores the file byte-for-byte, and requires GREEN again. A hard 5-minute cap comes from `perl -e alarm`, whose timer survives the exec into the probe and its child test runs (macOS has no `timeout` binary).
@@ -509,7 +525,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 
 ### `worktree.sh`
 - **Owner Checkout Guard**: refuses (exit 4 with "worktree.sh: refusing to run from the owner's checkout; use ~/dev/_scratch/opensand-base") when `--git-common-dir` matches `$HOME/dev/opensand/.git` (or `OPENSAND_PROTECTED_CHECKOUT`). Overridden only with `OPENSAND_OWNER=1`.
-- **Purpose**: Manage developer and agent worktrees in `~/dev/_scratch/` safely (`base`, `new`, `save`, `review`, `done`, `list`, `prune`). No command acts on the owner's main checkout `~/dev/opensand`: the current directory, the source repository's toplevel and every `new`/`review`/`done` target path are refused before anything happens, resolved through symlinks (`OPENSAND_ALLOW_MAIN_CHECKOUT=1` bypasses it for the selftest only). `base` creates or refreshes the reusable base clone (`OPENSAND_BASE_DIR`, default `~/dev/_scratch/opensand-base`, cloned from `OPENSAND_REPO_URL` or the current origin) and leaves it clean and detached at `origin/main`; `new` refreshes it and hangs the job worktree off it, so no throwaway clone in `/tmp` is needed. The base clone, and any clone that owns linked worktrees, is never removed, pruned or cleaned, and removal goes through the owning repository. `done` also drops the merged local branch so the job name is reusable (remote branches are never touched). `new` runs `scripts/worktree-prune.sh --apply` before the 3 GB free-space guard (`OPENSAND_WORKTREE_PRUNE_SCRIPT` overrides the path, and a prune failure never blocks creation). `prune` and `clean-disk.sh` never touch a *live* worktree (branch has an OPEN PR, or any file changed in the last 2 hours; rule in `scripts/lib/worktree-safety.sh`, which also fails closed when `gh` cannot be read).
+- **Purpose**: Manage developer and agent worktrees in `~/dev/_scratch/` safely (`base`, `new`, `save`, `review`, `done`, `list`, `prune`). No command acts on the owner's main checkout `~/dev/opensand`: the current directory, the source repository's toplevel and every `new`/`review`/`done` target path are refused before anything happens, resolved through symlinks (`OPENSAND_ALLOW_MAIN_CHECKOUT=1` bypasses it for the selftest only). `base` creates or refreshes the reusable base clone (`OPENSAND_BASE_DIR`, default `~/dev/_scratch/opensand-base`, cloned from `OPENSAND_REPO_URL` or the current origin) and leaves it clean and detached at `origin/main`; `new` refreshes it and hangs the job worktree off it, so no throwaway clone in `/tmp` is needed. The base clone, and any clone that owns linked worktrees, is never removed, pruned or cleaned, and removal goes through the owning repository. `done` also drops the merged local branch so the job name is reusable (remote branches are never touched). `new` runs `scripts/worktree-prune.sh --apply` before the 3 GB free-space guard (`OPENSAND_WORKTREE_PRUNE_SCRIPT` overrides the path, and a prune failure never blocks creation). After creating a job worktree, `new` runs `scripts/setup-git.sh` there so rebases use the generated lessons-index merge driver. `prune` and `clean-disk.sh` never touch a *live* worktree (branch has an OPEN PR, or any file changed in the last 2 hours; rule in `scripts/lib/worktree-safety.sh`, which also fails closed when `gh` cannot be read).
 - **`save "<message>" [-- <path>...]`**: run inside a job worktree to save work in one step. It stages by explicit path (the given paths, or every changed or new file listed one by one; ignored files stay out; never `git add -A`), **restores regenerated `packages/desktop/artifacts/*.png` to HEAD and prints what it skipped** (a full `verify.sh` rewrites them as a side effect; name one after `--` to commit a real screenshot change), refuses if the staged diff looks like a secret (`sk-`, `ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`, `AKIA`, `BEGIN ... PRIVATE KEY`, and `.env`, `.env.*`, `*.env` files except `.env.example`, `.env.sample`, `.env.template`; the finding names file and line, never the value, and nothing is committed or pushed), commits with the repository's hooks ON (a failing hook means no push; there is no `--no-verify`), pushes the branch (never forced) and verifies the remote has exactly that commit. The first push opens a **draft** PR (`gh pr create --draft`); later saves reuse it. It refuses in the main checkout, the base clone, a plain clone, a detached HEAD, or on `main`. `new` only creates the worktree and branch: a branch with no commits cannot have a PR, so the draft opens on the first `save`. Run `gh pr ready <N>` when the work is ready; `pr-gate.sh` refuses drafts.
 - **`done`** also refuses while HEAD holds commits that are on no remote branch (unpushed), naming `scripts/worktree.sh save`.
 - **Usage**: `scripts/worktree.sh <base|new|save|review|done|list|prune> [args...]`
