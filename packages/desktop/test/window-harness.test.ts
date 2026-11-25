@@ -766,6 +766,79 @@ test("Real-Window Harness: Preact inbox approvals list (960x740)", async (t) => 
   }
 });
 
+test("Real-Window Harness: queued follow-ups show, cancel and survive a view switch (960x740 and full screen)", async (t) => {
+  const built = fs.existsSync(path.join(pkgRoot, "dist", "renderer-next", "index.html"));
+  if (!built) {
+    t.skip("dist/renderer-next is not built (run pnpm build)");
+    return;
+  }
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-p5-queue-"));
+  try {
+    const shotDir = path.join(pkgRoot, "artifacts");
+    fs.mkdirSync(shotDir, { recursive: true });
+    process.env.OPENSAND_HARNESS_SHOT_DIR = shotDir;
+
+    const script = [
+      "(async () => {",
+      "  const wait = async (fn) => { for (let i = 0; i < 60 && !fn(); i++) await new Promise((r) => setTimeout(r, 100)); };",
+      "  const q = (s) => document.querySelector(s);",
+      "  const qAll = (s) => Array.from(document.querySelectorAll(s));",
+      "  // Hold the first turn open so follow-ups queue instead of reaching the server.",
+      "  window.opensand.sendQuery = () => new Promise(() => {});",
+      "  await wait(() => q('#promptInput') && !q('#promptInput').disabled);",
+      "  const input = q('#promptInput');",
+      "  const send = async (text) => {",
+      "    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;",
+      "    setter.call(input, text);",
+      "    input.dispatchEvent(new Event('input', { bubbles: true }));",
+      "    await new Promise((r) => setTimeout(r, 120));",
+      "    q('#btnSend').click();",
+      "    await new Promise((r) => setTimeout(r, 120));",
+      "  };",
+      "  await send('First turn');",
+      "  await wait(() => q('#btnSend')?.textContent?.trim() === 'Queue');",
+      "  const busyLabel = q('#btnSend')?.textContent?.trim() || '';",
+      "  await send('Follow-up B');",
+      "  await send('Follow-up C');",
+      "  await wait(() => qAll('.queued-message-text').length === 2);",
+      "  const labelTwo = q('[data-el=queue-label]')?.textContent?.trim() || '';",
+      "  const textsTwo = qAll('.queued-message-text').map((e) => e.textContent);",
+      "  qAll('.btn-cancel-queued')[0].click();",
+      "  await wait(() => qAll('.queued-message-text').length === 1);",
+      "  const labelOne = q('[data-el=queue-label]')?.textContent?.trim() || '';",
+      "  const afterCancel = qAll('.queued-message-text').map((e) => e.textContent);",
+      "  q('#navBtnBots').click();",
+      "  await wait(() => !!q('#btnBackToChat'));",
+      "  q('#btnBackToChat').click();",
+      "  await wait(() => !q('#btnBackToChat'));",
+      "  await new Promise((r) => setTimeout(r, 200));",
+      "  const afterSwitch = qAll('.queued-message-text').map((e) => e.textContent);",
+      "  const labelAfterSwitch = q('[data-el=queue-label]')?.textContent?.trim() || '';",
+      "  const noOverflow = document.documentElement.scrollWidth <= window.innerWidth;",
+      "  return { busyLabel, labelTwo, textsTwo, labelOne, afterCancel, afterSwitch, labelAfterSwitch, noOverflow };",
+      "})()",
+    ].join("\n");
+
+    const r = await runHarness("preact", { home: tmpHome, shotTag: "queue", interactScript: script, forceOverflow });
+    if (r.skipped) { console.log(`[window-harness.test] ${r.skipped}`); t.skip(r.skipped); return; }
+    const x = r.interactResult;
+    assert.strictEqual(x.busyLabel, "Queue", "Send becomes Queue while a turn runs");
+    assert.strictEqual(x.labelTwo, "2 queued messages");
+    assert.deepStrictEqual(x.textsTwo, ["Follow-up B", "Follow-up C"]);
+    assert.strictEqual(x.labelOne, "1 queued message");
+    assert.deepStrictEqual(x.afterCancel, ["Follow-up C"], "cancelling one item removes only that item");
+    assert.deepStrictEqual(x.afterSwitch, ["Follow-up C"], "the queue survives a view switch");
+    assert.strictEqual(x.labelAfterSwitch, "1 queued message");
+    assert.strictEqual(x.noOverflow, true);
+    assert.strictEqual(r.res960.noOverflow, true);
+    assert.strictEqual(r.res1920.noOverflow, true);
+    const shotPath = path.join(shotDir, "preact-queue-interact.png");
+    assert.ok(fs.existsSync(shotPath), `queue screenshot missing: ${shotPath}`);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test("Real-Window Harness detects forced horizontal overflow", async (t) => {
   const r = await runHarness("default", { forceOverflow: true });
   if (r.skipped) { t.skip(r.skipped); return; }

@@ -1,5 +1,4 @@
 # Raw error paths present on main; add only intentional entries. Key: relative-path|source line
-packages/desktop/renderer-next/src/views/Chat.tsx|(err) => dispatch({ type: "failed", message: err instanceof Error ? err.message : String(err) }),
 packages/desktop/renderer-next/src/views/MissionTimeline.tsx|setDialogError(e.message);
 packages/desktop/renderer-next/src/views/MissionTimeline.tsx|setForkDialogError(e.message);
 packages/desktop/renderer-next/src/views/MissionTimeline.tsx|setForkPreviewError(e.message);
