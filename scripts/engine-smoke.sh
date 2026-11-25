@@ -176,9 +176,9 @@ if [[ ! -x "$EXEC_PATH" ]]; then
   exit 1
 fi
 
-# Pre-launch bundle isolation check: reject legacy bundles lacking OPENSAND_STATE_DIR support
+# Pre-launch bundle isolation check: fail closed when main.js is absent or lacks OPENSAND_STATE_DIR
 UNPACKED_MAIN_JS="$APP_RESOURCES_DIR/dist/src/main.js"
-if [[ -f "$UNPACKED_MAIN_JS" ]] && ! grep -q "OPENSAND_STATE_DIR" "$UNPACKED_MAIN_JS"; then
+if [[ ! -f "$UNPACKED_MAIN_JS" ]] || ! grep -q "OPENSAND_STATE_DIR" "$UNPACKED_MAIN_JS"; then
   echo "engine-smoke: UNVERIFIED: bundle predates isolated state support (missing OPENSAND_STATE_DIR in dist/src/main.js)" >&2
   exit 2
 fi

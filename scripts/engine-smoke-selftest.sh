@@ -228,5 +228,33 @@ if [[ ! -f "$CLEAN_MARKER" ]]; then
   exit 1
 fi
 
-echo "PASS: engine-smoke-selftest.sh passed all 8 hermetic checks."
+echo "==> Case 9: bundle without dist/src/main.js fails closed before launch (exit 2)"
+NO_MAIN_APP="$WORK/NoMainJs.app"
+mkdir -p "$NO_MAIN_APP/Contents/MacOS" "$NO_MAIN_APP/Contents/Resources/app/dist/src"
+NO_MAIN_MARKER="$WORK/no-main-launched.txt"
+cat << 'SH' > "$NO_MAIN_APP/Contents/MacOS/OpenSand"
+#!/bin/bash
+printf 'launched\n' > "$SMOKE_LAUNCH_MARKER"
+exit 0
+SH
+chmod +x "$NO_MAIN_APP/Contents/MacOS/OpenSand"
+
+set +e
+NO_MAIN_OUT=$(SMOKE_LAUNCH_MARKER="$NO_MAIN_MARKER" "$SCRIPT_UNDER_TEST" "$NO_MAIN_APP" 2>&1)
+EXIT_CODE=$?
+set -e
+if [[ "$EXIT_CODE" -ne 2 ]]; then
+  echo "FAIL: Expected exit code 2 for a bundle without main.js, got $EXIT_CODE: $NO_MAIN_OUT" >&2
+  exit 1
+fi
+if [[ -f "$NO_MAIN_MARKER" ]]; then
+  echo "FAIL: app was launched despite the missing dist/src/main.js" >&2
+  exit 1
+fi
+if ! echo "$NO_MAIN_OUT" | grep -q "predates isolated state support"; then
+  echo "FAIL: Expected preflight refusal message, got: $NO_MAIN_OUT" >&2
+  exit 1
+fi
+
+echo "PASS: engine-smoke-selftest.sh passed all 9 hermetic checks."
 exit 0
