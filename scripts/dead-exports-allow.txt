@@ -263,6 +263,15 @@ packages/desktop/src/shell/boot-model.ts|function bootStatus
 packages/desktop/src/shell/boot-model.ts|function needsAuthProbe
 packages/desktop/src/shell/boot-model.ts|function resolveActiveAgent
 packages/desktop/src/shell/boot-model.ts|function resolveSessionRestore
+packages/desktop/src/shell/graphs-model.ts|const GRAPH_EMPTY_STATE
+packages/desktop/src/shell/graphs-model.ts|const GRAPH_ERROR_TITLE
+packages/desktop/src/shell/graphs-model.ts|const GRAPH_RUNNING_MESSAGE
+packages/desktop/src/shell/graphs-model.ts|const GRAPH_RUN_TASK
+packages/desktop/src/shell/graphs-model.ts|const GRAPH_TRACE_EMPTY_STATE
+packages/desktop/src/shell/graphs-model.ts|function canRunGraph
+packages/desktop/src/shell/graphs-model.ts|function graphCardView
+packages/desktop/src/shell/graphs-model.ts|function graphEventView
+packages/desktop/src/shell/graphs-model.ts|function graphFinalSummary
 packages/desktop/src/shell/session-list-model.ts|const RELATIVE_UNITS
 packages/desktop/src/shell/session-list-model.ts|const SESSIONS_CHANGED_EVENT
 packages/desktop/src/shell/session-list-model.ts|function emptyState

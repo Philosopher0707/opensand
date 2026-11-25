@@ -1,0 +1,5 @@
+# Named fetch options hide the HTTP verb from the route contract gate
+
+- **Trap:** PR #228 failed CI on `shell-route-contract.test.js:73`: `renderer-next/src/data/graphs.ts` built `const init = { method: "POST", ... }` and passed `init` to `fetch`. The contract parser reads the verb from the `fetch(...)` call itself, so it recorded `GET /api/graphs/:param/run`, which has no GET route on the server.
+- **Root Cause:** the gate scans source text, not values. A variable holding the options is opaque to it; POST-only endpoints then look like unregistered GETs. Endpoints that also have a GET route (for example `/api/policies`) mask the same mistake, so a passing gate elsewhere does not prove the pattern is safe.
+- **Rule:** always pass `{ method, headers, body }` inline in every `http(...)`/`fetch(...)` call in `renderer-next/src/data/*`, even when both branches need identical options. Check POST-only endpoints specifically, and run `shell-route-contract.test.js` locally before pushing a data module.
