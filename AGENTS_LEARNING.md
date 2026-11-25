@@ -472,3 +472,6 @@ New lessons are not added here any more: one file each in [`docs/lessons/`](docs
 
 ### 12.39 Whole-file secret-scan allowlists hide real leaks (2026-11-24)
 * **Trap → cause → rule:** the first gitleaks setup ignored five fixture files wholesale by path, so a real secret planted in any of those files would have been silently accepted. → Ignore exact per-finding fingerprints in `.gitleaksignore` (commit/file/rule/line, one comment each) instead of paths; prove the rule by appending a fresh fake key to a real fixture (uncommitted), confirming `gitleaks detect --no-git` exits 1 with a fingerprint absent from the ignore file, then restoring the file byte-for-byte. (PR #216)
+
+### 12.40 Engine status: expose flags, not detector output (2026-11-25)
+* **Trap → cause → rule:** the engine-status route serialized the detector result, so install paths and versions reached any local API client; a failed detection fetch also blocked the whole Settings form, and a signed-out engine stayed selected. → Project through an allowlist (`toEngineStatus`), catch each optional fetch on its own (`loadEngineStatus`), and make an auth failure reset the saved engine; an external-engine save sends only `{ engine }`. Each rule has a regression test in `settings-model.test.ts` / `engine-selection.test.ts`.

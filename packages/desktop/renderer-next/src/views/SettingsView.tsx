@@ -5,12 +5,14 @@ import type { ShellData } from "../data";
 import { viewPanelId, type ViewId } from "../../../src/shell/navigation-model";
 import {
   connectionError,
-  enginePayload,
   ENGINE_OPTIONS,
+  ENGINE_STATUS_UNAVAILABLE,
   isExternalEngine,
+  loadEngineStatus,
   maskedKey,
   resolveEngineChoice,
   saveErrorMessage,
+  savePayload,
   settingsPayload,
   validateSettingsForm,
   type EngineId,
@@ -65,12 +67,12 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
         setModel(settings.model ?? "");
         setHasSavedKey(Boolean(maskedKey(settings.apiKey)));
         setApiKey(""); // never put the stored key into an input
-        const detected = data.detectEngines ? await data.detectEngines() : [];
+        const { detected, unavailable } = await loadEngineStatus(data.detectEngines?.bind(data));
         if (!live) return;
         const choice = resolveEngineChoice((settings as { engine?: unknown }).engine, detected);
         setEngine(choice.selected);
         setEngineMissing(choice.missing);
-        setEngineHint(choice.hint);
+        setEngineHint(unavailable ? ENGINE_STATUS_UNAVAILABLE : choice.hint);
       })
       .catch(() => {
         if (live) setError("Could not load settings. Check that OpenSand is running.");
@@ -113,7 +115,7 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
     }
     setBusy("save");
     try {
-      await data.saveSettings({ ...settingsPayload(form), ...enginePayload(engine) });
+      await data.saveSettings(savePayload(form, engine));
       setSuccess("Saved. Your provider is ready to use.");
       setHasSavedKey(true);
       setApiKey(""); // a freshly saved key is never rendered back

@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert";
 import {
+  savePayload,
+  loadEngineStatus,
+  ENGINE_STATUS_UNAVAILABLE,
+  toEngineStatus,
   ENGINE_OPTIONS,
   MASKED_KEY,
   connectionError,
@@ -128,4 +132,33 @@ test("settings-model: external engines skip provider-field validation", () => {
   const engine: EngineId = "claude";
   assert.strictEqual(validateSettingsForm(empty, false, engine), null);
   assert.strictEqual(validateSettingsForm(empty, false, "opensand") !== null, true);
+});
+
+test("savePayload sends only { engine } for an external engine, even with a typed key", () => {
+  const form = { provider: "openai" as const, endpoint: "https://x.test/v1", model: "m", apiKey: "sk-FAKE-typed-key" };
+  assert.deepEqual(savePayload(form, "claude"), { engine: "claude" });
+  assert.doesNotMatch(JSON.stringify(savePayload(form, "codex")), /sk-FAKE|apiKey|endpoint/);
+  assert.equal(savePayload(form, "opensand").apiKey, "sk-FAKE-typed-key");
+});
+
+test("loadEngineStatus survives a rejected detection and keeps OpenSand selectable", async () => {
+  const r = await loadEngineStatus(async () => { throw new Error("fetch failed ECONNREFUSED /secret/path"); });
+  assert.equal(r.unavailable, true);
+  assert.deepEqual(r.detected, []);
+  assert.equal(resolveEngineChoice("claude", r.detected).selected, "opensand");
+  assert.doesNotMatch(ENGINE_STATUS_UNAVAILABLE, /ECONNREFUSED|fetch failed/);
+  assert.deepEqual(await loadEngineStatus(undefined), { detected: [], unavailable: false });
+});
+
+test("toEngineStatus is an allowlist", () => {
+  const out = toEngineStatus([{ engine: "claude", installed: true, authenticated: true, binaryPath: "/x", version: "1" } as any]);
+  assert.deepEqual(out, [{ engine: "claude", installed: true, signedIn: true }]);
+});
+
+test("SettingsView is wired through the tested helpers, not the raw payload or raw detection", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../../renderer-next/src/views/SettingsView.tsx", import.meta.url), "utf8");
+  assert.match(src, /saveSettings\(savePayload\(form, engine\)\)/);
+  assert.match(src, /loadEngineStatus\(/);
+  assert.doesNotMatch(src, /await data\.detectEngines\(\)/);
 });

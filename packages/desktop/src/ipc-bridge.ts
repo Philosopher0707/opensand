@@ -817,7 +817,12 @@ export class DesktopIpcBridge extends EventEmitter {
           return;
         }
         const actionable = classifyError(err);
-        const userMessage = `${actionable.cause} ${actionable.nextAction}`;
+        let userMessage = `${actionable.cause} ${actionable.nextAction}`;
+        // A signed-out external engine would fail every later turn: fall back to OpenSand and say so.
+        if (this.settings.engine && this.settings.engine !== 'opensand' && /is not signed in/i.test(userMessage)) {
+          this.updateSettings({ engine: 'opensand' } as Partial<DesktopSettings>);
+          userMessage = `${userMessage} Switched back to OpenSand so you can keep working.`;
+        }
         this.emitEvent('error', {
           message: userMessage,
           code: actionable.code,

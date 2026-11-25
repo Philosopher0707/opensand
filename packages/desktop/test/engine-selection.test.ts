@@ -107,6 +107,9 @@ test('desktop server streams a Claude Code turn, resumes it, and leaves the defa
     assert.match(errors[0].message, /not signed in/i);
     assert.match(errors[0].message, /claude login/i);
     assert.doesNotMatch(errors[0].message, /Error: not logged in/);
+    // Signed-out engine: the saved engine falls back to OpenSand.
+    assert.equal(bridge.getSettings().engine, 'opensand');
+    assert.match(errors[0].message, /OpenSand/);
 
     // Cancel mid-turn: the turn ends gracefully through the desktop server.
     errors.length = 0;
@@ -143,7 +146,9 @@ test('passive engine detection route reports the fake claude binary', async () =
     const engines = JSON.parse(res.body);
     const claude = engines.find((e: any) => e.engine === 'claude');
     assert.equal(claude.installed, true);
-    assert.ok(claude.binaryPath.startsWith(fakeBinDir));
+    // Exact keys: no binaryPath, version or auth message may leave the process.
+    for (const e of engines) assert.deepEqual(Object.keys(e).sort(), ['engine', 'installed', 'signedIn']);
+    assert.doesNotMatch(res.body, /binaryPath|version|authMessage|\/fake/i);
   } finally {
     process.env.PATH = originalPath;
     await closeThenRemove([server, server.getBridge()], tmp);
