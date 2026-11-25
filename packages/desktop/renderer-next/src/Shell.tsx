@@ -9,6 +9,7 @@ import { MissionTimeline } from "./views/MissionTimeline";
 import { MissionReceipt } from "./views/MissionReceipt";
 import { Inbox, ApprovalDecisionButtons } from "./views/Inbox";
 import { QuickCaptureButton, QuickCaptureOutput, useQuickCapture } from "./views/QuickCapture";
+import { QuickOcrButton, QuickOcrOutput, useQuickOcr } from "./views/QuickOcr";
 import { Chat, useChatTurn } from "./views/Chat";
 import { Canvas } from "./views/Canvas";
 import { Inspector } from "./views/Inspector";
@@ -170,6 +171,7 @@ export function Shell({ data }: ShellProps) {
   const authInputRef = useRef<HTMLInputElement>(null);
 
   const capture = useQuickCapture(data);
+  const ocr = useQuickOcr(data);
   // The chat turn lives at the shell level so opening an approval detail does not drop it.
   const chat = useChatTurn(data, selectedSessionId, activeAgentId);
 
@@ -732,6 +734,7 @@ export function Shell({ data }: ShellProps) {
                 Canvas ({canvasState.artifacts.length})
               </button>
             )}
+            <QuickOcrButton ocr={ocr} />
             <QuickCaptureButton capture={capture} />
             <button
               id="btnToggleDetail"
@@ -768,6 +771,7 @@ export function Shell({ data }: ShellProps) {
           </div>
         </header>
         <QuickCaptureOutput capture={capture} />
+        <QuickOcrOutput ocr={ocr} />
         <section class="shell-body">
           <div id={viewPanelId("chat")} class={`view-panel view-panel-chat ${currentView === "chat" ? "" : "hidden"}`}>
             {selectedApproval ? (

@@ -221,6 +221,11 @@ packages/desktop/src/shell/navigation-model.ts|function isViewId
 packages/desktop/src/shell/navigation-model.ts|function parseViewFromLocation
 packages/desktop/src/shell/navigation-model.ts|function viewHash
 packages/desktop/src/shell/navigation-model.ts|function viewPanelId
+packages/desktop/src/shell/ocr-model.ts|const OCR_PROMPT
+packages/desktop/src/shell/ocr-model.ts|const OCR_TOOL_NAME
+packages/desktop/src/shell/ocr-model.ts|function ocrEventAction
+packages/desktop/src/shell/ocr-model.ts|function ocrReducer
+packages/desktop/src/shell/ocr-model.ts|function plainOcrError
 packages/desktop/src/shell/query-send-model.ts|function querySendArgs
 packages/desktop/src/shell/quick-capture-model.ts|const CAPTURE_WINDOWS_PROMPT
 packages/desktop/src/shell/quick-capture-model.ts|const INITIAL_QUICK_CAPTURE
