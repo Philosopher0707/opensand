@@ -7,6 +7,7 @@ import { createApprovalQueue } from './modules/chat/approval-queue.js';
 import { createArtifactCanvas } from './modules/chat/canvas.js';
 import { createFileModel, artifactForToolResult, wholeFileForPartialEdit } from './modules/chat/file-model.js';
 import { formatRetryStatus } from './modules/chat/retry-status.js';
+import { versionLabel } from './modules/version-label.js';
 
 // Native title bar is hiddenInset on macOS; CSS keys traffic-light clearance off this.
 // Detected via userAgent for instant CSS styling, and via window.opensand for IPC bridge.
@@ -1168,6 +1169,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const settingsModal = document.getElementById('settingsModal');
   const btnCloseSettings = document.getElementById('btnCloseSettings');
   const btnSaveSettings = document.getElementById('btnSaveSettings');
+  const settingsVersion = document.getElementById('settingsVersion');
   const settingProvider = document.getElementById('settingProvider');
   const settingEngine = document.getElementById('settingEngine');
   const engineHint = document.getElementById('engineHint');
@@ -5630,6 +5632,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  async function refreshSettingsVersion() {
+    if (!settingsVersion) return;
+    try {
+      const res = await fetch('/api/version');
+      if (!res.ok) throw new Error('version unavailable');
+      settingsVersion.textContent = versionLabel(await res.json());
+    } catch {
+      settingsVersion.textContent = 'Version unavailable';
+    }
+  }
+
   // Settings
   btnSettings.onclick = async () => {
     const s = await client.getSettings();
@@ -5673,6 +5686,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       settingAutoApprove.checked = currentMode === 'auto';
     }
     settingsModal.classList.remove('hidden');
+    void refreshSettingsVersion();
     populateModelSuggestions(settingProvider.value, settingEndpoint.value);
   };
   btnCloseSettings.onclick = () => settingsModal.classList.add('hidden');

@@ -619,6 +619,13 @@ export class DesktopServer {
       return;
     }
 
+    // API: GET /api/version (read-only version info for the Settings screens)
+    if (pathname === '/api/version' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ app: this.appVersion, electron: process.versions.electron ?? null }));
+      return;
+    }
+
     // API: GET /api/diagnostics (redacted support report)
     if (pathname === '/api/diagnostics' && req.method === 'GET') {
       const report = buildDiagnosticsReport({

@@ -295,6 +295,7 @@ packages/desktop/src/shell/vault-model.ts|function parseSites
 packages/desktop/src/shell/vault-model.ts|function secretCardView
 packages/desktop/src/shell/vault-model.ts|function validateCredentialInput
 packages/desktop/src/shell/vault-model.ts|function validateSecretInput
+packages/desktop/src/shell/version-model.ts|function versionLabel
 packages/desktop/src/workspace-file-read.ts|const MAX_WORKSPACE_READ_BYTES
 packages/engine/src/mesh/limits.ts|const DEFAULT_LIMITS
 packages/engine/src/mesh/limits.ts|const HARD_CAPS

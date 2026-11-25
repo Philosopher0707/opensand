@@ -137,3 +137,4 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-24 · [Full desktop suite can fail on a pre-existing navigation real-window timeout](2026-11-24-sentinel-full-suite-navigation-timeout.md)
 - 2026-11-24 · [A brief's base ref can be stale locally, and the shared worktree base can be dirty](2026-11-24-settings-welcome-worktree-setup.md)
 - 2026-11-24 · [Wiring the Claude Code engine selector: two test hurdles (2026-11-24)](2026-11-24-wire-claude-engine-test-hurdles.md)
+- 2026-11-25 · [Showing the app version needs the current main, both Settings screens, and a real app directory](2026-11-25-show-version-in-both-settings-screens.md)

@@ -4071,6 +4071,13 @@ textarea#promptInput {
   border-top: 1px solid var(--border-color-subtle);
 }
 
+#settingsModal .settings-version {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .form-control:focus {
   outline: none;
   border-color: var(--accent);
