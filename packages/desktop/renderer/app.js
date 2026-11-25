@@ -5739,8 +5739,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   btnCloseSettings.onclick = () => settingsModal.classList.add('hidden');
   btnSaveSettings.onclick = async () => {
     const mode = settingApprovalMode ? settingApprovalMode.value : (settingAutoApprove?.checked ? 'auto' : 'ask');
-    const engineOption = settingEngine?.selectedOptions?.[0];
-    const selectedEngine = engineOption?.disabled ? 'opensand' : (settingEngine?.value || 'opensand');
+    const selectedEngine = settingEngine?.selectedOptions?.[0]?.disabled ? 'opensand' : (settingEngine?.value || 'opensand');
     const payload = {
       provider: settingProvider.value,
       endpoint: settingEndpoint.value,
@@ -5749,9 +5748,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       autoApprove: mode === 'auto',
       engine: selectedEngine,
     };
-    if (selectedEngine !== 'opensand' && settingEngineModel?.value) {
-      payload.engineModels = { ...engineModels, [selectedEngine]: settingEngineModel.value };
-    }
+    if (selectedEngine !== 'opensand' && settingEngineModel?.value) payload.engineModels = { ...engineModels, [selectedEngine]: settingEngineModel.value };
     const newKey = settingApiKey.value.trim();
     if (newKey) payload.apiKey = newKey;
     await client.updateSettings(payload);
