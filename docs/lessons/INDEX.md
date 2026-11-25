@@ -174,6 +174,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-25 · [Packaged app engine smoke testing requires canonical workspace trust and onboarding bypass](2026-11-25-packaged-engine-smoke-and-folder-trust.md)
 - 2026-11-25 · [Pre-commit must reject PNG artifacts before the expensive suite](2026-11-25-precommit-png-artifact-guard.md)
 - 2026-11-25 · [Prune whole worktrees before the disk guard, not just their caches](2026-11-25-worktree-prune-before-disk-guard.md)
+- 2026-11-25 · [Real-window tests must follow a control when an input becomes a dropdown](2026-11-25-real-window-tests-follow-control-type-changes.md)
 - 2026-11-25 · [Rebasing a PR that fixes lesson format: the index merge driver fails on the intermediate commit](2026-11-25-rebase-lesson-format-blocks-index-merge-driver.md)
 - 2026-11-25 · [Release install left old app running until quit, relaunch, and live probe were gated](2026-11-25-release-install-restart-probe.md)
 - 2026-11-25 · [Renderer proof harnesses resolve CSS imports from the harness entry, not from `src`](2026-11-25-renderer-proof-harness-imports-use-entry-relative-paths.md)
