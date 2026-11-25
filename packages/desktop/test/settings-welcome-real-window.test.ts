@@ -80,7 +80,7 @@ app.on("browser-window-created", (_e, w) => {
       result.validationError = await js("document.querySelector('#welcomeSettingsError').textContent.trim()");
 
       await js(setInput("#welcomeSettingsEndpoint", "https://api.example.com/v1/chat/completions"));
-      await js(setInput("#welcomeSettingsModel", "test-model"));
+      await js(setSelect("#welcomeSettingsModel", "test-model"));
       await js(setInput("#welcomeSettingsApiKey", "sk-test-123"));
       await js("document.querySelector('#welcomeSettingsTest').click()");
       await wait("document.querySelector('#welcomeSettingsSuccess') && document.querySelector('#welcomeSettingsSuccess').textContent.includes('successful')");
