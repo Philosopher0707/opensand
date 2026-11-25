@@ -132,6 +132,7 @@ packages/desktop/src/shell/chat-send-queue.ts|function queueStatusLabel
 packages/desktop/src/shell/chat-send-queue.ts|function sendFailureMessage
 packages/desktop/src/shell/chat-send-queue.ts|function takeNextQueued
 packages/desktop/src/shell/chat-turn-model.ts|const INITIAL_CHAT_TURN
+packages/desktop/src/shell/chat-turn-model.ts|function approvalErrorMessage
 packages/desktop/src/shell/chat-turn-model.ts|function canRetryTurn
 packages/desktop/src/shell/chat-turn-model.ts|function chatEventAction
 packages/desktop/src/shell/chat-turn-model.ts|function chatTurnReducer

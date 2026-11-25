@@ -7,6 +7,7 @@ import type { ShellData } from "../data";
 import { parseAnsi, type AnsiSpan } from "../../../src/shell/chat-ansi";
 import {
   INITIAL_CHAT_TURN,
+  approvalErrorMessage,
   chatEventAction,
   chatTurnReducer,
   canRetryTurn,
@@ -32,6 +33,8 @@ import {
   takeNextQueued,
   type SendQueueState,
 } from "../../../src/shell/chat-send-queue";
+import { formatApprovalTarget } from "../../../src/shell/inbox-model";
+import type { ToolApprovalRequest } from "../../../src/types";
 import type { ArtifactItem } from "../../../src/shell/canvas-model";
 import type { TurnEvent } from "../../../src/shell/quick-capture-model";
 import { querySendArgs } from "../../../src/shell/query-send-model";
@@ -205,7 +208,9 @@ function statusText(state: ChatTurnState, now: number = Date.now()): string {
     case "sending":
       return "Sending…";
     case "waiting":
-      return "Waiting for your approval in the Inbox.";
+      return state.approval
+        ? "Approval needed — answer in the chat or Inbox."
+        : "Waiting for your approval in the Inbox.";
     case "streaming":
       return "Answering…";
     case "done":
@@ -213,7 +218,7 @@ function statusText(state: ChatTurnState, now: number = Date.now()): string {
     case "error":
       return `Error: ${state.error}`;
     case "stopped":
-      return "Stopped.";
+      return state.approvalCancelled ? "Cancelled — approval closed." : "Stopped.";
     case "unavailable":
       return "Sending is not available in this window.";
     default:
@@ -435,6 +440,146 @@ export function ToolCard({
       </div>
     </details>
   );
+}
+
+/** Inline approval: the args are the payload, so editing the JSON is editing the action. */
+export function ApprovalCard({
+  request,
+  onDecide,
+}: {
+  request: ToolApprovalRequest;
+  onDecide: (action: "approve_once" | "reject" | "approve_modified", modifiedArgs?: Record<string, unknown>) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [argsText, setArgsText] = useState(() => JSON.stringify(request.args ?? {}, null, 2));
+  const [invalid, setInvalid] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setEditing(false);
+    setArgsText(JSON.stringify(request.args ?? {}, null, 2));
+    setInvalid(null);
+    setError(null);
+  }, [request.approvalId]);
+
+  const answer = (action: "approve_once" | "reject" | "approve_modified", modifiedArgs?: Record<string, unknown>) => {
+    setError(null);
+    Promise.resolve(onDecide(action, modifiedArgs)).catch((err) => setError(approvalErrorMessage(err)));
+  };
+
+  const approve = () => {
+    if (!editing) {
+      answer("approve_once");
+      return;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(argsText);
+    } catch {
+      setInvalid("Arguments must be valid JSON. Nothing was sent.");
+      return;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      setInvalid("Arguments must be a JSON object. Nothing was sent.");
+      return;
+    }
+    setInvalid(null);
+    answer("approve_modified", parsed as Record<string, unknown>);
+  };
+
+  const deny = () => answer("reject");
+
+  // Enter/Esc act only while focus is inside the card, so the composer keeps its own Enter.
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape" || e.key === "Esc") {
+      e.preventDefault();
+      e.stopPropagation();
+      deny();
+      return;
+    }
+    const fromButton = (e.target as HTMLElement).tagName === "BUTTON";
+    if (e.key === "Enter" && !e.shiftKey && !fromButton) {
+      e.preventDefault();
+      e.stopPropagation();
+      approve();
+    }
+  };
+
+  return (
+    <div
+      class="approval-card"
+      role="group"
+      aria-label={`Approval needed for ${request.toolName}`}
+      data-approval-id={request.approvalId}
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+    >
+      <div class="approval-card-head">
+        <span class="approval-card-icon" aria-hidden="true">⚠️</span>
+        <strong id="approvalCardToolName">{request.toolName}</strong>
+        <span class="approval-card-badge">Approval needed</span>
+      </div>
+      <p class="approval-card-summary">{formatApprovalTarget(request)}</p>
+      {request.reason ? <p class="approval-card-reason">{request.reason}</p> : null}
+      <div class="approval-card-args">
+        <div class="approval-card-args-label">{editing ? "Edit arguments (JSON)" : "Arguments"}</div>
+        {editing ? (
+          <textarea
+            id="approvalCardArgs"
+            class="approval-card-args-input"
+            aria-label="Edit approval arguments as JSON"
+            aria-invalid={Boolean(invalid)}
+            rows={4}
+            value={argsText}
+            onInput={(e) => {
+              setArgsText((e.target as HTMLTextAreaElement).value);
+              setInvalid(null);
+            }}
+          />
+        ) : (
+          <pre id="approvalCardArgs" class="approval-card-args-read">{JSON.stringify(request.args ?? {}, null, 2)}</pre>
+        )}
+      </div>
+      {invalid ? <p class="approval-card-error" role="alert">{invalid}</p> : null}
+      {error ? <p class="approval-card-error" role="alert">{error}</p> : null}
+      <div class="approval-card-actions">
+        <button type="button" id="btnApproveInChat" class="btn btn-primary btn-sm" aria-label="Approve this action" onClick={approve}>
+          Approve
+        </button>
+        <button
+          type="button"
+          id="btnEditApproveInChat"
+          class="btn btn-secondary btn-sm"
+          aria-label={editing ? "Approve the edited arguments" : "Edit arguments, then approve"}
+          onClick={() => {
+            if (editing) approve();
+            else {
+              setEditing(true);
+              setInvalid(null);
+            }
+          }}
+        >
+          {editing ? "Approve edited" : "Edit & approve"}
+        </button>
+        <button type="button" id="btnDenyInChat" class="btn btn-danger btn-sm" aria-label="Deny this action" onClick={deny}>
+          Deny
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const APPROVAL_ANSWER_TIMEOUT_MS = 15000;
+
+/** An unanswered approval must not hang the card forever; the error is plain words. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("Approval timed out")), ms);
+  });
+  return Promise.race([promise, limit]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
 }
 
 export function ChatMessageRow({
@@ -739,6 +884,18 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
     if (lastUser && !busy) chat.send(lastUser.text);
   };
 
+  // One write path: the edit is a per-decision override and still carries the epoch.
+  const decideApproval = async (
+    action: "approve_once" | "reject" | "approve_modified",
+    modifiedArgs?: Record<string, unknown>,
+  ) => {
+    const request = state.approval;
+    if (!request || !data?.approveTool) return;
+    const decision = { action, epoch: request.epoch, ...(modifiedArgs ? { modifiedArgs } : {}) };
+    await withTimeout(Promise.resolve(data.approveTool(request.approvalId, decision)), APPROVAL_ANSWER_TIMEOUT_MS);
+    chat.dispatch?.({ type: "approval_resolved", approvalId: request.approvalId });
+  };
+
   // Delegated click handler for code blocks (Copy + Open in Canvas)
   const handleContainerClick = (e: MouseEvent) => {
     const target = (e.target as HTMLElement).closest(".btn-copy-code") as HTMLButtonElement | null;
@@ -807,6 +964,9 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
             )}
           </div>
         )}
+        {state.approval ? (
+          <ApprovalCard request={state.approval} onDecide={decideApproval} />
+        ) : null}
       </div>
       {/* Always mounted, so the first status change is announced. */}
       <div class="chat-status" role="status" aria-live="polite" data-status={state.status} data-elapsed={elapsed}>

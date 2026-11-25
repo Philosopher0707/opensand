@@ -452,9 +452,33 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
              && OPENSAND_LESSONS_DIR="$REBASE_WT/docs/lessons" bash "$LESSONS_INDEX_SCRIPT" --check >/dev/null 2>&1; then
             git -C "$REBASE_WT" add -- docs/lessons/INDEX.md
             # Non-interactive: a plain rebase --continue opens the editor and hangs when there is no tty.
-            if GIT_EDITOR=true git -C "$REBASE_WT" rebase --continue >/dev/null 2>&1; then
+            # The regenerated index can leave an empty commit (nothing new to record); in that case
+            # skip it instead of aborting. Capture and print the rebase command's stderr on failure.
+            REBASE_CONTINUE_ERR="$(mktemp "${TMPDIR:-/tmp}/pr-gate-rebase-continue.XXXXXX")"
+            if GIT_EDITOR=true git -C "$REBASE_WT" rebase --continue >"$REBASE_CONTINUE_ERR" 2>&1; then
+              cat "$REBASE_CONTINUE_ERR"
+              rm -f "$REBASE_CONTINUE_ERR"
               echo "PASS: regenerated docs/lessons/INDEX.md and continued the rebase for PR #$PR."
+            elif git -C "$REBASE_WT" diff --cached --quiet 2>/dev/null; then
+              # Nothing staged beyond HEAD: an empty commit; skip it.
+              echo "==> [when-green] rebase --continue found nothing to commit; skipping the empty commit..."
+              REBASE_SKIP_ERR="$(mktemp "${TMPDIR:-/tmp}/pr-gate-rebase-skip.XXXXXX")"
+              if GIT_EDITOR=true git -C "$REBASE_WT" rebase --skip >"$REBASE_SKIP_ERR" 2>&1; then
+                cat "$REBASE_SKIP_ERR"
+                rm -f "$REBASE_SKIP_ERR" "$REBASE_CONTINUE_ERR"
+                echo "PASS: regenerated docs/lessons/INDEX.md, skipped the empty commit, and continued the rebase for PR #$PR."
+              else
+                cat "$REBASE_SKIP_ERR" >&2
+                rm -f "$REBASE_SKIP_ERR"
+                cat "$REBASE_CONTINUE_ERR" >&2
+                rm -f "$REBASE_CONTINUE_ERR"
+                git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+                echo "FAIL: regenerating docs/lessons/INDEX.md did not let the rebase continue for PR #$PR; nothing pushed." >&2
+                exit 1
+              fi
             else
+              cat "$REBASE_CONTINUE_ERR" >&2
+              rm -f "$REBASE_CONTINUE_ERR"
               git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
               echo "FAIL: regenerating docs/lessons/INDEX.md did not let the rebase continue for PR #$PR; nothing pushed." >&2
               exit 1
