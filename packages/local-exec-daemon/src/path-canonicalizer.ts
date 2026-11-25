@@ -18,7 +18,7 @@ const COMMAND_KEYS = ['command', 'CommandLine', 'cmd'];
 const COMMAND_PATH_RE = /(?:^|[\s=:])((?:[.~]{0,2}\/|\/)[^\s;|&<>"'`]+)/g;
 
 /** Resolve one path against the workspace root, following symlinks and rejecting escapes. */
-export function canonicalizePath(input: unknown, workspaceRoot: string): string {
+function canonicalizePath(input: unknown, workspaceRoot: string): string {
   if (typeof input !== 'string' || input.length === 0) {
     throw new PathEscapeError('path must be a non-empty string', String(input));
   }
@@ -76,3 +76,5 @@ export function canonicalizeArgumentPaths(args: Record<string, unknown>, workspa
   }
   return canonical;
 }
+
+export { canonicalizePath };

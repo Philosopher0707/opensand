@@ -14,7 +14,7 @@ import {
 // Alias kept local so the public name stays short at the call site.
 type Request = PolicyEvaluateRpcRequest & { params: PolicyEvaluateParams };
 
-export class PolicyClient {
+class PolicyClient {
   readonly socketPath: string;
   readonly timeoutMs: number;
 
@@ -77,3 +77,5 @@ export class PolicyClient {
     });
   }
 }
+
+export { PolicyClient };

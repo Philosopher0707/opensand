@@ -38,7 +38,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export class PolicyDaemonServer {
+class PolicyDaemonServer {
   private readonly policy: PolicyEngine;
   private server: net.Server | null = null;
   private socketPath: string | null = null;
@@ -181,3 +181,5 @@ export class PolicyDaemonServer {
     source.on('error', () => { /* fail closed by silence; the client times out */ });
   }
 }
+
+export { PolicyDaemonServer };
