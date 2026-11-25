@@ -173,6 +173,17 @@ export function Shell({ data }: ShellProps) {
   // The chat turn lives at the shell level so opening an approval detail does not drop it.
   const chat = useChatTurn(data, selectedSessionId, activeAgentId);
 
+  // An answer in the chat clears the Inbox detail too; one decision, both surfaces.
+  useEffect(() => {
+    const onResolved = () => {
+      setSelectedApproval(null);
+      setApprovalsRev((n) => n + 1);
+    };
+    if (typeof window === "undefined") return;
+    window.addEventListener("opensand:approvals_changed", onResolved);
+    return () => window.removeEventListener("opensand:approvals_changed", onResolved);
+  }, []);
+
   // Restore saved session from localStorage validated against live sessions
   useEffect(() => {
     let cancelled = false;
@@ -350,6 +361,8 @@ export function Shell({ data }: ShellProps) {
   stopTurnRef.current = chat.stop;
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // An open approval card owns Escape; a global stop would close it from the wrong surface.
+      if (typeof document !== "undefined" && document.querySelector(".approval-card")) return;
       const action = classifyShortcut(e);
       if (!action) return;
       if (action === "escape") {

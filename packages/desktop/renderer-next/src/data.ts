@@ -8,6 +8,7 @@ import type { FileDiffView } from "../../src/shell/mission-diff-model";
 import type { PreviewRestoreResult, RestoreResult } from "../../src/shell/mission-restore-model";
 import type { TimelineForkResult } from "../../src/shell/mission-fork-model";
 import type { ToolApprovalRequest } from "../../src/shell/inbox-model";
+import type { ApprovalDecision } from "../../src/types";
 import type { TurnEvent } from "../../src/shell/quick-capture-model";
 import type { Room, DiscussionResult, CreateRoomInput } from "../../src/shell/rooms-model";
 import type { Routine, CreateRoutineInput } from "../../src/shell/routines-model";
@@ -127,7 +128,7 @@ export interface CoreShellData {
   listPendingApprovals(): Promise<ToolApprovalRequest[]>;
   onApprovalChange?(callback: () => void): () => void;
   /** Answers one approval; the epoch the request was made at must travel with it. Optional: read-only without it. */
-  approveTool?(approvalId: string, decision: { action: "approve_once" | "always_allow" | "reject"; epoch: number }): Promise<unknown>;
+  approveTool?(approvalId: string, decision: ApprovalDecision & { epoch: number }): Promise<unknown>;
   /** Starts a chat turn, as the composer does. Optional: a build without a send channel leaves it out. */
   sendQuery?(query: string, sessionId?: string, agentId?: string): Promise<{ success: boolean; sessionId: string }>;
   cancelTurn?(): Promise<unknown>;
@@ -241,8 +242,13 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
     },
     approveTool(approvalId, decision) {
       const bridge = (window as any).opensand;
-      if (!bridge?.approveTool) return Promise.reject(new Error("Approvals are not available in this build"));
-      return bridge.approveTool(approvalId, decision).then((res: any) => {
+      const override = typeof window !== "undefined" ? (window as any).__testApproveTool : undefined;
+      const answer = typeof override === "function"
+        ? Promise.resolve(override(approvalId, decision))
+        : bridge?.approveTool
+          ? bridge.approveTool(approvalId, decision)
+          : Promise.reject(new Error("Approvals are not available in this build"));
+      return answer.then((res: any) => {
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("opensand:approvals_changed"));
         }

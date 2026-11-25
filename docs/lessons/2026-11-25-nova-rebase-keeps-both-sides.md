@@ -1,0 +1,7 @@
+# Nova: rebase conflicts — regenerate the generated index, keep both import sides
+
+**Trap:** Rebasing two Phase 5 branches onto `main` after #239/#254 stalled twice on generated or merged files: `docs/lessons/INDEX.md` conflicted in every commit of the dictation branch, and `Chat.tsx` conflicted on its import block between the inline approval card and the send queue. The local `job/inline-approval-card` branch was also an older SHA than its remote head, so checking it out locally would have silently dropped the reviewed commit.
+
+**Root Cause:** Two PRs each wrote their own lesson into the generated index, so git could not merge the same generated lines; the approval card and queue PRs both added imports at the same point in `Chat.tsx`, which is a textual collision, not a behaviour collision; the base clone's local branch was stale because the reviewed head had been pushed from another worktree.
+
+**Rule:** For a generated file, take either side and run `scripts/lessons-index.sh` (then `--check`) instead of hand-merging it. For an import-block conflict, keep both import groups and let the build and both features' tests prove both behaviours survive. Before rebasing, compare `git rev-parse <branch>` with `git rev-parse origin/<branch>` in the base clone and reset the local branch to the remote head. [checked: `packages/desktop/test/chat-turn-model.test.js`, `packages/desktop/test/chat-send-queue.test.js`, `packages/desktop/test/approvals-real-window.test.js`, `scripts/lessons-index.sh`]
