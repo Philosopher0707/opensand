@@ -60,6 +60,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `pr-gate-selftest.sh` | Hermetic selftest for PR gate script, including the already-merged idempotency cases (no rebase/tag/push, exit 0 green, 4 red), the INDEX.md-only conflict auto-resolve, fail-closed stale index, post-merge main CI green/red/no-run/opt-out cases and the queued-CI-run cases (queued → green/red/timeout naming queued jobs, run-list lag → Jobs API decides), and pending-watch exits followed by success, a named failure, or a bounded pending timeout | Pre-commit / verification | Self |
 | `pre-commit.sh` | Git pre-commit hook enforcing staged-secret scan, blanket-add guard and test suite | Git pre-commit hook | `pre-commit-selftest.sh` |
 | `pre-commit-selftest.sh` | Hermetic selftest for the staged secret scan in `pre-commit.sh` (clean commit allowed, each blocked pattern refused, hook run from outside the repo) | Pre-commit / verification | Self |
+| `pre-push.sh` | Git pre-push hook that scans only the commits introduced by each pushed ref with pinned gitleaks 8.30.1; findings name file and line with values redacted | Git pre-push hook / manual | `pre-push-selftest.sh` |
+| `pre-push-selftest.sh` | Hermetic real-gitleaks selftest: clean and planted commits, new and existing refs, deletion, version refusal, no value disclosure, and main versus PR/all-refs scan scope | Pre-push / verification | Self |
 | `provenance-gate.sh` | Build artifact provenance and digest verification gate | Release workflows / CI | None |
 | `release.sh` | 9-step end-to-end automated release pipeline; Step 1 guards free space on the writable data volume; Step 9 runs the post-install health check | Release Engineer / CI | `release-selftest.sh` |
 | `release-check.sh` | Full release verification and smoke test gate | Pre-release sanity gate | None |
@@ -330,6 +332,21 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
 - **Trigger**: Pre-commit hook, test verification.
+
+### `pre-push.sh`
+- **Purpose**: Git pre-push guard that scans only the commits introduced by each pushed ref with gitleaks 8.30.1. Existing refs use `remote..local`; new refs scan their reachable history; deletions are skipped. Findings name the file and line with candidate values redacted.
+- **Usage**: `scripts/pre-push.sh <remote-name> <remote-url>` reads Git's pre-push ref updates from stdin. Install once per clone with `cp scripts/pre-push.sh "$(git rev-parse --git-path hooks)/pre-push"`.
+- **Env**: `GITLEAKS_BIN` overrides the gitleaks executable; the version must be exactly `8.30.1`.
+- **Exit Codes**: `0` when clean or nothing needs scanning, `1` when a secret is found, `2` for missing/wrong gitleaks, malformed input, unavailable commits, or scanner failure.
+- **Selftest**: `scripts/pre-push-selftest.sh`.
+- **Trigger**: Git pre-push hook or manual invocation with ref updates on stdin.
+
+### `pre-push-selftest.sh`
+- **Purpose**: Hermetic selftest using real gitleaks 8.30.1. A clean pushed commit passes; planted keys on existing and new refs fail with the file named and value withheld; deletion and wrong-version paths are covered. It asserts the workflow's pinned event-scoped command and proves an unmerged planted commit passes a main-only scan, fails a PR `base..head` scan, and fails the old all-refs scan.
+- **Usage**: `GITLEAKS_BIN=/path/to/gitleaks scripts/pre-push-selftest.sh` (or put pinned gitleaks on `PATH`).
+- **Exit Codes**: `0` on success, `1` on test failure, `2` when pinned gitleaks is unavailable.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-push / verification.
 
 ### `provenance-gate.sh`
 - **Purpose**: Verify artifact commit provenance against git metadata.
