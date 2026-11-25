@@ -562,6 +562,32 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
         echo "FAIL: rebase did not fully finish for PR #$PR (rebase state still present); nothing pushed." >&2
         exit 1
       fi
+
+      # A clean rebase can change the lesson set without an INDEX.md conflict. Regenerate
+      # after every rebase so the pushed head always satisfies the generated-index check.
+      echo "==> [when-green] Regenerating docs/lessons/INDEX.md after rebase..."
+      if ! OPENSAND_LESSONS_DIR="$REBASE_WT/docs/lessons" bash "$LESSONS_INDEX_SCRIPT" >/dev/null 2>&1 \
+         || ! OPENSAND_LESSONS_DIR="$REBASE_WT/docs/lessons" bash "$LESSONS_INDEX_SCRIPT" --check >/dev/null 2>&1; then
+        git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+        echo "FAIL: regenerated docs/lessons/INDEX.md is stale or could not be written after rebase for PR #$PR; nothing pushed." >&2
+        exit 1
+      fi
+      INDEX_DIFF_STATUS=0
+      git -C "$REBASE_WT" diff --quiet -- docs/lessons/INDEX.md || INDEX_DIFF_STATUS=$?
+      if [[ "$INDEX_DIFF_STATUS" -gt 1 ]]; then
+        git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+        echo "FAIL: could not inspect docs/lessons/INDEX.md after rebase for PR #$PR; nothing pushed." >&2
+        exit 1
+      fi
+      if [[ "$INDEX_DIFF_STATUS" -eq 1 ]]; then
+        git -C "$REBASE_WT" add -- docs/lessons/INDEX.md
+        if ! GIT_EDITOR=true git -C "$REBASE_WT" commit --amend --no-edit; then
+          git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+          echo "FAIL: could not amend regenerated docs/lessons/INDEX.md after rebase for PR #$PR; nothing pushed." >&2
+          exit 1
+        fi
+        echo "PASS: regenerated docs/lessons/INDEX.md after rebase and amended it into the PR head."
+      fi
       NEW_HEAD=$(git -C "$REBASE_WT" rev-parse HEAD)
       if ! git -C "$REBASE_WT" push --force-with-lease="refs/heads/$PR_HEAD_BRANCH:$PR_HEAD_OID" origin "HEAD:refs/heads/$PR_HEAD_BRANCH"; then
         echo "FAIL: force-with-lease push of $PR_HEAD_BRANCH failed (has someone else pushed?); nothing merged" >&2

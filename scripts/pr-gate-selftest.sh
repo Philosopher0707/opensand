@@ -41,6 +41,7 @@
 # 46. --when-green: watch exits 1 with a pending check, then CI succeeds -> waits and merges
 # 47. --when-green: watch exits 1 with a pending check, then a check fails -> names the failure
 # 48. --when-green: repeated pending watch exits stop at the deadline with pending exit 3
+# 54. --when-green: a clean rebase regenerates and commits a stale lessons index before push
 # Usage: scripts/pr-gate-selftest.sh (PR_GATE_SCRIPT=<path> to test another copy)
 set -uo pipefail
 
@@ -364,6 +365,11 @@ case "${1:-}" in
         echo "git -C <wt> add $*" >> "$TEST_CASE_DIR/index_add.log"
         exit 0
         ;;
+      commit)
+        echo "git -C <wt> commit $*" >> "$TEST_CASE_DIR/index_commit.log"
+        touch "$TEST_CASE_DIR/index_committed"
+        exit 0
+        ;;
       rev-parse)
         if [ -f "$TEST_CASE_DIR/rebased_head_sha" ]; then
           cat "$TEST_CASE_DIR/rebased_head_sha"
@@ -399,6 +405,10 @@ case "${1:-}" in
           if [ -f "$TEST_CASE_DIR/index_empty_commit" ]; then
             exit 0
           fi
+          exit 1
+        fi
+        # A clean rebase can leave the generated index stale without a conflict.
+        if [ -f "$TEST_CASE_DIR/clean_rebase_stale_index" ] && [ ! -f "$TEST_CASE_DIR/index_committed" ]; then
           exit 1
         fi
         exit 0
@@ -533,6 +543,9 @@ fi
 if [ "${1:-}" = "--check" ] && [ -f "$TEST_CASE_DIR/index_stale" ]; then
   echo "FAIL: docs/lessons/INDEX.md is stale" >&2
   exit 1
+fi
+if [ "${1:-}" != "--check" ] && [ -f "$TEST_CASE_DIR/clean_rebase_stale_index" ]; then
+  touch "$TEST_CASE_DIR/index_regenerated"
 fi
 exit 0
 EOS
@@ -1201,6 +1214,26 @@ EXPECT_MERGE=0
 EXPECT_TAG=0
 NEED_SUBSTRINGS=("rebase did not finish after 1 attempts" "nothing pushed")
 PR_GATE_REBASE_MAX_COMMITS=1 run_test_case "case53-max-commits-cap" --when-green 42
+
+# --- Case 54: --when-green, clean rebase changes lesson set -> regenerate, commit, then push ---
+dir="$WORK/case54-clean-rebase-stale-index"
+setup_defaults "$dir"
+echo 2 > "$dir/behind_times"
+touch "$dir/base_becomes_current"
+touch "$dir/clean_rebase_stale_index"
+/usr/bin/perl -pi -e 's/"baseRefOid":\s*"[^"]+"/"baseRefOid": "9999999999999999999999999999999999999999"/' "$dir/pr_view.json"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("base is behind origin/main" "Regenerating docs/lessons/INDEX.md after rebase" "regenerated docs/lessons/INDEX.md after rebase" "force-pushed job/test" "CI finished green" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+run_test_case "case54-clean-rebase-stale-index" --when-green 42
+grep -qF -- "lessons-index --check" "$dir/index_calls.log" 2>/dev/null || { echo "FAIL case54: regenerated index was not checked for staleness"; FAILED=1; }
+grep -qF -- "docs/lessons/INDEX.md" "$dir/index_add.log" 2>/dev/null || { echo "FAIL case54: regenerated index was not staged"; FAILED=1; }
+grep -qF -- "commit --amend --no-edit" "$dir/index_commit.log" 2>/dev/null || { echo "FAIL case54: regenerated index was not amended into the rebased head"; FAILED=1; }
+if [[ ! -f "$dir/force_push.log" ]]; then
+  echo "FAIL case54: no force push after regenerating the clean-rebase index"
+  FAILED=1
+fi
 
 # --- Case 26: --when-green, INDEX.md plus another file conflict -> abort, name both, no push ---
 dir="$WORK/case26-index-plus-other-conflict"
