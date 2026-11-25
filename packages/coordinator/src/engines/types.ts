@@ -17,4 +17,7 @@ export interface EngineDetectionResult {
   versionStatus: "tested" | "newer" | "older" | "unknown" | "unchecked";
   authenticated: boolean;
   authMessage?: string;
+  models: Array<{ id: string; label: string }>;
+  modelsSource: "live" | "fallback" | "error";
+  modelsMessage?: string;
 }

@@ -169,7 +169,7 @@ export interface CoreShellData {
   saveOnboarding?(input: { mode: "ollama"; model?: string } | { mode: "key"; endpoint: string; model: string; apiKey: string }): Promise<{ ok: boolean }>;
   testConnection?(input: { endpoint: string; model: string; apiKey: string; provider?: string }): Promise<{ ok: boolean; error?: string }>;
   /** Passive engine detection: binary lookup and version only, never credential files. */
-  detectEngines?(): Promise<Array<{ engine: string; installed: boolean }>>;
+  detectEngines?(): Promise<Array<{ engine: string; installed: boolean; models?: Array<{ id: string; label: string }>; modelsSource?: "live" | "fallback" | "error"; modelsMessage?: string }>>;
 
   // Phase 5 Row 12: Auth modal and token exchange
   /** Exchange a server token for a session cookie and remember it for later requests. */
