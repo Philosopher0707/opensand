@@ -142,6 +142,8 @@ export interface CoreShellData {
   // Setup / provider settings (Preact Settings and Welcome views)
   /** Sanitized settings: the API key is a mask, never the stored secret. */
   getSettings?(): Promise<DesktopSettings>;
+  /** Read-only app version for the Settings footer; carries no settings or keys. */
+  getVersion?(): Promise<{ app?: unknown }>;
   saveSettings?(patch: Partial<DesktopSettings>): Promise<DesktopSettings>;
   getOnboardingState?(): Promise<OnboardingState>;
   saveOnboarding?(input: { mode: "ollama"; model?: string } | { mode: "key"; endpoint: string; model: string; apiKey: string }): Promise<{ ok: boolean }>;
@@ -314,6 +316,11 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
       const res = await (http ?? fetch)("/api/settings");
       if (!res.ok) throw new Error("Settings are unavailable");
       return (await res.json()) as DesktopSettings;
+    },
+    async getVersion(): Promise<{ app?: unknown }> {
+      const res = await (http ?? fetch)("/api/version");
+      if (!res.ok) throw new Error("Version unavailable");
+      return (await res.json()) as { app?: unknown };
     },
     async saveSettings(patch: Partial<DesktopSettings>): Promise<DesktopSettings> {
       const res = await (http ?? fetch)("/api/settings", {

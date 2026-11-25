@@ -2050,6 +2050,7 @@
 .settings-hint, .welcome-status { color: var(--text-muted, rgba(128,128,128,.9)); font-size: 13px; }
 .settings-error { color: #d93025; font-size: 13px; }
 .settings-success { color: #1a7f37; font-size: 13px; }
+.settings-version { color: var(--text-muted, rgba(128,128,128,.9)); font-size: 12px; margin-top: 16px; }
 .settings-loading, .welcome-loading { color: var(--text-muted, rgba(128,128,128,.9)); font-size: 13px; }
 .welcome-choices { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 .welcome-choice, .welcome-inline-settings {

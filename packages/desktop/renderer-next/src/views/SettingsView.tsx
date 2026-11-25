@@ -12,6 +12,7 @@ import {
   type ProviderId,
   type SettingsForm,
 } from "../../../src/shell/settings-model";
+import { versionLabel } from "../../../src/shell/version-model.js";
 
 export interface SettingsViewProps {
   data: ShellData;
@@ -33,6 +34,7 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
   const [busy, setBusy] = useState<"save" | "test" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [version, setVersion] = useState("…");
 
   // The inline copy shares a document with the always-mounted Settings panel: distinct ids
   // keep labels bound to the right control and let tests target one form unambiguously.
@@ -65,6 +67,19 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
     return () => {
       live = false;
     };
+  }, [data, active, embedded]);
+
+  useEffect(() => {
+    if (!active || embedded) return; // no request from the hidden registry panel or the inline welcome form
+    let live = true;
+    if (!data.getVersion) {
+      setVersion("Version unavailable");
+      return;
+    }
+    data.getVersion()
+      .then((report) => { if (live) setVersion(versionLabel(report)); })
+      .catch(() => { if (live) setVersion("Version unavailable"); });
+    return () => { live = false; };
   }, [data, active, embedded]);
 
   const form: SettingsForm = { provider, endpoint, model, apiKey };
@@ -198,6 +213,7 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
           <div class="dashboard-subtitle">Connect a model provider. You can change it at any time.</div>
         </div>
         {loading ? <p class="settings-loading" role="status">Loading settings…</p> : formNode}
+        <p id="settingsVersion" class="settings-version" aria-live="polite">{version}</p>
       </div>
     </div>
   );

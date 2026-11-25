@@ -1,0 +1,9 @@
+# Showing the app version needs the current main, both Settings screens, and a real app directory
+
+**Trap:** A brief quoted `origin/main` at `769d4f8`, but by the time the worktree was created main had advanced to `703ff65` (PR #213), which replaced the Preact Settings stub with a real form. Building only against the quoted facts would have put the version in the legacy modal and missed the new Settings view the owner can also open.
+**Root Cause:** A handoff's commit hash is a snapshot, not live state; `git worktree add ... origin/main` uses the ref at command time. The default renderer still serves `renderer/app.js`, but the opt-in Preact renderer now has its own mounted Settings view.
+**Rule:** Re-read the files named in a brief after creating the worktree, and if both renderers expose the same screen, wire both. `worktree.sh new` has a hard 3 GB disk guard with no override and `clean-disk.sh` may barely free anything; when that blocks a job, use plain `git worktree add` under `~/dev/_scratch`, symlink a donor's root `node_modules`, copy each touched package's `node_modules`, and build from source instead of deleting unrelated user caches.
+
+**Trap:** A real-window runner placed outside the app directory showed `OpenSand v45.2.3` (Electron's own version) although the worktree `package.json` said `0.1.16`.
+**Root Cause:** `app.getVersion()` follows `app.getAppPath()`; with an ad-hoc runner script Electron keeps `APP_NAME=Electron` and reports its own version even when the script sits next to a `package.json`.
+**Rule:** For a version screenshot, launch `electron .` from a small app directory containing `{"name":"opensand","version":"<app version>","main":"runner.mjs"}`, with `HOME`/`USERPROFILE` in a temp dir and `OPENSAND_HIDDEN_WINDOW=1`; assert the captured text equals `OpenSand v<version>` before trusting the image.
