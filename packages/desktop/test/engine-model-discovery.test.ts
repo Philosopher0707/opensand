@@ -101,6 +101,75 @@ test("API and CLI adapters parse successful live model catalogs", async () => {
   assert.deepEqual(antigravity.models, [{ id: "gemini-4-hydrogen-high", label: "Gemini 4 Hydrogen (High)" }]);
 });
 
+test("HTTP and CLI discovery reject oversized catalogs quickly and never return more than 500 models", async () => {
+  const oversized = JSON.stringify({ data: Array.from({ length: 100_000 }, (_, index) => ({ id: `vendor/model-${index}`, name: "catalog-label-padding" })) });
+  assert.ok(Buffer.byteLength(oversized) > 5_000_000);
+
+  let bytesRead = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = new Uint8Array(256 * 1024);
+      bytesRead += chunk.byteLength;
+      controller.enqueue(chunk);
+    },
+    cancel() {},
+  }, { highWaterMark: 0 });
+  const httpStarted = performance.now();
+  const httpResult = await listModels({
+    engine: "opensand", endpoint: "https://provider.invalid/v1", cache: false,
+    fetcher: async () => new Response(stream, { status: 200 }),
+  });
+  assert.ok(performance.now() - httpStarted < 100, "oversized HTTP catalog is rejected in under 100ms");
+  assert.ok(bytesRead <= 5 * 256 * 1024, "HTTP reader stops after crossing its byte limit");
+  assert.equal(httpResult.modelsSource, "fallback");
+  assert.ok(httpResult.models.length <= 500);
+
+  const cliStarted = performance.now();
+  const cliResult = await listModels({
+    engine: "opencode", binary: "/fake/opencode", cache: false,
+    commandRunner: async () => oversized,
+  });
+  assert.ok(performance.now() - cliStarted < 100, "oversized CLI catalog is rejected in under 100ms");
+  assert.equal(cliResult.modelsSource, "fallback");
+  assert.ok(cliResult.models.length <= 500);
+
+  const rows = Array.from({ length: 500 }, (_, index) => ({ id: `vendor/model-${index}` }));
+  const bounded = await listModels({
+    engine: "opensand", endpoint: "https://provider.invalid/v1", cache: false,
+    fetcher: async () => new Response(JSON.stringify({ data: rows }), { status: 200 }),
+  });
+  assert.equal(bounded.modelsSource, "live");
+  assert.equal(bounded.models.length, 500);
+
+  const tooMany = await listModels({
+    engine: "opencode", binary: "/fake/opencode", cache: false,
+    commandRunner: async () => JSON.stringify({ data: [...rows, { id: "vendor/model-over-limit" }] }),
+  });
+  assert.equal(tooMany.modelsSource, "fallback");
+  assert.ok(tooMany.models.length <= 500);
+
+  const tooManyLines = await listModels({
+    engine: "antigravity", binary: "/fake/agy", cache: false,
+    commandRunner: async () => Array.from({ length: 501 }, (_, index) => `vendor/model-${index}`).join("\n"),
+  });
+  assert.equal(tooManyLines.modelsSource, "fallback");
+  assert.ok(tooManyLines.models.length <= 500);
+});
+
+test("CLI temporary-directory and stdout-read failures return only the safe fallback catalog", async () => {
+  const realFs = await import("node:fs/promises");
+  const failure = (message: string) => new Error(message);
+  for (const cliFileSystem of [
+    { ...realFs, mkdtemp: async () => { throw failure("SECRET /Users/private/.config/opencode/credentials.json"); } },
+    { ...realFs, readFile: async () => { throw failure("SECRET /private/tmp/model-list/stdout.txt"); } },
+  ]) {
+    const result = await listModels({ engine: "opencode", binary: "/bin/echo", cache: false, cliFileSystem });
+    assert.equal(result.modelsSource, "fallback");
+    assert.deepEqual(result.models, [{ id: "opencode-go/glm-5.3-flash", label: "GLM 5.3 Flash" }]);
+    assert.doesNotMatch(JSON.stringify(result), /SECRET|\/Users\/private|\/private\/tmp/);
+  }
+});
+
 test("fallback catalogs are used only after live listing fails", async () => {
   const failed = await listModels({ engine: "opencode", binary: "/fake/opencode", cache: false, commandRunner: async () => null });
   assert.equal(failed.modelsSource, "fallback");
@@ -147,4 +216,29 @@ test("saved models no longer offered remain selected and both Settings renderers
   assert.match(legacyHtml, /<select id="settingEngineModel"/);
   assert.match(legacyJs, /renderEngineModelChoices/);
   assert.match(legacyJs, /payload\.engineModels = \{ \.\.\.engineModels, \[selectedEngine\]: settingEngineModel\.value \}/);
+});
+
+test("engine detection route uses a fixed safe response when discovery throws", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-model-route-error-"));
+  const server = new DesktopServer({ baseDir: path.join(tmp, "state"), requireAuth: false });
+  try {
+    server.getBridge().detectEngines = async () => { throw new Error("SECRET /Users/private/.config/opencode/credentials.json"); };
+    server.getBridge().ensureApiKeyResolved = async () => { throw new Error("SECRET /Users/private/.config/opencode/credentials.json"); };
+    for (const [url, expected] of [
+      ["/api/engines/detect", { error: "Engine discovery unavailable." }],
+      ["/api/models", { error: "Model catalog unavailable." }],
+    ] as const) {
+      const req = new MockRequest();
+      req.url = url;
+      const res = new MockResponse();
+      const pending = (server as any).handleRequest(req, res);
+      req.emit("end");
+      await pending;
+      assert.equal(res.statusCode, 503);
+      assert.equal(res.body, JSON.stringify(expected));
+      assert.doesNotMatch(res.body, /SECRET|\/Users\/private|credentials\.json/);
+    }
+  } finally {
+    await closeThenRemove([server, server.getBridge()], tmp);
+  }
 });

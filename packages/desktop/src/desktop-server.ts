@@ -283,9 +283,10 @@ export class DesktopServer {
   }
 
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    let pathname = '';
     try {
       const url = new URL(req.url || '/', `http://${this.host}:${this.port}`);
-    const pathname = url.pathname;
+      pathname = url.pathname;
 
     const hostHeader = (req.headers['host'] || '').toLowerCase();
     const originHeader = req.headers['origin'];
@@ -574,9 +575,14 @@ export class DesktopServer {
 
     // API: GET /api/engines/detect (passive detection; no credential files are read)
     if (pathname === '/api/engines/detect' && req.method === 'GET') {
-      const engines = toEngineStatus(await this.bridge.detectEngines());
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(engines));
+      try {
+        const engines = toEngineStatus(await this.bridge.detectEngines());
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(engines));
+      } catch {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Engine discovery unavailable.' }));
+      }
       return;
     }
 
@@ -1308,7 +1314,7 @@ export class DesktopServer {
         res.end(JSON.stringify({ models }));
       } catch (err: any) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ models: [], error: err.message }));
+        res.end(JSON.stringify({ models: [], error: 'Model catalog unavailable.' }));
       }
       return;
     }
@@ -1704,7 +1710,10 @@ export class DesktopServer {
     res.end('Not Found');
   } catch (err: any) {
     if (!res.headersSent) {
-      if (err.message && err.message.includes('exceeds size limit')) {
+      if (pathname === '/api/engines/detect' || pathname === '/api/models') {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: pathname === '/api/engines/detect' ? 'Engine discovery unavailable.' : 'Model catalog unavailable.' }));
+      } else if (err.message && err.message.includes('exceeds size limit')) {
         res.writeHead(413, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: err.message }));
       } else if (err.message && err.message.includes('Invalid JSON')) {

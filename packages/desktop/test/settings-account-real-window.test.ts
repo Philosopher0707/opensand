@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -58,7 +58,7 @@ app.on("browser-window-created", (_e, w) => {
       result.openCodeSelected = await js("document.querySelector('#settingEngineModel').value");
       result.openCodeHint = await js("document.querySelector('#engineModelHint').textContent.trim()");
       if (result.openCodeModels > 1) await js("document.querySelector('#settingEngineModel').size = Math.min(6, document.querySelector('#settingEngineModel').options.length)");
-      await shot("legacy-opencode-live-models");
+      await shot("legacy-opencode-fallback-models");
       await js("document.querySelector('#settingEngineModel').size = 1");
 
       console.log("__ACCOUNT_SETTINGS_RESULT__:" + JSON.stringify(result));
@@ -116,17 +116,11 @@ test("legacy Settings hides provider fields for account engines and shows the re
   const pkg = JSON.parse(fs.readFileSync(path.join(pkgRoot, "package.json"), "utf8"));
   const env = hermeticElectronEnv(home);
   delete env.OPENSAND_RENDERER;
-  if (process.env.OPENSAND_ACCOUNT_REQUIRE_LIVE === "1") {
-    const realHome = process.env.HOME || os.homedir();
-    const opencodeBin = execFileSync("/usr/bin/which", ["opencode"], { encoding: "utf8" }).trim();
-    const binDir = path.join(tmpDir, "bin");
-    fs.mkdirSync(binDir, { recursive: true });
-    const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
-    const liveOutput = path.join(proofDir, "opencode-live-models.json");
-    const wrapperLog = path.join(proofDir, "opencode-wrapper.log");
-    fs.writeFileSync(path.join(binDir, "opencode"), `#!/bin/sh\nprintf '%s\\n' "$*" >> ${quote(wrapperLog)}\nif [ "$1" = "api" ] && [ "$2" = "model.list" ]; then\n  HOME=${quote(realHome)} USERPROFILE=${quote(realHome)} ${quote(opencodeBin)} "$@" > ${quote(liveOutput)}\n  rc=$?\n  cat ${quote(liveOutput)}\n  exit $rc\nfi\nHOME=${quote(realHome)} USERPROFILE=${quote(realHome)} exec ${quote(opencodeBin)} "$@"\n`, { mode: 0o755 });
-    env.PATH = `${binDir}${path.delimiter}${env.PATH || ""}`;
-  }
+  const fakeBinDir = path.join(tmpDir, "bin");
+  fs.mkdirSync(fakeBinDir, { recursive: true });
+  env.PATH = fakeBinDir;
+  assert.equal(env.HOME, home, "Electron test uses its isolated temporary HOME");
+  assert.equal(env.USERPROFILE, home, "Electron test uses its isolated temporary USERPROFILE");
   env.OPENSAND_MAIN = path.join(pkgRoot, "dist", "src", "main.js");
   env.OPENSAND_STATE_DIR = stateDir;
   env.OPENSAND_ACCOUNT_SHOT_DIR = proofDir;
@@ -153,15 +147,22 @@ test("legacy Settings hides provider fields for account engines and shows the re
     assert.equal(result.openSandVisible, true);
     assert.equal(result.accountHidden, true);
     assert.ok(result.hint === "" || /^Not installed: /.test(result.hint), "missing-engine hint is either empty or one collapsed line");
-    if (process.env.OPENSAND_ACCOUNT_REQUIRE_LIVE === "1") {
-      assert.ok(result.openCodeModels > 1, "OpenCode must expose a live model list");
-      assert.ok(result.openCodeSelected.includes("/"), "OpenCode selection must be a real provider/model id");
-      assert.equal(result.openCodeHint, "", "a live OpenCode list must not show a fallback warning");
-    }
     console.log("[proof] legacy account settings screenshots:", proofDir);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(ws, { recursive: true, force: true });
   }
+});
+
+test("account real-window test cannot resolve the real HOME or CLI credentials", () => {
+  const source = fs.readFileSync(fileURLToPath(import.meta.url), "utf8");
+  const forbidden = [
+    ["OPENSAND", "ACCOUNT", "REQUIRE", "LIVE"].join("_"),
+    ["process", "env", "HOME"].join("."),
+    ["os", "homedir"].join("."),
+    ["/usr", "bin", "which"].join("/"),
+    ["opencode", "live", "models"].join("-"),
+  ];
+  for (const value of forbidden) assert.equal(source.includes(value), false, `source contains forbidden live mode: ${value}`);
 });
