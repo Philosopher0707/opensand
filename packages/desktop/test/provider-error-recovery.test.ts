@@ -117,7 +117,11 @@ test("Turn and session recovery: 429 provider error renders cause + nextAction, 
     assert.strictEqual(chatState.messages.length, 2, "Chat has user message + assistant error message");
     const assistantMsg = chatState.messages[1];
     assert.strictEqual(assistantMsg.role, "assistant");
-    assert.strictEqual(assistantMsg.error, errMsg);
+    // The chat shows the code-derived fixed line, never the event's raw/detail text.
+    assert.strictEqual(
+      assistantMsg.error,
+      "The model provider's rate limit was reached. Wait a moment or switch models in Settings.",
+    );
 
     // --- TURN 2: Server recovers, user sends next message ---
     serverMode = "success";

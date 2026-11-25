@@ -283,7 +283,7 @@ test("ComposerModel - a raw JavaScript error never becomes chat text", () => {
   assert.strictEqual(friendlyChatError("Cannot read properties of undefined (reading 'role')"), fallback);
   assert.strictEqual(friendlyChatError("TypeError: x is not a function\n  at handler (app.js:12:3)"), fallback);
   assert.strictEqual(friendlyChatError(""), fallback);
-  assert.strictEqual(friendlyChatError("model not found"), "model not found");
+  assert.strictEqual(friendlyChatError("model not found"), fallback);
 });
 
 test("ComposerModel - doctor and compact failures stay user-facing", async () => {

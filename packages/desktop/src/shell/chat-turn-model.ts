@@ -435,7 +435,7 @@ export function chatEventAction(event: TurnEvent, sessionId: string | null): Cha
     } else {
       text = "Unknown error occurred";
     }
-    return { type: "failed", message: friendlyChatError(text) };
+    return { type: "failed", message: friendlyChatError(text, d?.code) };
   }
   return null;
 }
