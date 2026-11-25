@@ -5,7 +5,7 @@ import type { LocalExecDaemon } from "@opensand/local-exec-daemon";
 import type { HookDispatcher } from "../hooks.js";
 import type { ApprovalHandler, TurnEvent, ChatMessage, SessionMetadata } from "../types.js";
 import type { ExternalEngineConfig, EngineDetectionResult } from "./types.js";
-import { listModels } from "./model-discovery.js";
+import { DETECTABLE_ENGINE_IDS, listModels } from "./model-discovery.js";
 
 // @ts-ignore - plain .mjs vendor files
 import { runTurn as runAgentTurn, ENGINES, findBinary, engineVersion, versionStatus } from "./vendor/agent_wrap.mjs";
@@ -344,15 +344,6 @@ export class ExternalEngineTurnRunner {
     return finalContent;
   }
 }
-
-export const DETECTABLE_ENGINE_IDS = [
-  "claude",
-  "codex",
-  "copilot",
-  "antigravity",
-  "opencode",
-  "workbuddy",
-] as const satisfies readonly ExternalEngineConfig["engine"][];
 
 export async function detectEngines(options: { endpoint?: string; provider?: "openai" | "anthropic" | "openrouter"; apiKey?: string } = {}): Promise<EngineDetectionResult[]> {
   const results: EngineDetectionResult[] = [];
