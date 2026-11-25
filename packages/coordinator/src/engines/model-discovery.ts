@@ -41,48 +41,101 @@ export const DETECTABLE_ENGINE_IDS = [
 const cache = new Map<string, { expires: number; value: ModelDiscovery }>();
 const CACHE_MS = 60_000;
 const TIMEOUT_MS = 5_000;
+const MAX_CATALOG_BYTES = 1024 * 1024;
+const MAX_CATALOG_ROWS = 500;
 
 function normalizeModels(value: unknown): EngineModel[] {
   const rows = Array.isArray(value) ? value : (value as any)?.data;
   if (!Array.isArray(rows)) return [];
-  return rows.flatMap((row: any) => {
+  if (rows.length > MAX_CATALOG_ROWS) throw new Error("Model catalog limit exceeded");
+  const models: EngineModel[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
     const providerId = typeof row?.providerID === "string" ? row.providerID.trim() : "";
     const modelId = typeof row?.modelID === "string" ? row.modelID.trim() : "";
     const id = providerId && modelId ? `${providerId}/${modelId}` : (typeof row === "string" ? row : (row?.id ?? row?.model ?? row?.name));
-    if (typeof id !== "string" || !id.trim()) return [];
+    if (typeof id !== "string" || !id.trim()) continue;
+    const normalizedId = id.trim().slice(0, 256);
+    if (seen.has(normalizedId)) continue;
+    seen.add(normalizedId);
     const label = typeof row === "object" && typeof row?.name === "string" && row.name.trim() ? row.name.trim() : id.trim();
-    return [{ id: id.trim().slice(0, 256), label: label.slice(0, 256) }];
-  }).filter((m, i, all) => all.findIndex((other) => other.id === m.id) === i).slice(0, 500);
+    models.push({ id: normalizedId, label: label.slice(0, 256) });
+  }
+  return models;
 }
 
-async function runListCommand(binary: string, args: string[], timeoutMs = TIMEOUT_MS): Promise<string | null> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opensand-model-list-"));
-  const outputPath = path.join(dir, "stdout.txt");
-  const output = await fs.open(outputPath, "w");
+type DiscoveryFileSystem = Pick<typeof fs, "mkdtemp" | "open" | "readFile" | "rm" | "stat">;
+
+async function runListCommand(binary: string, args: string[], timeoutMs = TIMEOUT_MS, fileSystem: DiscoveryFileSystem = fs): Promise<string | null> {
+  let dir: string | undefined;
+  let output: Awaited<ReturnType<typeof fs.open>> | undefined;
   try {
+    dir = await fileSystem.mkdtemp(path.join(os.tmpdir(), "opensand-model-list-"));
+    const outputPath = path.join(dir, "stdout.txt");
+    output = await fileSystem.open(outputPath, "w");
     const code = await new Promise<number>((resolve) => {
       let settled = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
       const done = (value: number) => { if (!settled) { settled = true; if (timer) clearTimeout(timer); resolve(value); } };
       let child;
-      try { child = spawn(binary, args, { stdio: ["ignore", output.fd, "ignore"], windowsHide: true }); }
+      try { child = spawn(binary, args, { stdio: ["ignore", "pipe", "ignore"], windowsHide: true }); }
       catch { return done(-1); }
+      let bytes = 0;
+      let writing = false;
+      let tooLarge = false;
+      const pending: Buffer[] = [];
+      const flush = () => {
+        if (writing || tooLarge || pending.length === 0) return;
+        writing = true;
+        const chunk = pending.shift()!;
+        void output!.writeFile(chunk).then(() => {
+          writing = false;
+          if (pending.length) flush();
+          else child.stdout?.resume();
+        }, () => {
+          tooLarge = true;
+          child.kill("SIGKILL");
+        });
+      };
+      child.stdout?.on("data", (chunk: Buffer) => {
+        bytes += chunk.length;
+        if (bytes > MAX_CATALOG_BYTES) {
+          tooLarge = true;
+          child.stdout?.pause();
+          child.kill("SIGKILL");
+          return;
+        }
+        pending.push(chunk);
+        child.stdout?.pause();
+        flush();
+      });
       timer = setTimeout(() => { child.kill("SIGKILL"); done(124); }, timeoutMs);
       child.on("error", () => done(-1));
-      child.on("close", (value) => done(value ?? -1));
+      child.on("close", (value) => done(tooLarge ? -2 : value ?? -1));
     });
-    return code === 0 ? await fs.readFile(outputPath, "utf8") : null;
+    if (code !== 0) return null;
+    const metadata = await fileSystem.stat(outputPath);
+    if (metadata.size > MAX_CATALOG_BYTES) return null;
+    const stat = await fileSystem.readFile(outputPath);
+    if (stat.byteLength > MAX_CATALOG_BYTES) return null;
+    return stat.toString("utf8");
+  } catch {
+    return null;
   } finally {
-    await output.close();
-    await fs.rm(dir, { recursive: true, force: true });
+    try { await output?.close(); } catch { /* cleanup is best effort */ }
+    if (dir) try { await fileSystem.rm(dir, { recursive: true, force: true }); } catch { /* cleanup is best effort */ }
   }
 }
 
 function parseCliModels(engine: string, output: string): EngineModel[] {
+  if (Buffer.byteLength(output, "utf8") > MAX_CATALOG_BYTES) throw new Error("Model catalog limit exceeded");
   const trimmed = output.trim();
   if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
     try { return normalizeModels(JSON.parse(trimmed)); } catch { /* parse line output below */ }
   }
+  let lineCount = trimmed ? 1 : 0;
+  for (let i = 0; i < trimmed.length; i++) if (trimmed.charCodeAt(i) === 10) lineCount++;
+  if (lineCount > MAX_CATALOG_ROWS) throw new Error("Model catalog limit exceeded");
   if (engine === "antigravity") {
     return trimmed.split(/\r?\n/).map((line) => line.trim().split(/\t| {2,}/))
       .filter(([id]) => /^[\w./:-]+$/.test(id || ""))
@@ -104,6 +157,7 @@ export interface ModelDiscoveryOptions {
   apiKey?: string;
   fetcher?: typeof fetch;
   commandRunner?: (binary: string, args: string[], timeoutMs?: number) => Promise<string | null>;
+  cliFileSystem?: DiscoveryFileSystem;
   cache?: boolean;
 }
 
@@ -130,15 +184,39 @@ export async function listModels(options: ModelDiscoveryOptions): Promise<ModelD
       const response = await (options.fetcher ?? fetch)(url, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
       if (!response.ok) failed = true;
       else {
-        live = normalizeModels(await response.json());
+        if (Number(response.headers.get("content-length")) > MAX_CATALOG_BYTES) throw new Error("Model catalog limit exceeded");
+        if (!response.body) throw new Error("Model catalog unavailable");
+        const reader = response.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let bytes = 0;
+        try {
+          while (true) {
+            const { done, value: chunk } = await reader.read();
+            if (done) break;
+            bytes += chunk.byteLength;
+            if (bytes > MAX_CATALOG_BYTES) {
+              await reader.cancel();
+              throw new Error("Model catalog limit exceeded");
+            }
+            chunks.push(chunk);
+          }
+        } finally {
+          reader.releaseLock();
+        }
+        live = normalizeModels(JSON.parse(new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))))));
         empty = live.length === 0;
       }
       if (!live.length && !empty) failed = true;
     } catch { failed = true; }
   } else if (CLI_LIST_COMMANDS[engine] && options.binary) {
     const args = CLI_LIST_COMMANDS[engine];
-    const output = await (options.commandRunner ?? runListCommand)(options.binary, args, TIMEOUT_MS);
-    if (output !== null) live = parseCliModels(engine, output);
+    let output: string | null = null;
+    try {
+      output = options.commandRunner
+        ? await options.commandRunner(options.binary, args, TIMEOUT_MS)
+        : await runListCommand(options.binary, args, TIMEOUT_MS, options.cliFileSystem);
+      if (output !== null) live = parseCliModels(engine, output);
+    } catch { failed = true; }
     if (!live.length) { failed = true; empty = output !== null; }
   }
   const models = live.length ? live : (FALLBACKS[engine] ?? []);
