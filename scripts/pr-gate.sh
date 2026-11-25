@@ -441,67 +441,152 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
       # docs/lessons/INDEX.md is generated: a conflict in it alone is self-healing, any other
       # conflict aborts as before. PR_GATE_LESSONS_INDEX_SCRIPT is the selftest seam for the generator.
       LESSONS_INDEX_SCRIPT="${PR_GATE_LESSONS_INDEX_SCRIPT:-$ROOT/scripts/lessons-index.sh}"
-      if ! git -C "$REBASE_WT" rebase "$FETCHED_MAIN"; then
+      # Recover from generated docs/lessons/INDEX.md conflicts on EVERY commit of the rebase,
+      # not just the first one. A real (non-INDEX) conflict at any point aborts with its file list.
+      REBASE_COMMIT_COUNT=$(git -C "$REBASE_WT" rev-list --count "$FETCHED_MAIN".."$REBASE_REF" 2>/dev/null || echo 0)
+      [[ "$REBASE_COMMIT_COUNT" =~ ^[0-9]+$ ]] || REBASE_COMMIT_COUNT=0
+      if [[ -n "${PR_GATE_REBASE_MAX_COMMITS:-}" ]]; then
+        INNER_REBASE_MAX="$PR_GATE_REBASE_MAX_COMMITS"
+      else
+        INNER_REBASE_MAX=$((REBASE_COMMIT_COUNT + 2))
+        [[ "$INNER_REBASE_MAX" -lt 4 ]] && INNER_REBASE_MAX=4
+      fi
+
+      REBASE_DONE=0
+      REBASE_ATTEMPTS=0
+      # First attempt: a plain rebase.
+      if git -C "$REBASE_WT" rebase "$FETCHED_MAIN" >/dev/null 2>&1; then
+        REBASE_DONE=1
+      fi
+
+      while [[ "$REBASE_DONE" -eq 0 ]]; do
+        REBASE_ATTEMPTS=$((REBASE_ATTEMPTS + 1))
+        if [[ "$REBASE_ATTEMPTS" -gt "$INNER_REBASE_MAX" ]]; then
+          git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+          echo "FAIL: rebase did not finish after $INNER_REBASE_MAX attempts for PR #$PR; nothing pushed." >&2
+          exit 1
+        fi
+
         CONFLICTS=$(git -C "$REBASE_WT" diff --name-only --diff-filter=U || true)
         CONFLICT_LIST=$(printf '%s\n' "$CONFLICTS" | grep -v '^$' || true)
-        CONFLICT_COUNT=$(printf '%s\n' "$CONFLICT_LIST" | wc -l | tr -d ' ')
-        if [[ "$CONFLICT_COUNT" -eq 1 && "$CONFLICT_LIST" == "docs/lessons/INDEX.md" ]]; then
-          echo "==> [when-green] Only docs/lessons/INDEX.md conflicts; regenerating it..."
-          # Fail closed: a generator error, a stale index, or a failed continue aborts the rebase.
-          if OPENSAND_LESSONS_DIR="$REBASE_WT/docs/lessons" bash "$LESSONS_INDEX_SCRIPT" >/dev/null 2>&1 \
-             && OPENSAND_LESSONS_DIR="$REBASE_WT/docs/lessons" bash "$LESSONS_INDEX_SCRIPT" --check >/dev/null 2>&1; then
-            git -C "$REBASE_WT" add -- docs/lessons/INDEX.md
-            # Non-interactive: a plain rebase --continue opens the editor and hangs when there is no tty.
-            # The regenerated index can leave an empty commit (nothing new to record); in that case
-            # skip it instead of aborting. Capture and print the rebase command's stderr on failure.
-            REBASE_CONTINUE_ERR="$(mktemp "${TMPDIR:-/tmp}/pr-gate-rebase-continue.XXXXXX")"
-            if GIT_EDITOR=true git -C "$REBASE_WT" rebase --continue >"$REBASE_CONTINUE_ERR" 2>&1; then
-              cat "$REBASE_CONTINUE_ERR"
-              rm -f "$REBASE_CONTINUE_ERR"
-              echo "PASS: regenerated docs/lessons/INDEX.md and continued the rebase for PR #$PR."
-            elif git -C "$REBASE_WT" diff --cached --quiet 2>/dev/null; then
-              # Nothing staged beyond HEAD: an empty commit; skip it.
-              echo "==> [when-green] rebase --continue found nothing to commit; skipping the empty commit..."
-              REBASE_SKIP_ERR="$(mktemp "${TMPDIR:-/tmp}/pr-gate-rebase-skip.XXXXXX")"
-              if GIT_EDITOR=true git -C "$REBASE_WT" rebase --skip >"$REBASE_SKIP_ERR" 2>&1; then
-                cat "$REBASE_SKIP_ERR"
-                rm -f "$REBASE_SKIP_ERR" "$REBASE_CONTINUE_ERR"
-                echo "PASS: regenerated docs/lessons/INDEX.md, skipped the empty commit, and continued the rebase for PR #$PR."
+        CONFLICT_COUNT=$(printf '%s\n' "$CONFLICT_LIST" | grep -c . || true)
+        CONFLICT_COUNT="${CONFLICT_COUNT:-0}"
+
+        if [[ "$CONFLICT_COUNT" -gt 0 ]]; then
+          # There are conflicts. Handle INDEX-only or abort.
+          if [[ "$CONFLICT_COUNT" -eq 1 && "$CONFLICT_LIST" == "docs/lessons/INDEX.md" ]]; then
+            echo "==> [when-green] Only docs/lessons/INDEX.md conflicts; regenerating it..."
+            if OPENSAND_LESSONS_DIR="$REBASE_WT/docs/lessons" bash "$LESSONS_INDEX_SCRIPT" >/dev/null 2>&1 \
+               && OPENSAND_LESSONS_DIR="$REBASE_WT/docs/lessons" bash "$LESSONS_INDEX_SCRIPT" --check >/dev/null 2>&1; then
+              git -C "$REBASE_WT" add -- docs/lessons/INDEX.md
+              REBASE_CONTINUE_ERR="$(mktemp "${TMPDIR:-/tmp}/pr-gate-rebase-continue.XXXXXX")"
+              if GIT_EDITOR=true git -C "$REBASE_WT" rebase --continue >"$REBASE_CONTINUE_ERR" 2>&1; then
+                cat "$REBASE_CONTINUE_ERR"
+                rm -f "$REBASE_CONTINUE_ERR"
+                echo "PASS: regenerated docs/lessons/INDEX.md and continued the rebase for PR #$PR."
+                # If the rebase is fully done now, mark it; otherwise loop handles the next commit.
+                REBASE_DONE=1
+              elif git -C "$REBASE_WT" diff --cached --quiet 2>/dev/null; then
+                echo "==> [when-green] rebase --continue found nothing to commit; skipping the empty commit..."
+                REBASE_SKIP_ERR="$(mktemp "${TMPDIR:-/tmp}/pr-gate-rebase-skip.XXXXXX")"
+                if GIT_EDITOR=true git -C "$REBASE_WT" rebase --skip >"$REBASE_SKIP_ERR" 2>&1; then
+                  cat "$REBASE_SKIP_ERR"
+                  rm -f "$REBASE_SKIP_ERR" "$REBASE_CONTINUE_ERR"
+                  echo "PASS: regenerated docs/lessons/INDEX.md, skipped the empty commit, and continued the rebase for PR #$PR."
+                  REBASE_DONE=1
+                else
+                  cat "$REBASE_SKIP_ERR" >&2
+                  rm -f "$REBASE_SKIP_ERR"
+                  cat "$REBASE_CONTINUE_ERR" >&2
+                  rm -f "$REBASE_CONTINUE_ERR"
+                  git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+                  echo "FAIL: regenerating docs/lessons/INDEX.md did not let the rebase continue for PR #$PR; nothing pushed." >&2
+                  exit 1
+                fi
               else
-                cat "$REBASE_SKIP_ERR" >&2
-                rm -f "$REBASE_SKIP_ERR"
                 cat "$REBASE_CONTINUE_ERR" >&2
                 rm -f "$REBASE_CONTINUE_ERR"
-                git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
-                echo "FAIL: regenerating docs/lessons/INDEX.md did not let the rebase continue for PR #$PR; nothing pushed." >&2
-                exit 1
+                # Do not abort: the rebase may have stopped at the next commit. Let the loop re-evaluate.
+                continue
               fi
             else
-              cat "$REBASE_CONTINUE_ERR" >&2
-              rm -f "$REBASE_CONTINUE_ERR"
               git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
-              echo "FAIL: regenerating docs/lessons/INDEX.md did not let the rebase continue for PR #$PR; nothing pushed." >&2
+              echo "FAIL: regenerated docs/lessons/INDEX.md is stale or could not be written for PR #$PR; nothing pushed." >&2
+              echo "       Run 'bash scripts/lessons-index.sh' locally and resolve the rebase by hand." >&2
               exit 1
             fi
           else
             git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
-            echo "FAIL: regenerated docs/lessons/INDEX.md is stale or could not be written for PR #$PR; nothing pushed." >&2
-            echo "       Run 'bash scripts/lessons-index.sh' locally and resolve the rebase by hand." >&2
+            echo "FAIL: rebasing PR #$PR onto origin/main conflicts; nothing pushed. Resolve these files by hand:" >&2
+            if [[ -n "$CONFLICTS" ]]; then
+              while IFS= read -r conflict_file; do
+                [[ -n "$conflict_file" ]] || continue
+                printf '  %s\n' "$conflict_file" >&2
+              done <<< "$CONFLICTS"
+            else
+              echo "  (git reported no unmerged files; see the rebase output above)" >&2
+            fi
             exit 1
           fi
         else
-          git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
-          echo "FAIL: rebasing PR #$PR onto origin/main conflicts; nothing pushed. Resolve these files by hand:" >&2
-          if [[ -n "$CONFLICTS" ]]; then
-            while IFS= read -r conflict_file; do
-              [[ -n "$conflict_file" ]] || continue
-              printf '  %s\n' "$conflict_file" >&2
-            done <<< "$CONFLICTS"
+          # No unmerged paths. Either an empty commit (skip it) or a commit that stopped
+          # with staged changes (e.g. a rejected hook) — that must abort, never be treated
+          # as a completed rebase.
+          if git -C "$REBASE_WT" diff --cached --quiet 2>/dev/null; then
+            echo "==> [when-green] rebase found nothing to commit; skipping the empty commit..."
+            REBASE_SKIP_ERR="$(mktemp "${TMPDIR:-/tmp}/pr-gate-rebase-skip.XXXXXX")"
+            if GIT_EDITOR=true git -C "$REBASE_WT" rebase --skip >"$REBASE_SKIP_ERR" 2>&1; then
+              cat "$REBASE_SKIP_ERR"
+              rm -f "$REBASE_SKIP_ERR"
+              REBASE_DONE=1
+            else
+              cat "$REBASE_SKIP_ERR" >&2
+              rm -f "$REBASE_SKIP_ERR"
+              # skip failed (likely next conflict); loop re-evaluates
+              continue
+            fi
           else
-            echo "  (git reported no unmerged files; see the rebase output above)" >&2
+            # Staged changes but no conflicts: a hook/editor rejected the commit. Abort.
+            git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+            echo "FAIL: rebase stopped with staged changes but no conflicts for PR #$PR; nothing pushed." >&2
+            exit 1
           fi
+        fi
+      done
+
+      # Before any push, verify the rebase really finished (no rebase-merge/apply state left).
+      REBASE_MERGE_DIR="$(git -C "$REBASE_WT" rev-parse --git-path rebase-merge 2>/dev/null || true)"
+      REBASE_APPLY_DIR="$(git -C "$REBASE_WT" rev-parse --git-path rebase-apply 2>/dev/null || true)"
+      if [[ -n "$REBASE_MERGE_DIR" && -e "$REBASE_MERGE_DIR" ]] || [[ -n "$REBASE_APPLY_DIR" && -e "$REBASE_APPLY_DIR" ]]; then
+        git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+        echo "FAIL: rebase did not fully finish for PR #$PR (rebase state still present); nothing pushed." >&2
+        exit 1
+      fi
+
+      # A clean rebase can change the lesson set without an INDEX.md conflict. Regenerate
+      # after every rebase so the pushed head always satisfies the generated-index check.
+      echo "==> [when-green] Regenerating docs/lessons/INDEX.md after rebase..."
+      if ! OPENSAND_LESSONS_DIR="$REBASE_WT/docs/lessons" bash "$LESSONS_INDEX_SCRIPT" >/dev/null 2>&1 \
+         || ! OPENSAND_LESSONS_DIR="$REBASE_WT/docs/lessons" bash "$LESSONS_INDEX_SCRIPT" --check >/dev/null 2>&1; then
+        git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+        echo "FAIL: regenerated docs/lessons/INDEX.md is stale or could not be written after rebase for PR #$PR; nothing pushed." >&2
+        exit 1
+      fi
+      INDEX_DIFF_STATUS=0
+      git -C "$REBASE_WT" diff --quiet -- docs/lessons/INDEX.md || INDEX_DIFF_STATUS=$?
+      if [[ "$INDEX_DIFF_STATUS" -gt 1 ]]; then
+        git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+        echo "FAIL: could not inspect docs/lessons/INDEX.md after rebase for PR #$PR; nothing pushed." >&2
+        exit 1
+      fi
+      if [[ "$INDEX_DIFF_STATUS" -eq 1 ]]; then
+        git -C "$REBASE_WT" add -- docs/lessons/INDEX.md
+        if ! GIT_EDITOR=true git -C "$REBASE_WT" commit --amend --no-edit; then
+          git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+          echo "FAIL: could not amend regenerated docs/lessons/INDEX.md after rebase for PR #$PR; nothing pushed." >&2
           exit 1
         fi
+        echo "PASS: regenerated docs/lessons/INDEX.md after rebase and amended it into the PR head."
       fi
       NEW_HEAD=$(git -C "$REBASE_WT" rev-parse HEAD)
       if ! git -C "$REBASE_WT" push --force-with-lease="refs/heads/$PR_HEAD_BRANCH:$PR_HEAD_OID" origin "HEAD:refs/heads/$PR_HEAD_BRANCH"; then

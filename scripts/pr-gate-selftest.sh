@@ -41,6 +41,7 @@
 # 46. --when-green: watch exits 1 with a pending check, then CI succeeds -> waits and merges
 # 47. --when-green: watch exits 1 with a pending check, then a check fails -> names the failure
 # 48. --when-green: repeated pending watch exits stop at the deadline with pending exit 3
+# 54. --when-green: a clean rebase regenerates and commits a stale lessons index before push
 # Usage: scripts/pr-gate-selftest.sh (PR_GATE_SCRIPT=<path> to test another copy)
 set -uo pipefail
 
@@ -297,14 +298,45 @@ case "${1:-}" in
         fi
         if [ "${2:-}" = "--continue" ]; then
           echo "rebase --continue GIT_EDITOR=${GIT_EDITOR:-unset}" >> "$TEST_CASE_DIR/rebase_calls.log"
+          if [ -f "$TEST_CASE_DIR/hook_rejected_on_continue" ]; then
+            echo "hook rejected the commit" >&2
+            exit 1
+          fi
+          if [ -f "$TEST_CASE_DIR/multi_commit" ]; then
+            c=$(cat "$TEST_CASE_DIR/mc_counter" 2>/dev/null || echo 0)
+            c=$((c + 1))
+            echo "$c" > "$TEST_CASE_DIR/mc_counter"
+            if [ "$c" -eq 1 ]; then
+              # commit 2 conflicts
+              if [ -f "$TEST_CASE_DIR/multi_real_conflict_on_second" ]; then
+                echo "CONFLICT (content): merge conflict" >&2
+                # mark that the conflict is on a real file, not INDEX.md
+                touch "$TEST_CASE_DIR/mc_real_conflict"
+                exit 1
+              fi
+              echo "CONFLICT (content): merge conflict" >&2
+              exit 1
+            fi
+            if [ "$c" -eq 2 ]; then
+              # commit 3 is empty
+              echo "nothing to commit, working tree clean" >&2
+              touch "$TEST_CASE_DIR/mc_last_empty"
+              exit 1
+            fi
+            # done
+            rm -f "$TEST_CASE_DIR/mc_last_empty"
+            exit 0
+          fi
           # Empty-commit case: the regenerated index leaves nothing to commit, so
           # rebase --continue fails with "nothing to commit" and the gate must skip.
           if [ -f "$TEST_CASE_DIR/index_empty_commit" ]; then
             echo "nothing to commit, working tree clean" >&2
+            touch "$TEST_CASE_DIR/mc_last_empty"
             exit 1
           fi
           # Only the INDEX-only conflict case is expected to continue cleanly.
           if [ -f "$TEST_CASE_DIR/index_only_conflict" ]; then
+            rm -f "$TEST_CASE_DIR/mc_last_empty"
             exit 0
           fi
           echo "rebase --continue failed" >&2
@@ -313,6 +345,10 @@ case "${1:-}" in
         if [ "${2:-}" = "--skip" ]; then
           echo "rebase --skip GIT_EDITOR=${GIT_EDITOR:-unset}" >> "$TEST_CASE_DIR/rebase_calls.log"
           exit 0
+        fi
+        if [ -f "$TEST_CASE_DIR/multi_commit" ]; then
+          echo "CONFLICT (content): merge conflict" >&2
+          exit 1
         fi
         if [ -f "$TEST_CASE_DIR/rebase_conflict" ]; then
           echo "CONFLICT (content): merge conflict" >&2
@@ -329,6 +365,11 @@ case "${1:-}" in
         echo "git -C <wt> add $*" >> "$TEST_CASE_DIR/index_add.log"
         exit 0
         ;;
+      commit)
+        echo "git -C <wt> commit $*" >> "$TEST_CASE_DIR/index_commit.log"
+        touch "$TEST_CASE_DIR/index_committed"
+        exit 0
+        ;;
       rev-parse)
         if [ -f "$TEST_CASE_DIR/rebased_head_sha" ]; then
           cat "$TEST_CASE_DIR/rebased_head_sha"
@@ -340,18 +381,35 @@ case "${1:-}" in
       diff)
         # unmerged files after a conflicting rebase
         if echo "$*" | grep -q -- "--name-only"; then
-          if [ -f "$TEST_CASE_DIR/rebase_conflict" ] && [ -f "$TEST_CASE_DIR/conflict_files" ]; then
+          if [ -f "$TEST_CASE_DIR/hook_rejected_on_continue" ]; then
+            # no conflicts: hook-rejected stop
+            exit 0
+          fi
+          if [ -f "$TEST_CASE_DIR/mc_real_conflict" ]; then
+            printf 'src/a.ts\n'
+          elif [ -f "$TEST_CASE_DIR/multi_commit" ]; then
+            printf 'docs/lessons/INDEX.md\n'
+          elif [ -f "$TEST_CASE_DIR/rebase_conflict" ] && [ -f "$TEST_CASE_DIR/conflict_files" ]; then
             cat "$TEST_CASE_DIR/conflict_files"
           fi
           exit 0
         fi
         # git diff --cached --quiet: empty iff the regenerated index left nothing staged.
         if echo "$*" | grep -q -- "--cached"; then
-          if [ -f "$TEST_CASE_DIR/index_empty_commit" ]; then
-            exit 0
-          else
+          if [ -f "$TEST_CASE_DIR/hook_rejected_on_continue" ]; then
             exit 1
           fi
+          if [ -f "$TEST_CASE_DIR/mc_last_empty" ]; then
+            exit 0
+          fi
+          if [ -f "$TEST_CASE_DIR/index_empty_commit" ]; then
+            exit 0
+          fi
+          exit 1
+        fi
+        # A clean rebase can leave the generated index stale without a conflict.
+        if [ -f "$TEST_CASE_DIR/clean_rebase_stale_index" ] && [ ! -f "$TEST_CASE_DIR/index_committed" ]; then
+          exit 1
         fi
         exit 0
         ;;
@@ -485,6 +543,9 @@ fi
 if [ "${1:-}" = "--check" ] && [ -f "$TEST_CASE_DIR/index_stale" ]; then
   echo "FAIL: docs/lessons/INDEX.md is stale" >&2
   exit 1
+fi
+if [ "${1:-}" != "--check" ] && [ -f "$TEST_CASE_DIR/clean_rebase_stale_index" ]; then
+  touch "$TEST_CASE_DIR/index_regenerated"
 fi
 exit 0
 EOS
@@ -1080,6 +1141,97 @@ grep -qF -- "rebase --continue" "$dir/rebase_calls.log" 2>/dev/null || { echo "F
 grep -qF -- "rebase --skip" "$dir/rebase_calls.log" 2>/dev/null || { echo "FAIL case49: empty commit was not skipped"; FAILED=1; }
 if [[ ! -f "$dir/force_push.log" ]]; then
   echo "FAIL case49: no force push after the auto-resolved rebase"
+  FAILED=1
+fi
+
+# --- Case 50: --when-green, 3 commits each conflicting only in INDEX.md, one empty -> loop recovers all ---
+dir="$WORK/case50-multi-commit-index"
+setup_defaults "$dir"
+echo 1 > "$dir/behind_times"
+touch "$dir/multi_commit"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("Only docs/lessons/INDEX.md conflicts" "nothing to commit" "skipped the empty commit" "force-pushed job/test" "CI finished green" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+run_test_case "case50-multi-commit-index" --when-green 42
+# The gate must have continued more than once to recover multiple commits.
+cont_count=$(grep -c "rebase --continue" "$dir/rebase_calls.log" 2>/dev/null || echo 0)
+if [[ "$cont_count" -lt 2 ]]; then
+  echo "FAIL case50: expected at least 2 rebase --continue calls for 3 commits, got $cont_count"
+  FAILED=1
+fi
+if [[ ! -f "$dir/force_push.log" ]]; then
+  echo "FAIL case50: no force push after the multi-commit rebase"
+  FAILED=1
+fi
+
+# --- Case 51: --when-green, real code conflict on the 2nd commit -> abort, name it, no push ---
+dir="$WORK/case51-real-conflict-second-commit"
+setup_defaults "$dir"
+echo 1 > "$dir/behind_times"
+touch "$dir/multi_commit"
+touch "$dir/multi_real_conflict_on_second"
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("rebasing PR #42 onto origin/main conflicts" "nothing pushed" "src/a.ts")
+run_test_case "case51-real-conflict-second-commit" --when-green 42
+if [[ -f "$dir/force_push.log" ]]; then
+  echo "FAIL case51: must not push on a real conflict"
+  FAILED=1
+fi
+
+# --- Case 52: --when-green, hook-rejected stop (staged changes, no conflicts) -> abort, no push/tag/merge ---
+dir="$WORK/case52-hook-rejected-stop"
+setup_defaults "$dir"
+echo 1 > "$dir/behind_times"
+touch "$dir/rebase_conflict"
+printf 'docs/lessons/INDEX.md\n' > "$dir/conflict_files"
+touch "$dir/index_only_conflict"
+touch "$dir/hook_rejected_on_continue"
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("rebase stopped with staged changes but no conflicts" "nothing pushed")
+run_test_case "case52-hook-rejected-stop" --when-green 42
+if [[ -f "$dir/force_push.log" ]]; then
+  echo "FAIL case52: must not push on a hook-rejected stop"
+  FAILED=1
+fi
+if [[ -f "$dir/git_push.log" ]]; then
+  echo "FAIL case52: must not push tag on a hook-rejected stop"
+  FAILED=1
+fi
+grep -qF -- "rebase --abort" "$dir/git_calls.log" 2>/dev/null || { echo "FAIL case52: rebase was not aborted"; FAILED=1; }
+
+# --- Case 53: PR_GATE_REBASE_MAX_COMMITS=1 caps the inner rebase recovery to one attempt ---
+dir="$WORK/case53-max-commits-cap"
+setup_defaults "$dir"
+echo 1 > "$dir/behind_times"
+touch "$dir/multi_commit"
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("rebase did not finish after 1 attempts" "nothing pushed")
+PR_GATE_REBASE_MAX_COMMITS=1 run_test_case "case53-max-commits-cap" --when-green 42
+
+# --- Case 54: --when-green, clean rebase changes lesson set -> regenerate, commit, then push ---
+dir="$WORK/case54-clean-rebase-stale-index"
+setup_defaults "$dir"
+echo 2 > "$dir/behind_times"
+touch "$dir/base_becomes_current"
+touch "$dir/clean_rebase_stale_index"
+/usr/bin/perl -pi -e 's/"baseRefOid":\s*"[^"]+"/"baseRefOid": "9999999999999999999999999999999999999999"/' "$dir/pr_view.json"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("base is behind origin/main" "Regenerating docs/lessons/INDEX.md after rebase" "regenerated docs/lessons/INDEX.md after rebase" "force-pushed job/test" "CI finished green" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+run_test_case "case54-clean-rebase-stale-index" --when-green 42
+grep -qF -- "lessons-index --check" "$dir/index_calls.log" 2>/dev/null || { echo "FAIL case54: regenerated index was not checked for staleness"; FAILED=1; }
+grep -qF -- "docs/lessons/INDEX.md" "$dir/index_add.log" 2>/dev/null || { echo "FAIL case54: regenerated index was not staged"; FAILED=1; }
+grep -qF -- "commit --amend --no-edit" "$dir/index_commit.log" 2>/dev/null || { echo "FAIL case54: regenerated index was not amended into the rebased head"; FAILED=1; }
+if [[ ! -f "$dir/force_push.log" ]]; then
+  echo "FAIL case54: no force push after regenerating the clean-rebase index"
   FAILED=1
 fi
 
