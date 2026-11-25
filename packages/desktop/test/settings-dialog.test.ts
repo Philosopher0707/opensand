@@ -114,6 +114,17 @@ test("settings dialog - chat engine selector has both choices and a plain reason
   assert.ok(html.includes('id="engineHint"'), "has a place for the plain detection reason");
 });
 
+test("settings dialog - account engines hide provider fields and OpenSand shows them", () => {
+  const html = fs.readFileSync(indexPath, "utf8");
+  const app = fs.readFileSync(path.join(__dirname, "../../renderer/app.js"), "utf8");
+  for (const id of ["settingProviderGroup", "settingEndpointGroup", "settingModelGroup", "settingApiKeyGroup"]) {
+    assert.ok(html.includes(`id="${id}"`), `${id} exists`);
+  }
+  assert.match(app, /const external = selectedEngine !== 'opensand'/);
+  assert.match(app, /group\.hidden = external/);
+  assert.match(app, /settingEngineModelGroup\.hidden = !external/);
+});
+
 test("settings dialog - each option is disabled with a plain reason when its binary is absent", () => {
   // Logic mirror of the settings-open detection gate in app.js.
   const choices = ["claude", "opencode", "codex", "copilot", "antigravity", "workbuddy"];
@@ -121,18 +132,17 @@ test("settings dialog - each option is disabled with a plain reason when its bin
   function resolveEngine(choice: unknown, detected: Array<{ engine: string; installed: boolean }>) {
     const missing = choices.filter((id) => detected.find((e) => e.engine === id)?.installed !== true);
     const selected = choice && !missing.includes(String(choice)) ? String(choice) : "opensand";
-    const reasons = missing.map((id) => `${labels[id]} is not installed on this computer.`);
     return {
       selected,
       disabled: missing,
-      hint: reasons.length ? `${reasons.join(" ")} Install what you want to use, then reopen Settings to select it.` : "",
+      hint: missing.length ? `Not installed: ${missing.map((id) => labels[id]).join(", ")}.` : "",
     };
   }
 
   const missing = resolveEngine("opencode", []);
   assert.strictEqual(missing.selected, "opensand");
   assert.deepStrictEqual(missing.disabled, ["claude", "opencode", "codex", "copilot", "antigravity", "workbuddy"]);
-  assert.match(missing.hint, /OpenCode is not installed on this computer/);
+  assert.strictEqual(missing.hint, "Not installed: Claude Code, OpenCode, Codex, GitHub Copilot, Antigravity, WorkBuddy.");
   assert.doesNotMatch(missing.hint, /npm|CLI|--/);
 
   const installed = resolveEngine("opencode", [
@@ -150,6 +160,6 @@ test("settings dialog - each option is disabled with a plain reason when its bin
   assert.deepStrictEqual(resolveEngine("claude", [{ engine: "claude", installed: true }]), {
     selected: "claude",
     disabled: ["opencode", "codex", "copilot", "antigravity", "workbuddy"],
-    hint: "OpenCode is not installed on this computer. Codex is not installed on this computer. GitHub Copilot is not installed on this computer. Antigravity is not installed on this computer. WorkBuddy is not installed on this computer. Install what you want to use, then reopen Settings to select it.",
+    hint: "Not installed: OpenCode, Codex, GitHub Copilot, Antigravity, WorkBuddy.",
   });
 });

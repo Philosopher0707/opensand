@@ -11,6 +11,7 @@ import {
   enginePayload,
   isExternalEngine,
   maskedKey,
+  providerFieldsVisible,
   resolveEngineChoice,
   saveErrorMessage,
   settingsPayload,
@@ -109,8 +110,8 @@ test("settings-model: engine choices disable missing binaries with a plain reaso
   const none = resolveEngineChoice("claude", []);
   assert.strictEqual(none.selected, "opensand", "a missing engine falls back to the default");
   assert.strictEqual(none.missing.length, 6);
-  assert.match(none.hint, /Claude Code is not installed on this computer/);
-  assert.match(none.hint, /WorkBuddy is not installed on this computer/);
+  assert.match(none.hint, /Not installed: Claude Code/);
+  assert.match(none.hint, /WorkBuddy\./);
   assert.doesNotMatch(none.hint, /npm|CLI|--/);
 
   const all = resolveEngineChoice("claude", ENGINE_OPTIONS.filter((o) => o.id !== "opensand").map((o) => ({ engine: o.id, installed: true })));
@@ -132,6 +133,21 @@ test("settings-model: external engines skip provider-field validation", () => {
   const engine: EngineId = "claude";
   assert.strictEqual(validateSettingsForm(empty, false, engine), null);
   assert.strictEqual(validateSettingsForm(empty, false, "opensand") !== null, true);
+});
+
+test("provider fields are visible only for the OpenSand provider engine", () => {
+  assert.strictEqual(providerFieldsVisible("opensand"), true);
+  for (const engine of ENGINE_OPTIONS.filter((option) => isExternalEngine(option.id))) {
+    assert.strictEqual(providerFieldsVisible(engine.id), false, engine.id);
+  }
+});
+
+test("missing engine hints collapse to one line under the engine dropdown", () => {
+  const detected = [{ engine: "claude", installed: true }, { engine: "opencode", installed: true }];
+  assert.strictEqual(
+    resolveEngineChoice("claude", detected).hint,
+    "Not installed: Codex, GitHub Copilot, Antigravity, WorkBuddy.",
+  );
 });
 
 test("savePayload sends only { engine } for an external engine, even with a typed key", () => {
@@ -161,5 +177,10 @@ test("SettingsView is wired through the tested helpers, not the raw payload or r
   assert.match(src, /saveSettings\(savePayload\(form, engine, engineModels\)\)/);
   assert.match(src, /<select[\s\S]*?id=\{id\("Model"\)\}/);
   assert.match(src, /loadEngineStatus\(/);
+  assert.match(src, /const showProviderFields = providerFieldsVisible\(engine\)/);
+  assert.match(src, /\{showProviderFields && \([\s\S]*?id=\{id\("Provider"\)\}/);
+  assert.match(src, /\{showProviderFields && \([\s\S]*?id=\{id\("Endpoint"\)\}/);
+  assert.match(src, /\{showProviderFields && \([\s\S]*?id=\{id\("ApiKey"\)\}/);
+  assert.match(src, /\{showProviderFields && \([\s\S]*?id=\{id\("Test"\)\}/);
   assert.doesNotMatch(src, /await data\.detectEngines\(\)/);
 });

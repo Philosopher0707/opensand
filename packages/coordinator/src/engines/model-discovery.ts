@@ -22,6 +22,13 @@ const CLI_LIST_COMMANDS: Record<string, string[]> = {
   antigravity: ["models"],
 };
 
+const NO_LIST_MESSAGES: Record<string, string> = {
+  claude: "Claude Code doesn't publish a model list; showing current models.",
+  codex: "Codex doesn't publish a model list; showing current models.",
+  copilot: "GitHub Copilot doesn't publish a model list; showing current models.",
+  workbuddy: "WorkBuddy doesn't publish a model list; showing current models.",
+};
+
 export const DETECTABLE_ENGINE_IDS = [
   "claude",
   "codex",
@@ -140,7 +147,7 @@ export async function listModels(options: ModelDiscoveryOptions): Promise<ModelD
     modelsSource: live.length ? "live" : models.length ? "fallback" : "error",
     ...(!live.length ? {
       modelsMessage: models.length
-        ? (empty ? "No models were returned; showing a built-in fallback list." : "Live model list unavailable; showing a built-in fallback list.")
+        ? (NO_LIST_MESSAGES[engine] ?? (empty ? "No models were returned; showing a built-in fallback list." : "Live model list unavailable; showing a built-in fallback list."))
         : "No model list is available for this engine.",
     } : {}),
   };
