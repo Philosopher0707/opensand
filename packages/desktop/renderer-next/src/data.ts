@@ -17,6 +17,7 @@ import type { PolicyRule, PolicyAuditEntry, CreateRuleInput } from "../../src/sh
 import type { AgentGraph, GraphRunResult, GraphTraceEvent } from "../../src/shell/graphs-model";
 import type { Connector, ConnectorTestResult } from "../../src/shell/connectors-model";
 import type { Webhook, WebhookDelivery, CreateWebhookInput } from "../../src/shell/webhooks-model";
+import type { LearnedRules, LearnedRulesReport } from "../../src/shell/learned-rules-model";
 import type { Attachment } from "../../src/shell/attachments-model";
 import type { VaultSecret, VaultCredential, SecretInput, CredentialInput } from "../../src/shell/vault-model";
 import { persistToken } from "../../src/shell/auth-model";
@@ -40,13 +41,15 @@ import type { SentinelData } from "./data/sentinel";
 import type { GraphsData } from "./data/graphs";
 import type { ConnectorsData } from "./data/connectors";
 import type { WebhooksData } from "./data/webhooks";
+import type { LearnedRulesData } from "./data/learned-rules";
 import { botsData } from "./data/bots";
 import { sentinelData } from "./data/sentinel";
 import { graphsData } from "./data/graphs";
 import { connectorsData } from "./data/connectors";
 import { webhooksData } from "./data/webhooks";
-export type { AgentGraph, Attachment, AttachmentsData, BotsData, BoundariesData, Connector, ConnectorsData, ConnectorTestResult, CreateRoomInput, CreateRoutineInput, CreateRuleInput, CreateSkillInput, CreateWatcherInput, CreateWebhookInput, CredentialInput, DiscussionResult, GraphRunResult, GraphsData, GraphTraceEvent, MemoriesData, MissionSummary, PolicyAuditEntry, PolicyRule, PreviewRestoreResult, Room, RoomsData, Routine, RoutinesData, SecretInput, SentinelData, SentinelLog, SessionRow, SessionSummary, Skill, SkillsData, TimelineForkResult, ToolApprovalRequest, TurnEvent, VaultCredential, VaultData, VaultSecret, Watcher, Webhook, WebhookDelivery, WebhooksData };
-export { attachmentsData, botsData, boundariesData, connectorsData, graphsData, memoriesData, roomsData, routinesData, sentinelData, skillsData, vaultData, webhooksData };
+import { learnedRulesData } from "./data/learned-rules";
+export type { AgentGraph, Attachment, AttachmentsData, BotsData, BoundariesData, Connector, ConnectorsData, ConnectorTestResult, CreateRoomInput, CreateRoutineInput, CreateRuleInput, CreateSkillInput, CreateWatcherInput, CreateWebhookInput, CredentialInput, DiscussionResult, GraphRunResult, GraphsData, GraphTraceEvent, LearnedRules, LearnedRulesData, LearnedRulesReport, MemoriesData, MissionSummary, PolicyAuditEntry, PolicyRule, PreviewRestoreResult, Room, RoomsData, Routine, RoutinesData, SecretInput, SentinelData, SentinelLog, SessionRow, SessionSummary, Skill, SkillsData, TimelineForkResult, ToolApprovalRequest, TurnEvent, VaultCredential, VaultData, VaultSecret, Watcher, Webhook, WebhookDelivery, WebhooksData };
+export { attachmentsData, botsData, boundariesData, connectorsData, graphsData, learnedRulesData, memoriesData, roomsData, routinesData, sentinelData, skillsData, vaultData, webhooksData };
 import type { BoundariesData } from "./data/boundaries";
 import { boundariesData } from "./data/boundaries";
 
@@ -166,7 +169,7 @@ export interface CoreShellData {
 
 }
 
-export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & AttachmentsData & VaultData & MemoriesData & BotsData & SentinelData & BoundariesData & GraphsData & ConnectorsData & WebhooksData;
+export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & AttachmentsData & VaultData & MemoriesData & BotsData & SentinelData & BoundariesData & GraphsData & ConnectorsData & WebhooksData & LearnedRulesData;
 
 export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
   const b = bridge ?? (typeof window !== "undefined" ? (window as any).opensand : undefined);
@@ -614,5 +617,6 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
     ...graphsData(b, http),
     ...connectorsData(b, http),
     ...webhooksData(b, http),
+    ...learnedRulesData(b, http),
   };
 }

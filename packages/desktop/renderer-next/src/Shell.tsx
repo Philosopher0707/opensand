@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { ShellData, ToolApprovalRequest } from "./data";
 import { ChatList } from "./views/ChatList";
 import { VIEW_COMPONENTS } from "./views/registry";
+import { LearnedRulesModal } from "./views/LearnedRulesModal";
 import { MissionList } from "./views/MissionList";
 import { MissionTimeline } from "./views/MissionTimeline";
 import { MissionReceipt } from "./views/MissionReceipt";
@@ -154,6 +155,7 @@ export function Shell({ data }: ShellProps) {
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readSidebarCollapsed(shellStorage()));
   const [isAccountPopupOpen, setAccountPopupOpen] = useState(false);
+  const [learnedRulesOpen, setLearnedRulesOpen] = useState(false);
   const [authState, setAuthState] = useState<AuthState>(() => createInitialAuthState(sessionAuthStorage()));
   const [dataRev, setDataRev] = useState(0);
   const [bootLoading, setBootLoading] = useState(true);
@@ -446,9 +448,11 @@ export function Shell({ data }: ShellProps) {
     persistSidebarCollapsed(shellStorage(), next);
   };
 
-  const handleAccountAction = (action: "sentinel" | "settings" | "theme" | "clear") => {
+  const handleAccountAction = (action: "sentinel" | "settings" | "theme" | "clear" | "learned-rules") => {
     setAccountPopupOpen(false);
-    if (action === "sentinel" || action === "settings") {
+    if (action === "learned-rules") {
+      setLearnedRulesOpen(true);
+    } else if (action === "sentinel" || action === "settings") {
       switchView(action);
     } else if (action === "theme") {
       handleToggleTheme();
@@ -638,6 +642,9 @@ export function Shell({ data }: ShellProps) {
                 <span class="popup-icon" aria-hidden="true">🌙</span><span>Toggle Theme</span>
               </button>
               <div class="popup-divider"></div>
+              <button id="btnMenuLearnedRules" type="button" class="account-popup-item" onClick={() => handleAccountAction("learned-rules")}>
+                <span class="popup-icon" aria-hidden="true">🧠</span><span>Learned Guidelines</span>
+              </button>
               <button id="btnMenuClearSessions" type="button" class="account-popup-item danger" onClick={() => handleAccountAction("clear")}>
                 <span class="popup-icon" aria-hidden="true">🗑️</span><span>Clear History</span>
               </button>
@@ -897,6 +904,7 @@ export function Shell({ data }: ShellProps) {
           </div>
         </div>
       </div>
+      <LearnedRulesModal data={data} open={learnedRulesOpen} onClose={() => setLearnedRulesOpen(false)} />
     </div>
   );
 }
