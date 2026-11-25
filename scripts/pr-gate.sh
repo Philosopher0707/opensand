@@ -452,8 +452,11 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
 
       REBASE_DONE=0
       REBASE_ATTEMPTS=0
+      REBASE_ERR=""
       # First attempt: a plain rebase.
-      if git -C "$REBASE_WT" rebase "$FETCHED_MAIN" >/dev/null 2>&1; then
+      if ! REBASE_ERR="$(GIT_EDITOR=true git -C "$REBASE_WT" rebase "$FETCHED_MAIN" 2>&1)"; then
+        :
+      else
         REBASE_DONE=1
       fi
 
@@ -467,7 +470,7 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
 
         CONFLICTS=$(git -C "$REBASE_WT" diff --name-only --diff-filter=U || true)
         CONFLICT_LIST=$(printf '%s\n' "$CONFLICTS" | grep -v '^$' || true)
-        CONFLICT_COUNT=$(printf '%s\n' "$CONFLICT_LIST" | grep -c . || echo 0)
+        CONFLICT_COUNT=$(printf '%s\n' "$CONFLICT_LIST" | grep -c . || true)
 
         if [[ "$CONFLICT_COUNT" -gt 0 ]]; then
           # There are conflicts. Handle INDEX-only or abort.
@@ -526,26 +529,39 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
             exit 1
           fi
         else
-          # No conflicts. Check if it's an empty commit pending skip.
-          if git -C "$REBASE_WT" diff --cached --quiet 2>/dev/null; then
-            echo "==> [when-green] rebase found nothing to commit; skipping the empty commit..."
-            REBASE_SKIP_ERR="$(mktemp "${TMPDIR:-/tmp}/pr-gate-rebase-skip.XXXXXX")"
-            if GIT_EDITOR=true git -C "$REBASE_WT" rebase --skip >"$REBASE_SKIP_ERR" 2>&1; then
-              cat "$REBASE_SKIP_ERR"
-              rm -f "$REBASE_SKIP_ERR"
-              REBASE_DONE=1
-            else
-              cat "$REBASE_SKIP_ERR" >&2
-              rm -f "$REBASE_SKIP_ERR"
-              # skip failed (likely next conflict); loop re-evaluates
-              continue
-            fi
-          else
-            # No conflicts and not empty: rebase is complete.
+          # No conflict markers. Staged changes mean the rebase stopped for another reason
+          # (for example a commit hook declined); never treat that as a completed rebase.
+          if ! git -C "$REBASE_WT" diff --cached --quiet 2>/dev/null; then
+            if [[ -n "$REBASE_ERR" ]]; then printf '%s\n' "$REBASE_ERR" >&2; fi
+            git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+            echo "FAIL: rebase of PR #$PR stopped without conflicts but left staged changes (conflict count: $CONFLICT_COUNT); aborted without pushing." >&2
+            exit 1
+          fi
+          # Nothing staged: an empty commit pending skip.
+          echo "==> [when-green] rebase found nothing to commit; skipping the empty commit..."
+          REBASE_SKIP_ERR="$(mktemp "${TMPDIR:-/tmp}/pr-gate-rebase-skip.XXXXXX")"
+          if GIT_EDITOR=true git -C "$REBASE_WT" rebase --skip >"$REBASE_SKIP_ERR" 2>&1; then
+            cat "$REBASE_SKIP_ERR"
+            rm -f "$REBASE_SKIP_ERR"
             REBASE_DONE=1
+          else
+            cat "$REBASE_SKIP_ERR" >&2
+            rm -f "$REBASE_SKIP_ERR"
+            # skip failed (likely next conflict); loop re-evaluates
+            continue
           fi
         fi
       done
+
+      # Never push unless the rebase really finished: leftover state means it is still in progress.
+      REBASE_MERGE_STATE=$(git -C "$REBASE_WT" rev-parse --path-format=absolute --git-path rebase-merge 2>/dev/null || true)
+      REBASE_APPLY_STATE=$(git -C "$REBASE_WT" rev-parse --path-format=absolute --git-path rebase-apply 2>/dev/null || true)
+      if [[ -n "$REBASE_MERGE_STATE" && -d "$REBASE_MERGE_STATE" ]] || [[ -n "$REBASE_APPLY_STATE" && -d "$REBASE_APPLY_STATE" ]]; then
+        if [[ -n "$REBASE_ERR" ]]; then printf '%s\n' "$REBASE_ERR" >&2; fi
+        git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+        echo "FAIL: rebase of PR #$PR still has state in progress after the loop; aborted without pushing." >&2
+        exit 1
+      fi
 
       NEW_HEAD=$(git -C "$REBASE_WT" rev-parse HEAD)
       if ! git -C "$REBASE_WT" push --force-with-lease="refs/heads/$PR_HEAD_BRANCH:$PR_HEAD_OID" origin "HEAD:refs/heads/$PR_HEAD_BRANCH"; then

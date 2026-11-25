@@ -41,6 +41,7 @@
 # 46. --when-green: watch exits 1 with a pending check, then CI succeeds -> waits and merges
 # 47. --when-green: watch exits 1 with a pending check, then a check fails -> names the failure
 # 48. --when-green: repeated pending watch exits stop at the deadline with pending exit 3
+# 52. --when-green: a no-conflict stop with staged changes (hook rejected) aborts, no push/tag/merge
 # Usage: scripts/pr-gate-selftest.sh (PR_GATE_SCRIPT=<path> to test another copy)
 set -uo pipefail
 
@@ -341,6 +342,11 @@ case "${1:-}" in
           echo "rebase --skip GIT_EDITOR=${GIT_EDITOR:-unset}" >> "$TEST_CASE_DIR/rebase_calls.log"
           exit 0
         fi
+        if [ -f "$TEST_CASE_DIR/rebase_hook_rejected" ]; then
+          # A commit hook declined: staged changes remain, but there are no unmerged files.
+          echo "error: hook declined to commit" >&2
+          exit 1
+        fi
         if [ -f "$TEST_CASE_DIR/multi_commit" ]; then
           echo "CONFLICT (content): merge conflict" >&2
           exit 1
@@ -575,6 +581,7 @@ run_test_case() {
   local out status ok=1
   out=$(PATH="$BIN_DIR:$PATH" TEST_CASE_DIR="$dir" PR_GATE_LESSONS_INDEX_SCRIPT="$BIN_DIR/lessons-index.sh" bash "$PR_GATE" "$@" 2>&1 < /dev/null) || status=$?
   status="${status:-0}"
+  printf '%s\n' "$out" > "$dir/gate.out"
 
   if [[ "$status" -ne "$EXPECT_EXIT" ]]; then
     echo "FAIL $label: exit $status, wanted $EXPECT_EXIT"
@@ -1154,6 +1161,35 @@ NEED_SUBSTRINGS=("rebasing PR #42 onto origin/main conflicts" "nothing pushed" "
 run_test_case "case51-real-conflict-second-commit" --when-green 42
 if [[ -f "$dir/force_push.log" ]]; then
   echo "FAIL case51: must not push on a real conflict"
+  FAILED=1
+fi
+
+# --- Case 52: rebase stops with staged changes but no conflicts (hook rejected) -> abort, no push/tag/merge ---
+dir="$WORK/case52-hook-rejected-staged"
+setup_defaults "$dir"
+echo 1 > "$dir/behind_times"
+touch "$dir/rebase_hook_rejected"
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("hook declined to commit" "stopped without conflicts but left staged changes" "conflict count: 0" "aborted without pushing")
+run_test_case "case52-hook-rejected-staged" --when-green 42
+if [[ -f "$dir/force_push.log" ]]; then
+  echo "FAIL case52: must not push a partially rebased branch"
+  FAILED=1
+fi
+if [[ -f "$dir/merge_calls.log" ]]; then
+  echo "FAIL case52: must not merge a partially rebased branch"
+  FAILED=1
+fi
+if [[ -f "$dir/git_push.log" ]]; then
+  echo "FAIL case52: must not tag a partially rebased branch"
+  FAILED=1
+fi
+grep -qF -- "rebase --abort" "$dir/rebase_calls.log" 2>/dev/null || { echo "FAIL case52: rebase was not aborted"; FAILED=1; }
+# The empty conflict list must count as a single 0, not "0\n0" (which made [[ -gt ]] print a syntax error).
+if grep -qF -- "syntax error" "$dir/gate.out" 2>/dev/null; then
+  echo "FAIL case52: the conflict count produced a shell syntax error"
   FAILED=1
 fi
 
