@@ -59,7 +59,10 @@ app.on("browser-window-created", (_e, w) => {
 
       for (const [w, h, tag] of SIZES) {
         win.setContentSize(w, h);
-        await sleep(400);
+        // Wait for the renderer to process the resize before measuring layout. innerHeight is not
+        // reported exactly on macOS, so wait on the width and then two painted frames.
+        await wait("window.innerWidth === " + w);
+        await js("new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))");
 
         const metrics = await js("(() => {\n" +
           "const input = document.querySelector('#promptInput');\n" +
