@@ -139,6 +139,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-24 · [A test-name skip pattern cannot keep real-window files from launching locally](2026-11-24-precommit-skip-pattern-must-match-file-names.md)
 - 2026-11-24 · [Event-scoped secret scans keep unmerged branches out of main CI](2026-11-24-scope-secret-scans-to-event.md)
 - 2026-11-24 · [Full desktop suite can fail on a pre-existing navigation real-window timeout](2026-11-24-sentinel-full-suite-navigation-timeout.md)
+- 2026-11-24 · [A modal's reset effect can race an immediate real-window click](2026-11-24-session-actions-modal-effect-race.md)
 - 2026-11-24 · [A brief's base ref can be stale locally, and the shared worktree base can be dirty](2026-11-24-settings-welcome-worktree-setup.md)
 - 2026-11-24 · [Wiring the Claude Code engine selector: two test hurdles (2026-11-24)](2026-11-24-wire-claude-engine-test-hurdles.md)
 - 2026-11-25 · [Chat send queue: keep follow-ups at shell level and never surface a raw send error](2026-11-25-chat-send-queue-keep-at-shell-level.md)
