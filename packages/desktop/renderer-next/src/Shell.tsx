@@ -3,6 +3,7 @@ import type { ShellData, ToolApprovalRequest } from "./data";
 import { ChatList } from "./views/ChatList";
 import { VIEW_COMPONENTS } from "./views/registry";
 import { LearnedRulesModal } from "./views/LearnedRulesModal";
+import { SessionActionsModals } from "./views/SessionActionsModals";
 import { MissionList } from "./views/MissionList";
 import { MissionTimeline } from "./views/MissionTimeline";
 import { MissionReceipt } from "./views/MissionReceipt";
@@ -156,6 +157,9 @@ export function Shell({ data }: ShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readSidebarCollapsed(shellStorage()));
   const [isAccountPopupOpen, setAccountPopupOpen] = useState(false);
   const [learnedRulesOpen, setLearnedRulesOpen] = useState(false);
+  const [btwOpen, setBtwOpen] = useState(false);
+  const [rollbackOpen, setRollbackOpen] = useState(false);
+  const [compactOpen, setCompactOpen] = useState(false);
   const [authState, setAuthState] = useState<AuthState>(() => createInitialAuthState(sessionAuthStorage()));
   const [dataRev, setDataRev] = useState(0);
   const [bootLoading, setBootLoading] = useState(true);
@@ -448,11 +452,14 @@ export function Shell({ data }: ShellProps) {
     persistSidebarCollapsed(shellStorage(), next);
   };
 
-  const handleAccountAction = (action: "sentinel" | "settings" | "theme" | "clear" | "learned-rules") => {
+  const handleAccountAction = (action: "sentinel" | "settings" | "theme" | "clear" | "learned-rules" | "btw" | "rollback" | "compact") => {
     setAccountPopupOpen(false);
     if (action === "learned-rules") {
       setLearnedRulesOpen(true);
-    } else if (action === "sentinel" || action === "settings") {
+    } else if (action === "btw") setBtwOpen(true);
+    else if (action === "rollback") setRollbackOpen(true);
+    else if (action === "compact") setCompactOpen(true);
+    else if (action === "sentinel" || action === "settings") {
       switchView(action);
     } else if (action === "theme") {
       handleToggleTheme();
@@ -644,6 +651,15 @@ export function Shell({ data }: ShellProps) {
               <div class="popup-divider"></div>
               <button id="btnMenuLearnedRules" type="button" class="account-popup-item" onClick={() => handleAccountAction("learned-rules")}>
                 <span class="popup-icon" aria-hidden="true">🧠</span><span>Learned Guidelines</span>
+              </button>
+              <button id="btnOpenBtw" type="button" class="account-popup-item" onClick={() => handleAccountAction("btw")}>
+                <span class="popup-icon" aria-hidden="true">💬</span><span>Ask Ephemeral Question</span>
+              </button>
+              <button id="btnOpenRollback" type="button" class="account-popup-item" onClick={() => handleAccountAction("rollback")}>
+                <span class="popup-icon" aria-hidden="true">⏪</span><span>Rewind Conversation</span>
+              </button>
+              <button id="btnOpenCompact" type="button" class="account-popup-item" onClick={() => handleAccountAction("compact")}>
+                <span class="popup-icon" aria-hidden="true">🗜️</span><span>Auto-Compact Context</span>
               </button>
               <button id="btnMenuClearSessions" type="button" class="account-popup-item danger" onClick={() => handleAccountAction("clear")}>
                 <span class="popup-icon" aria-hidden="true">🗑️</span><span>Clear History</span>
@@ -905,6 +921,18 @@ export function Shell({ data }: ShellProps) {
         </div>
       </div>
       <LearnedRulesModal data={data} open={learnedRulesOpen} onClose={() => setLearnedRulesOpen(false)} />
+      <SessionActionsModals
+        data={data}
+        btwOpen={btwOpen}
+        rollbackOpen={rollbackOpen}
+        compactOpen={compactOpen}
+        onClose={(which) => {
+          if (which === "btw") setBtwOpen(false);
+          if (which === "rollback") setRollbackOpen(false);
+          if (which === "compact") setCompactOpen(false);
+        }}
+        onActionDone={() => setDataRev((n) => n + 1)}
+      />
     </div>
   );
 }

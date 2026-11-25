@@ -310,6 +310,16 @@ packages/desktop/src/shell/learned-rules-model.ts|const LEARNED_RULES_LOADING
 packages/desktop/src/shell/learned-rules-model.ts|const LEARNED_RULES_REFRESHING
 packages/desktop/src/shell/learned-rules-model.ts|function reportSummary
 packages/desktop/src/shell/learned-rules-model.ts|function rulesContent
+packages/desktop/src/shell/session-actions-model.ts|const BTW_NO_ANSWER
+packages/desktop/src/shell/session-actions-model.ts|const BTW_VALIDATION_MESSAGE
+packages/desktop/src/shell/session-actions-model.ts|const COMPACT_DEFAULT_KEEP
+packages/desktop/src/shell/session-actions-model.ts|const ROLLBACK_DEFAULT_TURNS
+packages/desktop/src/shell/session-actions-model.ts|function actionErrorMessage
+packages/desktop/src/shell/session-actions-model.ts|function btwAnswer
+packages/desktop/src/shell/session-actions-model.ts|function compactMessage
+packages/desktop/src/shell/session-actions-model.ts|function parsePositive
+packages/desktop/src/shell/session-actions-model.ts|function rollbackMessage
+packages/desktop/src/shell/session-actions-model.ts|function validateBtw
 packages/desktop/src/shell/session-list-model.ts|const RELATIVE_UNITS
 packages/desktop/src/shell/session-list-model.ts|const SESSIONS_CHANGED_EVENT
 packages/desktop/src/shell/session-list-model.ts|function emptyState
