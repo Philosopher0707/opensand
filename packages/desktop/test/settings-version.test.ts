@@ -14,6 +14,7 @@ const nextData = path.join(__dirname, "../../renderer-next/src/data.ts");
 
 test("version label shows the installed version and falls back to a plain message", () => {
   assert.strictEqual(versionLabel({ app: "0.1.16" }), "OpenSand v0.1.16");
+  assert.strictEqual(versionLabel({ app: { version: "0.1.16" } }), "OpenSand v0.1.16");
   assert.strictEqual(versionLabel({ app: "  0.1.16  " }), "OpenSand v0.1.16");
   assert.strictEqual(versionLabel({ app: "" }), "Version unavailable");
   assert.strictEqual(versionLabel({ app: 42 }), "Version unavailable");
@@ -24,6 +25,7 @@ test("version label shows the installed version and falls back to a plain messag
 test("legacy renderer module formats the same label from the shipped source", async () => {
   const mod = await import(pathToFileURL(legacyModule).href);
   assert.strictEqual(mod.versionLabel({ app: "0.1.16" }), "OpenSand v0.1.16");
+  assert.strictEqual(mod.versionLabel({ app: { version: "0.1.16" } }), "OpenSand v0.1.16");
   assert.strictEqual(mod.versionLabel(undefined), "Version unavailable");
 });
 
