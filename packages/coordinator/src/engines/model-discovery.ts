@@ -22,6 +22,15 @@ const CLI_LIST_COMMANDS: Record<string, string[]> = {
   antigravity: ["models"],
 };
 
+export const DETECTABLE_ENGINE_IDS = [
+  "claude",
+  "codex",
+  "copilot",
+  "antigravity",
+  "opencode",
+  "workbuddy",
+] as const;
+
 const cache = new Map<string, { expires: number; value: ModelDiscovery }>();
 const CACHE_MS = 60_000;
 const TIMEOUT_MS = 5_000;
