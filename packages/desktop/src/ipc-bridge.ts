@@ -12,6 +12,7 @@ import {
   AgentCoordinator,
   UniversalLLMClient,
   classifyError,
+  isAuthFailure,
   TurnEvent,
   ApprovalRequest,
   McpManager,
@@ -819,7 +820,7 @@ export class DesktopIpcBridge extends EventEmitter {
         const actionable = classifyError(err);
         let userMessage = `${actionable.cause} ${actionable.nextAction}`;
         // A signed-out external engine would fail every later turn: fall back to OpenSand and say so.
-        if (this.settings.engine && this.settings.engine !== 'opensand' && /is not signed in/i.test(userMessage)) {
+        if (this.settings.engine && this.settings.engine !== 'opensand' && isAuthFailure(err)) {
           this.updateSettings({ engine: 'opensand' } as Partial<DesktopSettings>);
           userMessage = `${userMessage} Switched back to OpenSand so you can keep working.`;
         }
