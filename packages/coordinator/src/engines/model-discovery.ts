@@ -114,4 +114,3 @@ export async function listModels(options: ModelDiscoveryOptions): Promise<ModelD
   }
   return value;
 }
-
