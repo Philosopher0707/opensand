@@ -512,6 +512,26 @@ else
 fi
 
 # --- Step 8: With --install only (macOS only) ---
+# pgrep -f is unanchored, so select only PIDs whose executable is exactly the
+# installed app binary; a stray process with the path in its arguments is ignored.
+running_app_pids() {
+  local pid comm
+  for pid in $(pgrep -f "OpenSand\\.app/Contents/MacOS/OpenSand" 2>/dev/null || true); do
+    comm=$(ps -o comm= -p "$pid" 2>/dev/null || true)
+    if [[ "$comm" == "$APP_DEST/Contents/MacOS/OpenSand" ]]; then
+      printf '%s\n' "$pid"
+    fi
+  done
+}
+
+PROBE_HEADER_FILE=""
+cleanup_probe_header() {
+  if [[ -n "$PROBE_HEADER_FILE" ]]; then
+    rm -f "$PROBE_HEADER_FILE"
+  fi
+}
+trap cleanup_probe_header EXIT
+
 echo "==> [Step 9/9] Install check..."
 if [[ "$IS_LINUX" -eq 1 ]]; then
   echo "PASS: local /Applications install skipped on $OS_NAME (macOS-only)."
@@ -522,27 +542,27 @@ elif [[ "$INSTALL" -eq 1 ]]; then
     # 1. Quit any running OpenSand gracefully, wait up to 15s, then kill -TERM
     echo "Stopping any running OpenSand app gracefully..."
     QUIT_TIMEOUT="${OPENSAND_QUIT_TIMEOUT_SECONDS:-15}"
-    RUNNING_PIDS=$(pgrep -f "OpenSand\\.app/Contents/MacOS/OpenSand" 2>/dev/null || pgrep -f "$APP_DEST/Contents/MacOS/OpenSand" 2>/dev/null || true)
+    RUNNING_PIDS=$(running_app_pids)
     if [[ -n "$RUNNING_PIDS" ]]; then
       echo "Found running OpenSand process; requesting graceful quit..."
       osascript -e 'tell application "OpenSand" to quit' 2>/dev/null || true
       QUIT_DEADLINE=$(( $(date +%s) + QUIT_TIMEOUT ))
       while (( $(date +%s) < QUIT_DEADLINE )); do
-        RUNNING_PIDS=$(pgrep -f "OpenSand\\.app/Contents/MacOS/OpenSand" 2>/dev/null || pgrep -f "$APP_DEST/Contents/MacOS/OpenSand" 2>/dev/null || true)
+        RUNNING_PIDS=$(running_app_pids)
         if [[ -z "$RUNNING_PIDS" ]]; then
           break
         fi
         sleep 0.5
       done
 
-      RUNNING_PIDS=$(pgrep -f "OpenSand\\.app/Contents/MacOS/OpenSand" 2>/dev/null || pgrep -f "$APP_DEST/Contents/MacOS/OpenSand" 2>/dev/null || true)
+      RUNNING_PIDS=$(running_app_pids)
       if [[ -n "$RUNNING_PIDS" ]]; then
         echo "OpenSand still running after ${QUIT_TIMEOUT}s; sending SIGTERM to OpenSand.app process..."
         for pid in $RUNNING_PIDS; do
           kill -TERM "$pid" 2>/dev/null || true
         done
         for ((step=1; step<=10; step++)); do
-          RUNNING_PIDS=$(pgrep -f "OpenSand\\.app/Contents/MacOS/OpenSand" 2>/dev/null || pgrep -f "$APP_DEST/Contents/MacOS/OpenSand" 2>/dev/null || true)
+          RUNNING_PIDS=$(running_app_pids)
           if [[ -z "$RUNNING_PIDS" ]]; then
             break
           fi
@@ -629,12 +649,23 @@ elif [[ "$INSTALL" -eq 1 ]]; then
         TOKEN=$(tr -d '\r\n' < "$STATE_DIR/server.token")
       fi
 
+      # Header goes in a 0600 file so the token never appears in curl's argv.
+      if [[ -n "$TOKEN" && -z "$PROBE_HEADER_FILE" ]]; then
+        OLD_UMASK=$(umask)
+        umask 077
+        PROBE_HEADER_FILE=$(mktemp "${TMPDIR:-/tmp}/opensand-probe-header.XXXXXX")
+        umask "$OLD_UMASK"
+        printf 'Authorization: Bearer ' > "$PROBE_HEADER_FILE"
+        tr -d '\r\n' < "$STATE_DIR/server.token" >> "$PROBE_HEADER_FILE"
+        printf '\n' >> "$PROBE_HEADER_FILE"
+      fi
+
       PORT="${OPENSAND_PROBE_PORT:-}"
       if [[ -z "$PORT" && -f "$STATE_DIR/server.port" ]]; then
         PORT=$(tr -d '\r\n' < "$STATE_DIR/server.port")
       fi
       if [[ -z "$PORT" ]]; then
-        APP_PID=$(pgrep -f "$APP_DEST/Contents/MacOS/OpenSand" 2>/dev/null | head -n 1 || pgrep -f "OpenSand\\.app/Contents/MacOS/OpenSand" 2>/dev/null | head -n 1 || true)
+        APP_PID=$(running_app_pids | head -n 1)
         if [[ -n "$APP_PID" ]]; then
           PORT=$(lsof -a -p "$APP_PID" -iTCP -sTCP:LISTEN -Fn 2>/dev/null | grep -E '^n' | head -n 1 | sed 's/^n//' | awk -F: '{print $NF}' || true)
         fi
@@ -644,9 +675,9 @@ elif [[ "$INSTALL" -eq 1 ]]; then
       fi
 
       if [[ -n "$PORT" ]]; then
-        CURL_OPTS=(-s -w "\nHTTP_STATUS:%{http_code}" --connect-timeout 1 --max-time 2)
-        if [[ -n "$TOKEN" ]]; then
-          CURL_OPTS+=(-H "Authorization: Bearer $TOKEN")
+        CURL_OPTS=(-s -w "\nHTTP_STATUS:%{http_code}" --connect-timeout 1 --max-time 2 --noproxy "*")
+        if [[ -n "$PROBE_HEADER_FILE" ]]; then
+          CURL_OPTS+=(-H "@$PROBE_HEADER_FILE")
         fi
 
         VER_RESP=$(curl "${CURL_OPTS[@]}" "http://127.0.0.1:$PORT/api/version" 2>/dev/null || true)
