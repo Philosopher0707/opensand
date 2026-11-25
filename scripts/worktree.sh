@@ -29,6 +29,7 @@ source "$SCRIPT_DIR/lib/free-space.sh"
 
 SCRATCH_DIR="${OPENSAND_SCRATCH_DIR:-$HOME/dev/_scratch}"
 CLEAN_DISK_SCRIPT="${OPENSAND_CLEAN_DISK_SCRIPT:-$SCRIPT_DIR/clean-disk.sh}"
+PRUNE_SCRIPT="${OPENSAND_WORKTREE_PRUNE_SCRIPT:-$SCRIPT_DIR/worktree-prune.sh}"
 
 # Guard: never act on the owner's main checkout, from any directory and under any command
 # (`new|review|save|done` all pass through here before touching a repository or a target path).
@@ -148,6 +149,12 @@ case "$cmd" in
     if [[ -e "$TARGET_PATH" ]]; then
       echo "FAIL: worktree path already exists: $TARGET_PATH" >&2
       exit 1
+    fi
+
+    # 2b. Reclaim whole merged worktrees and stale temp folders before the free-space guard.
+    if [[ -f "$PRUNE_SCRIPT" ]]; then
+      echo "Notice: running worktree-prune.sh --apply before the free-space check..."
+      bash "$PRUNE_SCRIPT" --apply || true
     fi
 
     # 3. Check free disk space (< 3 GB check after attempting clean-disk.sh --yes)
