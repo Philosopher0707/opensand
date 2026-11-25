@@ -7,6 +7,7 @@ import { createApprovalQueue } from './modules/chat/approval-queue.js';
 import { createArtifactCanvas } from './modules/chat/canvas.js';
 import { createFileModel, artifactForToolResult, wholeFileForPartialEdit } from './modules/chat/file-model.js';
 import { formatRetryStatus } from './modules/chat/retry-status.js';
+import { applyActiveModel, effectiveModel } from './modules/chat/model-chip.js';
 import { versionLabel } from './modules/version-label.js';
 
 // Native title bar is hiddenInset on macOS; CSS keys traffic-light clearance off this.
@@ -1217,6 +1218,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (activeAgentId) localStorage.setItem(AGENT_KEY, activeAgentId);
     else localStorage.removeItem(AGENT_KEY);
     refreshBots();
+    refreshSettings();
     refreshTokenBadge();
     refreshDetailPanel();
   }
@@ -1517,12 +1519,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function refreshSettings() {
     try {
       const s = await client.getSettings();
-      const modelName = s.model || 'Default';
-
-      if (badgeModel) {
-        badgeModel.textContent = modelName;
-        badgeModel.title = `Active Model: ${modelName} (${s.endpoint || ''})`;
+      let botModel = '';
+      if (activeAgentId) {
+        try {
+          const agents = await client.getAgents();
+          botModel = (agents.find((a) => a.id === activeAgentId) || {}).model || '';
+        } catch (_err) { /* fall back to the global model */ }
       }
+      const modelName = effectiveModel({ botModel, settingsModel: s.model });
+      applyActiveModel({ topBar: badgeModel, chip: document.getElementById('composerModelBadge') }, modelName, s.endpoint || '');
       const mode = (s.approvalMode === 'auto_edit' || s.approvalMode === 'auto' || s.approvalMode === 'ask')
         ? s.approvalMode
         : (s.autoApprove ? 'auto' : 'ask');
@@ -1548,11 +1553,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         badgeAutoApprove.className = badgeCls;
       }
 
-      const composerModelBadge = document.getElementById('composerModelBadge');
-      if (composerModelBadge) {
-        composerModelBadge.textContent = modelName;
-        composerModelBadge.title = `Active Model: ${modelName} (${s.endpoint || ''})`;
-      }
       const composerAutoApproveText = document.getElementById('composerAutoApproveText');
       if (composerAutoApproveText) {
         composerAutoApproveText.textContent = mode === 'auto' ? 'Auto-Approve' : (mode === 'auto_edit' ? 'Auto-Edit' : 'Safe Mode');
@@ -1640,14 +1640,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
 
-    if (badgeModel && activeModelName && activeModelName !== 'Model') {
-      const shortName = activeModelName.includes('/') ? activeModelName.split('/').pop() : activeModelName;
-      badgeModel.textContent = shortName;
-      badgeModel.title = `Active Model: ${activeModelName}`;
-    }
-
     const composerModelBadge = document.getElementById('composerModelBadge');
-    if (composerModelBadge) {
+    applyActiveModel({ topBar: badgeModel, chip: composerModelBadge }, activeModelName);
+    if (composerModelBadge && activeModelName && activeModelName !== 'Model') {
       composerModelBadge.title = `Active Model: ${activeModelName} • Context Window: ${maxTokens.toLocaleString()} tokens`;
     }
   }
