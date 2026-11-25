@@ -69,7 +69,7 @@ else
     if ! git rev-parse --verify "${BASE_SHA}^{commit}" >/dev/null 2>&1; then
       RUN_ALL_PACKAGES=1
     else
-      CHANGED=$(git diff --name-only "$BASE_SHA" HEAD 2>/dev/null || true)
+      CHANGED=$(git diff --name-only --no-renames "$BASE_SHA" HEAD 2>/dev/null || true)
       if [[ -z "$CHANGED" ]]; then
         RUN_ALL_PACKAGES=1
       fi

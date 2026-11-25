@@ -231,12 +231,14 @@ expect_wildcard_selftest_handling() {
   echo "export const d = 1;" > "$dir/packages/desktop/src/d.ts"
   printf "import test from 'node:test';\ntest('desktop passes', () => {});\n" > "$dir/packages/desktop/test.mjs"
 
-  # Create two scripts with selftests
-  printf "#!/usr/bin/env bash\nexit 0\n" > "$dir/scripts/alpha.sh"
-  printf "#!/usr/bin/env bash\necho \"running alpha selftest\"\nexit 0\n" > "$dir/scripts/alpha-selftest.sh"
-  printf "#!/usr/bin/env bash\nexit 0\n" > "$dir/scripts/beta.sh"
-  printf "#!/usr/bin/env bash\necho \"running beta selftest\"\nexit 0\n" > "$dir/scripts/beta-selftest.sh"
-  chmod +x "$dir/scripts/alpha.sh" "$dir/scripts/alpha-selftest.sh" "$dir/scripts/beta.sh" "$dir/scripts/beta-selftest.sh"
+  # Create literal wildcard and space-named selftests plus an extra sentinel
+  star_st="$dir/scripts/*-selftest.sh"
+  printf "#!/usr/bin/env bash\necho \"running star selftest\"\nexit 0\n" > "$star_st"
+  space_st="$dir/scripts/space name-selftest.sh"
+  printf "#!/usr/bin/env bash\necho \"running space selftest\"\nexit 0\n" > "$space_st"
+  extra_st="$dir/scripts/extra-selftest.sh"
+  printf "#!/usr/bin/env bash\necho \"running extra sentinel selftest\"\nexit 0\n" > "$extra_st"
+  chmod +x "$star_st" "$space_st" "$extra_st"
 
   (
     cd "$dir"
@@ -246,9 +248,10 @@ expect_wildcard_selftest_handling() {
     git add -A && git commit -qm base
     base=$(git rev-parse HEAD)
 
-    # Only modify alpha.sh
-    echo "# edit" >> scripts/alpha.sh
-    git add -A && git commit -qm "edit alpha"
+    # Only modify *-selftest.sh and space name-selftest.sh; extra-selftest.sh is untouched
+    echo "# edit star" >> "$star_st"
+    echo "# edit space" >> "$space_st"
+    git add -A && git commit -qm "edit wildcard and space selftests"
 
     printf "{\"pull_request\":{\"base\":{\"sha\":\"%s\"}}}" "$base" > event.json
     GITHUB_EVENT_NAME=pull_request GITHUB_EVENT_PATH="$dir/event.json" SKIP_INSTALL=1 TMPDIR="$dir/tmp" bash scripts/verify.sh > out.txt 2>&1
@@ -259,9 +262,16 @@ expect_wildcard_selftest_handling() {
   out=$(cat "$dir/out.txt")
   [[ "$status" -eq 0 ]] || ok=0
 
-  grep -qF "verify: running script selftest scripts/alpha-selftest.sh..." <<<"$out" || ok=0
-  # beta selftest must NOT run!
-  if grep -qF "beta-selftest.sh" <<<"$out"; then
+  grep -qF "verify: running script selftest scripts/*-selftest.sh..." <<<"$out" || ok=0
+  grep -qF "running star selftest" <<<"$out" || ok=0
+  grep -qF "verify: running script selftest scripts/space name-selftest.sh..." <<<"$out" || ok=0
+  grep -qF "running space selftest" <<<"$out" || ok=0
+
+  # extra sentinel selftest must NOT run!
+  if grep -qF "extra-selftest.sh" <<<"$out"; then
+    ok=0
+  fi
+  if grep -qF "extra sentinel selftest" <<<"$out"; then
     ok=0
   fi
   grep -qF "verify: ok" <<<"$out" || ok=0
@@ -270,6 +280,46 @@ expect_wildcard_selftest_handling() {
     echo "PASS $label (exit $status)"
   else
     echo "FAIL $label: exit $status, unquoted or unintended selftest ran"
+    sed 's/^/    | /' "$dir/out.txt"
+    FAILED=1
+  fi
+}
+
+# expect_rename_code_to_docs: verifies that renaming source code into docs/ does not trigger docs-only skip
+expect_rename_code_to_docs() {
+  local label="$1"
+  local dir="$WORK/$label" base out status ok=1
+  make_workspace "$dir" ok
+  (
+    cd "$dir"
+    git init -q
+    git config user.email test@example.com
+    git config user.name test
+    git add -A && git commit -qm base
+    base=$(git rev-parse HEAD)
+
+    mkdir -p docs
+    git mv packages/good/src/a.ts docs/a.md
+    git add -A && git commit -qm "rename code to docs"
+
+    printf "{\"pull_request\":{\"base\":{\"sha\":\"%s\"}}}" "$base" > event.json
+    GITHUB_EVENT_NAME=pull_request GITHUB_EVENT_PATH="$dir/event.json" SKIP_INSTALL=1 TMPDIR="$dir/tmp" bash scripts/verify.sh > out.txt 2>&1
+    echo $? > status.txt
+  )
+  status=$(cat "$dir/status.txt")
+  out=$(cat "$dir/out.txt")
+  [[ "$status" -eq 0 ]] || ok=0
+  grep -qF "verify: ok" <<<"$out" || ok=0
+  if grep -qF "skipping build and tests" <<<"$out"; then
+    ok=0
+  fi
+  if ! grep -qF "@fake/good" <<<"$out"; then
+    ok=0
+  fi
+  if [[ "$ok" -eq 1 ]]; then
+    echo "PASS $label (exit $status)"
+  else
+    echo "FAIL $label: code-to-docs rename skipped build/tests or failed"
     sed 's/^/    | /' "$dir/out.txt"
     FAILED=1
   fi
@@ -408,6 +458,7 @@ expect_affected_packages missing-base-sha-fails-closed pull_request coordinator 
 expect_affected_packages verify-all-forces-full pull_request coordinator 0 1 1 1 0
 expect_release_docs_only release-docs-only-runs-full
 expect_wildcard_selftest_handling
+expect_rename_code_to_docs rename-code-to-docs-runs-tests
 
 if [[ -f "$ROOT/scripts/proof-selftest.sh" ]]; then
   echo "==> Running proof-selftest.sh..."
