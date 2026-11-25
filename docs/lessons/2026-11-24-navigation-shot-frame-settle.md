@@ -1,0 +1,5 @@
+# The navigation real-window hang came from an unbounded frame settle
+
+- **Trap:** `navigation-real-window.test.js` passed but ran 918 s against the 120 s per-file harness ceiling. Its `shot()` awaited `new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))` with no fallback; when the frame is disposed or throttled under Electron contention the promise never settles, so `capturePage()` is reached late or not at all and the runner cannot exit.
+- **Root Cause:** untrusted render-frame scheduling was treated as a guaranteed callback. The same bug was already fixed in the composer/skills runners with a timed settle; navigation was never updated. Measured per-shot times after the fix are 0.3–2.0 s; the 2 s value is the fallback firing on a disposed frame.
+- **Rule:** every real-window screenshot helper must settle frames with `requestAnimationFrame(() => requestAnimationFrame(done))` plus `setTimeout(done, 2000)`, and must bound `capturePage()` with a `Promise.race` that logs a timeout instead of hanging. Guard it with a source-level test (`nav-shot-guard.test.ts`) so a new screenshot helper cannot drop the bound.

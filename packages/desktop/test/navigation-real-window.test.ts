@@ -40,9 +40,16 @@ const wait = async (fn) => { for (let i = 0; i < 150; i++) { if (await js("Boole
 async function shot(label) {
   if (!shotDir) return;
   fs.mkdirSync(shotDir, { recursive: true });
-  await js("new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))");
+  // A throttled/disposed frame can leave rAF pending forever under suite contention.
+  // Bound the settle the same way the composer/skills runners do, then bound capturePage.
+  await js("new Promise((r) => { const done = () => r(true); requestAnimationFrame(() => requestAnimationFrame(done)); setTimeout(done, 2000); })");
   await sleep(250);
-  fs.writeFileSync(path.join(shotDir, label + ".png"), (await win.webContents.capturePage()).toPNG());
+  const page = await Promise.race([
+    win.webContents.capturePage(),
+    sleep(10000).then(() => null),
+  ]);
+  if (!page) { console.error("[runner] capturePage timed out for " + label); return; }
+  fs.writeFileSync(path.join(shotDir, label + ".png"), page.toPNG());
 }
 
 const SNAPSHOT = (label) => "(() => {\n" +
