@@ -1,4 +1,4 @@
-import type { CapabilityGrant } from "@opensand/shared";
+import type { ApprovalMode, CapabilityGrant } from "@opensand/shared";
 /**
  * OpenSand Local Execution Daemon Type Definitions
  * Derived from reverse-engineered Sand local-exec protocol contracts.
@@ -250,4 +250,66 @@ export interface PtyReadOutput {
 export interface PtyKillInput {
   session_id: string;
   signal?: string;
+}
+
+/**
+ * Isolated policy daemon JSON-RPC 2.0 contract. The transport is a local Unix
+ * domain socket (or stdio); every failure mode resolves to a fail-closed result.
+ */
+export const POLICY_RPC_METHOD = "policy.evaluate";
+export const POLICY_RPC_TIMEOUT_MS = 5000;
+
+export const POLICY_RPC_ERRORS = {
+  PARSE_ERROR: -32700,
+  INVALID_REQUEST: -32600,
+  METHOD_NOT_FOUND: -32601,
+  INVALID_PARAMS: -32602,
+  INTERNAL_ERROR: -32603,
+} as const;
+
+export interface PolicyEvaluateParams {
+  sessionId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  declaredEffect?: string;
+  approvalMode: ApprovalMode | string;
+  tainted: boolean;
+  sandboxed: boolean;
+  cwd: string;
+  workspaceRoot: string;
+  /** Hosts or endpoints the operator explicitly trusts past the egress deny rules. */
+  allowlistedHosts?: string[];
+}
+
+export interface PolicyEvaluateResult {
+  action: 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL';
+  allowed: boolean;
+  requiresApproval: boolean;
+  reason: string;
+  canonicalPaths?: string[];
+  effect: string;
+}
+
+export interface PolicyEvaluateRpcRequest {
+  jsonrpc: '2.0';
+  id: string | number | null;
+  method: typeof POLICY_RPC_METHOD;
+  params: PolicyEvaluateParams;
+}
+
+export interface PolicyEvaluateRpcResponse {
+  jsonrpc: '2.0';
+  id: string | number | null;
+  result?: PolicyEvaluateResult;
+  error?: { code: number; message: string; data?: unknown };
+}
+
+export interface PolicyDaemonServerOptions {
+  policy?: import("./policy-engine.js").PolicyEngine;
+}
+
+export interface PolicyClientOptions {
+  socketPath: string;
+  /** Fail-closed deadline; defaults to POLICY_RPC_TIMEOUT_MS (5000ms). */
+  timeoutMs?: number;
 }
