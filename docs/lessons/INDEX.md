@@ -141,3 +141,4 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-25 · [Showing the app version needs the current main, both Settings screens, and a real app directory](2026-11-25-show-version-in-both-settings-screens.md)
 - 2026-11-25 · [Prune whole worktrees before the disk guard, not just their caches](2026-11-25-worktree-prune-before-disk-guard.md)
 - 2026-11-25 · [A PR branch can lead its worktree, and a missing .bin symlink silently skips GUI tests](2026-11-25-stale-pr-head-and-missing-bin-symlink.md)
+- 2026-11-25 · [Gallery real-window flake was a stale-response race; two rebase/build hurdles](2026-11-25-gallery-stale-response-and-rebase-hurdles.md)
