@@ -138,7 +138,7 @@ test("Canvas #82 in the real Electron window: full edited file, aligned gutter, 
   const runner = path.join(tmpDir, "runner.mjs");
   fs.writeFileSync(runner, RUNNER, "utf8");
   const env = hermeticElectronEnv(home);
-  delete env.OPENSAND_RENDERER;
+  env.OPENSAND_RENDERER = "legacy";
   env.OPENSAND_MAIN = path.join(pkgRoot, "dist", "src", "main.js");
 
   let stdout = "";

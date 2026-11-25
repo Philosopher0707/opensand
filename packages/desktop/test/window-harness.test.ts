@@ -221,8 +221,7 @@ async function runHarness(renderer: Renderer, opts: HarnessOptions = {}): Promis
 
   try {
     const env = hermeticElectronEnv(tmpHome);
-    delete env.OPENSAND_RENDERER;
-    if (renderer === "preact") env.OPENSAND_RENDERER = "preact";
+    env.OPENSAND_RENDERER = renderer === "preact" ? "preact" : "legacy";
     delete env.OPENSAND_HARNESS_FORCE_OVERFLOW;
     if (opts.forceOverflow) {
       env.OPENSAND_HARNESS_FORCE_OVERFLOW = "1";

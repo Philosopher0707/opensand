@@ -7,9 +7,9 @@ renderer `packages/desktop/renderer/app.js`, then delete it.
   Line ranges below are from that commit. Re-check them with `grep -n` before
   moving code, because they shift when `app.js` changes.
 - **Shell:** the Preact renderer in `packages/desktop/renderer-next/src/`, served
-  only with `OPENSAND_RENDERER=preact` (`src/desktop-server.ts`
-  `resolveRendererDir`). Its entry is `Shell.tsx`; it renders the sidebar and
-  main panel only, and says "Views are not ported yet" for everything else.
+  by default (`src/desktop-server.ts` `resolveRendererDir`);
+  `OPENSAND_RENDERER=legacy` serves `renderer/app.js` instead. Its entry is
+  `Shell.tsx`; views without a ported component show a stub.
 - **Migration order:** the numbered rows are the order the Phase 5 PRs follow.
   Row 1 (quick tools) goes first, as the brief asks. Rows 2 to 29 follow the
   order of the `app.js` sections, with the chat turn path (rows 2 to 7) before
@@ -76,8 +76,8 @@ These are Phase 5 views that do not come from `app.js` and need no move:
 ## Deletion gate
 
 `app.js` is deleted only when every row above is `done` and the desktop test
-suite passes. Until then, `OPENSAND_RENDERER` unset (the default) keeps serving
-`app.js`, so no user loses a view while the shell catches up.
+suite passes. Until then, `OPENSAND_RENDERER=legacy` keeps serving `app.js` for
+users who need a view that the shell has not caught up with yet.
 
 ## Test requirement
 
