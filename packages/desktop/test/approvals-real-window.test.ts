@@ -5,11 +5,12 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { withElectronLock } from "./electron-lock.js";
 import { hermeticElectronEnv, makeTempHome } from "./hermetic-env.js";
 
 const pkgRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const NAV_HELPER_URL = pathToFileURL(path.join(pkgRoot, "dist/test/helpers/navigate-view.js")).href;
 
 function skipReason(): string | undefined {
   if (process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
@@ -24,6 +25,7 @@ const RUNNER_SCRIPT = String.raw`
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import { navigateToView } from "${NAV_HELPER_URL}";
 
 const shotDir = process.env.OPENSAND_APPROVALS_SHOT_DIR || "";
 const TIMEOUT_MS = Number(process.env.OPENSAND_APPROVALS_TIMEOUT_MS || 90000);
@@ -34,6 +36,28 @@ let win;
 const js = (code) => win.webContents.executeJavaScript(code).catch((e) => { console.error("[js failed] " + String(code).slice(0, 120)); throw e; });
 const wait = async (fn) => { for (let i = 0; i < 150; i++) { if (await js("Boolean(" + fn + ")")) return; await sleep(100); } throw new Error("wait timed out: " + fn); };
 const waitLong = async (fn) => { for (let i = 0; i < 110; i++) { await sleep(300); if (await js("Boolean(" + fn + ")")) return; } throw new Error("wait timed out: " + fn); };
+// A fixed sleep after setContentSize races the renderer's layout on macOS CI; wait for width and two frames.
+const setSize = async (w, h) => { win.setContentSize(w, h); await wait("window.innerWidth === " + w); await js("new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))"); };
+// Width alone settled but the card could still measure 0x0; wait on the visible rect itself (bounded by wait()).
+const CARD_VISIBLE = "(() => { const c = document.querySelector('.approval-card'); const r = c && c.getBoundingClientRect(); return Boolean(c && (r.width > 0 || c.offsetWidth > 0) && (r.height > 0 || c.offsetHeight > 0)); })()";
+const CARD_METRICS = "(() => { const c = document.querySelector('.approval-card'); const r = c && c.getBoundingClientRect(); return { present: Boolean(c), visible: Boolean(r && r.width > 0 && r.height > 0), noOverflow: document.documentElement.scrollWidth <= window.innerWidth, scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth }; })()";
+const DETAIL_VISIBLE = "(() => { const c = document.querySelector('.approval-detail-card'); const r = c && c.getBoundingClientRect(); return Boolean(c && (r.width > 0 || c.offsetWidth > 0) && (r.height > 0 || c.offsetHeight > 0)); })()";
+const DETAIL_METRICS = "(() => {\n" +
+  "const detail = document.querySelector('.approval-detail-view');\n" +
+  "const card = document.querySelector('.approval-detail-card');\n" +
+  "const btnApprove = document.querySelector('#btnApproveOnce');\n" +
+  "const btnAlways = document.querySelector('#btnAlwaysAllow');\n" +
+  "const btnReject = document.querySelector('#btnRejectTool');\n" +
+  "const cr = card ? card.getBoundingClientRect() : null;\n" +
+  "return {\n" +
+    "detailPresent: Boolean(detail),\n" +
+    "cardVisible: cr ? (cr.width > 0 && cr.height > 0) : false,\n" +
+    "hasAllButtons: Boolean(btnApprove && btnAlways && btnReject),\n" +
+    "noOverflow: document.documentElement.scrollWidth <= window.innerWidth,\n" +
+    "scrollWidth: document.documentElement.scrollWidth,\n" +
+    "innerWidth: window.innerWidth,\n" +
+  "};\n" +
+"})()";
 
 async function shot(label) {
   if (!shotDir) return;
@@ -76,6 +100,10 @@ app.on("browser-window-created", (_e, w) => {
       const initialBadge = await js("document.querySelector('.inbox-badge-count')?.textContent?.trim()");
       result.initialEmpty = (initialBadge === "0");
 
+      // A fresh CI HOME has no key or Ollama, so main.ts opens /welcome and hides the chat panel.
+      // Navigate explicitly: the inline card lives in the chat view, not the welcome view.
+      await navigateToView({ js, sleep }, "#chat", "#viewChat");
+
       // A. Inline card in chat: payload, two viewports, edit + approve, both surfaces clear.
       await js("(() => { delete window.__testApproveTool; return true; })()");
       const inlinePromise = bridge.requestApproval(
@@ -92,13 +120,15 @@ app.on("browser-window-created", (_e, w) => {
         buttons: await js("Boolean(document.querySelector('#btnApproveInChat') && document.querySelector('#btnEditApproveInChat') && document.querySelector('#btnDenyInChat'))"),
         aria: await js("document.querySelector('.approval-card')?.getAttribute('aria-label')"),
       };
-      for (const [width, height, tag] of [[960, 740, "compact"], [1920, 1080, "wide"]]) {
-        win.setContentSize(width, height);
-        await sleep(400);
-        result.cardSizes[tag] = await js("(() => { const c = document.querySelector('.approval-card'); const r = c && c.getBoundingClientRect(); return { visible: Boolean(r && r.width > 0 && r.height > 0), noOverflow: document.documentElement.scrollWidth <= window.innerWidth, scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth }; })()");
-      }
+      // The window opens at 960x740 (src/main.ts): measure compact before any resize. On macOS CI a
+      // setContentSize to the same size left the hidden window's card with a zero rect for >15 s.
+      await wait(CARD_VISIBLE);
+      result.cardSizes.compact = await js(CARD_METRICS);
+      await setSize(1920, 1080);
+      await wait(CARD_VISIBLE);
+      result.cardSizes.wide = await js(CARD_METRICS);
       await shot("inline-approval-card");
-      win.setContentSize(960, 740);
+      await setSize(960, 740);
       await js("document.querySelector('#btnEditApproveInChat').click()");
       await waitLong("document.querySelector('#approvalCardArgs')?.tagName === 'TEXTAREA'");
       await js("(() => { const t = document.querySelector('#approvalCardArgs'); t.value = JSON.stringify({ command: 'echo edited' }); t.dispatchEvent(new Event('input', { bubbles: true })); })()");
@@ -244,32 +274,15 @@ app.on("browser-window-created", (_e, w) => {
         hasBtnReject,
       };
 
-      // 4. Test Viewport Layout & Responsiveness at 960x740 and 1920x1080 with zero horizontal overflow
-      const SIZES = [[960, 740, "compact"], [1920, 1080, "wide"]];
-      for (const [width, height, tag] of SIZES) {
-        win.setContentSize(width, height);
-        await sleep(400);
-
-        const metrics = await js("(() => {\n" +
-          "const detail = document.querySelector('.approval-detail-view');\n" +
-          "const card = document.querySelector('.approval-detail-card');\n" +
-          "const btnApprove = document.querySelector('#btnApproveOnce');\n" +
-          "const btnAlways = document.querySelector('#btnAlwaysAllow');\n" +
-          "const btnReject = document.querySelector('#btnRejectTool');\n" +
-          "const cr = card ? card.getBoundingClientRect() : null;\n" +
-          "return {\n" +
-            "detailPresent: Boolean(detail),\n" +
-            "cardVisible: cr ? (cr.width > 0 && cr.height > 0) : false,\n" +
-            "hasAllButtons: Boolean(btnApprove && btnAlways && btnReject),\n" +
-            "noOverflow: document.documentElement.scrollWidth <= window.innerWidth,\n" +
-            "scrollWidth: document.documentElement.scrollWidth,\n" +
-            "innerWidth: window.innerWidth,\n" +
-          "};\n" +
-        "})()");
-
-        await shot("approvals-" + tag + "-" + width + "x" + height);
-        result.sizes[tag] = metrics;
-      }
+      // 4. Viewport layout at both sizes. The window is back at 960x740: measure compact before
+      // resizing, then resize once to wide. Both waits are bounded by wait().
+      await wait(DETAIL_VISIBLE);
+      result.sizes.compact = await js(DETAIL_METRICS);
+      await shot("approvals-compact-960x740");
+      await setSize(1920, 1080);
+      await wait(DETAIL_VISIBLE);
+      result.sizes.wide = await js(DETAIL_METRICS);
+      await shot("approvals-wide-1920x1080");
 
       // 5. Execute Decision: Approve Once via #btnApproveOnce
       await js("document.querySelector('#btnApproveOnce').click()");
