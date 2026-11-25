@@ -152,13 +152,14 @@ test("loadEngineStatus survives a rejected detection and keeps OpenSand selectab
 
 test("toEngineStatus is an allowlist", () => {
   const out = toEngineStatus([{ engine: "claude", installed: true, authenticated: true, binaryPath: "/x", version: "1" } as any]);
-  assert.deepEqual(out, [{ engine: "claude", installed: true, signedIn: true }]);
+  assert.deepEqual(out, [{ engine: "claude", installed: true, signedIn: true, models: [], modelsSource: "error" }]);
 });
 
 test("SettingsView is wired through the tested helpers, not the raw payload or raw detection", async () => {
   const { readFileSync } = await import("node:fs");
   const src = readFileSync(new URL("../../renderer-next/src/views/SettingsView.tsx", import.meta.url), "utf8");
-  assert.match(src, /saveSettings\(savePayload\(form, engine\)\)/);
+  assert.match(src, /saveSettings\(savePayload\(form, engine, engineModels\)\)/);
+  assert.match(src, /<select[\s\S]*?id=\{id\("Model"\)\}/);
   assert.match(src, /loadEngineStatus\(/);
   assert.doesNotMatch(src, /await data\.detectEngines\(\)/);
 });

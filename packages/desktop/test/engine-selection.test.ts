@@ -132,10 +132,13 @@ test('desktop server streams a Claude Code turn, resumes it, and leaves the defa
   }
 });
 
-test('passive engine detection route reports the fake claude binary', async () => {
+test('engine detection route exposes only the sanitized model catalog projection', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-engine-detect-'));
   const server = new DesktopServer({ baseDir: tmp, requireAuth: false });
-  process.env.PATH = `${fakeBinDir}${path.delimiter}${originalPath}`;
+  server.getBridge().detectEngines = async () => [{
+    engine: 'claude', label: 'Claude Code', installed: true, binaryPath: '/private/fake/claude', version: '2.1.311', versionStatus: 'tested', authenticated: false,
+    models: [{ id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' }], modelsSource: 'fallback', modelsMessage: 'Model list unavailable; showing a saved fallback list.',
+  }];
   try {
     const req = new MockRequest('GET', '/api/engines/detect');
     const res = new MockResponse();
@@ -146,11 +149,16 @@ test('passive engine detection route reports the fake claude binary', async () =
     const engines = JSON.parse(res.body);
     const claude = engines.find((e: any) => e.engine === 'claude');
     assert.equal(claude.installed, true);
-    // Exact keys: no binaryPath, version or auth message may leave the process.
-    for (const e of engines) assert.deepEqual(Object.keys(e).sort(), ['engine', 'installed', 'signedIn']);
-    assert.doesNotMatch(res.body, /binaryPath|version|authMessage|\/fake/i);
+    assert.deepEqual(claude.models, [{ id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' }]);
+    assert.equal(claude.modelsSource, 'fallback');
+    // Only safe model catalog fields join the existing allowlist; no CLI paths or raw errors leave the process.
+    for (const e of engines) {
+      assert.deepEqual(Object.keys(e).filter((key: string) => key !== 'modelsMessage').sort(), ['engine', 'installed', 'models', 'modelsSource', 'signedIn']);
+      if (e.modelsMessage !== undefined) assert.equal(typeof e.modelsMessage, 'string');
+    }
+    assert.ok(engines.every((e: any) => Array.isArray(e.models) && ['live', 'fallback', 'error'].includes(e.modelsSource)));
+    assert.doesNotMatch(res.body, /binaryPath|authMessage|\/fake|Error:/i);
   } finally {
-    process.env.PATH = originalPath;
     await closeThenRemove([server, server.getBridge()], tmp);
   }
 });
