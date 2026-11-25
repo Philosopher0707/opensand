@@ -156,6 +156,10 @@ test("events for another session are dropped, and each bridge type maps to its a
     type: "failed",
     message: "bad",
   });
+  assert.deepStrictEqual(
+    chatEventAction({ type: "error", data: { message: "Cannot read properties of undefined (reading 'role')" } }, null),
+    { type: "failed", message: "The agent could not finish that turn. Try again, or use Retry." },
+  );
 });
 
 test("load action hydrates session messages and resets status to idle", () => {

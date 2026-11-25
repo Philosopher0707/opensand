@@ -57,6 +57,10 @@ import {
   insertTriggerSelection,
   previewErrorMessage,
   runLocalSlashCommand,
+  composerApprovalMode,
+  nextComposerApprovalMode,
+  formatContextCount,
+  type ComposerApprovalMode,
   type PromptChip,
   type SlashCommand,
   type StagedAttachment,
@@ -64,6 +68,11 @@ import {
 } from "../../../src/shell/composer-model";
 
 const TRANSCRIPT_LOAD_ERROR = "Could not load this conversation's history. Select the session again to retry.";
+const MODE_LABELS: Record<ComposerApprovalMode, string> = {
+  ask: "Safe Mode",
+  auto_edit: "Auto-Edit",
+  auto: "Auto-Approve",
+};
 
 export interface ChatTurnController {
   state: ChatTurnState;
@@ -630,11 +639,12 @@ export function ChatMessageRow({
 export interface ChatProps {
   chat: ChatTurnController;
   selectedSessionId?: string | null;
+  activeAgentId?: string | null;
   data?: ShellData;
   onOpenArtifact?: (artifact: Partial<ArtifactItem> & { title: string; content: string }) => void;
 }
 
-export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProps) {
+export function Chat({ chat, selectedSessionId, activeAgentId, data, onOpenArtifact }: ChatProps) {
   const { state } = chat;
   const busy = isChatBusy(state.status);
   const view = screenState(state);
@@ -648,6 +658,9 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [elapsed, setElapsed] = useState(0);
+  const [modelName, setModelName] = useState("");
+  const [approvalMode, setApprovalMode] = useState<ComposerApprovalMode>("ask");
+  const [context, setContext] = useState({ used: 0, max: 128_000 });
   const timerRunning = isChatBusy(state.status);
 
   // One interval per turn: cleanup runs on done, error, stop and unmount, so none is leaked.
@@ -666,6 +679,51 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [timerRunning]);
+
+  // Composer controls reflect live settings (legacy reads the same values).
+  useEffect(() => {
+    if (!data?.getSettings) return;
+    let cancelled = false;
+    data.getSettings().then((settings) => {
+      if (cancelled) return;
+      setModelName(String(settings?.model || ""));
+      setApprovalMode(composerApprovalMode(settings));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [data]);
+
+  useEffect(() => {
+    if (!data?.getTokenTelemetry) return;
+    let cancelled = false;
+    data.getTokenTelemetry(activeAgentId ?? undefined, selectedSessionId ?? undefined).then((telemetry) => {
+      if (cancelled || !telemetry) return;
+      setContext({
+        used: Number(telemetry.estimatedTokens) || 0,
+        max: Number(telemetry.maxContextTokens) || 128_000,
+      });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [data, activeAgentId, selectedSessionId, state.status]);
+
+  const toggleApprovalMode = async () => {
+    const next = nextComposerApprovalMode(approvalMode);
+    if (!data?.saveSettings) {
+      setNotice("Approval mode is unavailable in this window.");
+      return;
+    }
+    setApprovalMode(next);
+    try {
+      await data.saveSettings({ approvalMode: next, autoApprove: next === "auto" });
+    } catch {
+      setApprovalMode(approvalMode);
+      setNotice("Could not change approval mode. Try again.");
+    }
+  };
+
+  const contextPct = context.max > 0 ? (context.used / context.max) * 100 : 0;
+  const contextPctText = contextPct <= 0 ? "0%" : contextPct < 0.01
+    ? "<0.01%" : contextPct < 1 ? `${contextPct.toFixed(2)}%`
+    : contextPct < 10 ? `${contextPct.toFixed(1)}%` : `${Math.min(100, Math.round(contextPct))}%`;
 
   // Autocomplete / Slash trigger state
   const [triggerMatch, setTriggerMatch] = useState<TriggerMatch | null>(null);
@@ -1188,8 +1246,8 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
                     return;
                   }
                 }
-                // Enter sends; Shift+Enter keeps the newline.
-                if (e.key === "Enter" && !e.shiftKey) {
+                // Enter or Cmd/Ctrl+Enter sends; Shift+Enter alone keeps the newline.
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
                   e.preventDefault();
                   submit();
                 }
@@ -1235,7 +1293,33 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
                   (e.target as HTMLInputElement).value = "";
                 }}
               />
-              <span class="badge badge-model">Local agent</span>
+              <span
+                id="composerModelBadge"
+                class="badge badge-model"
+                title={modelName ? `Active Model: ${modelName}` : "Active Model: default"}
+              >
+                {modelName ? (modelName.includes("/") ? modelName.split("/").pop() : modelName) : "Local agent"}
+              </span>
+              <span
+                id="composerTokenBadge"
+                class={`badge badge-tokens${contextPct > 80 ? " danger" : contextPct > 50 ? " warn" : ""}`}
+                title={`Context Window: ${context.used.toLocaleString()} / ${context.max.toLocaleString()} tokens (${contextPctText})`}
+                data-used={context.used}
+                data-max={context.max}
+              >
+                {formatContextCount(context.used)} / {formatContextCount(context.max)} ({contextPctText})
+              </span>
+              <button
+                id="btnToggleSafeMode"
+                class="btn-attach"
+                type="button"
+                title="Toggle Auto-Approval Mode"
+                aria-label="Toggle Auto-Approval Mode"
+                onClick={toggleApprovalMode}
+              >
+                <span aria-hidden="true">🛡️</span>
+                <span id="composerAutoApproveText">{MODE_LABELS[approvalMode]}</span>
+              </button>
             </div>
             <div class="input-actions-right">
               <button

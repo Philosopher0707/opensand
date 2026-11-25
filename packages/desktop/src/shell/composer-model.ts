@@ -191,6 +191,41 @@ export function friendlyErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
+export type ComposerApprovalMode = "ask" | "auto_edit" | "auto";
+
+/** The composer's mode matches the settings the legacy renderer reads. */
+export function composerApprovalMode(settings?: { approvalMode?: unknown; autoApprove?: boolean } | null): ComposerApprovalMode {
+  const mode = settings?.approvalMode;
+  if (mode === "ask" || mode === "auto_edit" || mode === "auto") return mode;
+  return settings?.autoApprove === true ? "auto" : "ask";
+}
+
+/** Safe Mode -> Auto-Edit -> Auto-Approve -> Safe Mode, as before. */
+export function nextComposerApprovalMode(mode: ComposerApprovalMode): ComposerApprovalMode {
+  return mode === "ask" ? "auto_edit" : mode === "auto_edit" ? "auto" : "ask";
+}
+
+/** Compact token count for the composer's context badge. */
+export function formatContextCount(value: unknown): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "0";
+  if (value >= 1_000_000) {
+    const m = value / 1_000_000;
+    return `${m >= 10 ? m.toFixed(1) : m.toFixed(2).replace(/\.?0+$/, "")}M`;
+  }
+  if (value >= 10_000) return `${(value / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  return value.toLocaleString();
+}
+
+/** A provider's raw JavaScript error is a failure to report, never chat text. */
+export function friendlyChatError(message: string): string {
+  const text = String(message || "").trim();
+  const fallback = "The agent could not finish that turn. Try again, or use Retry.";
+  if (!text || /cannot read propert|is not (?:a function|defined)|typeerror|referenceerror|rangeerror|undefined \(reading|\bat \S+:\d+:\d+/.test(text)) {
+    return fallback;
+  }
+  return text;
+}
+
 /** A failed preview is a notice, not a failed attachment: the file is still staged. */
 export function previewErrorMessage(name: string): string {
   return `Could not make a preview for ${name}. The file is still attached.`;

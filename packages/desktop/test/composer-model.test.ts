@@ -4,6 +4,10 @@ import {
   formatBytes,
   formatDoctorReport,
   friendlyErrorMessage,
+  friendlyChatError,
+  composerApprovalMode,
+  nextComposerApprovalMode,
+  formatContextCount,
   getFileCategory,
   composePromptWithAttachments,
   applyPromptChip,
@@ -253,6 +257,33 @@ test("ComposerModel - doctor shows report text, never fetches the LLM", async ()
   assert.strictEqual(fetches, 1);
   assert.match(notices[0], /OpenSand diagnostics/);
   assert.match(notices[0], /app: 0\.1\.14/);
+});
+
+test("ComposerModel - composer mode follows settings and cycles like the legacy button", () => {
+  assert.strictEqual(composerApprovalMode(), "ask");
+  assert.strictEqual(composerApprovalMode({ autoApprove: true }), "auto");
+  assert.strictEqual(composerApprovalMode({ approvalMode: "auto_edit" }), "auto_edit");
+  assert.strictEqual(composerApprovalMode({ approvalMode: "ask", autoApprove: true }), "ask");
+  assert.strictEqual(nextComposerApprovalMode("ask"), "auto_edit");
+  assert.strictEqual(nextComposerApprovalMode("auto_edit"), "auto");
+  assert.strictEqual(nextComposerApprovalMode("auto"), "ask");
+});
+
+test("ComposerModel - context badge counts stay compact and finite", () => {
+  assert.strictEqual(formatContextCount(undefined), "0");
+  assert.strictEqual(formatContextCount(Number.NaN), "0");
+  assert.strictEqual(formatContextCount(999), "999");
+  assert.strictEqual(formatContextCount(12_345), "12.3k");
+  assert.strictEqual(formatContextCount(128_000), "128k");
+  assert.strictEqual(formatContextCount(1_500_000), "1.5M");
+});
+
+test("ComposerModel - a raw JavaScript error never becomes chat text", () => {
+  const fallback = "The agent could not finish that turn. Try again, or use Retry.";
+  assert.strictEqual(friendlyChatError("Cannot read properties of undefined (reading 'role')"), fallback);
+  assert.strictEqual(friendlyChatError("TypeError: x is not a function\n  at handler (app.js:12:3)"), fallback);
+  assert.strictEqual(friendlyChatError(""), fallback);
+  assert.strictEqual(friendlyChatError("model not found"), "model not found");
 });
 
 test("ComposerModel - doctor and compact failures stay user-facing", async () => {
