@@ -160,6 +160,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-25 · [Inline approval card: CI opened /welcome, so the chat panel was hidden](2026-11-25-nova-approval-card-resize-settle.md)
 - 2026-11-25 · [Legacy line numbers live in the worktree, not the owner checkout (2026-11-25)](2026-11-25-nova-dictation-worktree-line-numbers.md)
 - 2026-11-25 · [Nova: rebase conflicts — regenerate the generated index, keep both import sides](2026-11-25-nova-rebase-keeps-both-sides.md)
+- 2026-11-25 · [OCR must refuse oversized and unsupported images before spawning sand-vision](2026-11-25-ocr-must-refuse-oversized-and-unsupported-before-spawn.md)
 - 2026-11-25 · [PR #248: auth fallback needs the engine's real error, and render tests must drive the form](2026-11-25-pr248-auth-recovery-and-render-contracts.md)
 - 2026-11-25 · [Packaged app engine smoke testing requires canonical workspace trust and onboarding bypass](2026-11-25-packaged-engine-smoke-and-folder-trust.md)
 - 2026-11-25 · [Prune whole worktrees before the disk guard, not just their caches](2026-11-25-worktree-prune-before-disk-guard.md)

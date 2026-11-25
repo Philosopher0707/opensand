@@ -3,13 +3,67 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { VisionResult } from "./types.js";
 
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+
+function isSupportedImage(buf: Buffer, n: number): boolean {
+  if (n < 4) return false;
+  // PNG
+  if (n >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 && buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a) return true;
+  // JPEG
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return true;
+  // GIF
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return true;
+  // TIFF little-endian
+  if (buf[0] === 0x49 && buf[1] === 0x49 && buf[2] === 0x2a && buf[3] === 0x00) return true;
+  // TIFF big-endian
+  if (buf[0] === 0x4d && buf[1] === 0x4d && buf[2] === 0x00 && buf[3] === 0x2a) return true;
+  // BMP
+  if (buf[0] === 0x42 && buf[1] === 0x4d) return true;
+  // WebP: RIFF....WEBP
+  if (n >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return true;
+  // HEIC/HEIF: ftyp box
+  if (n >= 12 && buf[4] === 0x66 && buf[5] === 0x74 && buf[6] === 0x79 && buf[7] === 0x70) {
+    const brand = buf.toString("ascii", 8, 12);
+    if (/heic|heif|mif1|msf1|avif/i.test(brand)) return true;
+  }
+  return false;
+}
+
 export async function recognizeScreenText(
   imagePath: string,
   binDir?: string
 ): Promise<VisionResult> {
   const resolvedImage = path.resolve(imagePath);
+  let stat: Awaited<ReturnType<typeof fs.stat>>;
   try {
-    await fs.stat(resolvedImage);
+    stat = await fs.stat(resolvedImage);
+  } catch {
+    return {
+      status: "error",
+      message: `Image file does not exist: ${resolvedImage}`,
+    };
+  }
+
+  // Refuse oversized images before spawning the helper.
+  if (stat.size > MAX_IMAGE_BYTES) {
+    return {
+      status: "error",
+      message: "Image exceeds the 20 MB size limit.",
+    };
+  }
+
+  // Refuse unsupported image types before spawning the helper.
+  try {
+    const handle = await fs.open(resolvedImage, "r");
+    const buf = Buffer.alloc(12);
+    const { bytesRead } = await handle.read(buf, 0, 12, 0);
+    await handle.close();
+    if (!isSupportedImage(buf, bytesRead)) {
+      return {
+        status: "error",
+        message: "Unsupported image format.",
+      };
+    }
   } catch {
     return {
       status: "error",
@@ -85,6 +139,19 @@ export async function recognizeScreenText(
       clearTimeout(timer);
 
       if (code !== 0) {
+        // Keep the helper's structured stdout rejection (e.g. unsupported format).
+        try {
+          const parsed = JSON.parse(stdoutBuffer.trim());
+          if (parsed && typeof parsed === "object" && typeof parsed.message === "string") {
+            resolve({
+              status: parsed.status === "ok" ? "ok" : "error",
+              message: parsed.message,
+            });
+            return;
+          }
+        } catch {
+          // fall through to stderr
+        }
         resolve({
           status: "error",
           message: stderrBuffer || `sand-vision exited with code ${code}`,
