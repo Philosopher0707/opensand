@@ -60,8 +60,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `proof-selftest.sh` | Hermetic selftest suite for proof-red-green, mutate, and proof-report scripts | Pre-commit / verification | Self |
 | `pr-gate.sh` | 5-step pre-merge verification and checkpoint gate; re-running it on an already-merged PR only re-checks main CI (never rebase/tag/push); `--when-green` rebases a PR that fell behind main (max 3 attempts), self-healing an INDEX.md-only conflict and regenerating the index after every rebase, before waiting for CI; after merge it waits for main CI and exits 4 on red; queued CI runs extend the no-checks grace window (per-run Jobs API as source of truth); a watch exit with no failed check is retried as pending to the deadline | Pre-merge review workflow | `pr-gate-selftest.sh` |
 | `pr-gate-selftest.sh` | Hermetic selftest for PR gate script, including the already-merged idempotency cases (no rebase/tag/push, exit 0 green, 4 red), the INDEX.md-only conflict auto-resolve, clean-rebase index regeneration, fail-closed stale index, post-merge main CI green/red/no-run/opt-out cases and the queued-CI-run cases (queued → green/red/timeout naming queued jobs, run-list lag → Jobs API decides), and pending-watch exits followed by success, a named failure, or a bounded pending timeout | Pre-commit / verification | Self |
-| `pre-commit.sh` | Git pre-commit hook enforcing staged-secret scan, blanket-add guard and test suite | Git pre-commit hook | `pre-commit-selftest.sh` |
-| `pre-commit-selftest.sh` | Hermetic selftest for the staged secret scan in `pre-commit.sh` (clean commit allowed, each blocked pattern refused, hook run from outside the repo) | Pre-commit / verification | Self |
+| `pre-commit.sh` | Git pre-commit hook enforcing staged-secret scan, blanket-add guard, staged/untracked PNG artifact refusal and test suite | Git pre-commit hook | `pre-commit-selftest.sh` |
+| `pre-commit-selftest.sh` | Hermetic selftest for `pre-commit.sh`: clean commit allowed, secrets and staged/untracked PNGs refused, explicit binary override warned, hook run from outside the repo | Pre-commit / verification | Self |
 | `pre-push.sh` | Git pre-push hook that scans only the commits introduced by each pushed ref with pinned gitleaks 8.30.1; findings name file and line with values redacted | Git pre-push hook / manual | `pre-push-selftest.sh` |
 | `pre-push-selftest.sh` | Hermetic real-gitleaks selftest: clean and planted commits, new and existing refs, deletion, version refusal, no value disclosure, and main versus PR/all-refs scan scope | Pre-push / verification | Self |
 | `provenance-gate.sh` | Build artifact provenance and digest verification gate | Release workflows / CI | None |
@@ -327,14 +327,15 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Pre-commit hook, test verification.
 
 ### `pre-commit.sh`
-- **Purpose**: Git pre-commit guard that scans staged added lines for secrets (via `scripts/lib/worktree-safety.sh`, naming file and line but never the value), blocks blanket additions, unsets git environment variables, executes builds/tests, and verifies git config tripwires.
-- **Usage**: Executed by `.githooks/pre-commit` or manually via `scripts/pre-commit.sh`.
+- **Purpose**: Git pre-commit guard that scans staged added lines for secrets (via `scripts/lib/worktree-safety.sh`, naming file and line but never the value), blocks blanket additions, refuses staged or untracked PNG artifacts, unsets git environment variables, executes builds/tests, and verifies git config tripwires.
+- **PNG policy**: Matches `pr-gate.sh` Check 3: every staged `.png` (case-insensitive) is a forbidden binary, with no exceptions for `docs/` or `build/`. Every untracked, non-ignored `.png` in the worktree is also refused so screenshots cannot be left behind or staged later. Move throwaway screenshots to gitignored `.opensand-snapshots/`. For an intentional asset, set `ALLOW_BINARY_ARTIFACTS=1`; the hook prints a warning and the PR must still pass `scripts/pr-gate.sh --allow-binary`.
+- **Usage**: Executed by `.githooks/pre-commit` or manually via `scripts/pre-commit.sh`; intentional binary change: `ALLOW_BINARY_ARTIFACTS=1 git commit ...`.
 - **Exit Codes**: `0` on success, `1` on violation or failure.
 - **Selftest**: `scripts/pre-commit-selftest.sh`.
 - **Trigger**: Git pre-commit hook.
 
 ### `pre-commit-selftest.sh`
-- **Purpose**: Hermetic selftest of the staged secret scan: a clean staged change is allowed, and each blocked pattern (`sk-`, `sk-or-`, `ghp_`, `AKIA` + 16, PEM private key block) refuses the commit with the file and line named and the value withheld. Fake keys are built at runtime by concatenation, so no literal key is committed.
+- **Purpose**: Hermetic selftest of the complete pre-commit guard: a clean staged change is allowed; each blocked secret pattern (`sk-`, `sk-or-`, `ghp_`, `AKIA` + 16, PEM private key block) refuses with the file and line named and the value withheld; staged PNGs in artifact/docs paths and uppercase extensions are refused; untracked PNGs in `packages/*/artifacts/` and the worktree root are refused; `ALLOW_BINARY_ARTIFACTS=1` allows an intentional staged or untracked PNG with a warning; and the hook still works from outside the repo. Fake keys are built at runtime by concatenation, so no literal key is committed.
 - **Usage**: `scripts/pre-commit-selftest.sh`
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.

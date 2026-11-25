@@ -1,0 +1,5 @@
+# Pre-commit must reject PNG artifacts before the expensive suite
+
+- **Trap:** A staged `packages/desktop/artifacts/shot.png` passed the old pre-commit hook with exit 0, even though `pr-gate.sh` Check 3 rejects the same PNG in a PR diff. Untracked screenshots could also survive a commit and be staged by a later blanket add.
+- **Root Cause:** The hook guarded blanket adds and staged secrets but never inspected staged or untracked PNG paths; the only binary-artifact decision lived in the later PR gate.
+- **Rule:** Mirror the PR gate in `scripts/pre-commit.sh`: refuse every staged PNG and every untracked, non-ignored PNG before build/tests, case-insensitively, with no `docs/` or `build/` path exception. Intentional assets require `ALLOW_BINARY_ARTIFACTS=1` locally and `pr-gate.sh --allow-binary` in CI; throwaway screenshots belong in gitignored `.opensand-snapshots/`. `scripts/pre-commit-selftest.sh` covers staged artifact/docs/uppercase PNGs, untracked artifact/root PNGs, the warned override, and a clean commit. Red→green proof: the new selftest failed on `origin/main` because the bad PNG passed, then passed on this change because the hook refused it.
