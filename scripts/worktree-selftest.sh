@@ -2,7 +2,7 @@ set -euo pipefail
 
 # Hermetic selftest for scripts/worktree.sh
 # Tests:
-#   1. 'new' bases on origin/main even when local main is stale
+#   1. 'new' bases on origin/main even when local main is stale and registers the lessons-index driver
 #   1b. Free-space guard measures the writable data volume (df stub), not /
 #   2. 'new' refuses if path or branch already exists
 #   3. 'review' creates a detached HEAD worktree
@@ -91,7 +91,9 @@ git clone "$MOCK_ORIGIN" "$MOCK_SEED" >/dev/null 2>&1
   git config user.email "selftest@example.com"
   printf "node_modules/\ndist/\n" > .gitignore
   echo "commit 1" > file.txt
-  git add .gitignore file.txt
+  mkdir -p scripts
+  /bin/cp "$ROOT/scripts/lessons-index.sh" scripts/lessons-index.sh
+  git add .gitignore file.txt scripts/lessons-index.sh
   git commit -m "commit 1 on main" >/dev/null
   git branch -M main
   git push origin main >/dev/null 2>&1
@@ -142,6 +144,13 @@ if [ "$WT_BASE_SHA" != "$ORIGIN_MAIN_SHA" ]; then
   FAILED=1
 fi
 echo "PASS test-1: new worktree properly based on latest origin/main"
+DRIVER=$(git -C "$NEW_WT" config --get merge.lessons-index.driver 2>/dev/null || true)
+if [ "$DRIVER" != 'scripts/lessons-index.sh --merge %B > %A' ]; then
+  echo "FAIL test-1: lessons-index merge driver was not registered (got: ${DRIVER:-<unset>})"
+  FAILED=1
+else
+  echo "PASS test-1: lessons-index merge driver registered"
+fi
 
 # --- Test 1b: free-space guard measures the writable data volume, not / ---
 echo "==> Testing free-space guard volume selection (df stub)..."

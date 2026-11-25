@@ -194,6 +194,10 @@ case "$cmd" in
     # 6. Create worktree
     mkdir -p "$SCRATCH_DIR"
     "${GIT_EXEC[@]}" worktree add -b "$TARGET_BRANCH" "$TARGET_PATH" origin/main >/dev/null
+    if ! (cd "$TARGET_PATH" && bash "$SCRIPT_DIR/setup-git.sh"); then
+      echo "FAIL: could not configure the lessons-index merge driver in $TARGET_PATH." >&2
+      exit 1
+    fi
 
     BASE_SHA=$(git -C "$TARGET_PATH" rev-parse HEAD)
     echo "Created worktree at: $TARGET_PATH"
