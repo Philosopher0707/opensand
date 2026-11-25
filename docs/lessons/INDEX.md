@@ -167,6 +167,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-25 · [PR #248: auth fallback needs the engine's real error, and render tests must drive the form](2026-11-25-pr248-auth-recovery-and-render-contracts.md)
 - 2026-11-25 · [A real-window size loop must reset every panel after Stop](2026-11-25-real-window-size-loop-must-reset-each-panel.md)
 - 2026-11-25 · [Release install left old app running until quit, relaunch, and live probe were gated](2026-11-25-release-install-restart-probe.md)
+- 2026-11-25 · [Renderer-next default: packaging and boot-failure hurdles (2026-11-25)](2026-11-25-renderer-next-default-and-boot-fallback.md)
 - 2026-11-25 · [A new `src/shell` model consumed only by `renderer-next` trips the dead-export gate](2026-11-25-shell-models-consumed-by-renderer-next-need-dead-export-allowlist.md)
 - 2026-11-25 · [Showing the app version needs the current main, both Settings screens, and a real app directory](2026-11-25-show-version-in-both-settings-screens.md)
 - 2026-11-25 · [A verifier fixture went stale when verify.sh gained new checks](2026-11-25-verify-selftest-stubs-every-check.md)
