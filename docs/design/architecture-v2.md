@@ -13,8 +13,76 @@
 | **Release & Installation** | **Source**: `electron-builder.yml:1` (packaging spec), `docs/release.md` / `scripts/release.sh:1`.<br>Automated packaging across macOS and Linux, zero-bump direct tag promotions, and atomic in-place updates. | **Source**: `scripts/release.sh:107` (version bump PR), `scripts/install-health-check.sh:13` (isolated smoke check).<br>**Gap**: Release workflow is blocked by a separate version-bump PR roundtrip (`release.sh:107-209`), and post-install health check validates a temporary sandbox rather than the active running process. |
 
 ## 2. Target architecture
-TODO
 
+### 2.1 Module architecture
+
+The target architecture decouples presentation, execution orchestration, security policy, and engine drivers across strict IPC boundaries:
+
+```mermaid
+flowchart TD
+    subgraph UI["Presentation Layer (packages/desktop/renderer-next)"]
+        Shell["UI Shell & App Component"]
+        ModelPicker["Engine & Model Selector"]
+        ApprovalCards["Approval & Policy Modals"]
+    end
+
+    subgraph HostServer["Host Server & IPC Bridge (packages/desktop)"]
+        DesktopServer["DesktopServer HTTP/WS"]
+        Bridge["DesktopBridge (IPC & Event Dispatch)"]
+        VersionHandler["/api/version & /api/diagnostics"]
+    end
+
+    subgraph CoordinatorModule["Execution & Coordination (packages/coordinator)"]
+        Coordinator["AgentCoordinator (Session Orchestrator)"]
+        EngineRegistry["Engine Driver Registry & Catalog"]
+        Vault["VaultStore (AES-256-GCM Credentials)"]
+        ErrorClassifier["Error Classifier (429 & Quota Resilience)"]
+    end
+
+    subgraph Daemon["Local Policy Daemon (packages/local-exec-daemon)"]
+        PolicyEngine["Policy Engine (Deterministic Rules)"]
+        FileExecGuard["Path & Command Execution Sandbox"]
+    end
+
+    subgraph Drivers["Pluggable Engine Drivers (packages/coordinator/src/engines)"]
+        ClaudeDriver["Claude Code Driver"]
+        OpenCodeDriver["OpenCode Driver (CLI / ACP)"]
+        OpenAIDriver["OpenAI-Compatible Driver"]
+        CustomAcpDriver["Custom ACP Driver"]
+    end
+
+    Shell -->|HTTP / SSE / WebSocket| DesktopServer
+    ModelPicker -->|GET /api/engines/detect| DesktopServer
+    ApprovalCards -->|POST /api/approval| DesktopServer
+
+    DesktopServer --> Bridge
+    Bridge --> VersionHandler
+    Bridge --> Coordinator
+
+    Coordinator --> EngineRegistry
+    Coordinator --> Vault
+    Coordinator --> ErrorClassifier
+    Coordinator -->|Tool Call Execution Request| PolicyEngine
+
+    PolicyEngine -->|Validate Allow / Deny / Prompt| FileExecGuard
+
+    EngineRegistry --> ClaudeDriver
+    EngineRegistry --> OpenCodeDriver
+    EngineRegistry --> OpenAIDriver
+    EngineRegistry --> CustomAcpDriver
+```
+
+### 2.2 Decision ownership
+
+| Decision | Owning Module | Source Location | Invariants & Decision Authority |
+| --- | --- | --- | --- |
+| **Tool Approval & Policy Evaluation** | `Local Policy Daemon` | `packages/local-exec-daemon/src/policy-engine.ts:125` | Deterministic offline rule evaluation (`DENY`, `REQUIRE_APPROVAL`, `ALLOW`). Never consults an LLM at evaluation time; prompt injection cannot widen permissions. |
+| **Engine Selection & Fallback** | `Coordinator / Engine Registry` | `packages/coordinator/src/engines/external-engine-runner.ts:47` | Chooses active engine based on configured user settings, local capability flags (`resume`, `stepCap`), and provider error status. Automatically switches to fallback engine on quota lockouts. |
+| **Model Discovery & Catalog Caching** | `Pluggable Engine Drivers` | `packages/coordinator/src/engines/` | Probes engine CLI / remote `/models` endpoint for qualified model IDs and parameters. Caches catalog locally and serves cached values when network or CLI discovery is transiently degraded. |
+| **Credential Security & Decryption** | `Vault Store` | `packages/coordinator/src/vault-store.ts:69` | Unlocks AES-256-GCM encrypted tokens in memory only when required. Plaintext keys are never serialized to configuration files, renderer payloads, or terminal logs. |
+| **Session Lifecycle & Context Assembly** | `Agent Coordinator` | `packages/coordinator/src/coordinator.ts:86` | Manages turn state machines, bounds max turn iterations, stitches transcript history, and serializes token event streams to callers. |
+| **IPC & Security Boundary Enforcement** | `Desktop Server & Bridge` | `packages/desktop/src/desktop-server.ts:1` & `packages/desktop/src/ipc-bridge.ts:69` | Validates local loopback origins, ensures authentication tokens for sensitive endpoints, and prevents renderer execution context from executing unsanctioned system APIs. |
+| **Presentation & User Input** | `Renderer Next UI` | `packages/desktop/renderer-next/src/main.tsx:1` | Renders conversational streams, interactive approval requests, diagnostic summaries, and model selection menus. |
 ## 3. Migration order
 Migration step #2 is Section 4 (Hotfix path). The remaining migration steps are TODO.
 
