@@ -355,10 +355,10 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
       if (!res.ok) throw new Error(payload?.error || `Settings save failed (HTTP ${res.status})`);
       return payload as DesktopSettings;
     },
-    async detectEngines(): Promise<Array<{ engine: string; installed: boolean }>> {
+    async detectEngines(): Promise<Array<{ engine: string; installed: boolean; models?: Array<{ id: string; label: string }>; modelsSource?: "live" | "fallback" | "error"; modelsMessage?: string }>> {
       const res = await (http ?? fetch)("/api/engines/detect");
       if (!res.ok) return [];
-      return (await res.json()) as Array<{ engine: string; installed: boolean }>;
+      return (await res.json()) as Array<{ engine: string; installed: boolean; models?: Array<{ id: string; label: string }>; modelsSource?: "live" | "fallback" | "error"; modelsMessage?: string }>;
     },
     async getOnboardingState(): Promise<OnboardingState> {
       const res = await (http ?? fetch)("/api/onboarding");
