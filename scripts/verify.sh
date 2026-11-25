@@ -10,7 +10,7 @@ cd "$ROOT"
 # and skip untouched desktop real-window tests to speed up CI.
 # Fail-closed rules:
 # 1. Non-PR runs (e.g. push to main, workflow_dispatch, local default) run full suite.
-# 2. Release tags (or release context) run full suite.
+# 2. Release tags (or release context) run full suite (never enter DOCS_ONLY skip).
 # 3. VERIFY_ALL=1 forces full suite.
 # 4. If BASE_SHA or git diff cannot be resolved or is empty, fail closed to full suite.
 # 5. Core/shared packages, root configs, .github, scripts/verify*, check-* run full suite.
@@ -19,7 +19,41 @@ RUN_ALL_PACKAGES=0
 BASE_SHA="${BASE_SHA:-}"
 CHANGED=""
 
+# Release tag guard: when in release context, ensure tag matches package version
+RELEASE_TAG="${RELEASE_TAG:-}"
+if [[ -z "${RELEASE_TAG:-}" ]]; then
+  if [[ "${GITHUB_REF_TYPE:-}" == "tag" && -n "${GITHUB_REF_NAME:-}" ]]; then
+    RELEASE_TAG="${GITHUB_REF_NAME}"
+  elif [[ "${GITHUB_REF:-}" =~ ^refs/tags/(.*)$ ]]; then
+    RELEASE_TAG="${BASH_REMATCH[1]}"
+  elif [[ -n "${TAG:-}" ]]; then
+    RELEASE_TAG="${TAG}"
+  elif [[ "${RELEASE:-}" == "1" || "${RELEASE_CONTEXT:-}" == "1" ]]; then
+    RELEASE_TAG=$(git describe --tags --exact-match 2>/dev/null || true)
+    if [[ -z "$RELEASE_TAG" ]]; then
+      echo "verify error: Release context requested but HEAD has no matching git tag!" >&2
+      exit 1
+    fi
+  fi
+fi
+
+if [[ -n "$RELEASE_TAG" ]]; then
+  RUN_ALL_PACKAGES=1
+  echo "verify: checking release tag version against package.json ($RELEASE_TAG)..."
+  ROOT_VERSION=$(node -p "require('./package.json').version")
+  TAG_VERSION="${RELEASE_TAG#v}"
+  if [[ "$TAG_VERSION" != "$ROOT_VERSION" ]]; then
+    echo "verify error: Release tag '$RELEASE_TAG' (version '$TAG_VERSION') does not match root package.json version '$ROOT_VERSION'!" >&2
+    echo "verify error: Packaging with this mismatch would produce mislabeled release artifacts (e.g. OpenSand-$ROOT_VERSION-arm64.dmg instead of OpenSand-$TAG_VERSION-arm64.dmg)." >&2
+    echo "verify error: Run 'node scripts/sync-versions.js $TAG_VERSION' before cutting or packaging this release." >&2
+    exit 1
+  fi
+  echo "verify: release tag '$RELEASE_TAG' matches package version '$ROOT_VERSION'"
+fi
+
 if [[ "${VERIFY_ALL:-0}" == "1" ]]; then
+  RUN_ALL_PACKAGES=1
+elif [[ -n "$RELEASE_TAG" ]]; then
   RUN_ALL_PACKAGES=1
 elif [[ "${GITHUB_EVENT_NAME:-}" != "pull_request" ]]; then
   RUN_ALL_PACKAGES=1
@@ -43,7 +77,8 @@ else
   fi
 fi
 
-if [[ "$RUN_ALL_PACKAGES" -eq 0 && -n "$CHANGED" ]]; then
+# Only non-release pull_request runs may enter docs-only early skip
+if [[ "$RUN_ALL_PACKAGES" -eq 0 && -z "$RELEASE_TAG" && -n "$CHANGED" ]]; then
   DOCS_ONLY=1
   while IFS= read -r path; do
     [[ -z "$path" ]] && continue
@@ -87,38 +122,6 @@ bash scripts/check-test-teardown.sh
 echo "verify: checking vendored engine wrapper sync..."
 bash scripts/check-engine-wrapper-sync.sh
 
-# Release tag guard: when in release context, ensure tag matches package version
-RELEASE_TAG="${RELEASE_TAG:-}"
-if [[ -z "${RELEASE_TAG:-}" ]]; then
-  if [[ "${GITHUB_REF_TYPE:-}" == "tag" && -n "${GITHUB_REF_NAME:-}" ]]; then
-    RELEASE_TAG="${GITHUB_REF_NAME}"
-  elif [[ "${GITHUB_REF:-}" =~ ^refs/tags/(.*)$ ]]; then
-    RELEASE_TAG="${BASH_REMATCH[1]}"
-  elif [[ -n "${TAG:-}" ]]; then
-    RELEASE_TAG="${TAG}"
-  elif [[ "${RELEASE:-}" == "1" || "${RELEASE_CONTEXT:-}" == "1" ]]; then
-    RELEASE_TAG=$(git describe --tags --exact-match 2>/dev/null || true)
-    if [[ -z "$RELEASE_TAG" ]]; then
-      echo "verify error: Release context requested but HEAD has no matching git tag!" >&2
-      exit 1
-    fi
-  fi
-fi
-
-if [[ -n "$RELEASE_TAG" ]]; then
-  RUN_ALL_PACKAGES=1
-  echo "verify: checking release tag version against package.json ($RELEASE_TAG)..."
-  ROOT_VERSION=$(node -p "require('./package.json').version")
-  TAG_VERSION="${RELEASE_TAG#v}"
-  if [[ "$TAG_VERSION" != "$ROOT_VERSION" ]]; then
-    echo "verify error: Release tag '$RELEASE_TAG' (version '$TAG_VERSION') does not match root package.json version '$ROOT_VERSION'!" >&2
-    echo "verify error: Packaging with this mismatch would produce mislabeled release artifacts (e.g. OpenSand-$ROOT_VERSION-arm64.dmg instead of OpenSand-$TAG_VERSION-arm64.dmg)." >&2
-    echo "verify error: Run 'node scripts/sync-versions.js $TAG_VERSION' before cutting or packaging this release." >&2
-    exit 1
-  fi
-  echo "verify: release tag '$RELEASE_TAG' matches package version '$ROOT_VERSION'"
-fi
-
 echo "verify: checking test tmpdir guard..."
 BAD_TMPDIRS=$(grep -rnE --include="*.ts" --include="*.js" "(/tmp/opensand-|(/tmp|tmpdir).*Date\\.now|Date\\.now.*(/tmp|tmpdir)|mkdir.*(os\\.tmpdir|/tmp))" packages/*/test 2>/dev/null || true)
 if [[ -n "$BAD_TMPDIRS" ]]; then
@@ -156,8 +159,8 @@ if [[ -n "$COMMON_GIT_DIR" && -d "$COMMON_GIT_DIR" ]]; then
   fi
 fi
 
-TARGET_PACKAGES_STR=""
-SCRIPT_SELFTESTS_STR=""
+TARGET_PACKAGES=()
+SCRIPT_SELFTESTS=()
 
 if [[ "$RUN_ALL_PACKAGES" -eq 0 && -n "$CHANGED" ]]; then
   EVAL_RESULT=$(node -e '
@@ -307,14 +310,20 @@ if [[ "$RUN_ALL_PACKAGES" -eq 0 && -n "$CHANGED" ]]; then
     EVAL_REASON=$(node -e 'const r=JSON.parse(process.argv[1]);process.stdout.write(r.reason||"")' "$EVAL_RESULT")
     echo "verify: running full suite ($EVAL_REASON)"
   else
-    TARGET_PACKAGES_STR=$(node -e 'const r=JSON.parse(process.argv[1]);process.stdout.write((r.packages||[]).join(" "))' "$EVAL_RESULT")
-    SCRIPT_SELFTESTS_STR=$(node -e 'const r=JSON.parse(process.argv[1]);process.stdout.write((r.selftests||[]).join(" "))' "$EVAL_RESULT")
-    echo "verify: running affected packages only: $TARGET_PACKAGES_STR"
+    while IFS= read -r -d $'\0' pkg; do
+      [[ -n "$pkg" ]] && TARGET_PACKAGES+=("$pkg")
+    done < <(node -e 'const r=JSON.parse(process.argv[1]);for(const p of(r.packages||[])){process.stdout.write(p+"\0");}' "$EVAL_RESULT")
+
+    while IFS= read -r -d $'\0' st; do
+      [[ -n "$st" ]] && SCRIPT_SELFTESTS+=("$st")
+    done < <(node -e 'const r=JSON.parse(process.argv[1]);for(const s of(r.selftests||[])){process.stdout.write(s+"\0");}' "$EVAL_RESULT")
+
+    echo "verify: running affected packages only: ${TARGET_PACKAGES[*]:-}"
   fi
 fi
 
-if [[ -n "${SCRIPT_SELFTESTS_STR// /}" ]]; then
-  for selftest in $SCRIPT_SELFTESTS_STR; do
+if [[ ${#SCRIPT_SELFTESTS[@]} -gt 0 ]]; then
+  for selftest in "${SCRIPT_SELFTESTS[@]}"; do
     [[ -n "$selftest" ]] || continue
     echo "verify: running script selftest $selftest..."
     if [[ "$selftest" == *.js ]]; then
@@ -327,13 +336,26 @@ fi
 
 LOG_DIR=$(mktemp -d "${TMPDIR:-/tmp}/opensand-verify.XXXXXX")
 
+is_target_package() {
+  local needle="$1"
+  if [[ "$RUN_ALL_PACKAGES" -eq 1 ]]; then
+    return 0
+  fi
+  for p in "${TARGET_PACKAGES[@]:-}"; do
+    if [[ "$p" == "$needle" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 for pkg_json in packages/*/package.json; do
   [[ -f "$pkg_json" ]] || continue
   pkg_dir="$(dirname "$pkg_json")"
   pkg_name=$(node -p "require('./$pkg_json').name")
   log="$LOG_DIR/${pkg_name//\//__}.log"
 
-  if [[ "$RUN_ALL_PACKAGES" -ne 1 && ! " $TARGET_PACKAGES_STR " =~ " $pkg_name " ]]; then
+  if ! is_target_package "$pkg_name"; then
     echo "verify: skipping package $pkg_name (untouched and unaffected)"
     continue
   fi
