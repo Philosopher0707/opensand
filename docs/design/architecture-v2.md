@@ -180,4 +180,19 @@ Total time budget: 120 minutes (2.0 hours).
    - OpenMausBot incorporates enterprise team rooms, phone relays, and webhook ingress pipelines (`server/relay.ts`, `server/webhook-ingress.ts`).
    - **OpenSand Difference**: OpenSand omits team chat infrastructure in favor of lightweight local coordination focused directly on software engineering worktrees and GitHub PR delivery.
 ## 6. Open questions
-TODO
+
+1. **Engine Process Lifecycle (Persistent Daemon vs Per-Turn Invocations)**
+   - *Question*: Should external ACP engines (`opencode`, custom ACP adapters) be maintained as long-running child daemons throughout an OpenSand session, or spawned per turn using `--resume <sessionId>`?
+   - *Tradeoff*: Long-running daemon processes eliminate 1–3s cold-start overhead per turn, but require active heartbeat supervision, connection recovery logic, and process hygiene against memory bloat.
+
+2. **In-Memory Vault Key Lifespan**
+   - *Question*: Should `VaultStore` decrypt provider credentials into an ephemeral in-memory session cache when OpenSand starts, or strictly decrypt on-demand for the duration of a single HTTP/LLM request?
+   - *Tradeoff*: Pure on-demand decryption guarantees zero idle plaintext exposure in heap memory, but incurs AES-GCM decryption cycles on every token streaming chunk and external tool call.
+
+3. **Dynamic Model Catalog Cache TTL & Refresh Policy**
+   - *Question*: What is the appropriate TTL for model lists fetched via `/api/engines/detect` from provider endpoints?
+   - *Tradeoff*: A short TTL (5–10 min) reflects upstream provider additions and price tier adjustments immediately, but risks triggering 429 rate limits during rapid settings navigation. A 24-hour TTL with an explicit UI "Re-detect" button mirrors OpenMausBot's proven pattern.
+
+4. **Expansion of Automated Merge Drivers Beyond `INDEX.md`**
+   - *Question*: Should the custom merge driver introduced in PR #263 for `docs/lessons/INDEX.md` be extended to cover other auto-generated repository manifests (such as `scripts/README.md`), or restricted solely to lessons?
+   - *Tradeoff*: Extending merge drivers eliminates rebase halts across parallel bot worktrees, but increases reliance on generator selftests to detect semantic index corruption.
