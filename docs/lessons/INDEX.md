@@ -176,6 +176,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-25 · [Prune whole worktrees before the disk guard, not just their caches](2026-11-25-worktree-prune-before-disk-guard.md)
 - 2026-11-25 · [Rebasing a PR that fixes lesson format: the index merge driver fails on the intermediate commit](2026-11-25-rebase-lesson-format-blocks-index-merge-driver.md)
 - 2026-11-25 · [Release install left old app running until quit, relaunch, and live probe were gated](2026-11-25-release-install-restart-probe.md)
+- 2026-11-25 · [Renderer proof harnesses resolve CSS imports from the harness entry, not from `src`](2026-11-25-renderer-proof-harness-imports-use-entry-relative-paths.md)
 - 2026-11-25 · [Showing the app version needs the current main, both Settings screens, and a real app directory](2026-11-25-show-version-in-both-settings-screens.md)
 - 2026-11-25 · [The gate must recover INDEX.md conflicts on every commit of a multi-commit rebase](2026-11-25-pr-gate-multi-commit-index-recovery.md)
 - 2026-11-25 · [macOS Bash 3.2 aborts on an empty array under `set -u`, and CI tokens hide it](2026-11-25-bash32-empty-array-set-u.md)

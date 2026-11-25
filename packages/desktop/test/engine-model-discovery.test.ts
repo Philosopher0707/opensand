@@ -5,7 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { EventEmitter } from "node:events";
 import { fileURLToPath } from "node:url";
-import { listModels } from "@opensand/coordinator";
+import { DETECTABLE_ENGINE_IDS, listModels } from "@opensand/coordinator";
 import { DesktopServer } from "../src/desktop-server.js";
 import { selectedEngineConfig } from "../src/shell/settings-model.js";
 import { closeThenRemove } from "./teardown.js";
@@ -57,6 +57,20 @@ test("engine-model-discovery.test.ts returns model catalogs from the production 
   }
 });
 
+test("every engine returned by detection has a labelled model catalog", async () => {
+  for (const engine of ["opensand", ...DETECTABLE_ENGINE_IDS] as const) {
+    const result = await listModels({
+      engine,
+      binary: engine === "opensand" ? null : "/fake/account-cli",
+      cache: false,
+      commandRunner: async () => null,
+    });
+    assert.equal(result.modelsSource, "fallback", engine);
+    assert.ok(result.models.length > 0, `${engine} must offer at least one account model`);
+    assert.match(result.modelsMessage!, /built-in fallback list/i, engine);
+  }
+});
+
 test("API and CLI adapters parse successful live model catalogs", async () => {
   const provider = await listModels({ engine: "opensand", endpoint: "https://provider.invalid/v1", cache: false, fetcher: async () => new Response(JSON.stringify({ data: [{ id: "vendor/model-a", name: "Model A" }] }), { status: 200 }) });
   assert.equal(provider.modelsSource, "live");
@@ -90,9 +104,10 @@ test("provider 401, outage, empty response and CLI timeout use safe fallback cat
   const noFallback = await listModels({ engine: "unknown-engine", cache: false });
   assert.equal(noFallback.modelsSource, "error");
   assert.deepEqual(noFallback.models, []);
+  assert.match(noFallback.modelsMessage!, /no model list is available/i);
 });
 
-test("saved models no longer offered remain selected and the Settings model control is a dropdown", async () => {
+test("saved models no longer offered remain selected and both Settings renderers use a model dropdown", async () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const source = fs.readFileSync(path.resolve(here, "../../renderer-next/src/views/SettingsView.tsx"), "utf8");
   assert.match(source, /savedModelStale/);
@@ -100,4 +115,11 @@ test("saved models no longer offered remain selected and the Settings model cont
   assert.match(source, /<select[\s\S]*?id=\{id\("Model"\)\}/);
   assert.match(source, /Loading models…/);
   assert.match(source, /No models are available for this engine/);
+
+  // The production default is still the legacy renderer; it must expose the same account-model choice.
+  const legacyHtml = fs.readFileSync(path.resolve(here, "../../renderer/index.html"), "utf8");
+  const legacyJs = fs.readFileSync(path.resolve(here, "../../renderer/app.js"), "utf8");
+  assert.match(legacyHtml, /<select id="settingEngineModel"/);
+  assert.match(legacyJs, /renderEngineModelChoices/);
+  assert.match(legacyJs, /payload\.engineModels = \{ \.\.\.engineModels, \[selectedEngine\]: settingEngineModel\.value \}/);
 });

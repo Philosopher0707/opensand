@@ -345,19 +345,20 @@ export class ExternalEngineTurnRunner {
   }
 }
 
+export const DETECTABLE_ENGINE_IDS = [
+  "claude",
+  "codex",
+  "copilot",
+  "antigravity",
+  "opencode",
+  "workbuddy",
+] as const satisfies readonly ExternalEngineConfig["engine"][];
+
 export async function detectEngines(options: { endpoint?: string; provider?: "openai" | "anthropic" | "openrouter"; apiKey?: string } = {}): Promise<EngineDetectionResult[]> {
   const results: EngineDetectionResult[] = [];
   const openSandModels = await listModels({ engine: "opensand", ...options });
   results.push({ engine: "opensand", label: "OpenSand", installed: true, binaryPath: null, version: null, versionStatus: "unchecked", authenticated: false, ...openSandModels });
-  const engineList: Array<ExternalEngineConfig["engine"]> = [
-    "claude",
-    "codex",
-    "copilot",
-    "antigravity",
-    "opencode",
-    "workbuddy",
-  ];
-  for (const id of engineList) {
+  for (const id of DETECTABLE_ENGINE_IDS) {
     const spec = (ENGINES as any)[id] || (ENGINE_FACTS as any)[id];
     const bin = findBinary(id);
     let version: string | null = null;
