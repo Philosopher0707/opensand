@@ -20,6 +20,7 @@ import type { Connector, ConnectorTestResult } from "../../src/shell/connectors-
 import type { Webhook, WebhookDelivery, CreateWebhookInput } from "../../src/shell/webhooks-model";
 import type { LearnedRules, LearnedRulesReport } from "../../src/shell/learned-rules-model";
 import type { BtwAnswer, RollbackResult, CompactResult } from "../../src/shell/session-actions-model";
+import type { GalleryTemplate } from "../../src/shell/gallery-model";
 import type { Attachment } from "../../src/shell/attachments-model";
 import type { VaultSecret, VaultCredential, SecretInput, CredentialInput } from "../../src/shell/vault-model";
 import { persistToken } from "../../src/shell/auth-model";
@@ -45,17 +46,20 @@ import type { ConnectorsData } from "./data/connectors";
 import type { WebhooksData } from "./data/webhooks";
 import type { LearnedRulesData } from "./data/learned-rules";
 import type { SessionActionsData } from "./data/session-actions";
+import type { GalleryData } from "./data/gallery";
+import type { PublishGalleryInput } from "./data/gallery";
 import { botsData } from "./data/bots";
 import { sentinelData } from "./data/sentinel";
 import { graphsData } from "./data/graphs";
 import { connectorsData } from "./data/connectors";
 import { webhooksData } from "./data/webhooks";
 import { learnedRulesData } from "./data/learned-rules";
-export type { AgentGraph, BtwAnswer, CompactResult, Attachment, AttachmentsData, BotsData, BoundariesData, Connector, ConnectorsData, ConnectorTestResult, CreateRoomInput, CreateRoutineInput, CreateRuleInput, CreateSkillInput, CreateWatcherInput, CreateWebhookInput, CredentialInput, DiscussionResult, GraphRunResult, RollbackResult, SessionActionsData, GraphsData, GraphTraceEvent, LearnedRules, LearnedRulesData, LearnedRulesReport, MemoriesData, MissionSummary, PolicyAuditEntry, PolicyRule, PreviewRestoreResult, Room, RoomsData, Routine, RoutinesData, SecretInput, SentinelData, SentinelLog, SessionRow, SessionSummary, Skill, SkillsData, TimelineForkResult, ToolApprovalRequest, TurnEvent, VaultCredential, VaultData, VaultSecret, Watcher, Webhook, WebhookDelivery, WebhooksData };
-export { attachmentsData, botsData, boundariesData, connectorsData, sessionActionsData, graphsData, learnedRulesData, memoriesData, roomsData, routinesData, sentinelData, skillsData, vaultData, webhooksData };
+export type { AgentGraph, BtwAnswer, CompactResult, GalleryData, GalleryTemplate, Attachment, AttachmentsData, BotsData, BoundariesData, Connector, ConnectorsData, ConnectorTestResult, CreateRoomInput, CreateRoutineInput, CreateRuleInput, CreateSkillInput, CreateWatcherInput, CreateWebhookInput, CredentialInput, DiscussionResult, GraphRunResult, PublishGalleryInput, RollbackResult, SessionActionsData, GraphsData, GraphTraceEvent, LearnedRules, LearnedRulesData, LearnedRulesReport, MemoriesData, MissionSummary, PolicyAuditEntry, PolicyRule, PreviewRestoreResult, Room, RoomsData, Routine, RoutinesData, SecretInput, SentinelData, SentinelLog, SessionRow, SessionSummary, Skill, SkillsData, TimelineForkResult, ToolApprovalRequest, TurnEvent, VaultCredential, VaultData, VaultSecret, Watcher, Webhook, WebhookDelivery, WebhooksData };
+export { attachmentsData, botsData, boundariesData, connectorsData, galleryData, sessionActionsData, graphsData, learnedRulesData, memoriesData, roomsData, routinesData, sentinelData, skillsData, vaultData, webhooksData };
 import type { BoundariesData } from "./data/boundaries";
 import { boundariesData } from "./data/boundaries";
 import { sessionActionsData } from "./data/session-actions";
+import { galleryData } from "./data/gallery";
 
 /** sessionStorage can be blocked in a restricted page; keep the token in memory then. */
 function authStorage() {
@@ -175,7 +179,7 @@ export interface CoreShellData {
 
 }
 
-export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & AttachmentsData & VaultData & MemoriesData & BotsData & SentinelData & BoundariesData & GraphsData & ConnectorsData & WebhooksData & LearnedRulesData & SessionActionsData;
+export type ShellData = CoreShellData & RoomsData & RoutinesData & SkillsData & AttachmentsData & VaultData & MemoriesData & BotsData & SentinelData & BoundariesData & GraphsData & ConnectorsData & WebhooksData & LearnedRulesData & GalleryData & SessionActionsData;
 
 export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
   const b = bridge ?? (typeof window !== "undefined" ? (window as any).opensand : undefined);
@@ -634,6 +638,7 @@ export function windowBridgeData(bridge?: any, http?: typeof fetch): ShellData {
     ...connectorsData(b, http),
     ...webhooksData(b, http),
     ...learnedRulesData(b, http),
+    ...galleryData(b, http),
     ...sessionActionsData(b, http),
   };
 }
