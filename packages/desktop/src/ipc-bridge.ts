@@ -87,6 +87,7 @@ import {
   type ApprovalMode,
 } from '@opensand/shared';
 import type { DesktopSettings, ToolApprovalRequest, ApprovalDecision, ApprovalOutcome, SessionSummary, DesktopEvent, ToolDiscoverySummary } from './types.js';
+import { selectedEngineConfig } from './shell/settings-model.js';
 
 export interface IpcBridgeOptions {
   baseDir?: string;
@@ -420,6 +421,7 @@ export class DesktopIpcBridge extends EventEmitter {
       (partial.apiKey !== undefined && partial.apiKey !== this.settings.apiKey) ||
       (partial.provider !== undefined && partial.provider !== this.settings.provider) ||
       (partial.engine !== undefined && partial.engine !== this.settings.engine) ||
+      (partial.engineModels !== undefined && JSON.stringify(partial.engineModels) !== JSON.stringify(this.settings.engineModels)) ||
       (partial.maxContextTokens !== undefined && partial.maxContextTokens !== this.settings.maxContextTokens);
 
     this.settings = { ...this.settings, ...partial };
@@ -655,9 +657,8 @@ export class DesktopIpcBridge extends EventEmitter {
       }
     }
 
-    let engineConfig: ExternalEngineConfig | undefined = this.settings.engine && this.settings.engine !== 'opensand'
-      ? { type: 'external', engine: this.settings.engine as ExternalEngineConfig['engine'] }
-      : (agent as any)?.engineConfig;
+    let engineConfig: ExternalEngineConfig | undefined = selectedEngineConfig(this.settings.engine, this.settings.engineModels)
+      ?? (agent as any)?.engineConfig;
     if (!engineConfig) {
       if (targetModel?.startsWith("external:")) {
         const parts = targetModel.split(":");
@@ -784,7 +785,8 @@ export class DesktopIpcBridge extends EventEmitter {
   }
 
   public async detectEngines(): Promise<EngineDetectionResult[]> {
-    return detectEngines();
+    await this.ensureApiKeyResolved();
+    return detectEngines({ endpoint: this.settings.endpoint, provider: this.settings.provider, apiKey: this.settings.apiKey });
   }
 
   public async sendQuery(query: string, sessionId?: string, agentId?: string): Promise<{ success: boolean; sessionId: string }> {
