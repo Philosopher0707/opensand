@@ -49,6 +49,8 @@ export interface PolicyEvaluationContext {
   initiator?: 'user' | 'routine' | 'sentinel' | 'subagent';
   /** Declared effect wins over any tool-name inference. */
   declaredEffect?: string;
+  /** Force effect-first fail-closed fallback even without a declared effect (RPC path). */
+  strictEffects?: boolean;
   tainted?: boolean;
   sandboxed?: boolean;
   cwd?: string;
@@ -212,28 +214,35 @@ export class PolicyEngine {
       }
     }
 
-    // Phase 4: effect-first fallback. Only a DECLARED/known effect may be
+    // Legacy in-process callers (no declared effect and no strict flag) keep the
+    // pre-4A registered-tool fallback until Brief 4B declares effects everywhere.
+    // DENY rules, sensitive paths and the egress boundary above still apply to them.
+    const legacyFallback = context.declaredEffect === undefined && context.strictEffects !== true;
+    // Strict effect-first fallback: only a DECLARED/known effect may be
     // permitted by default; an unknown tool or effect fails closed.
     const knownEffect = Object.prototype.hasOwnProperty.call(EFFECTS, effect);
     const hardStop = effect === 'unknown' || !knownEffect || NEVER_AUTO.has(effect) ||
       effect === 'shell_outside' || (context.tainted === true && SHELLS.has(effect));
-    const fallbackAction: PolicyAction = hardStop ? 'REQUIRE_APPROVAL'
-      : knownEffect ? 'ALLOW' : this.defaultAction;
+    const fallbackAction: PolicyAction = legacyFallback ? 'ALLOW'
+      : hardStop ? 'REQUIRE_APPROVAL'
+        : knownEffect ? 'ALLOW' : this.defaultAction;
     const decision: PolicyDecision = {
       action: fallbackAction,
       allowed: fallbackAction === 'ALLOW',
       requiresApproval: fallbackAction === 'REQUIRE_APPROVAL',
       effect,
-      reason: hardStop
-        ? `Effect '${effect}' requires interactive approval (fail-closed default)`
-        : `Default boundary rule applied for effect '${effect}' (${fallbackAction})`,
+      reason: legacyFallback
+        ? 'Permitted; registered orchestrator tool (legacy in-process fallback)'
+        : hardStop
+          ? `Effect '${effect}' requires interactive approval (fail-closed default)`
+          : `Default boundary rule applied for effect '${effect}' (${fallbackAction})`,
     };
 
     this.recordAudit(context, decision);
     return decision;
   }
 
-  /** Declared effect wins; otherwise infer from the tool name; otherwise unknown (fail closed). */
+  /** Strict mode requires a declared effect; legacy in-process calls infer from the tool name. */
   private resolveEffect(context: PolicyEvaluationContext): string {
     if (context.args.unsandboxed === true) return 'shell_outside';
     const declared = context.declaredEffect;
@@ -241,6 +250,7 @@ export class PolicyEngine {
       // A declared effect that is not recognised is never silently re-inferred.
       return Object.prototype.hasOwnProperty.call(EFFECTS, declared) ? declared : 'unknown';
     }
+    if (context.declaredEffect !== undefined || context.strictEffects === true) return 'unknown';
     if (context.tool.startsWith('inspect_')) return 'read';
     return TOOL_EFFECTS[context.tool] ?? 'unknown';
   }

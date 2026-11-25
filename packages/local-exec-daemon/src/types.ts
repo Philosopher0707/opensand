@@ -272,6 +272,8 @@ export interface PolicyEvaluateParams {
   toolName: string;
   args: Record<string, unknown>;
   declaredEffect?: string;
+  /** Request strict effect-first evaluation; the daemon always enforces it regardless. */
+  strictEffects?: boolean;
   approvalMode: ApprovalMode | string;
   tainted: boolean;
   sandboxed: boolean;

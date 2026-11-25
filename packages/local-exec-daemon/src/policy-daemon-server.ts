@@ -94,6 +94,8 @@ class PolicyDaemonServer {
         actor: p.sessionId,
         initiator: 'user',
         declaredEffect: p.declaredEffect,
+        // Wire params never get to opt out of effect-first fail-closed evaluation.
+        strictEffects: true,
         tainted: p.tainted,
         sandboxed: p.sandboxed,
         cwd: p.cwd,

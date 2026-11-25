@@ -7,7 +7,7 @@ import * as net from 'node:net';
 import { PassThrough } from 'node:stream';
 import { PolicyDaemonServer } from '../src/policy-daemon-server.js';
 import { PolicyClient } from '../src/policy-client.js';
-import { POLICY_RPC_ERRORS, type PolicyEvaluateParams } from '../src/types.js';
+import { POLICY_RPC_ERRORS, POLICY_RPC_METHOD, type PolicyEvaluateParams } from '../src/types.js';
 
 function rawRpc(socketPath: string, payload: string): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -158,6 +158,14 @@ describe('Isolated policy daemon RPC', () => {
   it('fails closed on an undeclared or unknown effect', async () => {
     assert.equal((await client.evaluate(params({ declaredEffect: 'brand_new_effect', args: {} }))).action, 'REQUIRE_APPROVAL');
     assert.equal((await client.evaluate(params({ toolName: 'brand_new_tool', declaredEffect: undefined, args: {} }))).action, 'REQUIRE_APPROVAL');
+  });
+
+  it('ignores a wire-level attempt to disable strict effects', async () => {
+    const reply = await rawRpc(socketPath, JSON.stringify({
+      jsonrpc: '2.0', id: 7, method: POLICY_RPC_METHOD,
+      params: { ...params({ toolName: 'create_agent', declaredEffect: undefined, args: {} }), strictEffects: false },
+    }) + '\n');
+    assert.equal(reply.result.action, 'REQUIRE_APPROVAL');
   });
 
   it('serves the same protocol over stdio', async () => {

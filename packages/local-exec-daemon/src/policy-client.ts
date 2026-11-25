@@ -25,7 +25,10 @@ class PolicyClient {
 
   public evaluate(params: PolicyEvaluateParams): Promise<PolicyEvaluateResult> {
     const id = `policy-${Date.now()}-${randomBytes(4).toString('hex')}`;
-    const request: Request = { jsonrpc: '2.0', id, method: POLICY_RPC_METHOD, params };
+    const request: Request = {
+      jsonrpc: '2.0', id, method: POLICY_RPC_METHOD,
+      params: { ...params, strictEffects: true },
+    };
 
     return new Promise((resolve) => {
       let settled = false;

@@ -111,6 +111,23 @@ describe('PolicyEngine - Fail-Closed Boundary Governance', () => {
     assert.strictEqual(decision.action, 'DENY');
   });
 
+  it('keeps the legacy registered-tool fallback in-process but fails closed on strict effects', () => {
+    const legacyTools = ['create_agent', 'show_app_access', 'slack_post_message'];
+    assert.deepStrictEqual(
+      legacyTools.map((tool) => engine.evaluate({ tool, args: {} }).action),
+      ['ALLOW', 'ALLOW', 'ALLOW'],
+    );
+
+    // DENY rules stay unconditional even for legacy in-process callers.
+    assert.strictEqual(engine.evaluate({ tool: 'create_agent', args: { path: '/etc/shadow' } }).action, 'DENY');
+
+    for (const tool of legacyTools) {
+      assert.strictEqual(engine.evaluate({ tool, args: {}, strictEffects: true }).action, 'REQUIRE_APPROVAL');
+    }
+    assert.strictEqual(engine.evaluate({ tool: 'create_agent', args: {}, declaredEffect: 'delegate' }).action, 'ALLOW');
+    assert.strictEqual(engine.evaluate({ tool: 'create_agent', args: {}, declaredEffect: 'brand_new_effect' }).action, 'REQUIRE_APPROVAL');
+  });
+
   it('integrates with LocalExecDaemon to block denied tool calls at execution time', async () => {
     const daemon = new LocalExecDaemon({ stateDir: tmpDir });
     await daemon.start();
