@@ -143,7 +143,41 @@ Total time budget: 120 minutes (2.0 hours).
 | **e) Engine quota / rate-limit lockout** | +30–60 min (agent blocked on 429 quota exhaustion) | `packages/coordinator/src/errors.ts:36-88` & `packages/desktop/src/desktop-server.ts:576` | `packages/coordinator/test/provider-error-handling.test.ts` & `packages/desktop/test/engine-selection.test.ts:102-113` | If an AI engine exhausts its token quota or hits HTTP 429 rate limits during hotfix authoring, work halts. Maintain at least one dedicated hotfix bot configured with an independent model provider (e.g. Anthropic Claude vs OpenAI/Gemini). At the application layer, `classifyError()` in `packages/coordinator/src/errors.ts` parses provider error responses, assigns `RATE_LIMIT_EXCEEDED`, and passes actionable retry/fallback guidance to `DesktopBridge`. The UI/server offers an instant switch to a secondary configured fallback engine (`/api/engines/detect`) without losing turn context or requiring manual config surgery. |
 
 ## 5. Risks and deliberate differences
-TODO
 
+### 5.1 System risks and mitigations
+
+1. **Provider CLI and Schema Drift**
+   - *Risk*: Third-party engine CLIs (`claude`, `opencode`) frequently evolve output formats, change error messages, or deprecate flags (such as OpenCode 2 rejecting `models --verbose`).
+   - *Mitigation*: Mirror OpenMausBot's `ENGINE_VERSIONS` pin matrix (`server/engine-versions.ts:25`). The engine driver enforces minimum verified version pins, executes smoke handshakes (`initialize` / `--version`) before binding, and falls back to cached catalogs on discovery failures.
+
+2. **Subprocess Lifecycle and Zombie Process Leaks**
+   - *Risk*: Decoupling engine execution into subprocesses can leak background processes during unexpected app crashes or hotfix updates.
+   - *Mitigation*: The host server implements process-group management (`kill -TERM -$PGID`), a 30-second bounded watchdog (`turn-watchdog`), and explicit post-install termination checks in `scripts/release.sh:518`.
+
+3. **Dual Renderer Divergence**
+   - *Risk*: Maintaining legacy `packages/desktop/renderer` alongside `renderer-next` risks split maintenance and UI test discrepancies.
+   - *Mitigation*: Complete migration Step 5 as a hard cutover. Once parity tests pass, legacy renderer directories are removed rather than kept as a fallback.
+
+4. **Credential Leakage in Diagnostics and Trace Logs**
+   - *Risk*: Verbose engine traces and error reports can accidentally leak bearer tokens or provider API keys into support bundles.
+   - *Mitigation*: Retain OpenSand's redaction pipeline in `packages/desktop/src/build-diagnostics.ts:1` and ensure keys decrypted in `VaultStore` (`packages/coordinator/src/vault-store.ts:69`) are scrubbed before stderr/stdout serialization.
+
+### 5.2 Deliberate differences (what OpenSand does NOT copy)
+
+1. **Plaintext Secret Storage in Config Files**
+   - OpenMausBot writes provider keys as plaintext into `~/.openmausbot/config.json` (relying solely on POSIX file mode 0600, `docs/custom-engines.md:178`).
+   - **OpenSand Difference**: OpenSand preserves AES-256-GCM encryption in `packages/coordinator/src/vault-store.ts:69`. Decrypted secrets live exclusively in memory during turn execution and are never written to disk in plaintext.
+
+2. **Cloud Container and Remote VPS Provisioning**
+   - OpenMausBot ships complex cloud computer provisioning, remote SSH VPS tunnels, and cloud-hosted routine execution (`server/vps-computer.ts`, `server/tunnel.ts`).
+   - **OpenSand Difference**: OpenSand is deliberately local-first. All executions run on the user's host or local execution sandbox; no cloud relay or multi-tenant VPS orchestration is introduced.
+
+3. **Online Model-Assisted Policy Decisions**
+   - OpenMausBot allows conversational policy overrides and model-assisted routing.
+   - **OpenSand Difference**: As designed in `docs/design/prose-policy-rules.md`, OpenSand compiles all prose policies once into deterministic, offline `PolicyRule` objects (`packages/local-exec-daemon/src/policy-engine.ts:12-27`). No model sits inside the security gate at tool evaluation time, eliminating prompt-injection bypasses.
+
+4. **Multi-Tenant Room, Relay, and Telephony Mesh**
+   - OpenMausBot incorporates enterprise team rooms, phone relays, and webhook ingress pipelines (`server/relay.ts`, `server/webhook-ingress.ts`).
+   - **OpenSand Difference**: OpenSand omits team chat infrastructure in favor of lightweight local coordination focused directly on software engineering worktrees and GitHub PR delivery.
 ## 6. Open questions
 TODO
