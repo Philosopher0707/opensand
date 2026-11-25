@@ -3,7 +3,9 @@
 # - Runs the full test suite and the TypeScript build.
 # - Blocks a blanket commit: if every tracked modified file is staged,
 #   refuse (signature of `git add -A` / `git add .`).
+# - Refuses staged or untracked PNG test artifacts before build/tests run.
 # Emergency override: OPENSAND_ALLOW_BLANKET=1 git commit ...
+# Intentional binary override: ALLOW_BINARY_ARTIFACTS=1 git commit ...
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -38,6 +40,47 @@ if [[ "${OPENSAND_ALLOW_BLANKET:-0}" != "1" ]]; then
       exit 1
     fi
   fi
+fi
+
+# --- PNG artifact guard -------------------------------------------------
+# Match pr-gate.sh Check 3: every PNG is a forbidden binary unless the caller
+# explicitly opts in. There are no path exceptions for docs/ or build/.
+if [[ "${ALLOW_BINARY_ARTIFACTS:-0}" != "1" ]]; then
+  staged_png_count=0
+  while IFS= read -r -d '' path; do
+    case "$path" in
+      *.[pP][nN][gG])
+        if [[ "$staged_png_count" -eq 0 ]]; then
+          echo "x pre-commit: refusing staged PNG binary artifact(s):" >&2
+        fi
+        printf '  %s\n' "$path" >&2
+        staged_png_count=$((staged_png_count + 1))
+        ;;
+    esac
+  done < <(git diff --cached --name-only -z)
+  if [[ "$staged_png_count" -gt 0 ]]; then
+    echo "  Remove or unstage them (git restore --staged <path>), then commit again." >&2
+    exit 1
+  fi
+
+  untracked_png_count=0
+  while IFS= read -r -d '' path; do
+    case "$path" in
+      *.[pP][nN][gG])
+        if [[ "$untracked_png_count" -eq 0 ]]; then
+          echo "x pre-commit: refusing untracked PNG test artifact(s):" >&2
+        fi
+        printf '  %s\n' "$path" >&2
+        untracked_png_count=$((untracked_png_count + 1))
+        ;;
+    esac
+  done < <(git ls-files --others --exclude-standard -z)
+  if [[ "$untracked_png_count" -gt 0 ]]; then
+    echo "  Delete them or move them to the gitignored .opensand-snapshots/ directory." >&2
+    exit 1
+  fi
+else
+  echo "WARNING: ALLOW_BINARY_ARTIFACTS=1: allowing PNG binary artifacts; use scripts/pr-gate.sh --allow-binary for the matching PR gate." >&2
 fi
 
 # --- Staged secret scan -----------------------------------------------

@@ -165,6 +165,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-25 · [The gate must recover INDEX.md conflicts on every commit of a multi-commit rebase](2026-11-25-pr-gate-multi-commit-index-recovery.md)
 - 2026-11-25 · [A rebase that stops with staged changes but no conflicts must abort, not be treated as complete](2026-11-25-pr-gate-no-conflict-staged-must-abort.md)
 - 2026-11-25 · [PR #248: auth fallback needs the engine's real error, and render tests must drive the form](2026-11-25-pr248-auth-recovery-and-render-contracts.md)
+- 2026-11-25 · [Pre-commit must reject PNG artifacts before the expensive suite](2026-11-25-precommit-png-artifact-guard.md)
 - 2026-11-25 · [A real-window size loop must reset every panel after Stop](2026-11-25-real-window-size-loop-must-reset-each-panel.md)
 - 2026-11-25 · [Release install left old app running until quit, relaunch, and live probe were gated](2026-11-25-release-install-restart-probe.md)
 - 2026-11-25 · [A new `src/shell` model consumed only by `renderer-next` trips the dead-export gate](2026-11-25-shell-models-consumed-by-renderer-next-need-dead-export-allowlist.md)
