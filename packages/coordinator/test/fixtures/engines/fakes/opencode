@@ -13,6 +13,7 @@
 //   HANG             never answers the prompt; answers it with stopReason "cancelled" when session/cancel arrives
 //   SLOW_SILENT      silent for 4 s, then answers
 //   FAIL_AUTH        stderr "Error: not logged in", exit 1
+//   PROVIDER_AUTH    session/prompt JSON-RPC error "provider authentication required" (the real ACP shape)
 //   AGENT_REQUEST    sends fs/read_text_file to the client and logs the error it gets back (-32601 expected)
 //   TRY_WRITE        writes x.txt in its working folder without asking, and says "TRY_WRITE:ok" or "TRY_WRITE:<error code>"
 //                    (EPERM when the OS hold of a read-only run denies it)
@@ -77,6 +78,7 @@ async function prompt(req) {
   const text = (p.prompt || []).map((c) => c.text).join("");
   note((o) => o.rpc.push({ method: "session/prompt", text: text.slice(0, 200) }));
   if (/FAIL_AUTH/.test(text)) { console.error("Error: not logged in"); process.exit(1); }
+  if (/PROVIDER_AUTH/.test(text)) return send({ id: req.id, error: { code: -32000, message: "provider authentication required (model fake/model-a)" } });
   if (/HANG/.test(text)) { pending = req.id; return; } // answered on session/cancel
   if (/SLOW_SILENT/.test(text)) await sleep(4000);
   if (/AGENT_REQUEST/.test(text)) {

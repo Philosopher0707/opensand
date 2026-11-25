@@ -5,10 +5,17 @@ import type { ShellData } from "../data";
 import { viewPanelId, type ViewId } from "../../../src/shell/navigation-model";
 import {
   connectionError,
+  ENGINE_OPTIONS,
+  ENGINE_STATUS_UNAVAILABLE,
+  isExternalEngine,
+  loadEngineStatus,
   maskedKey,
+  resolveEngineChoice,
   saveErrorMessage,
+  savePayload,
   settingsPayload,
   validateSettingsForm,
+  type EngineId,
   type ProviderId,
   type SettingsForm,
 } from "../../../src/shell/settings-model";
@@ -29,6 +36,9 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
   const [endpoint, setEndpoint] = useState("");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [engine, setEngine] = useState<EngineId>("opensand");
+  const [engineMissing, setEngineMissing] = useState<EngineId[]>([]);
+  const [engineHint, setEngineHint] = useState("");
   const [hasSavedKey, setHasSavedKey] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"save" | "test" | null>(null);
@@ -50,13 +60,19 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
     }
     setLoading(true);
     data.getSettings()
-      .then((settings) => {
+      .then(async (settings) => {
         if (!live) return;
         setProvider(settings.provider ?? "openai");
         setEndpoint(settings.endpoint ?? "");
         setModel(settings.model ?? "");
         setHasSavedKey(Boolean(maskedKey(settings.apiKey)));
         setApiKey(""); // never put the stored key into an input
+        const { detected, unavailable } = await loadEngineStatus(data.detectEngines?.bind(data));
+        if (!live) return;
+        const choice = resolveEngineChoice((settings as { engine?: unknown }).engine, detected);
+        setEngine(choice.selected);
+        setEngineMissing(choice.missing);
+        setEngineHint(unavailable ? ENGINE_STATUS_UNAVAILABLE : choice.hint);
       })
       .catch(() => {
         if (live) setError("Could not load settings. Check that OpenSand is running.");
@@ -88,7 +104,7 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
   const save = async () => {
     setError(null);
     setSuccess(null);
-    const problem = validateSettingsForm(form, hasSavedKey);
+    const problem = validateSettingsForm(form, hasSavedKey, engine);
     if (problem) {
       setError(problem);
       return;
@@ -99,7 +115,7 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
     }
     setBusy("save");
     try {
-      await data.saveSettings(settingsPayload(form));
+      await data.saveSettings(savePayload(form, engine));
       setSuccess("Saved. Your provider is ready to use.");
       setHasSavedKey(true);
       setApiKey(""); // a freshly saved key is never rendered back
@@ -114,7 +130,7 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
   const test = async () => {
     setError(null);
     setSuccess(null);
-    const problem = validateSettingsForm(form, hasSavedKey);
+    const problem = validateSettingsForm(form, hasSavedKey, engine);
     if (problem) {
       setError(problem);
       return;
@@ -137,6 +153,23 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
 
   const formNode = (
     <form class="settings-form" onSubmit={(event) => { event.preventDefault(); void save(); }} aria-busy={busy !== null}>
+      <div class="settings-field">
+        <label for={id("Engine")}>Chat engine</label>
+        <select
+          id={id("Engine")}
+          value={engine}
+          disabled={disabled}
+          aria-describedby={engineHint ? id("EngineHint") : undefined}
+          onChange={(event) => setEngine((event.currentTarget as HTMLSelectElement).value as EngineId)}
+        >
+          {ENGINE_OPTIONS.map((option) => (
+            <option key={option.id} value={option.id} disabled={isExternalEngine(option.id) && engineMissing.includes(option.id)}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {engineHint && <p id={id("EngineHint")} class="settings-hint">{engineHint}</p>}
+      </div>
       <div class="settings-field">
         <label for={id("Provider")}>Provider</label>
         <select
@@ -189,7 +222,7 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
         <button id={id("Save")} type="submit" class="btn btn-primary" disabled={disabled}>
           {busy === "save" ? "Saving…" : "Save settings"}
         </button>
-        <button id={id("Test")} type="button" class="btn btn-secondary" disabled={disabled} onClick={() => void test()}>
+        <button id={id("Test")} type="button" class="btn btn-secondary" disabled={disabled || isExternalEngine(engine)} onClick={() => void test()}>
           {busy === "test" ? "Testing…" : "Test connection"}
         </button>
         {onCancel && (

@@ -107,6 +107,9 @@ test('desktop server streams a Claude Code turn, resumes it, and leaves the defa
     assert.match(errors[0].message, /not signed in/i);
     assert.match(errors[0].message, /claude login/i);
     assert.doesNotMatch(errors[0].message, /Error: not logged in/);
+    // Signed-out engine: the saved engine falls back to OpenSand.
+    assert.equal(bridge.getSettings().engine, 'opensand');
+    assert.match(errors[0].message, /OpenSand/);
 
     // Cancel mid-turn: the turn ends gracefully through the desktop server.
     errors.length = 0;
@@ -143,9 +146,50 @@ test('passive engine detection route reports the fake claude binary', async () =
     const engines = JSON.parse(res.body);
     const claude = engines.find((e: any) => e.engine === 'claude');
     assert.equal(claude.installed, true);
-    assert.ok(claude.binaryPath.startsWith(fakeBinDir));
+    // Exact keys: no binaryPath, version or auth message may leave the process.
+    for (const e of engines) assert.deepEqual(Object.keys(e).sort(), ['engine', 'installed', 'signedIn']);
+    assert.doesNotMatch(res.body, /binaryPath|version|authMessage|\/fake/i);
   } finally {
     process.env.PATH = originalPath;
     await closeThenRemove([server, server.getBridge()], tmp);
+  }
+});
+
+test('OpenCode ACP provider-auth failure falls back to OpenSand', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-engine-opencode-auth-'));
+  const server = new DesktopServer({ baseDir: tmp, requireAuth: false });
+  const bridge = server.getBridge();
+  // Recorded production shape: session/prompt answers with a JSON-RPC provider-auth error,
+  // not a stderr line and exit. The wrapper renders "has no working sign-in", not "is not signed in".
+  process.env.PATH = `${fakeBinDir}${path.delimiter}${originalPath}`;
+  const errors: any[] = [];
+  bridge.on('event', (e: any) => { if (e.type === 'error') errors.push(e.data); });
+
+  async function postQuery(query: string, sessionId: string): Promise<any> {
+    const req = new MockRequest('POST', '/api/query');
+    const res = new MockResponse();
+    const pending = (server as any).handleRequest(req, res);
+    req.emit('data', Buffer.from(JSON.stringify({ query, sessionId })));
+    req.emit('end');
+    await pending;
+    return JSON.parse(res.body || '{}');
+  }
+
+  try {
+    await bridge.folderTrustStore.setLevel(process.cwd(), 'trusted');
+    bridge.updateSettings({ engine: 'opencode' });
+    const accepted = await postQuery('PROVIDER_AUTH', 'engine-select-opencode-auth');
+    assert.equal(accepted.success, true);
+    await waitFor(() => errors.length > 0);
+
+    assert.match(errors[0].message, /OpenCode has no working sign-in/i, "plain provider-auth explanation survives");
+    assert.match(errors[0].message, /fake\/model-a/, "the provider's model is kept in the message");
+    assert.doesNotMatch(errors[0].message, /jsonrpc|-32000|Error:/i, "no raw ACP framing reaches the user");
+    assert.match(errors[0].message, /Switched back to OpenSand/i, "the fallback is announced");
+    assert.equal(bridge.getSettings().engine, 'opensand', "the saved engine is reset");
+    assert.equal((bridge as any).coordinatorMap.size, 0, "cached session coordinators are cleared");
+  } finally {
+    process.env.PATH = originalPath;
+    await closeThenRemove([server, bridge], tmp);
   }
 });
