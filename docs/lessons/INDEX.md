@@ -128,6 +128,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-24 · [A shared clone can make gitleaks report secrets that CI does not scan](2026-11-24-gitleaks-scan-all-refs.md)
 - 2026-11-24 · [Job B: re-gating an edit must compare tiers; full verify can stall under load](2026-11-24-job-b-edit-regate-and-verify-contention.md)
 - 2026-11-24 · [PR CI green but main CI red after merge: temp-dir ENOTEMPTY in workspace-default test](2026-11-24-main-ci-red-after-pr-209-merge.md)
+- 2026-11-24 · [OS sandbox-hold tests must assert the platform's real behavior](2026-11-24-os-sandbox-hold-test-must-be-platform-aware.md)
 - 2026-11-24 · [Allow owner-approved .github changes in pre-merge gate via explicit flag and label](2026-11-24-pr-gate-allow-github-owner-label.md)
 - 2026-11-24 · [Event-scoped secret scans keep unmerged branches out of main CI](2026-11-24-scope-secret-scans-to-event.md)
 - 2026-11-24 · [Full desktop suite can fail on a pre-existing navigation real-window timeout](2026-11-24-sentinel-full-suite-navigation-timeout.md)

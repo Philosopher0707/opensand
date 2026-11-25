@@ -2,7 +2,8 @@
 // Fake Antigravity `agy -p <prompt> --output-format stream-json` (agy 1.4.12): {event, conversation_id, <event>: {...}}
 // lines: init, step_update (state ACTIVE|DONE, step_type user_input|agent_response|tool), then a terminal result with
 // status SUCCESS|ERROR. --mode plan --sandbox is advisory in agy: this fake does not enforce it.
-// Prompt markers: FAIL_AUTH (stderr "Error: not logged in", exit 1), BADMODEL (ERROR result, exit 1), HANG (no output).
+// Prompt markers: FAIL_AUTH (stderr "Error: not logged in", exit 1), BADMODEL (ERROR result, exit 1), HANG (no output),
+//   TRY_WRITE (writes x.txt in cwd and reports TRY_WRITE:<code>; EPERM when a read-only run is held in the OS sandbox).
 // Logs argv, stdin kind and pid to $FAKE_LOG.
 const fs = require("node:fs");
 const args = process.argv.slice(2);
@@ -17,6 +18,12 @@ const out = (event, body) => process.stdout.write(JSON.stringify({ event, conver
 const step = (o) => out("step_update", { conversation_id: id, ...o });
 if (/FAIL_AUTH/.test(prompt)) { console.error("Error: not logged in"); process.exit(1); }
 if (/HANG/.test(prompt)) { setInterval(() => {}, 1000); }
+else if (/TRY_WRITE/.test(prompt)) {
+  let said;
+  try { fs.writeFileSync("x.txt", "x"); said = "ok"; } catch (err) { said = err.code || "error"; }
+  out("result", { conversation_id: id, status: "SUCCESS", response: `TRY_WRITE:${said}`, finished_reason: "stop" });
+  process.exit(0);
+}
 else if (/BADMODEL/.test(prompt)) {
   out("result", { conversation_id: "", status: "ERROR", response: "", error: "invalid model selection: model x is not recognized", finished_reason: "error" });
   process.exit(1);

@@ -27,6 +27,10 @@ interface EngineSlice {
   planCheck: (log: any) => boolean;
   /** OS-level hold of a read-only run on macOS; elsewhere the engine's own advisory mode applies. */
   osHold?: { prompt: string; held: RegExp; advisory: RegExp };
+  /** The CLI prints its result then lingers; the turn must still end and the child must die. */
+  lingers?: boolean;
+  /** App-bundled Node script: stdin is ignored and the run goes through the local Node runtime. */
+  bundledScript?: boolean;
 }
 
 function runSliceSuite(slice: EngineSlice): void {
@@ -85,6 +89,7 @@ function runSliceSuite(slice: EngineSlice): void {
       const reply = await coord.runTurn("hello");
       assert.match(reply, slice.reply);
       assert.match(deltas.join(""), slice.reply);
+      if (slice.bundledScript) assert.equal((await readLog()).stdin, "null", "bundled script must ignore stdin");
     });
 
     it("resumes the same engine session on a second turn", async () => {
@@ -171,6 +176,22 @@ function runSliceSuite(slice: EngineSlice): void {
         assert.match(reply, held ? slice.osHold!.held : slice.osHold!.advisory);
       });
     }
+
+    if (slice.lingers) {
+      it("ends the turn and kills the child when the CLI lingers after its result", async () => {
+        newLog();
+        const coord = coordinator(`slice_${slice.engine}_linger`);
+        const reply = await coord.runTurn("LINGER");
+        assert.match(reply, slice.reply);
+        const pid: number = (await readLog()).pid;
+        let dead = false;
+        for (let i = 0; i < 120; i++) {
+          try { process.kill(pid, 0); await new Promise((r) => setTimeout(r, 100)); }
+          catch (err: any) { if (err?.code === "ESRCH") { dead = true; break; } }
+        }
+        assert.equal(dead, true, `lingering child ${pid} survived the turn`);
+      });
+    }
   });
 }
 
@@ -183,4 +204,47 @@ runSliceSuite({
   denial: { prompt: "ASK_WRITE", reply: /ASK_RESULT:reject/, noFile: "acp-wrote.txt" },
   planCheck: (log) => Boolean(log.rpc?.some((e: any) => e.method === "session/set_config_option" && e.configId === "mode" && e.value === "plan")),
   osHold: { prompt: "TRY_WRITE", held: /TRY_WRITE:EPERM/, advisory: /TRY_WRITE:ok/ },
+});
+
+runSliceSuite({
+  engine: "codex",
+  label: "Codex",
+  fake: "codex",
+  reply: /done by codex/,
+  resumeReply: /resumed thread-abc/,
+  resumeInLog: (log) => Boolean(log.args?.includes("resume")),
+  planCheck: (log) => Boolean(log.args?.some((a: string) => a === 'sandbox_mode="read-only"')),
+});
+
+runSliceSuite({
+  engine: "copilot",
+  label: "GitHub Copilot",
+  fake: "copilot",
+  reply: /copilot says hello/,
+  resumeReply: /continued cop-session-1/,
+  resumeInLog: (log) => Boolean(log.args?.includes("--resume")),
+  planCheck: (log) => Boolean(log.args?.includes("--deny-tool") && log.args?.includes("shell")),
+  lingers: true,
+});
+
+runSliceSuite({
+  engine: "antigravity",
+  label: "Antigravity",
+  fake: "agy",
+  reply: /says hello/,
+  resumeReply: /continued conv-agy-1/,
+  resumeInLog: (log) => Boolean(log.args?.includes("--conversation")),
+  planCheck: (log) => Boolean(log.args?.includes("--sandbox") && log.args?.includes("plan")),
+  osHold: { prompt: "TRY_WRITE", held: /TRY_WRITE:EPERM/, advisory: /TRY_WRITE:ok/ },
+});
+
+runSliceSuite({
+  engine: "workbuddy",
+  label: "WorkBuddy",
+  fake: "codebuddy.mjs",
+  reply: /codebuddy says hello/,
+  resumeReply: /codebuddy continued cb-sess-1/,
+  resumeInLog: (log) => Boolean(log.args?.includes("--resume")),
+  planCheck: (log) => Boolean(log.args?.includes("plan")),
+  bundledScript: true,
 });
