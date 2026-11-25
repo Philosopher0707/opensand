@@ -2,9 +2,8 @@ import { defineConfig } from 'vite';
 import preact from '@preact/preset-vite';
 import path from 'node:path';
 
-// Opt-in Preact renderer. Output lands in dist/renderer-next, served by
-// DesktopServer only when OPENSAND_RENDERER=preact. The default renderer
-// (renderer/app.js) is untouched.
+// Preact renderer. Output lands in dist/renderer-next, which DesktopServer
+// serves by default; OPENSAND_RENDERER=legacy keeps renderer/app.js reachable.
 export default defineConfig({
   root: path.resolve(import.meta.dirname, 'renderer-next'),
   base: './',

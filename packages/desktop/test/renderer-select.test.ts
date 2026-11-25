@@ -16,18 +16,32 @@ function fakeDist(withNext: boolean): string {
   return src;
 }
 
-test('default renderer is used unless OPENSAND_RENDERER=preact', () => {
-  const src = fakeDist(true);
-  assert.strictEqual(resolveRendererDir(src, {}), path.join(src, '../../renderer'));
-  assert.strictEqual(resolveRendererDir(src, { OPENSAND_RENDERER: 'legacy' }), path.join(src, '../../renderer'));
-});
+function warningsDuring(fn: () => void): string[] {
+  const original = console.warn;
+  const seen: string[] = [];
+  console.warn = (...args: unknown[]) => { seen.push(args.join(' ')); };
+  try { fn(); } finally { console.warn = original; }
+  return seen;
+}
 
-test('OPENSAND_RENDERER=preact serves dist/renderer-next when built', () => {
+test('renderer-next is the default when built', () => {
   const src = fakeDist(true);
+  assert.strictEqual(resolveRendererDir(src, {}), path.join(src, '../renderer-next'));
   assert.strictEqual(resolveRendererDir(src, { OPENSAND_RENDERER: 'preact' }), path.join(src, '../renderer-next'));
 });
 
-test('OPENSAND_RENDERER=preact falls back to the default when not built', () => {
+test('OPENSAND_RENDERER=legacy keeps the old renderer even when next is built', () => {
+  const src = fakeDist(true);
+  assert.strictEqual(resolveRendererDir(src, { OPENSAND_RENDERER: 'legacy' }), path.join(src, '../../renderer'));
+});
+
+test('missing next build falls back to the legacy renderer with a warning', () => {
   const src = fakeDist(false);
-  assert.strictEqual(resolveRendererDir(src, { OPENSAND_RENDERER: 'preact' }), path.join(src, '../../renderer'));
+  const legacy = path.join(src, '../../renderer');
+  for (const env of [{}, { OPENSAND_RENDERER: 'preact' }]) {
+    const seen = warningsDuring(() => {
+      assert.strictEqual(resolveRendererDir(src, env), legacy);
+    });
+    assert.match(seen.join('\n'), /renderer-next is missing.*legacy renderer/);
+  }
 });

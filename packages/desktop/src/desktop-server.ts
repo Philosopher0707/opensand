@@ -43,16 +43,16 @@ export interface DesktopServerOptions {
  * - Webhook ingestion (POST /api/webhooks/:name) is protected by per-IP rate limiting and signature verification.
  */
 /**
- * Opt-in renderer selection. The default is renderer/ (app.js). Setting
- * OPENSAND_RENDERER=preact serves the Vite build in dist/renderer-next, and
- * falls back to the default (with a warning) if that build is missing.
+ * Renderer selection. dist/renderer-next (the Vite/Preact build) is the default;
+ * OPENSAND_RENDERER=legacy serves renderer/ (app.js) instead. A missing or
+ * incomplete next build falls back to the legacy renderer with a warning.
  */
 export function resolveRendererDir(distSrcDir: string, env: NodeJS.ProcessEnv = process.env): string {
   const legacy = path.join(distSrcDir, '../../renderer');
-  if (env.OPENSAND_RENDERER !== 'preact') return legacy;
   const next = path.join(distSrcDir, '../renderer-next');
+  if (env.OPENSAND_RENDERER === 'legacy') return legacy;
   if (fs.existsSync(path.join(next, 'index.html'))) return next;
-  console.warn('[OpenSand] OPENSAND_RENDERER=preact but dist/renderer-next is missing; run `pnpm --filter @opensand/desktop build`. Using the default renderer.');
+  console.warn('[OpenSand] dist/renderer-next is missing; run `pnpm --filter @opensand/desktop build`. Using the legacy renderer.');
   return legacy;
 }
 
