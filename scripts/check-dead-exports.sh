@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fail on NEW exported functions/classes/consts under packages/*/src that no other file
-# imports or references. Today's findings are seeded in scripts/dead-exports-allow.txt.
+# imports or references, including imports from packages/*/renderer-next/src (a second front end).
+# Today's findings are seeded in scripts/dead-exports-allow.txt.
 # Excludes tests, index.ts re-exports and package entry points from findings and references.
 # Usage: scripts/check-dead-exports.sh
 # Env (selftest): DEAD_EXPORTS_PACKAGES_DIR, DEAD_EXPORTS_ALLOW, DEAD_EXPORTS_ROOT
@@ -70,13 +71,19 @@ for (const pkg of fs.readdirSync(pkgsRoot)) {
 }
 
 const files = [];
+const referenceOnly = new Set(); // second front-end tree: its imports count, its own exports are not findings
 for (const pkg of fs.readdirSync(pkgsRoot)) {
-  const src = path.join(pkgsRoot, pkg, "src");
-  if (!fs.existsSync(src)) continue;
-  for (const f of walk(src, [])) {
-    const b = path.basename(f);
-    if (b.endsWith(".d.ts") || /\.(test|spec)\./.test(b)) continue;
-    files.push(f);
+  for (const [root, isReference] of [
+    [path.join(pkgsRoot, pkg, "src"), false],
+    [path.join(pkgsRoot, pkg, "renderer-next", "src"), true],
+  ]) {
+    if (!fs.existsSync(root)) continue;
+    for (const f of walk(root, [])) {
+      const b = path.basename(f);
+      if (b.endsWith(".d.ts") || /\.(test|spec)\./.test(b)) continue;
+      files.push(f);
+      if (isReference) referenceOnly.add(f);
+    }
   }
 }
 
@@ -90,7 +97,7 @@ for (const f of files) {
 const exported = [];
 for (const [f, sf] of parsed) {
   const base = path.basename(f);
-  if (skip.has(f) || base === "index.ts" || base === "index.tsx") continue;
+  if (referenceOnly.has(f) || skip.has(f) || base === "index.ts" || base === "index.tsx") continue;
   const rel = path.relative(repoRoot, f);
   const hasExport = (n) => !!ts.canHaveModifiers(n) && (ts.getModifiers(n) || []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
   const add = (nameNode, kind) => {

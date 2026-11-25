@@ -7,11 +7,12 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { withElectronLock } from "./electron-lock.js";
 import { hermeticElectronEnv, makeTempHome } from "./hermetic-env.js";
 
 const pkgRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const NAV_HELPER_URL = pathToFileURL(path.join(pkgRoot, "dist/test/helpers/navigate-view.js")).href;
 
 function skipReason(): string | undefined {
   if (process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
@@ -26,6 +27,7 @@ const RUNNER_SCRIPT = String.raw`
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import { navigateToView } from "${NAV_HELPER_URL}";
 
 const shotDir = process.env.OPENSAND_SETUP_SHOT_DIR || "";
 const TIMEOUT_MS = Number(process.env.OPENSAND_SETUP_TIMEOUT_MS || 100000);
@@ -35,6 +37,7 @@ let win;
 const js = (code) => win.webContents.executeJavaScript(code).catch((e) => { console.error("[js failed] " + String(code).slice(0, 160)); throw e; });
 const wait = async (fn) => { for (let i = 0; i < 200; i++) { if (await js("Boolean(" + fn + ")")) return; await sleep(100); } throw new Error("wait timed out: " + fn); };
 const setInput = (selector, value) => "(() => { const i = document.querySelector(" + JSON.stringify(selector) + "); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, " + JSON.stringify(value) + "); i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()";
+const setSelect = (selector, value) => "(() => { const s = document.querySelector(" + JSON.stringify(selector) + "); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, " + JSON.stringify(value) + "); s.dispatchEvent(new Event('change', { bubbles: true })); return s.value; })()";
 async function shot(label) {
   if (!shotDir) return;
   fs.mkdirSync(shotDir, { recursive: true });
@@ -42,7 +45,7 @@ async function shot(label) {
   fs.writeFileSync(path.join(shotDir, label + ".png"), (await win.webContents.capturePage()).toPNG());
 }
 
-const result = { welcomeMessage: "", localDisabled: null, keyInputType: "", keyInitiallyEmpty: null, validationError: "", testSuccess: "", testBodyUsesEnteredKey: null, keyMaskedAfterSave: null, chatAfterSave: null, settingsViaMenu: null, secretInDom: null, engine: null, sizes: {} };
+const result = { welcomeMessage: "", localDisabled: null, keyInputType: "", keyInitiallyEmpty: null, validationError: "", testSuccess: "", testBodyUsesEnteredKey: null, keyMaskedAfterSave: null, chatAfterSave: null, settingsViaMenu: null, secretInDom: null, engine: null, sizes: {}, detectReject: null, externalSave: null };
 
 app.on("browser-window-created", (_e, w) => {
   win = w;
@@ -107,6 +110,29 @@ app.on("browser-window-created", (_e, w) => {
         result.sizes[tag] = await js("(() => { const f = document.querySelector('#viewSettings .settings-form'); const r = f ? f.getBoundingClientRect() : null; const e = document.querySelector('#settingsEngine'); const er = e ? e.getBoundingClientRect() : null; return { visible: Boolean(r && r.width > 0 && r.height > 0), fits: Boolean(r && r.left >= -1 && r.right <= window.innerWidth + 1), noOverflow: document.documentElement.scrollWidth <= window.innerWidth, engineVisible: Boolean(er && er.width > 0 && er.height > 0), engineFits: Boolean(er && er.left >= -1 && er.right <= window.innerWidth + 1) }; })()");
         await shot("settings-" + tag + "-" + width + "x" + height);
       }
+
+      // Render-level contracts: intercept the real form's fetches, not just a helper's result.
+      await js("(() => { window.__detectMode = 'reject'; window.__settingsBody = null; window.__testCalls = 0; const orig = window.fetch.bind(window); window.fetch = async (input, init) => { const url = String(input && input.url ? input.url : input); if (url.includes('/api/settings/test')) { window.__testCalls++; return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }); } if (url.includes('/api/engines/detect')) { if (window.__detectMode === 'reject') return Promise.reject(new Error('simulated detection outage ECONNRESET')); return new Response(JSON.stringify([{ engine: 'claude', installed: true, signedIn: true }]), { status: 200, headers: { 'Content-Type': 'application/json' } }); } if (init && String(init.method || '').toUpperCase() === 'POST' && url.endsWith('/api/settings')) { window.__settingsBody = JSON.parse(String(init.body || '{}')); return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }); } return orig(input, init); }; return true; })()");
+      const reloadSettings = async () => {
+        await navigateToView({ js, sleep }, "#chat", "#viewChat");
+        await navigateToView({ js, sleep }, "#settings", "#viewSettings");
+        await wait("document.querySelector('#settingsEngine') && !document.querySelector('#settingsEngine').disabled");
+        await sleep(150);
+      };
+
+      // A rejected detector must not take Settings down with it.
+      await reloadSettings();
+      result.detectReject = await js("(() => { const s = document.querySelector('#settingsEngine'); const e = document.querySelector('#settingsEndpoint'); const h = document.querySelector('#settingsEngineHint'); const f = document.querySelector('#viewSettings .settings-form'); return { value: s.value, enabled: !s.disabled && !e.disabled, visible: Boolean(f && f.getBoundingClientRect().width > 0), hint: h ? h.textContent.trim() : '', rawError: /ECONNRESET|simulated detection outage/.test(document.body.innerText) }; })()");
+
+      // An external engine sends only { engine }: no typed key, no provider fields, no connection test.
+      await js("window.__detectMode = 'claude'");
+      await reloadSettings();
+      await wait("Array.from(document.querySelectorAll('#settingsEngine option')).some(o => o.value === 'claude' && !o.disabled)");
+      await js(setSelect('#settingsEngine', 'claude'));
+      await js(setInput('#settingsApiKey', 'FAKE_KEY_FOR_RENDER_TEST_0000'));
+      await js("document.querySelector('#settingsSave').click()");
+      await wait("Boolean(window.__settingsBody)");
+      result.externalSave = await js("({ body: window.__settingsBody, testCalls: window.__testCalls })");
 
       console.log("__SETUP_REAL_WINDOW_RESULT__:" + JSON.stringify(result));
       clearTimeout(timeout);
@@ -208,6 +234,14 @@ test("Preact welcome → save → chat and Settings menu real-window path (CI on
       assert.strictEqual(size.engineVisible, true, `${tag}: engine select visible`);
       assert.strictEqual(size.engineFits, true, `${tag}: engine select fits the viewport`);
     }
+
+    assert.strictEqual(res.detectReject.value, "opensand", "a rejected detector keeps OpenSand selected");
+    assert.strictEqual(res.detectReject.enabled, true, "Settings stays enabled when detection fails");
+    assert.strictEqual(res.detectReject.visible, true, "Settings form stays visible when detection fails");
+    assert.match(res.detectReject.hint, /Engine status is unavailable/i, "detection failure shows the plain hint");
+    assert.strictEqual(res.detectReject.rawError, false, "no raw network error reaches the page");
+    assert.deepStrictEqual(res.externalSave.body, { engine: "claude" }, "external engine save sends only { engine }");
+    assert.strictEqual(res.externalSave.testCalls, 0, "external engine save never tests the typed key");
     console.log("[proof] welcome/settings real-window screenshots:", proofDir);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });

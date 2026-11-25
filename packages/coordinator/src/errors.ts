@@ -4,6 +4,16 @@
  * Prevents raw stack traces in the UI.
  */
 
+/**
+ * Engine-agnostic sign-in failure test, shared by the display layer and the engine fallback.
+ * Covers Claude's "is not signed in", OpenCode's "provider authentication required" and
+ * the other engines' wording from engine_facts.mjs; a single display sentence is not enough.
+ */
+export function isAuthFailure(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err || "");
+  return /is not signed in|has no working sign-in|provider authentication required|not logged in|log ?in|authenticat|unauthori[sz]ed|401|invalid api key|credentials/i.test(msg);
+}
+
 export interface ActionableError {
   code: string;
   cause: string;

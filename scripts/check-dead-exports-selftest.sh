@@ -16,10 +16,17 @@ cat > "$WORK/pkgs/alpha/src/a.ts" <<'EOF'
 export function used() { return 1; }
 export function dead() { return 2; }
 export const CONST_A = 3;
+export function nextOnly() { return 5; }
 EOF
 cat > "$WORK/pkgs/alpha/src/b.ts" <<'EOF'
 import { used, CONST_A } from './a';
 console.log(used(), CONST_A);
+EOF
+# The second front-end tree is a referencing consumer, not a source of findings.
+mkdir -p "$WORK/pkgs/alpha/renderer-next/src"
+cat > "$WORK/pkgs/alpha/renderer-next/src/view.tsx" <<'EOF'
+import { nextOnly } from '../../src/a';
+console.log(nextOnly());
 EOF
 
 OUT=""
@@ -30,8 +37,8 @@ run_check() {
 }
 
 run_check
-if [[ "$STATUS" -eq 1 ]] && grep -qF 'function dead' <<<"$OUT" && ! grep -qF 'function used' <<<"$OUT"; then
-  pass "unreferenced export is found; imported export and const are not"
+if [[ "$STATUS" -eq 1 ]] && grep -qF 'function dead' <<<"$OUT" && ! grep -qF 'function used' <<<"$OUT" && ! grep -qF 'function nextOnly' <<<"$OUT"; then
+  pass "unreferenced export is found; imports from src and renderer-next are not"
 else
   fail "baseline (exit $STATUS): $OUT"
 fi

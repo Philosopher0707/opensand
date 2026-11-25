@@ -155,5 +155,6 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-25 · [Nova: rebase conflicts — regenerate the generated index, keep both import sides](2026-11-25-nova-rebase-keeps-both-sides.md)
 - 2026-11-25 · [Packaged app engine smoke testing requires canonical workspace trust and onboarding bypass](2026-11-25-packaged-engine-smoke-and-folder-trust.md)
 - 2026-11-25 · [A regenerated lessons index can leave an empty commit that blocks the rebase](2026-11-25-pr-gate-empty-commit-after-index-regen.md)
+- 2026-11-25 · [PR #248: auth fallback needs the engine's real error, and render tests must drive the form](2026-11-25-pr248-auth-recovery-and-render-contracts.md)
 - 2026-11-25 · [Showing the app version needs the current main, both Settings screens, and a real app directory](2026-11-25-show-version-in-both-settings-screens.md)
 - 2026-11-25 · [Prune whole worktrees before the disk guard, not just their caches](2026-11-25-worktree-prune-before-disk-guard.md)
