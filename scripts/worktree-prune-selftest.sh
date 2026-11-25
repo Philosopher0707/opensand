@@ -145,9 +145,19 @@ run_prune() {
 FAILED=0
 check() {
   if [[ "$1" == "has" ]]; then
-    echo "$3" | grep -qF -- "$2" || { echo "FAIL: expected output to contain '$2'"; FAILED=1; }
+    if echo "$3" | grep -qF -- "$2"; then
+      echo "  PASS: found '$2'"
+    else
+      echo "FAIL: expected output to contain '$2'"
+      FAILED=1
+    fi
   else
-    echo "$3" | grep -qF -- "$2" && { echo "FAIL: expected output NOT to contain '$2'"; FAILED=1; }
+    if echo "$3" | grep -qF -- "$2"; then
+      echo "FAIL: expected output NOT to contain '$2'"
+      FAILED=1
+    else
+      echo "  PASS: absent '$2'"
+    fi
   fi
   return 0
 }
