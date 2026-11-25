@@ -4,7 +4,7 @@
   titles were expected; a Linux run "passed" only because it skips real-window tests. Local runs
   failed intermittently (first a 25 s wait timeout, then the same 8-vs-2 assertion), so the earlier
   bridge-stub fix was necessary but not sufficient.
-- **Cause:** the app starts `GalleryView.load()` on mount, before the test's `did-finish-load`
+- **Root Cause:** the app starts `GalleryView.load()` on mount, before the test's `did-finish-load`
   handler can replace `window.opensand`. The test's Refresh starts a second load with the stub, but
   the first (live) request can resolve *later* and overwrite the stubbed cards — last response wins.
 - **Fix:** `renderer-next/src/views/GalleryView.tsx` keeps a `loadSeq` ref; a response only updates
@@ -22,4 +22,8 @@
   was linked from `~/dev/opensand`, so its git common dir is the protected owner checkout. Rule:
   create job worktrees from `~/dev/_scratch/opensand-base`; when an inherited worktree cannot use
   `save`, push from it with `git push --force-with-lease` after running the tests directly.
+- **Hurdle 5:** CI failed at `verify.sh` on the lessons check. Cause: the lesson used `**Cause:**`
+  instead of the required `**Root Cause:**`, and INDEX.md was hand-appended out of filename order.
+  Rule: write `**Trap:**` / `**Root Cause:**` / `**Rule:**` lines and run
+  `bash scripts/lessons-index.sh` rather than editing INDEX.md by hand.
   (OpenSand #243, 2026-11-25)

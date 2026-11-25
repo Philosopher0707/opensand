@@ -47,17 +47,21 @@ export function GalleryView({ data, active, onSelect, refreshKey }: GalleryViewP
   const [publishError, setPublishError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadSeq = useRef(0);
 
   const load = async (nextCategory = category, nextQuery = search) => {
+    const seq = ++loadSeq.current;
     try {
       setLoading(true);
       const list = await data.getGalleryTemplates({ category: nextCategory, query: nextQuery });
+      if (seq !== loadSeq.current) return;
       setTemplates(Array.isArray(list) ? list : []);
       setLoadError(null);
     } catch (err) {
+      if (seq !== loadSeq.current) return;
       setLoadError(errorMessage(err));
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   };
 
