@@ -21,6 +21,17 @@ import {
   type ChatTurnState,
   type ToolCallItem,
 } from "../../../src/shell/chat-turn-model";
+import {
+  EMPTY_SEND_QUEUE,
+  SEND_FAILURE_MESSAGE,
+  cancelQueuedMessage,
+  clearSendQueue,
+  enqueueMessage,
+  queueStatusLabel,
+  sendFailureMessage,
+  takeNextQueued,
+  type SendQueueState,
+} from "../../../src/shell/chat-send-queue";
 import type { ArtifactItem } from "../../../src/shell/canvas-model";
 import type { TurnEvent } from "../../../src/shell/quick-capture-model";
 import { querySendArgs } from "../../../src/shell/query-send-model";
@@ -51,6 +62,10 @@ export interface ChatTurnController {
   available: boolean;
   send: (query: string) => void;
   stop: () => void;
+  /** Follow-ups typed while the turn runs; lives at the shell level across view switches. */
+  queue: SendQueueState;
+  queueMessage: (query: string) => void;
+  cancelQueued: (id: number) => void;
   load?: (sessionId: string, messages: ChatMessage[]) => void;
   dispatch?: (action: ChatTurnAction) => void;
   loadError?: string | null;
@@ -68,16 +83,23 @@ export function useChatTurn(
     chatTurnReducer,
     available ? INITIAL_CHAT_TURN : { ...INITIAL_CHAT_TURN, status: "unavailable" as const },
   );
+  const [queue, setQueue] = useState<SendQueueState>(EMPTY_SEND_QUEUE);
 
   // Event handlers read the latest state without re-subscribing on every token.
   const stateRef = useRef(state);
   stateRef.current = state;
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
 
   useEffect(() => {
     if (!data.onTurnEvent) return;
     return data.onTurnEvent((event: TurnEvent) => {
       const action = chatEventAction(event, stateRef.current.sessionId);
-      if (action) dispatch(action);
+      if (!action) return;
+      // Legacy drops queued follow-ups on a failed or cancelled turn; only a
+      // completed turn drains them.
+      if (action.type === "failed" || action.type === "stopped") setQueue(clearSendQueue);
+      dispatch(action);
     });
   }, [data]);
 
@@ -111,15 +133,29 @@ export function useChatTurn(
     dispatch({ type: "start", query: text });
     data.sendQuery(...querySendArgs(text, selectedSessionId, activeAgentId)).then(
       (res) => {
-        if (res?.success === false) dispatch({ type: "failed", message: "The message did not send." });
-        else dispatch({ type: "sent", sessionId: String(res?.sessionId ?? "") });
+        if (res?.success === false) {
+          setQueue(clearSendQueue);
+          dispatch({ type: "failed", message: SEND_FAILURE_MESSAGE });
+        } else dispatch({ type: "sent", sessionId: String(res?.sessionId ?? "") });
       },
-      (err) => dispatch({ type: "failed", message: err instanceof Error ? err.message : String(err) }),
+      (err) => {
+        setQueue(clearSendQueue);
+        dispatch({ type: "failed", message: sendFailureMessage(err) });
+      },
     );
+  };
+
+  const queueMessage = (query: string) => {
+    setQueue((prev) => enqueueMessage(prev, query));
+  };
+
+  const cancelQueued = (id: number) => {
+    setQueue((prev) => cancelQueuedMessage(prev, id));
   };
 
   const stop = () => {
     if (data.cancelTurn) Promise.resolve(data.cancelTurn()).catch(() => {});
+    setQueue(clearSendQueue);
     dispatch({ type: "stopped" });
   };
 
@@ -127,7 +163,34 @@ export function useChatTurn(
     dispatch({ type: "load", sessionId, messages });
   };
 
-  return { state, available, send, stop, load, dispatch, loadError, clearLoadError: () => setLoadError(null) };
+  // A completed turn sends the oldest follow-up; the failed and stopped paths
+  // above clear the queue instead, matching the legacy renderer.
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  const prevStatusRef = useRef(state.status);
+  useEffect(() => {
+    const wasBusy = isChatBusy(prevStatusRef.current);
+    prevStatusRef.current = state.status;
+    if (!wasBusy || state.status !== "done") return;
+    const next = takeNextQueued(queueRef.current);
+    if (!next.text) return;
+    setQueue(next.state);
+    sendRef.current(next.text);
+  }, [state.status]);
+
+  return {
+    state,
+    available,
+    send,
+    stop,
+    queue,
+    queueMessage,
+    cancelQueued,
+    load,
+    dispatch,
+    loadError,
+    clearLoadError: () => setLoadError(null),
+  };
 }
 
 function statusText(state: ChatTurnState, now: number = Date.now()): string {
@@ -609,7 +672,14 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
   };
 
   const submit = () => {
-    if (busy || (!draft.trim() && stagedAttachments.length === 0)) return;
+    if (!chat.available || (!draft.trim() && stagedAttachments.length === 0)) return;
+    // Never block typing: a message sent during a turn waits its turn in the queue.
+    if (busy) {
+      const queued = composePromptWithAttachments(draft, stagedAttachments);
+      if (queued) chat.queueMessage(queued);
+      clearComposer();
+      return;
+    }
     const local = runLocalSlashCommand(draft.trim(), {
       compact: data?.compact,
       rollback: data?.rollback,
@@ -809,6 +879,42 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
             </div>
           )}
 
+          {/* Queued follow-ups: visible and individually cancellable, like legacy's queue indicator. */}
+          {chat.queue.items.length > 0 && (
+            <div
+              class="attachment-strip chat-send-queue"
+              role="list"
+              aria-label="Queued messages"
+              data-el="queue"
+            >
+              <span
+                class="attachment-chip-size chat-send-queue-label"
+                style={{ marginRight: "4px" }}
+                data-el="queue-label"
+              >
+                {queueStatusLabel(chat.queue.items.length)}
+              </span>
+              {chat.queue.items.map((item) => (
+                <div key={item.id} class="attachment-chip queued-message" role="listitem">
+                  <span class="attachment-chip-icon" aria-hidden="true">📨</span>
+                  <span class="attachment-chip-meta">
+                    <span class="attachment-chip-name queued-message-text" title={item.text}>{item.text}</span>
+                    <span class="attachment-chip-size">Queued</span>
+                  </span>
+                  <button
+                    type="button"
+                    class="btn-remove-attachment btn-cancel-queued"
+                    title="Cancel queued message"
+                    aria-label={`Cancel queued message: ${item.text}`}
+                    onClick={() => chat.cancelQueued(item.id)}
+                  >
+                    &times;
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Staged Attachments Strip */}
           {stagedAttachments.length > 0 && (
             <div id="attachmentStrip" class="attachment-strip" role="list" aria-label="Staged Attachments">
@@ -923,11 +1029,11 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
                 id="btnSend"
                 type="button"
                 class="btn btn-primary btn-sm"
-                disabled={busy || !chat.available || (!draft.trim() && stagedAttachments.length === 0)}
-                title={busy ? "Wait for this answer, or press Stop" : "Send (Enter)"}
+                disabled={!chat.available || (!draft.trim() && stagedAttachments.length === 0)}
+                title={busy ? "Queue this message (sends when the current reply finishes)" : "Send (Enter)"}
                 onClick={submit}
               >
-                Send
+                {busy ? "Queue" : "Send"}
               </button>
               {busy && (
                 <button id="btnStop" type="button" class="btn btn-danger btn-sm" title="Stop generating" onClick={chat.stop}>
