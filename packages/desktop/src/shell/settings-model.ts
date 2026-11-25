@@ -113,6 +113,11 @@ export function isExternalEngine(id: EngineId): boolean {
   return id !== "opensand";
 }
 
+/** Provider credentials and connection testing apply only to the OpenSand provider engine. */
+export function providerFieldsVisible(id: EngineId): boolean {
+  return id === "opensand";
+}
+
 export function enginePayload(engine: EngineId): { engine: EngineId } {
   return { engine };
 }
@@ -172,7 +177,7 @@ export function resolveEngineChoice(
   const requested = ENGINE_OPTIONS.find((o) => o.id === saved)?.id ?? "opensand";
   const selected = requested !== "opensand" && missing.includes(requested) ? "opensand" : requested;
   const hint = missing.length
-    ? `${missing.map((id) => `${ENGINE_OPTIONS.find((o) => o.id === id)!.short} is not installed on this computer.`).join(" ")} Install what you want to use, then reopen Settings to select it.`
+    ? `Not installed: ${missing.map((id) => ENGINE_OPTIONS.find((o) => o.id === id)!.short).join(", ")}.`
     : "";
   return { selected, missing, hint };
 }

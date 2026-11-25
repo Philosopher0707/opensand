@@ -42,6 +42,18 @@ export function resolveStateDir(env: NodeJS.ProcessEnv = process.env, overrideBa
   return path.join(os.homedir(), '.opensand');
 }
 
+/** Packaged Electron reports the app version; the bare Electron binary reports its own version. */
+export function resolveAppVersion(app: { isPackaged: boolean; getVersion(): string }): string {
+  if (app.isPackaged) return app.getVersion();
+  try {
+    const pkg = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+    if (typeof pkg.version === 'string' && pkg.version.trim()) return pkg.version.trim();
+  } catch {
+    // fall through to Electron's value
+  }
+  return app.getVersion();
+}
+
 /**
  * Parses the OPENSAND_SMOKE flag.
  * Truthy values: '1', 'true', 'yes' (case-insensitive).
@@ -160,7 +172,7 @@ export class DesktopApp {
     try {
       // Ephemeral port: the window loads whatever URL the server returns, so a
       // dev server already on 3456 cannot block the app from starting.
-      this.server = new DesktopServer({ port: 0, baseDir: this.baseDir, appVersion: app.getVersion() });
+      this.server = new DesktopServer({ port: 0, baseDir: this.baseDir, appVersion: resolveAppVersion(app) });
       const { url, port } = await this.server.start();
       console.log('[OpenSand Desktop] server listening:', url.split('?')[0]);
 

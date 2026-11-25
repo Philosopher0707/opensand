@@ -5638,6 +5638,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const selectedEngine = settingEngine?.value || 'opensand';
     const external = selectedEngine !== 'opensand';
     settingEngineModelGroup.hidden = !external;
+    for (const id of ['settingProviderGroup', 'settingEndpointGroup', 'settingModelGroup', 'settingApiKeyGroup']) {
+      const group = document.getElementById(id);
+      if (group) group.hidden = external;
+    }
     if (!external) return;
 
     const status = detectedEngines.find((item) => item?.engine === selectedEngine);
@@ -5660,7 +5664,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     for (const model of models) {
       const option = document.createElement('option');
       option.value = model.id;
-      option.textContent = model.label || model.id;
+      option.textContent = model.label && model.label !== model.id ? `${model.label} (${model.id})` : model.id;
       settingEngineModel.appendChild(option);
     }
     settingEngineModel.value = selected || '';
@@ -5701,20 +5705,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       settingEngine.value = choices.some((o) => o.value === s.engine) ? s.engine : 'opensand';
       let detected = [];
       try { detected = await client.detectEngines(); } catch {}
-      const reasons = [];
+      const missing = [];
       for (const option of choices) {
         const found = Array.isArray(detected) ? detected.find((e) => e && e.engine === option.value) : null;
         const installed = Boolean(found && found.installed);
         option.disabled = !installed;
-        if (!installed) reasons.push(`${option.dataset.label || option.textContent.trim()} is not installed on this computer.`);
+        if (!installed) missing.push(option.dataset.label || option.textContent.trim());
       }
       if (settingEngine.selectedOptions[0]?.disabled) settingEngine.value = 'opensand';
       detectedEngines = Array.isArray(detected) ? detected : [];
       renderEngineModelChoices();
       if (engineHint) {
-        engineHint.textContent = reasons.length
-          ? `${reasons.join(' ')} Install what you want to use, then reopen Settings to select it.`
-          : '';
+        engineHint.textContent = missing.length ? `Not installed: ${missing.join(', ')}.` : '';
       }
     }
     const hasStoredKey = !!s.apiKey && s.apiKey !== 'none';

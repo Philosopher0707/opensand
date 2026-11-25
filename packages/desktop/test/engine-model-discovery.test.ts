@@ -68,7 +68,14 @@ test("every engine returned by detection has a current labelled fallback catalog
     });
     assert.equal(result.modelsSource, "fallback", engine);
     assert.ok(result.models.length > 0, `${engine} must offer at least one account model`);
-    assert.match(result.modelsMessage!, /built-in fallback list/i, engine);
+    const noListMessages: Record<string, string> = {
+      claude: "Claude Code doesn't publish a model list; showing current models.",
+      codex: "Codex doesn't publish a model list; showing current models.",
+      copilot: "GitHub Copilot doesn't publish a model list; showing current models.",
+      workbuddy: "WorkBuddy doesn't publish a model list; showing current models.",
+    };
+    if (noListMessages[engine]) assert.equal(result.modelsMessage, noListMessages[engine], engine);
+    else assert.match(result.modelsMessage!, /built-in fallback list/i, engine);
     assert.ok(result.models.every((model) => !staleIds.has(model.id)), `${engine} fallback still contains a stale model id`);
   }
 });
@@ -98,7 +105,7 @@ test("fallback catalogs are used only after live listing fails", async () => {
   const failed = await listModels({ engine: "opencode", binary: "/fake/opencode", cache: false, commandRunner: async () => null });
   assert.equal(failed.modelsSource, "fallback");
   assert.deepEqual(failed.models, [{ id: "opencode-go/glm-5.3-flash", label: "GLM 5.3 Flash" }]);
-  assert.match(failed.modelsMessage!, /built-in fallback list/i);
+  assert.equal(failed.modelsMessage, "Live model list unavailable; showing a built-in fallback list.");
 });
 
 test("provider 401, outage, empty response and CLI timeout use safe fallback catalogs", async () => {
