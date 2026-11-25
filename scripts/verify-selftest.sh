@@ -215,6 +215,229 @@ expect_docs_only() {
   fi
 }
 
+
+# expect_affected_packages <label> <event> <target> <missing_base 0|1> <verify_all 0|1> <want_coord_test 0|1> <want_desktop_test 0|1> <want_desktop_skip 0|1>
+
+# expect_release_docs_only <label>: proves RELEASE_TAG on a docs-only diff fails closed to full build+tests
+
+# expect_wildcard_selftest_handling: verifies that changed scripts matching wildcard patterns do not accidentally trigger glob expansion across other selftests
+expect_wildcard_selftest_handling() {
+  local label="wildcard-selftest-handling"
+  local dir="$WORK/$label" base out status ok=1
+
+  make_workspace "$dir" ok
+  mkdir -p "$dir/packages/desktop/src"
+  printf "{\"name\":\"@opensand/desktop\",\"version\":\"1.0.0\",\"scripts\":{\"build\":\"node -e 0\",\"test\":\"node --test test.mjs\"}}\n" > "$dir/packages/desktop/package.json"
+  echo "export const d = 1;" > "$dir/packages/desktop/src/d.ts"
+  printf "import test from 'node:test';\ntest('desktop passes', () => {});\n" > "$dir/packages/desktop/test.mjs"
+
+  # Create literal wildcard and space-named selftests plus an extra sentinel
+  star_st="$dir/scripts/*-selftest.sh"
+  printf "#!/usr/bin/env bash\necho \"running star selftest\"\nexit 0\n" > "$star_st"
+  space_st="$dir/scripts/space name-selftest.sh"
+  printf "#!/usr/bin/env bash\necho \"running space selftest\"\nexit 0\n" > "$space_st"
+  extra_st="$dir/scripts/extra-selftest.sh"
+  printf "#!/usr/bin/env bash\necho \"running extra sentinel selftest\"\nexit 0\n" > "$extra_st"
+  chmod +x "$star_st" "$space_st" "$extra_st"
+
+  (
+    cd "$dir"
+    git init -q
+    git config user.email test@example.com
+    git config user.name test
+    git add -A && git commit -qm base
+    base=$(git rev-parse HEAD)
+
+    # Only modify *-selftest.sh and space name-selftest.sh; extra-selftest.sh is untouched
+    echo "# edit star" >> "$star_st"
+    echo "# edit space" >> "$space_st"
+    git add -A && git commit -qm "edit wildcard and space selftests"
+
+    printf "{\"pull_request\":{\"base\":{\"sha\":\"%s\"}}}" "$base" > event.json
+    GITHUB_EVENT_NAME=pull_request GITHUB_EVENT_PATH="$dir/event.json" SKIP_INSTALL=1 TMPDIR="$dir/tmp" bash scripts/verify.sh > out.txt 2>&1
+    echo $? > status.txt
+  )
+
+  status=$(cat "$dir/status.txt")
+  out=$(cat "$dir/out.txt")
+  [[ "$status" -eq 0 ]] || ok=0
+
+  grep -qF "verify: running script selftest scripts/*-selftest.sh..." <<<"$out" || ok=0
+  grep -qF "running star selftest" <<<"$out" || ok=0
+  grep -qF "verify: running script selftest scripts/space name-selftest.sh..." <<<"$out" || ok=0
+  grep -qF "running space selftest" <<<"$out" || ok=0
+
+  # extra sentinel selftest must NOT run!
+  if grep -qF "extra-selftest.sh" <<<"$out"; then
+    ok=0
+  fi
+  if grep -qF "extra sentinel selftest" <<<"$out"; then
+    ok=0
+  fi
+  grep -qF "verify: ok" <<<"$out" || ok=0
+
+  if [[ "$ok" -eq 1 ]]; then
+    echo "PASS $label (exit $status)"
+  else
+    echo "FAIL $label: exit $status, unquoted or unintended selftest ran"
+    sed 's/^/    | /' "$dir/out.txt"
+    FAILED=1
+  fi
+}
+
+# expect_rename_code_to_docs: verifies that renaming source code into docs/ does not trigger docs-only skip
+expect_rename_code_to_docs() {
+  local label="$1"
+  local dir="$WORK/$label" base out status ok=1
+  make_workspace "$dir" ok
+  (
+    cd "$dir"
+    git init -q
+    git config user.email test@example.com
+    git config user.name test
+    git add -A && git commit -qm base
+    base=$(git rev-parse HEAD)
+
+    mkdir -p docs
+    git mv packages/good/src/a.ts docs/a.md
+    git add -A && git commit -qm "rename code to docs"
+
+    printf "{\"pull_request\":{\"base\":{\"sha\":\"%s\"}}}" "$base" > event.json
+    GITHUB_EVENT_NAME=pull_request GITHUB_EVENT_PATH="$dir/event.json" SKIP_INSTALL=1 TMPDIR="$dir/tmp" bash scripts/verify.sh > out.txt 2>&1
+    echo $? > status.txt
+  )
+  status=$(cat "$dir/status.txt")
+  out=$(cat "$dir/out.txt")
+  [[ "$status" -eq 0 ]] || ok=0
+  grep -qF "verify: ok" <<<"$out" || ok=0
+  if grep -qF "skipping build and tests" <<<"$out"; then
+    ok=0
+  fi
+  if ! grep -qF "@fake/good" <<<"$out"; then
+    ok=0
+  fi
+  if [[ "$ok" -eq 1 ]]; then
+    echo "PASS $label (exit $status)"
+  else
+    echo "FAIL $label: code-to-docs rename skipped build/tests or failed"
+    sed 's/^/    | /' "$dir/out.txt"
+    FAILED=1
+  fi
+}
+
+expect_release_docs_only() {
+  local label="$1"
+  local dir="$WORK/$label" base out status ok=1
+
+  make_workspace "$dir" ok
+  mkdir -p "$dir/packages/desktop/src"
+  printf "{\"name\":\"@opensand/desktop\",\"version\":\"1.0.0\",\"scripts\":{\"build\":\"node -e 0\",\"test\":\"node --test test.mjs\"}}\n" > "$dir/packages/desktop/package.json"
+  echo "export const d = 1;" > "$dir/packages/desktop/src/d.ts"
+  printf "import test from 'node:test';\ntest('desktop passes', () => {});\n" > "$dir/packages/desktop/test.mjs"
+
+  (
+    cd "$dir"
+    git init -q
+    git config user.email test@example.com
+    git config user.name test
+    git add -A && git commit -qm base
+    base=$(git rev-parse HEAD)
+
+    mkdir -p docs
+    echo "docs note" > docs/note.md
+    git add -A && git commit -qm "docs only"
+
+    printf "{\"pull_request\":{\"base\":{\"sha\":\"%s\"}}}" "$base" > event.json
+    GITHUB_EVENT_NAME=pull_request GITHUB_EVENT_PATH="$dir/event.json" RELEASE_TAG="v1.0.0" SKIP_INSTALL=1 TMPDIR="$dir/tmp" bash scripts/verify.sh > out.txt 2>&1
+    echo $? > status.txt
+  )
+
+  status=$(cat "$dir/status.txt")
+  out=$(cat "$dir/out.txt")
+  [[ "$status" -eq 0 ]] || ok=0
+
+  # Must NOT skip build and tests
+  grep -qF "skipping build and tests" <<<"$out" && ok=0
+  # Must test desktop
+  grep -qF "verify: testing package @opensand/desktop" <<<"$out" || ok=0
+  grep -qF "verify: ok" <<<"$out" || ok=0
+
+  if [[ "$ok" -eq 1 ]]; then
+    echo "PASS $label (exit $status)"
+  else
+    echo "FAIL $label: exit $status, release tag on docs-only did not run full suite"
+    sed 's/^/    | /' "$dir/out.txt"
+    FAILED=1
+  fi
+}
+
+expect_affected_packages() {
+  local label="$1" event="$2" target="$3" missing_base="$4" verify_all="$5"
+  local want_coord_test="$6" want_desktop_test="$7" want_desktop_skip="$8"
+  local dir="$WORK/$label" base out status ok=1
+
+  make_workspace "$dir" ok
+  mkdir -p "$dir/packages/coordinator/src" "$dir/packages/desktop/src"
+  printf "{\"name\":\"@opensand/coordinator\",\"version\":\"1.0.0\",\"scripts\":{\"build\":\"node -e 0\",\"test\":\"node --test test.mjs\"}}\n" > "$dir/packages/coordinator/package.json"
+  echo "export const c = 1;" > "$dir/packages/coordinator/src/c.ts"
+  printf "import test from 'node:test';\ntest('coordinator passes', () => {});\n" > "$dir/packages/coordinator/test.mjs"
+
+  printf "{\"name\":\"@opensand/desktop\",\"version\":\"1.0.0\",\"dependencies\":{\"@opensand/coordinator\":\"workspace:*\"},\"scripts\":{\"build\":\"node -e 0\",\"test\":\"node --test test.mjs\"}}\n" > "$dir/packages/desktop/package.json"
+  echo "export const d = 1;" > "$dir/packages/desktop/src/d.ts"
+  printf "import test from 'node:test';\ntest('desktop passes', () => {});\n" > "$dir/packages/desktop/test.mjs"
+
+  (
+    cd "$dir"
+    git init -q
+    git config user.email test@example.com
+    git config user.name test
+    git add -A && git commit -qm base
+    base=$(git rev-parse HEAD)
+
+    if [[ "$target" == "desktop" ]]; then
+      echo "export const d2 = 2;" >> packages/desktop/src/d.ts
+    elif [[ "$target" == "coordinator" ]]; then
+      echo "export const c2 = 2;" >> packages/coordinator/src/c.ts
+    fi
+    git add -A && git commit -qm "change on $target"
+
+    if [[ "$missing_base" -eq 1 ]]; then
+      GITHUB_EVENT_NAME="$event" VERIFY_ALL="$verify_all" SKIP_INSTALL=1 TMPDIR="$dir/tmp" bash scripts/verify.sh > out.txt 2>&1
+    else
+      printf "{\"pull_request\":{\"base\":{\"sha\":\"%s\"}}}" "$base" > event.json
+      GITHUB_EVENT_NAME="$event" GITHUB_EVENT_PATH="$dir/event.json" VERIFY_ALL="$verify_all" SKIP_INSTALL=1 TMPDIR="$dir/tmp" bash scripts/verify.sh > out.txt 2>&1
+    fi
+    echo $? > status.txt
+  )
+
+  status=$(cat "$dir/status.txt")
+  out=$(cat "$dir/out.txt")
+  [[ "$status" -eq 0 ]] || ok=0
+
+  if [[ "$want_coord_test" -eq 1 ]]; then
+    grep -qF "verify: testing package @opensand/coordinator" <<<"$out" || ok=0
+  fi
+
+  if [[ "$want_desktop_test" -eq 1 ]]; then
+    grep -qF "verify: testing package @opensand/desktop" <<<"$out" || ok=0
+  fi
+
+  if [[ "$want_desktop_skip" -eq 1 ]]; then
+    grep -qF "verify: skipping package @opensand/desktop" <<<"$out" || ok=0
+    grep -qF "verify: testing package @opensand/desktop" <<<"$out" && ok=0
+  fi
+
+  grep -qF "verify: ok" <<<"$out" || ok=0
+
+  if [[ "$ok" -eq 1 ]]; then
+    echo "PASS $label (exit $status)"
+  else
+    echo "FAIL $label: exit $status, coord_test=$want_coord_test desktop_test=$want_desktop_test desktop_skip=$want_desktop_skip"
+    sed 's/^/    | /' "$dir/out.txt"
+    FAILED=1
+  fi
+}
+
 mkdir -p "$WORK"
 expect healthy ok 0 "verify: ok"
 expect failing-test failing 1 "verify error: Package @fake/target failed its tests" "✖ deliberately failing test" "verify error: Log directory:" "opensand-verify." "/@fake__target.log"
@@ -228,6 +451,14 @@ expect raw-errors-failing raw-errors-failing 1 "FAIL: new raw error"
 expect_parallel_runs
 expect_docs_only docs-only-skip 0 1
 expect_docs_only docs-and-code-runs-full 1 0
+expect_affected_packages desktop-change-runs-full pull_request desktop 0 0 1 1 0
+expect_affected_packages coordinator-pr-skips-desktop pull_request coordinator 0 0 1 0 1
+expect_affected_packages push-main-runs-full push coordinator 0 0 1 1 0
+expect_affected_packages missing-base-sha-fails-closed pull_request coordinator 1 0 1 1 0
+expect_affected_packages verify-all-forces-full pull_request coordinator 0 1 1 1 0
+expect_release_docs_only release-docs-only-runs-full
+expect_wildcard_selftest_handling
+expect_rename_code_to_docs rename-code-to-docs-runs-tests
 
 if [[ -f "$ROOT/scripts/proof-selftest.sh" ]]; then
   echo "==> Running proof-selftest.sh..."

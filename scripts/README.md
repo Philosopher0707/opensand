@@ -461,8 +461,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Trigger**: Test verification.
 
 ### `verify.sh`
-- **Purpose**: Primary repository gate validating package versions, test tmpdirs, scripts catalog, generated lessons index and its two-branch rebase merge, builds, package unit tests, and git tripwires.
-- **Usage**: `scripts/verify.sh`
+- **Purpose**: Primary repository gate validating package versions, test tmpdirs, scripts catalog, generated lessons index and its two-branch rebase merge, builds, package unit tests, and git tripwires. On `pull_request` events, runs affected packages and matching script selftests when safe (skipping untouched `packages/desktop` real-window tests), while `push` to `main`, release tags, shared/core packages, or unresolved diffs run the full suite (`VERIFY_ALL=1` forces full suite).
+- **Usage**: `scripts/verify.sh` (environment: `SKIP_INSTALL=1` to reuse node_modules, `VERIFY_ALL=1` to force full suite, `BASE_SHA=<sha>` to override PR base commit).
 - **Exit Codes**: `0` on healthy repository, `1` on guardrail violation or test failure.
 - **Selftest**: `scripts/verify-selftest.sh`.
 - **Trigger**: CI workflow, pre-commit hook, developer verification.

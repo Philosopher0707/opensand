@@ -149,6 +149,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-25 · [A panel that promises plain errors must not read `err.message` at all](2026-11-25-a-plain-error-panel-must-not-read-the-rejection.md)
 - 2026-11-25 · [A shared scratch worktree can be reset under a running job](2026-11-25-a-shared-base-worktree-can-be-detached-under-you.md)
 - 2026-11-25 · [A pure model tested by Node must live in `src/shell`, not under `renderer-next`](2026-11-25-a-tested-model-for-the-shell-lives-in-src-shell.md)
+- 2026-11-25 · [Affected-package CI verification: fail-closed safety with desktop real-window skip](2026-11-25-affected-package-verify-skips-desktop-on-leaf-prs.md)
 - 2026-11-25 · [macOS Bash 3.2 aborts on an empty array under `set -u`, and CI tokens hide it](2026-11-25-bash32-empty-array-set-u.md)
 - 2026-11-25 · [Chat send queue: keep follow-ups at shell level and never surface a raw send error](2026-11-25-chat-send-queue-keep-at-shell-level.md)
 - 2026-11-25 · [renderer-next imports are invisible to the dead-export gate (2026-11-25)](2026-11-25-dictation-exports-dead-export-gate.md)
@@ -180,3 +181,4 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-26 · [A fail-closed sanitizer changes every consumer's display contract](2026-11-26-chat-error-allowlist-consumer-contract.md)
 - 2026-11-26 · [A pass-through `errorMessage()` helper hid raw backend errors from the raw-error gate](2026-11-26-errormessage-helper-hid-raw-gallery-errors.md)
 - 2026-11-26 · [A fresh worktree needs workspace builds and a linked Electron binary](2026-11-26-fresh-worktree-build-and-electron.md)
+- 2026-11-26 · [Git diff --no-renames prevents source-to-docs rename from bypassing CI](2026-11-26-git-diff-no-renames-prevents-docs-only-bypass.md)
