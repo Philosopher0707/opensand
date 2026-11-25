@@ -443,12 +443,14 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
       LESSONS_INDEX_SCRIPT="${PR_GATE_LESSONS_INDEX_SCRIPT:-$ROOT/scripts/lessons-index.sh}"
       # Recover from generated docs/lessons/INDEX.md conflicts on EVERY commit of the rebase,
       # not just the first one. A real (non-INDEX) conflict at any point aborts with its file list.
-      INNER_REBASE_MAX="${PR_GATE_REBASE_MAX_COMMITS:-1000}"
-      # Count commits being rebased to bound the loop.
       REBASE_COMMIT_COUNT=$(git -C "$REBASE_WT" rev-list --count "$FETCHED_MAIN".."$REBASE_REF" 2>/dev/null || echo 0)
       [[ "$REBASE_COMMIT_COUNT" =~ ^[0-9]+$ ]] || REBASE_COMMIT_COUNT=0
-      INNER_REBASE_MAX=$((REBASE_COMMIT_COUNT + 2))
-      [[ "$INNER_REBASE_MAX" -lt 4 ]] && INNER_REBASE_MAX=4
+      if [[ -n "${PR_GATE_REBASE_MAX_COMMITS:-}" ]]; then
+        INNER_REBASE_MAX="$PR_GATE_REBASE_MAX_COMMITS"
+      else
+        INNER_REBASE_MAX=$((REBASE_COMMIT_COUNT + 2))
+        [[ "$INNER_REBASE_MAX" -lt 4 ]] && INNER_REBASE_MAX=4
+      fi
 
       REBASE_DONE=0
       REBASE_ATTEMPTS=0
@@ -467,7 +469,8 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
 
         CONFLICTS=$(git -C "$REBASE_WT" diff --name-only --diff-filter=U || true)
         CONFLICT_LIST=$(printf '%s\n' "$CONFLICTS" | grep -v '^$' || true)
-        CONFLICT_COUNT=$(printf '%s\n' "$CONFLICT_LIST" | grep -c . || echo 0)
+        CONFLICT_COUNT=$(printf '%s\n' "$CONFLICT_LIST" | grep -c . || true)
+        CONFLICT_COUNT="${CONFLICT_COUNT:-0}"
 
         if [[ "$CONFLICT_COUNT" -gt 0 ]]; then
           # There are conflicts. Handle INDEX-only or abort.
@@ -526,7 +529,9 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
             exit 1
           fi
         else
-          # No conflicts. Check if it's an empty commit pending skip.
+          # No unmerged paths. Either an empty commit (skip it) or a commit that stopped
+          # with staged changes (e.g. a rejected hook) — that must abort, never be treated
+          # as a completed rebase.
           if git -C "$REBASE_WT" diff --cached --quiet 2>/dev/null; then
             echo "==> [when-green] rebase found nothing to commit; skipping the empty commit..."
             REBASE_SKIP_ERR="$(mktemp "${TMPDIR:-/tmp}/pr-gate-rebase-skip.XXXXXX")"
@@ -541,12 +546,22 @@ console.log(bad.map(j => j.name + " (" + (j.conclusion || "").toUpperCase() + ")
               continue
             fi
           else
-            # No conflicts and not empty: rebase is complete.
-            REBASE_DONE=1
+            # Staged changes but no conflicts: a hook/editor rejected the commit. Abort.
+            git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+            echo "FAIL: rebase stopped with staged changes but no conflicts for PR #$PR; nothing pushed." >&2
+            exit 1
           fi
         fi
       done
 
+      # Before any push, verify the rebase really finished (no rebase-merge/apply state left).
+      REBASE_MERGE_DIR="$(git -C "$REBASE_WT" rev-parse --git-path rebase-merge 2>/dev/null || true)"
+      REBASE_APPLY_DIR="$(git -C "$REBASE_WT" rev-parse --git-path rebase-apply 2>/dev/null || true)"
+      if [[ -n "$REBASE_MERGE_DIR" && -e "$REBASE_MERGE_DIR" ]] || [[ -n "$REBASE_APPLY_DIR" && -e "$REBASE_APPLY_DIR" ]]; then
+        git -C "$REBASE_WT" rebase --abort >/dev/null 2>&1 || true
+        echo "FAIL: rebase did not fully finish for PR #$PR (rebase state still present); nothing pushed." >&2
+        exit 1
+      fi
       NEW_HEAD=$(git -C "$REBASE_WT" rev-parse HEAD)
       if ! git -C "$REBASE_WT" push --force-with-lease="refs/heads/$PR_HEAD_BRANCH:$PR_HEAD_OID" origin "HEAD:refs/heads/$PR_HEAD_BRANCH"; then
         echo "FAIL: force-with-lease push of $PR_HEAD_BRANCH failed (has someone else pushed?); nothing merged" >&2

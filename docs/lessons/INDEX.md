@@ -151,6 +151,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-25 · [A panel that promises plain errors must not read `err.message` at all](2026-11-25-a-plain-error-panel-must-not-read-the-rejection.md)
 - 2026-11-25 · [A pure model tested by Node must live in `src/shell`, not under `renderer-next`](2026-11-25-a-tested-model-for-the-shell-lives-in-src-shell.md)
 - 2026-11-25 · [A real-window size loop must reset every panel after Stop](2026-11-25-real-window-size-loop-must-reset-each-panel.md)
+- 2026-11-25 · [A rebase that stops with staged changes but no conflicts must abort, not be treated as complete](2026-11-25-pr-gate-no-conflict-staged-must-abort.md)
 - 2026-11-25 · [A regenerated lessons index can leave an empty commit that blocks the rebase](2026-11-25-pr-gate-empty-commit-after-index-regen.md)
 - 2026-11-25 · [A shared scratch worktree can be reset under a running job](2026-11-25-a-shared-base-worktree-can-be-detached-under-you.md)
 - 2026-11-25 · [A truthy state string kept Dictate stuck in "Listening" (2026-11-25)](2026-11-25-dictation-state-string-kept-listening.md)

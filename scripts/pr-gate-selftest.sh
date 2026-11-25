@@ -297,6 +297,10 @@ case "${1:-}" in
         fi
         if [ "${2:-}" = "--continue" ]; then
           echo "rebase --continue GIT_EDITOR=${GIT_EDITOR:-unset}" >> "$TEST_CASE_DIR/rebase_calls.log"
+          if [ -f "$TEST_CASE_DIR/hook_rejected_on_continue" ]; then
+            echo "hook rejected the commit" >&2
+            exit 1
+          fi
           if [ -f "$TEST_CASE_DIR/multi_commit" ]; then
             c=$(cat "$TEST_CASE_DIR/mc_counter" 2>/dev/null || echo 0)
             c=$((c + 1))
@@ -371,6 +375,10 @@ case "${1:-}" in
       diff)
         # unmerged files after a conflicting rebase
         if echo "$*" | grep -q -- "--name-only"; then
+          if [ -f "$TEST_CASE_DIR/hook_rejected_on_continue" ]; then
+            # no conflicts: hook-rejected stop
+            exit 0
+          fi
           if [ -f "$TEST_CASE_DIR/mc_real_conflict" ]; then
             printf 'src/a.ts\n'
           elif [ -f "$TEST_CASE_DIR/multi_commit" ]; then
@@ -382,6 +390,9 @@ case "${1:-}" in
         fi
         # git diff --cached --quiet: empty iff the regenerated index left nothing staged.
         if echo "$*" | grep -q -- "--cached"; then
+          if [ -f "$TEST_CASE_DIR/hook_rejected_on_continue" ]; then
+            exit 1
+          fi
           if [ -f "$TEST_CASE_DIR/mc_last_empty" ]; then
             exit 0
           fi
@@ -1156,6 +1167,40 @@ if [[ -f "$dir/force_push.log" ]]; then
   echo "FAIL case51: must not push on a real conflict"
   FAILED=1
 fi
+
+# --- Case 52: --when-green, hook-rejected stop (staged changes, no conflicts) -> abort, no push/tag/merge ---
+dir="$WORK/case52-hook-rejected-stop"
+setup_defaults "$dir"
+echo 1 > "$dir/behind_times"
+touch "$dir/rebase_conflict"
+printf 'docs/lessons/INDEX.md\n' > "$dir/conflict_files"
+touch "$dir/index_only_conflict"
+touch "$dir/hook_rejected_on_continue"
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("rebase stopped with staged changes but no conflicts" "nothing pushed")
+run_test_case "case52-hook-rejected-stop" --when-green 42
+if [[ -f "$dir/force_push.log" ]]; then
+  echo "FAIL case52: must not push on a hook-rejected stop"
+  FAILED=1
+fi
+if [[ -f "$dir/git_push.log" ]]; then
+  echo "FAIL case52: must not push tag on a hook-rejected stop"
+  FAILED=1
+fi
+grep -qF -- "rebase --abort" "$dir/git_calls.log" 2>/dev/null || { echo "FAIL case52: rebase was not aborted"; FAILED=1; }
+
+# --- Case 53: PR_GATE_REBASE_MAX_COMMITS=1 caps the inner rebase recovery to one attempt ---
+dir="$WORK/case53-max-commits-cap"
+setup_defaults "$dir"
+echo 1 > "$dir/behind_times"
+touch "$dir/multi_commit"
+EXPECT_EXIT=1
+EXPECT_MERGE=0
+EXPECT_TAG=0
+NEED_SUBSTRINGS=("rebase did not finish after 1 attempts" "nothing pushed")
+PR_GATE_REBASE_MAX_COMMITS=1 run_test_case "case53-max-commits-cap" --when-green 42
 
 # --- Case 26: --when-green, INDEX.md plus another file conflict -> abort, name both, no push ---
 dir="$WORK/case26-index-plus-other-conflict"
