@@ -241,6 +241,21 @@ esac
 EOS
 chmod +x "$BIN_DIR/git"
 
+# Hermetic open mock (records open -a calls)
+cat << 'EOS' > "$BIN_DIR/open"
+printf '%s\n' "$*" >> "$TEST_CASE_DIR/open_calls.log"
+exit 0
+EOS
+chmod +x "$BIN_DIR/open"
+
+# Hermetic osascript mock (records quit calls)
+cat << 'EOS' > "$BIN_DIR/osascript"
+printf '%s\n' "$*" >> "$TEST_CASE_DIR/osascript_calls.log"
+exit 0
+EOS
+chmod +x "$BIN_DIR/osascript"
+
+
 # Hermetic mock pr-gate script
 cat << 'EOS' > "$WORK/mock-pr-gate.sh"
 if [ -f "$TEST_CASE_DIR/pr_gate_exit" ]; then
@@ -335,6 +350,8 @@ run_test() {
     OPENSAND_DESKTOP_PKG="${CASE_DESKTOP_PKG:-$([ -f "$dir/desktop_pkg.json" ] && echo "$dir/desktop_pkg.json" || echo "$dir/default_desktop_pkg.json")}" \
     OPENSAND_INSTALL_APP_DEST="$dir/Applications/OpenSand.app" \
     OPENSAND_ARCHIVE_DIR_BASE="$dir/archive" \
+    OPENSAND_STATE_DIR="${CASE_STATE_DIR:-$dir/state}" \
+    OPENSAND_RESTART_PROBE_TIMEOUT_SECONDS="${CASE_PROBE_TIMEOUT:-2}" \
     RELEASE_DOWNLOAD_DIR="$dir/download" \
     RELEASE_DOWNLOAD_POLL_SECONDS=1 \
     RELEASE_DOWNLOAD_TIMEOUT_SECONDS=10 \
@@ -454,9 +471,9 @@ echo "existing dmg" > "$dir/download/OpenSand-0.1.11-arm64.dmg"
 create_mock_app "$dir/mock_dmg_app/OpenSand.app" "0.1.11"
 run_test "case7-resume" 0 0.1.11
 
-# --- Case 8: Install behavior (archives old app, installs new app) ---
+# --- Case 8: Install behavior (archives old app, installs new app, relaunches and probes) ---
 dir="$WORK/case8-install"
-mkdir -p "$dir/download" "$dir/Applications"
+mkdir -p "$dir/download" "$dir/Applications" "$dir/state"
 touch "$dir/tag_exists"
 echo '[{"number": 42, "state": "MERGED"}]' > "$dir/pr_list.json"
 echo '{"state": "MERGED"}' > "$dir/pr_view.json"
@@ -469,7 +486,42 @@ create_mock_app "$zip_app_dir" "0.1.11"
 echo "mock dmg" > "$dir/download/OpenSand-0.1.11-arm64.dmg"
 create_mock_app "$dir/mock_dmg_app/OpenSand.app" "0.1.11"
 
+# Start stub server answering /api/version (0.1.11) and /api/engines/detect
+cat << 'PY_EOF' > "$dir/stub_server.py"
+import http.server, json, sys
+state_dir = sys.argv[1]
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/api/version':
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'{"app":"0.1.11","electron":"45.2.3"}')
+        elif self.path == '/api/engines/detect':
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'[{"engine":"claude","installed":true}]')
+        else:
+            self.send_response(404)
+            self.end_headers()
+    def log_message(self, *args): pass
+s = http.server.HTTPServer(('127.0.0.1', 0), H)
+with open(state_dir + '/server.port', 'w') as f: f.write(str(s.server_port) + '\n')
+with open(state_dir + '/server.token', 'w') as f: f.write('mock-token\n')
+with open(state_dir + '/server_ready', 'w') as f: f.write('1')
+s.serve_forever()
+PY_EOF
+python3 "$dir/stub_server.py" "$dir/state" &
+CASE8_PID=$!
+DEADLINE=$(( $(date +%s) + 5 ))
+while [ ! -f "$dir/state/server_ready" ]; do
+  if (( $(date +%s) > DEADLINE )); then echo "FAIL case8-install: stub server start timeout" >&2; exit 1; fi
+  sleep 0.05
+done
+
 run_test "case8-install" 0 --install 0.1.11
+kill -9 "$CASE8_PID" 2>/dev/null || true; wait "$CASE8_PID" 2>/dev/null || true
 
 # Verify old app was archived and new app installed
 if [ ! -d "$dir/archive"/*-OpenSand-0.1.10 ]; then

@@ -68,6 +68,7 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `release.sh` | 9-step end-to-end automated release pipeline; Step 1 guards free space on the writable data volume; Step 9 runs the post-install health check | Release Engineer / CI | `release-selftest.sh` |
 | `release-check.sh` | Full release verification and smoke test gate | Pre-release sanity gate | None |
 | `release-selftest.sh` | Hermetic selftest for automated release pipeline | Pre-commit / verification | Self |
+| `release-install-restart-selftest.sh` | Hermetic selftest for `release.sh --install` graceful quit, relaunch with `open -a`, and running process probe (`/api/version` and `/api/engines/detect`) | Pre-commit / verification | Self |
 | `smoke-packaged.sh` | Packaged application launch verification in isolated state | CI / release smoke gate | None |
 | `engine-smoke.sh` | Packaged application outside engine smoke test: verifies all 7 engines in Settings (#settingEngine) in isolated state | CI / pre-release verification | `engine-smoke-selftest.sh` |
 | `engine-smoke-selftest.sh` | Hermetic selftest for engine-smoke.sh verifying help, missing paths, and error handling | Pre-commit / verification | Self |
@@ -379,6 +380,18 @@ All scripts in this directory are cataloged below. Automated verification is enf
 ### `release-selftest.sh`
 - **Purpose**: Hermetic selftest suite for `release.sh` stubbing GitHub CLI, git, hdiutil, verify commands, and (for the disk guard) `df`. Covers both OS branches via `OPENSAND_RELEASE_OS` and asserts all four download patterns (`*.dmg`, `*.zip`, `*.AppImage`, `*.deb`).
 - **Usage**: `scripts/release-selftest.sh`
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, test verification.
+
+### `release-install-restart-selftest.sh`
+- **Purpose**: Hermetic selftest suite for `scripts/release.sh --install` post-install process restart and API probe (hotfix-path row (a) on PR #264). Proves that:
+  1. A stale-version stub causes the restart probe to fail red.
+  2. A matching-version stub with detected engines passes green and records `open -a`.
+  3. An empty engine list or unresponsive server causes the probe to fail red.
+  4. Graceful quit (`osascript -e 'tell application "OpenSand" to quit'`) is issued to running instances before bundle replacement.
+  All tests use isolated stubs; no real install to `/Applications` or modification of `~/.opensand` occurs.
+- **Usage**: `scripts/release-install-restart-selftest.sh`
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
 - **Trigger**: Pre-commit hook, test verification.

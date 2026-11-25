@@ -519,6 +519,40 @@ elif [[ "$INSTALL" -eq 1 ]]; then
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "DRY RUN: would check existing $APP_DEST, archive to ~/dev/_archive/<date>-OpenSand-<old>/, copy new app, run xattr -cr, and run install-health-check.sh to prove it starts and answers"
   else
+    # 1. Quit any running OpenSand gracefully, wait up to 15s, then kill -TERM
+    echo "Stopping any running OpenSand app gracefully..."
+    QUIT_TIMEOUT="${OPENSAND_QUIT_TIMEOUT_SECONDS:-15}"
+    RUNNING_PIDS=$(pgrep -f "OpenSand\\.app/Contents/MacOS/OpenSand" 2>/dev/null || pgrep -f "$APP_DEST/Contents/MacOS/OpenSand" 2>/dev/null || true)
+    if [[ -n "$RUNNING_PIDS" ]]; then
+      echo "Found running OpenSand process; requesting graceful quit..."
+      osascript -e 'tell application "OpenSand" to quit' 2>/dev/null || true
+      QUIT_DEADLINE=$(( $(date +%s) + QUIT_TIMEOUT ))
+      while (( $(date +%s) < QUIT_DEADLINE )); do
+        RUNNING_PIDS=$(pgrep -f "OpenSand\\.app/Contents/MacOS/OpenSand" 2>/dev/null || pgrep -f "$APP_DEST/Contents/MacOS/OpenSand" 2>/dev/null || true)
+        if [[ -z "$RUNNING_PIDS" ]]; then
+          break
+        fi
+        sleep 0.5
+      done
+
+      RUNNING_PIDS=$(pgrep -f "OpenSand\\.app/Contents/MacOS/OpenSand" 2>/dev/null || pgrep -f "$APP_DEST/Contents/MacOS/OpenSand" 2>/dev/null || true)
+      if [[ -n "$RUNNING_PIDS" ]]; then
+        echo "OpenSand still running after ${QUIT_TIMEOUT}s; sending SIGTERM to OpenSand.app process..."
+        for pid in $RUNNING_PIDS; do
+          kill -TERM "$pid" 2>/dev/null || true
+        done
+        for ((step=1; step<=10; step++)); do
+          RUNNING_PIDS=$(pgrep -f "OpenSand\\.app/Contents/MacOS/OpenSand" 2>/dev/null || pgrep -f "$APP_DEST/Contents/MacOS/OpenSand" 2>/dev/null || true)
+          if [[ -z "$RUNNING_PIDS" ]]; then
+            break
+          fi
+          sleep 0.5
+        done
+      fi
+    else
+      echo "No running OpenSand process detected."
+    fi
+
     if [[ -d "$APP_DEST" ]]; then
       PLIST="$APP_DEST/Contents/Info.plist"
       OLD_VER=$(node -e '
@@ -576,6 +610,98 @@ elif [[ "$INSTALL" -eq 1 ]]; then
       exit 2
     fi
     echo "PASS: Successfully installed OpenSand $VERSION at $APP_DEST; health check proved it starts and answers"
+
+    # 2. Relaunch the new bundle with open -a
+    echo "Relaunching new OpenSand bundle with open -a $APP_DEST..."
+    env -u ELECTRON_RUN_AS_NODE open -a "$APP_DEST"
+
+    # 3. Probe running process: find port (same way app publishes) and token (~/.opensand/server.token without printing)
+    echo "Probing running OpenSand process on local API..."
+    PROBE_TIMEOUT="${OPENSAND_RESTART_PROBE_TIMEOUT_SECONDS:-30}"
+    PROBE_DEADLINE=$(( $(date +%s) + PROBE_TIMEOUT ))
+    PROBE_OK=0
+    PROBE_ERR=""
+
+    while (( $(date +%s) < PROBE_DEADLINE )); do
+      STATE_DIR="${OPENSAND_STATE_DIR:-$HOME/.opensand}"
+      TOKEN=""
+      if [[ -f "$STATE_DIR/server.token" ]]; then
+        TOKEN=$(tr -d '\r\n' < "$STATE_DIR/server.token")
+      fi
+
+      PORT="${OPENSAND_PROBE_PORT:-}"
+      if [[ -z "$PORT" && -f "$STATE_DIR/server.port" ]]; then
+        PORT=$(tr -d '\r\n' < "$STATE_DIR/server.port")
+      fi
+      if [[ -z "$PORT" ]]; then
+        APP_PID=$(pgrep -f "$APP_DEST/Contents/MacOS/OpenSand" 2>/dev/null | head -n 1 || pgrep -f "OpenSand\\.app/Contents/MacOS/OpenSand" 2>/dev/null | head -n 1 || true)
+        if [[ -n "$APP_PID" ]]; then
+          PORT=$(lsof -a -p "$APP_PID" -iTCP -sTCP:LISTEN -Fn 2>/dev/null | grep -E '^n' | head -n 1 | sed 's/^n//' | awk -F: '{print $NF}' || true)
+        fi
+      fi
+      if [[ -z "$PORT" ]]; then
+        PORT="3456"
+      fi
+
+      if [[ -n "$PORT" ]]; then
+        CURL_OPTS=(-s -w "\nHTTP_STATUS:%{http_code}" --connect-timeout 1 --max-time 2)
+        if [[ -n "$TOKEN" ]]; then
+          CURL_OPTS+=(-H "Authorization: Bearer $TOKEN")
+        fi
+
+        VER_RESP=$(curl "${CURL_OPTS[@]}" "http://127.0.0.1:$PORT/api/version" 2>/dev/null || true)
+        VER_CODE=$(printf '%s\n' "$VER_RESP" | grep "HTTP_STATUS:" | cut -d: -f2)
+        VER_BODY=$(printf '%s\n' "$VER_RESP" | sed '/HTTP_STATUS:/d')
+
+        if [[ "$VER_CODE" == "200" ]]; then
+          REPORTED_VER=$(printf '%s\n' "$VER_BODY" | node -e '
+            const fs = require("fs");
+            try {
+              const d = JSON.parse(fs.readFileSync(0, "utf8"));
+              console.log(d.app || d.version || "");
+            } catch { console.log(""); }
+          ' 2>/dev/null || echo "")
+
+          CLEAN_REPORTED="${REPORTED_VER#v}"
+          if [[ "$CLEAN_REPORTED" == "$VERSION" || "$REPORTED_VER" == "$TAG" ]]; then
+            ENG_RESP=$(curl "${CURL_OPTS[@]}" "http://127.0.0.1:$PORT/api/engines/detect" 2>/dev/null || true)
+            ENG_CODE=$(printf '%s\n' "$ENG_RESP" | grep "HTTP_STATUS:" | cut -d: -f2)
+            ENG_BODY=$(printf '%s\n' "$ENG_RESP" | sed '/HTTP_STATUS:/d')
+
+            if [[ "$ENG_CODE" == "200" ]]; then
+              ENG_COUNT=$(printf '%s\n' "$ENG_BODY" | node -e '
+                const fs = require("fs");
+                try {
+                  const d = JSON.parse(fs.readFileSync(0, "utf8"));
+                  console.log(Array.isArray(d) ? d.length : 0);
+                } catch { console.log(0); }
+              ' 2>/dev/null || echo 0)
+
+              if (( ENG_COUNT > 0 )); then
+                PROBE_OK=1
+                break
+              else
+                PROBE_ERR="GET /api/engines/detect returned 200 but engines list was empty"
+              fi
+            else
+              PROBE_ERR="GET /api/engines/detect returned HTTP status ${ENG_CODE:-unknown}"
+            fi
+          else
+            PROBE_ERR="GET /api/version reported stale version '${REPORTED_VER}', expected '${VERSION}' (${TAG})"
+          fi
+        else
+          PROBE_ERR="GET /api/version returned HTTP status ${VER_CODE:-connection refused}"
+        fi
+      fi
+
+      sleep 0.5
+    done
+
+    if [[ "$PROBE_OK" -ne 1 ]]; then
+      echo "FAIL: Running OpenSand process restart probe failed after ${PROBE_TIMEOUT}s: ${PROBE_ERR:-no response on local server}" >&2
+      exit 1
+    fi
+    echo "PASS: Running OpenSand process verified: /api/version matches $TAG and /api/engines/detect returned active engines"
   fi
 else
   echo "PASS: --install not passed; skipping local /Applications installation."
