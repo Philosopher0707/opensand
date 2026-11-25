@@ -485,12 +485,18 @@ start_stub_server "$case6_dir" "0.1.18" "normal"
 cat << EOS > "$BIN_DIR/curl"
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$case6_dir/curl_argv.log"
+env >> "$case6_dir/curl_env.log"
 exec /usr/bin/curl "\$@"
 EOS
 chmod +x "$BIN_DIR/curl"
 
+# Caller has already exported the generic TOKEN (a plain assignment in release.sh
+# keeps its export attribute) and the script-private probe name. The probe token
+# must reach curl in neither argv nor environment.
 status6=0
 out6=$(run_case_install "$case6_dir" \
+  TOKEN="caller-unrelated-token" \
+  _OS_PROBE_TOKEN="stub-token-secret-12345" \
   http_proxy="http://127.0.0.1:1" https_proxy="http://127.0.0.1:1" \
   HTTPS_PROXY="http://127.0.0.1:1" ALL_PROXY="http://127.0.0.1:1" \
   no_proxy="" NO_PROXY="") || status6=$?
@@ -509,6 +515,13 @@ if [[ -f "$case6_dir/curl_argv.log" ]] && ! grep -q "stub-token-secret-12345" "$
 else
   echo "FAIL case6: bearer token appeared in curl argv" >&2
   cat "$case6_dir/curl_argv.log" >&2
+  FAILED=1
+fi
+if [[ -f "$case6_dir/curl_env.log" ]] && ! grep -q "stub-token-secret-12345" "$case6_dir/curl_env.log"; then
+  echo "PASS case6: bearer token absent from curl environment"
+else
+  echo "FAIL case6: bearer token appeared in curl environment" >&2
+  grep -n "TOKEN" "$case6_dir/curl_env.log" >&2 || true
   FAILED=1
 fi
 if [[ -f "$case6_dir/curl_argv.log" ]] && grep -q -- "--noproxy" "$case6_dir/curl_argv.log"; then

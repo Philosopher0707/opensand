@@ -644,20 +644,23 @@ elif [[ "$INSTALL" -eq 1 ]]; then
 
     while (( $(date +%s) < PROBE_DEADLINE )); do
       STATE_DIR="${OPENSAND_STATE_DIR:-$HOME/.opensand}"
-      TOKEN=""
-      if [[ -f "$STATE_DIR/server.token" ]]; then
-        TOKEN=$(tr -d '\r\n' < "$STATE_DIR/server.token")
-      fi
 
       # Header goes in a 0600 file so the token never appears in curl's argv.
-      if [[ -n "$TOKEN" && -z "$PROBE_HEADER_FILE" ]]; then
-        OLD_UMASK=$(umask)
-        umask 077
-        PROBE_HEADER_FILE=$(mktemp "${TMPDIR:-/tmp}/opensand-probe-header.XXXXXX")
-        umask "$OLD_UMASK"
-        printf 'Authorization: Bearer ' > "$PROBE_HEADER_FILE"
-        tr -d '\r\n' < "$STATE_DIR/server.token" >> "$PROBE_HEADER_FILE"
-        printf '\n' >> "$PROBE_HEADER_FILE"
+      # The token lives in a private name that is never exported and is unset
+      # immediately: a caller's exported TOKEN keeps its export attribute
+      # through plain assignment and would otherwise reach curl's environment.
+      if [[ -z "$PROBE_HEADER_FILE" && -f "$STATE_DIR/server.token" ]]; then
+        unset _OS_PROBE_TOKEN
+        export -n _OS_PROBE_TOKEN 2>/dev/null || true
+        _OS_PROBE_TOKEN=$(tr -d '\r\n' < "$STATE_DIR/server.token")
+        if [[ -n "$_OS_PROBE_TOKEN" ]]; then
+          OLD_UMASK=$(umask)
+          umask 077
+          PROBE_HEADER_FILE=$(mktemp "${TMPDIR:-/tmp}/opensand-probe-header.XXXXXX")
+          umask "$OLD_UMASK"
+          printf 'Authorization: Bearer %s\n' "$_OS_PROBE_TOKEN" > "$PROBE_HEADER_FILE"
+        fi
+        unset _OS_PROBE_TOKEN
       fi
 
       PORT="${OPENSAND_PROBE_PORT:-}"
