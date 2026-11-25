@@ -297,12 +297,22 @@ case "${1:-}" in
         fi
         if [ "${2:-}" = "--continue" ]; then
           echo "rebase --continue GIT_EDITOR=${GIT_EDITOR:-unset}" >> "$TEST_CASE_DIR/rebase_calls.log"
+          # Empty-commit case: the regenerated index leaves nothing to commit, so
+          # rebase --continue fails with "nothing to commit" and the gate must skip.
+          if [ -f "$TEST_CASE_DIR/index_empty_commit" ]; then
+            echo "nothing to commit, working tree clean" >&2
+            exit 1
+          fi
           # Only the INDEX-only conflict case is expected to continue cleanly.
           if [ -f "$TEST_CASE_DIR/index_only_conflict" ]; then
             exit 0
           fi
           echo "rebase --continue failed" >&2
           exit 1
+        fi
+        if [ "${2:-}" = "--skip" ]; then
+          echo "rebase --skip GIT_EDITOR=${GIT_EDITOR:-unset}" >> "$TEST_CASE_DIR/rebase_calls.log"
+          exit 0
         fi
         if [ -f "$TEST_CASE_DIR/rebase_conflict" ]; then
           echo "CONFLICT (content): merge conflict" >&2
@@ -329,8 +339,19 @@ case "${1:-}" in
         ;;
       diff)
         # unmerged files after a conflicting rebase
-        if [ -f "$TEST_CASE_DIR/rebase_conflict" ] && [ -f "$TEST_CASE_DIR/conflict_files" ]; then
-          cat "$TEST_CASE_DIR/conflict_files"
+        if echo "$*" | grep -q -- "--name-only"; then
+          if [ -f "$TEST_CASE_DIR/rebase_conflict" ] && [ -f "$TEST_CASE_DIR/conflict_files" ]; then
+            cat "$TEST_CASE_DIR/conflict_files"
+          fi
+          exit 0
+        fi
+        # git diff --cached --quiet: empty iff the regenerated index left nothing staged.
+        if echo "$*" | grep -q -- "--cached"; then
+          if [ -f "$TEST_CASE_DIR/index_empty_commit" ]; then
+            exit 0
+          else
+            exit 1
+          fi
         fi
         exit 0
         ;;
@@ -1039,6 +1060,26 @@ grep -qF -- "rebase --continue" "$dir/rebase_calls.log" 2>/dev/null || { echo "F
 grep -qF -- "rebase --continue GIT_EDITOR=true" "$dir/rebase_calls.log" 2>/dev/null || { echo "FAIL case25: rebase --continue was not non-interactive (would hang with no tty)"; FAILED=1; }
 if [[ ! -f "$dir/force_push.log" ]]; then
   echo "FAIL case25: no force push after the auto-resolved rebase"
+  FAILED=1
+fi
+
+# --- Case 49: --when-green, INDEX.md conflict whose regeneration leaves an empty commit -> skip, merge ---
+dir="$WORK/case49-index-empty-commit"
+setup_defaults "$dir"
+echo 1 > "$dir/behind_times"
+touch "$dir/rebase_conflict"
+printf 'docs/lessons/INDEX.md\n' > "$dir/conflict_files"
+touch "$dir/index_only_conflict"
+touch "$dir/index_empty_commit"
+EXPECT_EXIT=0
+EXPECT_MERGE=1
+EXPECT_TAG=1
+NEED_SUBSTRINGS=("Only docs/lessons/INDEX.md conflicts" "nothing to commit" "skipped the empty commit" "force-pushed job/test" "CI finished green" "Merge commit: f8cb8862e31cc85ca91373b99bc58aa5b6a176e6")
+run_test_case "case49-index-empty-commit" --when-green 42
+grep -qF -- "rebase --continue" "$dir/rebase_calls.log" 2>/dev/null || { echo "FAIL case49: rebase --continue was not attempted"; FAILED=1; }
+grep -qF -- "rebase --skip" "$dir/rebase_calls.log" 2>/dev/null || { echo "FAIL case49: empty commit was not skipped"; FAILED=1; }
+if [[ ! -f "$dir/force_push.log" ]]; then
+  echo "FAIL case49: no force push after the auto-resolved rebase"
   FAILED=1
 fi
 

@@ -146,5 +146,6 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-25 · [renderer-next imports are invisible to the dead-export gate (2026-11-25)](2026-11-25-dictation-exports-dead-export-gate.md)
 - 2026-11-25 · [A truthy state string kept Dictate stuck in "Listening" (2026-11-25)](2026-11-25-dictation-state-string-kept-listening.md)
 - 2026-11-25 · [Legacy line numbers live in the worktree, not the owner checkout (2026-11-25)](2026-11-25-nova-dictation-worktree-line-numbers.md)
+- 2026-11-25 · [A regenerated lessons index can leave an empty commit that blocks the rebase](2026-11-25-pr-gate-empty-commit-after-index-regen.md)
 - 2026-11-25 · [Showing the app version needs the current main, both Settings screens, and a real app directory](2026-11-25-show-version-in-both-settings-screens.md)
 - 2026-11-25 · [Prune whole worktrees before the disk guard, not just their caches](2026-11-25-worktree-prune-before-disk-guard.md)
