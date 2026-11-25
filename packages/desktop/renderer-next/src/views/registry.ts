@@ -14,6 +14,7 @@ import { SettingsView } from "./SettingsView";
 import { WelcomeView } from "./WelcomeView";
 import { GraphsView } from "./GraphsView";
 import { ConnectorsView } from "./ConnectorsView";
+import { WebhooksView } from "./WebhooksView";
 
 export interface ViewProps {
   data: ShellData;
@@ -36,4 +37,5 @@ export const VIEW_COMPONENTS: Partial<Record<ViewId, ComponentType<ViewProps>>> 
   welcome: WelcomeView,
   graphs: GraphsView,
   connectors: ConnectorsView,
+  webhooks: WebhooksView,
 };
