@@ -77,6 +77,10 @@ await import(process.env.OPENSAND_MAIN);
 `;
 
 test("legacy Settings hides provider fields for account engines and shows the real version", async (t) => {
+  if (process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+    t.skip("Electron real-window test requires a display on Linux");
+    return;
+  }
   if (!process.env.CI && !process.env.OPENSAND_ALLOW_LOCAL_REAL_WINDOW) {
     t.skip("local real-window proof is opt-in");
     return;
