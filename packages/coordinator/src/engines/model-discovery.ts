@@ -11,7 +11,7 @@ const FALLBACKS: Record<string, EngineModel[]> = {
   copilot: [{ id: "claude-sonnet-4", label: "Claude Sonnet 4" }],
   antigravity: [{ id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" }],
   opencode: [{ id: "opencode/big-pickle", label: "OpenCode Big Pickle" }],
-  workbuddy: [{ id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" }],
+  workbuddy: ["fast-model", "balanced-model", "primary-model", "deep-model"].map((id) => ({ id, label: id })),
 };
 
 const cache = new Map<string, { expires: number; value: ModelDiscovery }>();
@@ -98,6 +98,8 @@ export async function listModels(options: ModelDiscoveryOptions): Promise<ModelD
       if (!live.length && !empty) failed = true;
     } catch { failed = true; }
   } else if (engine === "opencode" && options.binary) {
+    // OpenCode ships a non-interactive model-list command. The account CLIs do not, so they
+    // deliberately use the clearly labelled built-in catalogs above.
     const output = await (options.commandRunner ?? runListCommand)(options.binary, ["models", "--verbose"], TIMEOUT_MS);
     if (output !== null) live = parseCliModels(engine, output);
     if (!live.length) { failed = true; empty = output !== null; }
@@ -106,7 +108,11 @@ export async function listModels(options: ModelDiscoveryOptions): Promise<ModelD
   const value: ModelDiscovery = {
     models,
     modelsSource: live.length ? "live" : models.length ? "fallback" : "error",
-    ...(!live.length ? { modelsMessage: empty ? "No models were returned; showing a saved fallback list." : "Model list unavailable; showing a saved fallback list." } : {}),
+    ...(!live.length ? {
+      modelsMessage: models.length
+        ? (empty ? "No models were returned; showing a built-in fallback list." : "Live model list unavailable; showing a built-in fallback list.")
+        : "No model list is available for this engine.",
+    } : {}),
   };
   if (options.cache !== false) {
     if (cache.size >= 64) cache.delete(cache.keys().next().value!);
