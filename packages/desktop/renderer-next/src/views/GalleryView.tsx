@@ -11,6 +11,7 @@ import {
   PUBLISH_FALLBACK_AUTHOR,
   PUBLISH_VALIDATION_MESSAGE,
   galleryCardView,
+  galleryErrorMessage,
   parseTags,
   previewView,
   publishDescription,
@@ -24,8 +25,6 @@ export interface GalleryViewProps {
   onSelect: (view: ViewId) => void;
   refreshKey?: number;
 }
-
-const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 export function GalleryView({ data, active, onSelect, refreshKey }: GalleryViewProps) {
   const [templates, setTemplates] = useState<GalleryTemplate[]>([]);
@@ -59,7 +58,7 @@ export function GalleryView({ data, active, onSelect, refreshKey }: GalleryViewP
       setLoadError(null);
     } catch (err) {
       if (seq !== loadSeq.current) return;
-      setLoadError(errorMessage(err));
+      setLoadError(galleryErrorMessage(err, "Could not load templates. Try again."));
     } finally {
       if (seq === loadSeq.current) setLoading(false);
     }
@@ -92,7 +91,7 @@ export function GalleryView({ data, active, onSelect, refreshKey }: GalleryViewP
       const full = await data.getGalleryTemplate(template.id);
       if (full) setPreview(full);
     } catch (err) {
-      setPreviewError(errorMessage(err));
+      setPreviewError(galleryErrorMessage(err, "Could not load template details. Try again."));
     } finally {
       setPreviewLoading(false);
     }
@@ -105,7 +104,7 @@ export function GalleryView({ data, active, onSelect, refreshKey }: GalleryViewP
       const res = await data.installGalleryTemplate(template.id);
       if (res?.agent !== undefined) await load();
     } catch (err) {
-      setActionError(errorMessage(err));
+      setActionError(galleryErrorMessage(err, "Could not install the template. Try again."));
     } finally {
       setInstallingId(null);
     }
@@ -155,7 +154,7 @@ export function GalleryView({ data, active, onSelect, refreshKey }: GalleryViewP
       setPublishOpen(false);
       await load();
     } catch (err) {
-      setPublishError(errorMessage(err));
+      setPublishError(galleryErrorMessage(err, "Could not publish the template. Try again."));
     } finally {
       setPublishing(false);
     }

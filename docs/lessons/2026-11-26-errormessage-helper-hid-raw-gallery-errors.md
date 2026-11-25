@@ -1,0 +1,5 @@
+# A pass-through `errorMessage()` helper hid raw backend errors from the raw-error gate
+
+- **Trap:** PR #243 rendered raw backend errors in the gallery: `desktop-server.ts` sent `err.message` in the install response body, `gallery.ts` rethrew `data.error`, and `GalleryView` wrote `errorMessage(err)` straight into `set*Error` state. `scripts/check-raw-errors.sh` reported no new finding because its helper regex exempts any `errorMessage(` call.
+- **Root Cause:** the gate treats a helper call as sanitization by name, so a helper that merely extracts `err.message` / `String(err)` is indistinguishable from one that produces fixed copy.
+- **Rule:** route every user-facing error state through a sanitizer that returns fixed, categorized copy (e.g. `galleryErrorMessage`, `friendlyErrorMessage`), never a pass-through named `errorMessage`. Prove it with a unit test that feeds an error containing a file path and a stack and asserts neither reaches the string handed to the UI. (OpenSand #243, 2026-11-26)

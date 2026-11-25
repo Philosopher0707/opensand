@@ -63,6 +63,18 @@ export const PUBLISH_VALIDATION_MESSAGE = "Please select an agent persona to pub
 export const PUBLISH_DEFAULT_AUTHOR = "Local User";
 export const PUBLISH_FALLBACK_AUTHOR = "Community Contributor";
 
+/** Fixed, actionable copy: backend messages, file paths and stacks never reach the UI. */
+export function galleryErrorMessage(err: unknown, fallback: string): string {
+  const detail = err instanceof Error ? err.message.toLowerCase() : "";
+  if (detail.includes("not found") || detail.includes("enoent") || detail.includes("404")) {
+    return `${fallback} The template could not be found.`;
+  }
+  if (detail.includes("network") || detail.includes("offline") || detail.includes("fetch") || detail.includes("timeout")) {
+    return `${fallback} Check your connection and try again.`;
+  }
+  return fallback;
+}
+
 export const GALLERY_CATEGORIES = ["all", "engineering", "security", "product", "research", "community"] as const;
 
 export function categoryEmoji(category?: string): string {

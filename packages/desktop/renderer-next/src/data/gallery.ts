@@ -88,7 +88,7 @@ export function galleryData(bridge?: any, http?: typeof fetch): GalleryData {
         body: "{}",
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Could not install template (HTTP ${res.status})`);
+      if (!res.ok) throw new Error(`Could not install template (HTTP ${res.status})`);
       return data;
     },
 
@@ -107,7 +107,7 @@ export function galleryData(bridge?: any, http?: typeof fetch): GalleryData {
         body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Could not publish template (HTTP ${res.status})`);
+      if (!res.ok) throw new Error(`Could not publish template (HTTP ${res.status})`);
       return data;
     },
   };

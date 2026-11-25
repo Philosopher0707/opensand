@@ -7,6 +7,7 @@ import {
   PUBLISH_FALLBACK_AUTHOR,
   categoryEmoji,
   galleryCardView,
+  galleryErrorMessage,
   parseTags,
   previewView,
   publishDescription,
@@ -70,6 +71,28 @@ test("gallery-model: publish helpers", () => {
   assert.ok(PUBLISH_DEFAULT_AUTHOR.length > 0);
   assert.ok(PUBLISH_FALLBACK_AUTHOR.length > 0);
   assert.ok(GALLERY_EMPTY_STATE.includes("No agent templates"));
+});
+
+test("gallery-model: raw backend errors are sanitized before display", () => {
+  const raw = new Error(
+    "ENOENT: no such file or directory, open '/Users/philosopher/dev/opensand/templates/reviewer.json'\n" +
+    "    at installGalleryTemplate (/Users/philosopher/dev/opensand/packages/desktop/src/desktop-server.ts:1615:29)\n" +
+    "    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)"
+  );
+  const clean = galleryErrorMessage(raw, "Could not install the template. Try again.");
+  assert.ok(!clean.includes("/Users/"), `file path leaked: ${clean}`);
+  assert.ok(!clean.includes("desktop-server.ts"), `stack leaked: ${clean}`);
+  assert.ok(!clean.includes("processTicksAndRejections"), `stack leaked: ${clean}`);
+  assert.ok(!clean.includes("\n"), `multiline stack leaked: ${clean}`);
+  assert.strictEqual(clean, "Could not install the template. Try again. The template could not be found.");
+
+  const unknown = galleryErrorMessage(
+    new Error("SQLITE_ERROR: no such column: rating at /Users/philosopher/dev/opensand/packages/db/gallery.ts:42"),
+    "Could not load templates. Try again."
+  );
+  assert.ok(!unknown.includes("SQLITE_ERROR"), `raw backend text leaked: ${unknown}`);
+  assert.ok(!unknown.includes("/Users/"), `file path leaked: ${unknown}`);
+  assert.strictEqual(unknown, "Could not load templates. Try again.");
 });
 
 test("gallery-model: stub data source is used when set", async () => {
