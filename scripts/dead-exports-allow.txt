@@ -123,6 +123,14 @@ packages/desktop/src/shell/canvas-model.ts|function resolveLanguageMeta
 packages/desktop/src/shell/canvas-model.ts|function selectTab
 packages/desktop/src/shell/canvas-model.ts|function setViewMode
 packages/desktop/src/shell/chat-ansi.ts|function parseAnsi
+packages/desktop/src/shell/chat-send-queue.ts|const EMPTY_SEND_QUEUE
+packages/desktop/src/shell/chat-send-queue.ts|const SEND_FAILURE_MESSAGE
+packages/desktop/src/shell/chat-send-queue.ts|function cancelQueuedMessage
+packages/desktop/src/shell/chat-send-queue.ts|function clearSendQueue
+packages/desktop/src/shell/chat-send-queue.ts|function enqueueMessage
+packages/desktop/src/shell/chat-send-queue.ts|function queueStatusLabel
+packages/desktop/src/shell/chat-send-queue.ts|function sendFailureMessage
+packages/desktop/src/shell/chat-send-queue.ts|function takeNextQueued
 packages/desktop/src/shell/chat-turn-model.ts|const INITIAL_CHAT_TURN
 packages/desktop/src/shell/chat-turn-model.ts|function canRetryTurn
 packages/desktop/src/shell/chat-turn-model.ts|function chatEventAction
