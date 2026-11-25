@@ -57,7 +57,8 @@ test("engine-model-discovery.test.ts returns model catalogs from the production 
   }
 });
 
-test("every engine returned by detection has a labelled model catalog", async () => {
+test("every engine returned by detection has a current labelled fallback catalog", async () => {
+  const staleIds = new Set(["gpt-4o-mini", "claude-sonnet-4-5", "claude-opus-4-1", "gpt-5-codex", "gemini-2.5-pro", "opencode/big-pickle"]);
   for (const engine of ["opensand", ...DETECTABLE_ENGINE_IDS] as const) {
     const result = await listModels({
       engine,
@@ -68,6 +69,7 @@ test("every engine returned by detection has a labelled model catalog", async ()
     assert.equal(result.modelsSource, "fallback", engine);
     assert.ok(result.models.length > 0, `${engine} must offer at least one account model`);
     assert.match(result.modelsMessage!, /built-in fallback list/i, engine);
+    assert.ok(result.models.every((model) => !staleIds.has(model.id)), `${engine} fallback still contains a stale model id`);
   }
 });
 
@@ -75,12 +77,28 @@ test("API and CLI adapters parse successful live model catalogs", async () => {
   const provider = await listModels({ engine: "opensand", endpoint: "https://provider.invalid/v1", cache: false, fetcher: async () => new Response(JSON.stringify({ data: [{ id: "vendor/model-a", name: "Model A" }] }), { status: 200 }) });
   assert.equal(provider.modelsSource, "live");
   assert.deepEqual(provider.models, [{ id: "vendor/model-a", label: "Model A" }]);
+
   const cli = await listModels({ engine: "opencode", binary: "/fake/opencode", cache: false, commandRunner: async (_binary, args) => {
-    assert.deepEqual(args, ["models", "--verbose"]);
-    return "vendor/model-b  text  128k";
+    assert.deepEqual(args, ["api", "model.list"]);
+    return JSON.stringify({ data: [{ providerID: "vendor", modelID: "model-b", name: "Model B" }] });
   } });
   assert.equal(cli.modelsSource, "live");
-  assert.deepEqual(cli.models, [{ id: "vendor/model-b", label: "vendor/model-b" }]);
+  assert.deepEqual(cli.models, [{ id: "vendor/model-b", label: "Model B" }]);
+  assert.ok(!cli.models.some((model) => model.id === "opencode-go/glm-5.3-flash"));
+
+  const antigravity = await listModels({ engine: "antigravity", binary: "/fake/agy", cache: false, commandRunner: async (_binary, args) => {
+    assert.deepEqual(args, ["models"]);
+    return "gemini-4-hydrogen-high\tGemini 4 Hydrogen (High)\n";
+  } });
+  assert.equal(antigravity.modelsSource, "live");
+  assert.deepEqual(antigravity.models, [{ id: "gemini-4-hydrogen-high", label: "Gemini 4 Hydrogen (High)" }]);
+});
+
+test("fallback catalogs are used only after live listing fails", async () => {
+  const failed = await listModels({ engine: "opencode", binary: "/fake/opencode", cache: false, commandRunner: async () => null });
+  assert.equal(failed.modelsSource, "fallback");
+  assert.deepEqual(failed.models, [{ id: "opencode-go/glm-5.3-flash", label: "GLM 5.3 Flash" }]);
+  assert.match(failed.modelsMessage!, /built-in fallback list/i);
 });
 
 test("provider 401, outage, empty response and CLI timeout use safe fallback catalogs", async () => {
