@@ -490,6 +490,19 @@ exec /usr/bin/curl "\$@"
 EOS
 chmod +x "$BIN_DIR/curl"
 
+# mktemp runs while the probe token is still set but must not have it exported:
+# it is the child process that catches a missing unset/export -n in release.sh.
+# Only the probe-header template is recorded, so earlier unrelated mktemp calls
+# (which legitimately inherit the caller's own export) cannot mask the check.
+cat << EOS > "$BIN_DIR/mktemp"
+#!/usr/bin/env bash
+case "\${1:-}" in
+  *opensand-probe-header*) env >> "$case6_dir/mktemp_env.log" ;;
+esac
+exec /usr/bin/mktemp "\$@"
+EOS
+chmod +x "$BIN_DIR/mktemp"
+
 # Caller has already exported the generic TOKEN (a plain assignment in release.sh
 # keeps its export attribute) and the script-private probe name. The probe token
 # must reach curl in neither argv nor environment.
@@ -500,7 +513,7 @@ out6=$(run_case_install "$case6_dir" \
   http_proxy="http://127.0.0.1:1" https_proxy="http://127.0.0.1:1" \
   HTTPS_PROXY="http://127.0.0.1:1" ALL_PROXY="http://127.0.0.1:1" \
   no_proxy="" NO_PROXY="") || status6=$?
-rm -f "$BIN_DIR/curl"
+rm -f "$BIN_DIR/curl" "$BIN_DIR/mktemp"
 printf '%s\n' "$out6" > "$case6_dir/run.out"
 
 if [[ "$status6" -eq 0 ]] && grep -q "PASS: Running OpenSand process verified" "$case6_dir/run.out"; then
@@ -522,6 +535,13 @@ if [[ -f "$case6_dir/curl_env.log" ]] && ! grep -q "stub-token-secret-12345" "$c
 else
   echo "FAIL case6: bearer token appeared in curl environment" >&2
   grep -n "TOKEN" "$case6_dir/curl_env.log" >&2 || true
+  FAILED=1
+fi
+if [[ -s "$case6_dir/mktemp_env.log" ]] && ! grep -q "stub-token-secret-12345" "$case6_dir/mktemp_env.log"; then
+  echo "PASS case6: bearer token absent from mktemp environment"
+else
+  echo "FAIL case6: bearer token appeared in mktemp environment (unset/export -n guard missing)" >&2
+  grep -n "TOKEN" "$case6_dir/mktemp_env.log" >&2 || true
   FAILED=1
 fi
 if [[ -f "$case6_dir/curl_argv.log" ]] && grep -q -- "--noproxy" "$case6_dir/curl_argv.log"; then
