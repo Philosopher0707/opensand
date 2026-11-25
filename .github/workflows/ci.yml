@@ -77,8 +77,10 @@ jobs:
           tar -xzf "${archive}" gitleaks
           sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
 
-      - name: Secret scan (full history)
-        run: gitleaks detect --no-banner --redact --config .gitleaks.toml
+      - name: Secret scan (event commits)
+        env:
+          GITLEAKS_LOG_OPTS: ${{ github.event_name == 'push' && 'origin/main' || format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) }}
+        run: gitleaks git --no-banner --redact --config .gitleaks.toml --log-opts="$GITLEAKS_LOG_OPTS"
 
   build-and-test-macos:
     name: Build & test (macOS, Node 22)
