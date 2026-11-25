@@ -337,12 +337,15 @@
 /* Quick window capture (views/QuickCapture.tsx). The panel stays mounted while idle, at zero height,
    so its live status region is already in the page when the first capture starts. */
 .topbar-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-/* styles.css hides #btnQuickWindow at 1024px and below; the shell keeps it at the 960px minimum window. */
-.topbar-actions #btnQuickWindow { display: inline-flex; }
+/* styles.css hides both quick buttons at 1024px and below; the shell keeps them at the 960px minimum window. */
+.topbar-actions #btnQuickWindow, .topbar-actions #btnQuickOcr { display: inline-flex; }
 .quick-capture { display: flex; flex-direction: column; gap: 8px; margin: 8px 12px 0; padding: 8px 10px; border: 1px solid var(--border, rgba(128,128,128,.35)); border-radius: 8px; font-size: 12px; min-width: 0; }
 .quick-capture[data-status="idle"] { height: 0; margin: 0; padding: 0; border: 0; overflow: hidden; }
 .quick-capture-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .quick-capture-label { color: var(--text-muted); overflow-wrap: anywhere; min-width: 0; }
+.quick-capture-spinner { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border: 2px solid var(--border, rgba(128,128,128,.35)); border-top-color: var(--accent, #d97706); border-radius: 50%; animation: quick-capture-spin .8s linear infinite; vertical-align: -1px; }
+@keyframes quick-capture-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .quick-capture-spinner { animation: none; } }
 .quick-capture[data-status="error"] .quick-capture-label { color: #f87171; }
 .quick-capture-text { margin: 0; max-height: 40vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.45; }
 .quick-capture-text:focus-visible, .topbar-actions .btn:focus-visible { outline: 2px solid var(--accent, #d97706); outline-offset: 2px; }
