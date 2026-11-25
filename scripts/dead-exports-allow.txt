@@ -162,6 +162,10 @@ packages/desktop/src/shell/dead-actions-model.ts|const OPEN_COMPACT_EVENT
 packages/desktop/src/shell/dead-actions-model.ts|const OPEN_ROLLBACK_EVENT
 packages/desktop/src/shell/dead-actions-model.ts|function openSettingsHash
 packages/desktop/src/shell/dead-actions-model.ts|function sessionActionForEvent
+packages/desktop/src/shell/dictation-model.ts|const DICTATION_LABELS
+packages/desktop/src/shell/dictation-model.ts|function createDictationController
+packages/desktop/src/shell/dictation-model.ts|function dictationNotice
+packages/desktop/src/shell/dictation-model.ts|function dictationText
 packages/desktop/src/shell/fork-dialog-component.ts|function ForkDialog
 packages/desktop/src/shell/inbox-component.ts|function ApprovalDecisionButtons
 packages/desktop/src/shell/inbox-component.ts|function Inbox

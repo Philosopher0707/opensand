@@ -35,6 +35,11 @@ import {
 import type { ArtifactItem } from "../../../src/shell/canvas-model";
 import type { TurnEvent } from "../../../src/shell/quick-capture-model";
 import { querySendArgs } from "../../../src/shell/query-send-model";
+import {
+  DICTATION_LABELS,
+  createDictationController,
+  type DictationController,
+} from "../../../src/shell/dictation-model";
 import { renderMarkdown } from "./chat-markdown";
 import {
   DEFAULT_PROMPT_CHIPS,
@@ -492,6 +497,7 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
   const [draft, setDraft] = useState("");
   const [stagedAttachments, setStagedAttachments] = useState<StagedAttachment[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [listening, setListening] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -525,6 +531,32 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const dictationRef = useRef<DictationController | null>(null);
+
+  // Build on first click so the page's SpeechRecognition global (or a test double) is in place.
+  const dictation = () => {
+    if (!dictationRef.current) {
+      const scope = window as any;
+      const Recognition = scope.SpeechRecognition || scope.webkitSpeechRecognition;
+      dictationRef.current = createDictationController(Recognition ? new Recognition() : null, {
+        getBaseText: () => inputRef.current?.value ?? draft,
+        onText: (text) => {
+          setDraft(text);
+          const el = inputRef.current;
+          if (el) {
+            el.value = text;
+            el.style.height = "auto";
+            el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+          }
+        },
+        onState: (state) => setListening(state === "listening"),
+        onNotice: (message) => setNotice(message || null),
+      });
+    }
+    return dictationRef.current;
+  };
+
+  useEffect(() => () => { dictationRef.current?.cancel(); dictationRef.current = null; }, []);
 
   // Dismiss trigger popover when clicking outside
   useEffect(() => {
@@ -968,6 +1000,11 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
                 updateTriggerSuggestions(el.value, el.selectionStart || el.value.length);
               }}
               onKeyDown={(e) => {
+                if (listening && (e.key === "Escape" || e.key === "Esc")) {
+                  e.preventDefault();
+                  dictation().cancel();
+                  return;
+                }
                 if (triggerMatch && triggerItems.length > 0) {
                   if (e.key === "ArrowDown") {
                     e.preventDefault();
@@ -1009,6 +1046,22 @@ export function Chat({ chat, selectedSessionId, data, onOpenArtifact }: ChatProp
                 onClick={() => fileInputRef.current?.click()}
               >
                 <span aria-hidden="true">📎</span> <span>Attach</span>
+              </button>
+              <button
+                id="btnDictate"
+                class={`btn-attach${listening ? " recording" : ""}`}
+                type="button"
+                data-state={listening ? "listening" : "idle"}
+                aria-pressed={listening}
+                aria-label="Voice dictation"
+                title="Voice dictation (Click to speak)"
+                onClick={() => {
+                  const d = dictation();
+                  if (listening) d.stop();
+                  else d.start();
+                }}
+              >
+                <span aria-hidden="true">🎤</span> <span>{DICTATION_LABELS[listening ? "listening" : "idle"]}</span>
               </button>
               <input
                 type="file"

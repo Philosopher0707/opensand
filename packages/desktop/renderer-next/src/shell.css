@@ -1337,6 +1337,12 @@
   border-color: var(--accent, #3b82f6);
 }
 
+.btn-attach.recording {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
 /* Channel unread badge & session overflow prevention */
 .channel-unread-badge {
   display: inline-flex;
