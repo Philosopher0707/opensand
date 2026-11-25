@@ -195,5 +195,38 @@ if grep -q "ANTHROPIC_SECRET=" "$ENV_LOG"; then
   exit 1
 fi
 
-echo "PASS: engine-smoke-selftest.sh passed all 7 hermetic checks."
+echo "==> Case 8: clean environment (env -i, macOS Bash 3.2) still launches the app"
+CLEAN_APP="$WORK/CleanEnv.app"
+mkdir -p "$CLEAN_APP/Contents/MacOS" "$CLEAN_APP/Contents/Resources/app/dist/src" "$WORK/clean-home"
+CLEAN_MARKER="$WORK/clean-env-launched.txt"
+cat << 'SH' > "$CLEAN_APP/Contents/MacOS/OpenSand"
+#!/bin/bash
+printf 'launched\n' > "$SMOKE_LAUNCH_MARKER"
+exit 0
+SH
+chmod +x "$CLEAN_APP/Contents/MacOS/OpenSand"
+echo 'const s = process.env.OPENSAND_STATE_DIR;' > "$CLEAN_APP/Contents/Resources/app/dist/src/main.js"
+
+# /bin/bash is 3.2 on macOS: with `set -u` an empty UNSET_ARGS expansion aborts
+# before launch. A clean environment has none of the variables that seed it.
+CLEAN_PATH="$(dirname "$(command -v node)"):/usr/bin:/bin:/usr/sbin:/sbin"
+set +e
+CLEAN_OUT=$(env -i \
+  PATH="$CLEAN_PATH" \
+  HOME="$WORK/clean-home" \
+  SMOKE_LAUNCH_MARKER="$CLEAN_MARKER" \
+  /bin/bash "$SCRIPT_UNDER_TEST" "$CLEAN_APP" 2>&1)
+EXIT_CODE=$?
+set -e
+
+if echo "$CLEAN_OUT" | grep -q "unbound variable"; then
+  echo "FAIL: clean environment aborted on an unset array before launch: $CLEAN_OUT" >&2
+  exit 1
+fi
+if [[ ! -f "$CLEAN_MARKER" ]]; then
+  echo "FAIL: app was never launched in a clean environment (exit $EXIT_CODE): $CLEAN_OUT" >&2
+  exit 1
+fi
+
+echo "PASS: engine-smoke-selftest.sh passed all 8 hermetic checks."
 exit 0

@@ -210,8 +210,10 @@ CDP_PORT=9242
 
 echo "engine-smoke: launching app with CDP port $CDP_PORT..."
 
-# Scrub credential variables from child environment
-UNSET_ARGS=()
+# Scrub credential variables from child environment. Seed the array: macOS
+# Bash 3.2 with `set -u` aborts on an empty array expansion, which would stop
+# the launch before the app starts in a clean environment (no *_TOKEN vars).
+UNSET_ARGS=(-u ELECTRON_RUN_AS_NODE)
 for env_var in $(env | awk -F= '{print $1}'); do
   case "$env_var" in
     *_API_KEY|*_TOKEN|*_SECRET|*_AUTH|OPENAI_*|ANTHROPIC_*|GEMINI_*|AWS_*)
@@ -222,7 +224,7 @@ done
 
 (
   cd "$CANONICAL_WORKSPACE"
-  env -u ELECTRON_RUN_AS_NODE "${UNSET_ARGS[@]}" \
+  env "${UNSET_ARGS[@]}" \
     OPENSAND_STATE_DIR="$STATE_DIR" \
     OPENSAND_SMOKE=1 \
     OPENSAND_HIDDEN_WINDOW=1 \
