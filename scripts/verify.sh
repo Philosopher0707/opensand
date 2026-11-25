@@ -6,22 +6,52 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-# Docs-only PRs skip the build and test suites below; the CI job still runs and reports success,
-# so the required check names stay green. The cheap repo checks in this script always run.
-# Fail-closed: if the base commit cannot be resolved, DOCS_ONLY stays 0 and the full suite runs.
+# PR change detection: on pull_request events, safely run only affected packages
+# and skip untouched desktop real-window tests to speed up CI.
+# Fail-closed rules:
+# 1. Non-PR runs (e.g. push to main, workflow_dispatch, local default) run full suite.
+# 2. Release tags (or release context) run full suite.
+# 3. VERIFY_ALL=1 forces full suite.
+# 4. If BASE_SHA or git diff cannot be resolved or is empty, fail closed to full suite.
+# 5. Core/shared packages, root configs, .github, scripts/verify*, check-* run full suite.
 DOCS_ONLY=0
-if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" && -n "${GITHUB_EVENT_PATH:-}" && -f "${GITHUB_EVENT_PATH}" ]]; then
-  BASE_SHA=$(node -e 'const e=require(process.argv[1]);process.stdout.write((e.pull_request&&e.pull_request.base&&e.pull_request.base.sha)||"")' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
-  if [[ -n "$BASE_SHA" ]]; then
+RUN_ALL_PACKAGES=0
+BASE_SHA="${BASE_SHA:-}"
+CHANGED=""
+
+if [[ "${VERIFY_ALL:-0}" == "1" ]]; then
+  RUN_ALL_PACKAGES=1
+elif [[ "${GITHUB_EVENT_NAME:-}" != "pull_request" ]]; then
+  RUN_ALL_PACKAGES=1
+else
+  if [[ -z "$BASE_SHA" && -n "${GITHUB_EVENT_PATH:-}" && -f "${GITHUB_EVENT_PATH}" ]]; then
+    BASE_SHA=$(node -e 'const e=require(process.argv[1]);process.stdout.write((e.pull_request&&e.pull_request.base&&e.pull_request.base.sha)||"")' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+  fi
+
+  if [[ -z "$BASE_SHA" ]]; then
+    RUN_ALL_PACKAGES=1
+  else
     git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null || git fetch -q --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
-    CHANGED=$(git diff --name-only "$BASE_SHA" HEAD 2>/dev/null || true)
-    if [[ -n "$CHANGED" ]]; then
-      DOCS_ONLY=1
-      while IFS= read -r path; do
-        [[ "$path" == docs/* || "$path" == *.md || "$path" == LICENSE* || "$path" == NOTICE* ]] || DOCS_ONLY=0
-      done <<< "$CHANGED"
+    if ! git rev-parse --verify "${BASE_SHA}^{commit}" >/dev/null 2>&1; then
+      RUN_ALL_PACKAGES=1
+    else
+      CHANGED=$(git diff --name-only "$BASE_SHA" HEAD 2>/dev/null || true)
+      if [[ -z "$CHANGED" ]]; then
+        RUN_ALL_PACKAGES=1
+      fi
     fi
   fi
+fi
+
+if [[ "$RUN_ALL_PACKAGES" -eq 0 && -n "$CHANGED" ]]; then
+  DOCS_ONLY=1
+  while IFS= read -r path; do
+    [[ -z "$path" ]] && continue
+    if ! [[ "$path" == docs/* || "$path" == *.md || "$path" == LICENSE* || "$path" == NOTICE* ]]; then
+      DOCS_ONLY=0
+      break
+    fi
+  done <<< "$CHANGED"
 fi
 
 command -v node >/dev/null 2>&1 || { echo "verify: node 22+ is required" >&2; exit 1; }
@@ -76,6 +106,7 @@ if [[ -z "${RELEASE_TAG:-}" ]]; then
 fi
 
 if [[ -n "$RELEASE_TAG" ]]; then
+  RUN_ALL_PACKAGES=1
   echo "verify: checking release tag version against package.json ($RELEASE_TAG)..."
   ROOT_VERSION=$(node -p "require('./package.json').version")
   TAG_VERSION="${RELEASE_TAG#v}"
@@ -88,11 +119,7 @@ if [[ -n "$RELEASE_TAG" ]]; then
   echo "verify: release tag '$RELEASE_TAG' matches package version '$ROOT_VERSION'"
 fi
 
-
 echo "verify: checking test tmpdir guard..."
-# Guard against test fixtures creating temp dirs/files outside approved helper patterns (AGENTS_LEARNING.md rule 12.3).
-# Tests must use isolated unique directories via fs.mkdtemp/fs.mkdtempSync or package helpers (e.g. tempDir()),
-# never bare timestamps (Date.now()) or static /tmp paths that collide under concurrency.
 BAD_TMPDIRS=$(grep -rnE --include="*.ts" --include="*.js" "(/tmp/opensand-|(/tmp|tmpdir).*Date\\.now|Date\\.now.*(/tmp|tmpdir)|mkdir.*(os\\.tmpdir|/tmp))" packages/*/test 2>/dev/null || true)
 if [[ -n "$BAD_TMPDIRS" ]]; then
   echo "verify error: Test fixtures must use approved tempDir() or mkdtemp helpers, never un-isolated temp paths or timestamps (rule 12.3):" >&2
@@ -104,10 +131,6 @@ if [[ "${SKIP_INSTALL:-}" != "1" ]]; then
   pnpm install --frozen-lockfile
 fi
 
-# These two gates catch "small things left out": an error formatter nobody calls, and a raw
-# provider/OS error sent to the user. They run after install because the dead-export check
-# uses the repo's TypeScript compiler; both keep allowlists of today's findings and fail only
-# on new ones (selftests: check-dead-exports-selftest.sh, check-raw-errors-selftest.sh).
 echo "verify: checking for dead exports..."
 bash scripts/check-dead-exports.sh
 
@@ -133,9 +156,175 @@ if [[ -n "$COMMON_GIT_DIR" && -d "$COMMON_GIT_DIR" ]]; then
   fi
 fi
 
-# Each package's tests run once, with the output kept in a log. A failing package is named and its
-# failing lines printed, instead of the script dying silently inside a command substitution.
-# The zero-test guard reads the same logs rather than running the suites a second time.
+TARGET_PACKAGES_STR=""
+SCRIPT_SELFTESTS_STR=""
+
+if [[ "$RUN_ALL_PACKAGES" -eq 0 && -n "$CHANGED" ]]; then
+  EVAL_RESULT=$(node -e '
+    const fs = require("fs");
+    const path = require("path");
+
+    const rootDir = process.cwd();
+    const changed = process.argv[1].split("\n").map(s => s.trim()).filter(Boolean);
+
+    const pkgsDir = path.join(rootDir, "packages");
+    const pkgDirs = new Set();
+    const nameToDir = {};
+    const dirToName = {};
+
+    if (fs.existsSync(pkgsDir)) {
+      for (const d of fs.readdirSync(pkgsDir)) {
+        const pjson = path.join(pkgsDir, d, "package.json");
+        if (fs.existsSync(pjson)) {
+          pkgDirs.add(d);
+          try {
+            const j = JSON.parse(fs.readFileSync(pjson, "utf8"));
+            if (j.name) {
+              nameToDir[j.name] = d;
+              dirToName[d] = j.name;
+            }
+          } catch {}
+        }
+      }
+    }
+
+    const changedPackages = new Set();
+    const selftests = new Set();
+    let forceAll = false;
+    let reason = "";
+
+    for (const f of changed) {
+      if (f.startsWith("docs/") || f.endsWith(".md") || f.startsWith("LICENSE") || f.startsWith("NOTICE")) {
+        continue;
+      }
+      if (
+        f === "package.json" ||
+        f === "pnpm-lock.yaml" ||
+        f === "pnpm-workspace.yaml" ||
+        f.startsWith("tsconfig") ||
+        f.startsWith(".github/") ||
+        f.startsWith("scripts/verify") ||
+        f.startsWith("scripts/check-") ||
+        f.startsWith("scripts/release")
+      ) {
+        forceAll = true;
+        reason = "shared dependency or gate changed: " + f;
+        break;
+      }
+      if (
+        f.startsWith("packages/shared/") ||
+        f.startsWith("packages/protocol/") ||
+        f.startsWith("packages/desktop/") ||
+        f.startsWith("packages/native-bridge/")
+      ) {
+        forceAll = true;
+        reason = "core/shared package changed: " + f;
+        break;
+      }
+      if (f.startsWith("packages/")) {
+        const parts = f.split("/");
+        const pkg = parts[1];
+        if (pkgDirs.has(pkg)) {
+          changedPackages.add(pkg);
+          continue;
+        } else {
+          forceAll = true;
+          reason = "unknown package: " + f;
+          break;
+        }
+      }
+      if (f.startsWith("scripts/")) {
+        const parts = f.split("/");
+        const scriptFile = parts[1];
+        let selftestPath = null;
+        if (scriptFile.endsWith("-selftest.sh") || scriptFile.endsWith("-selftest.js")) {
+          selftestPath = path.join("scripts", scriptFile);
+        } else {
+          const base = scriptFile.replace(/\.(sh|js|ts|bash|zsh)$/, "");
+          const candidateSh = path.join("scripts", base + "-selftest.sh");
+          const candidateJs = path.join("scripts", base + "-selftest.js");
+          if (fs.existsSync(path.join(rootDir, candidateSh))) {
+            selftestPath = candidateSh;
+          } else if (fs.existsSync(path.join(rootDir, candidateJs))) {
+            selftestPath = candidateJs;
+          }
+        }
+        if (selftestPath && fs.existsSync(path.join(rootDir, selftestPath))) {
+          selftests.add(selftestPath);
+          continue;
+        } else {
+          forceAll = true;
+          reason = "script without selftest: " + f;
+          break;
+        }
+      }
+      forceAll = true;
+      reason = "unknown diff path: " + f;
+      break;
+    }
+
+    if (forceAll) {
+      process.stdout.write(JSON.stringify({ mode: "ALL", reason }));
+      process.exit(0);
+    }
+
+    const affected = new Set(changedPackages);
+    if (changedPackages.size > 0) {
+      const queue = [...changedPackages];
+      while (queue.length > 0) {
+        const curr = queue.shift();
+        const currPkgName = dirToName[curr];
+        for (const p of pkgDirs) {
+          if (affected.has(p)) continue;
+          const pjsonPath = path.join(pkgsDir, p, "package.json");
+          try {
+            const j = JSON.parse(fs.readFileSync(pjsonPath, "utf8"));
+            const allDeps = Object.assign({}, j.dependencies, j.devDependencies);
+            if ((currPkgName && allDeps[currPkgName]) || allDeps["@opensand/" + curr]) {
+              affected.add(p);
+              queue.push(p);
+            }
+          } catch {}
+        }
+      }
+    }
+
+    if (!changedPackages.has("desktop")) {
+      affected.delete("desktop");
+    }
+
+    const targetPkgNames = [...affected].map(d => dirToName[d] || d).filter(Boolean);
+    process.stdout.write(JSON.stringify({
+      mode: "AFFECTED",
+      packages: targetPkgNames,
+      selftests: [...selftests]
+    }));
+  ' "$CHANGED")
+
+  EVAL_MODE=$(node -e 'const r=JSON.parse(process.argv[1]);process.stdout.write(r.mode||"ALL")' "$EVAL_RESULT")
+  if [[ "$EVAL_MODE" == "ALL" ]]; then
+    RUN_ALL_PACKAGES=1
+    EVAL_REASON=$(node -e 'const r=JSON.parse(process.argv[1]);process.stdout.write(r.reason||"")' "$EVAL_RESULT")
+    echo "verify: running full suite ($EVAL_REASON)"
+  else
+    TARGET_PACKAGES_STR=$(node -e 'const r=JSON.parse(process.argv[1]);process.stdout.write((r.packages||[]).join(" "))' "$EVAL_RESULT")
+    SCRIPT_SELFTESTS_STR=$(node -e 'const r=JSON.parse(process.argv[1]);process.stdout.write((r.selftests||[]).join(" "))' "$EVAL_RESULT")
+    echo "verify: running affected packages only: $TARGET_PACKAGES_STR"
+  fi
+fi
+
+if [[ -n "${SCRIPT_SELFTESTS_STR// /}" ]]; then
+  for selftest in $SCRIPT_SELFTESTS_STR; do
+    [[ -n "$selftest" ]] || continue
+    echo "verify: running script selftest $selftest..."
+    if [[ "$selftest" == *.js ]]; then
+      node "$selftest"
+    else
+      bash "$selftest"
+    fi
+  done
+fi
+
 LOG_DIR=$(mktemp -d "${TMPDIR:-/tmp}/opensand-verify.XXXXXX")
 
 for pkg_json in packages/*/package.json; do
@@ -144,8 +333,12 @@ for pkg_json in packages/*/package.json; do
   pkg_name=$(node -p "require('./$pkg_json').name")
   log="$LOG_DIR/${pkg_name//\//__}.log"
 
-  # PIPESTATUS[0] is pnpm's own status; tee's would hide a failure. The "||" keeps set -e from
-  # ending the script here, before the failure is reported.
+  if [[ "$RUN_ALL_PACKAGES" -ne 1 && ! " $TARGET_PACKAGES_STR " =~ " $pkg_name " ]]; then
+    echo "verify: skipping package $pkg_name (untouched and unaffected)"
+    continue
+  fi
+
+  echo "verify: testing package $pkg_name..."
   status=0
   pnpm --filter "$pkg_name" test 2>&1 | tee "$log" || status=${PIPESTATUS[0]}
   if [[ "$status" -ne 0 ]]; then

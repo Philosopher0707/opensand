@@ -215,6 +215,75 @@ expect_docs_only() {
   fi
 }
 
+
+# expect_affected_packages <label> <event> <target> <missing_base 0|1> <verify_all 0|1> <want_coord_test 0|1> <want_desktop_test 0|1> <want_desktop_skip 0|1>
+expect_affected_packages() {
+  local label="$1" event="$2" target="$3" missing_base="$4" verify_all="$5"
+  local want_coord_test="$6" want_desktop_test="$7" want_desktop_skip="$8"
+  local dir="$WORK/$label" base out status ok=1
+
+  make_workspace "$dir" ok
+  mkdir -p "$dir/packages/coordinator/src" "$dir/packages/desktop/src"
+  printf "{\"name\":\"@opensand/coordinator\",\"version\":\"1.0.0\",\"scripts\":{\"build\":\"node -e 0\",\"test\":\"node --test test.mjs\"}}\n" > "$dir/packages/coordinator/package.json"
+  echo "export const c = 1;" > "$dir/packages/coordinator/src/c.ts"
+  printf "import test from 'node:test';\ntest('coordinator passes', () => {});\n" > "$dir/packages/coordinator/test.mjs"
+
+  printf "{\"name\":\"@opensand/desktop\",\"version\":\"1.0.0\",\"dependencies\":{\"@opensand/coordinator\":\"workspace:*\"},\"scripts\":{\"build\":\"node -e 0\",\"test\":\"node --test test.mjs\"}}\n" > "$dir/packages/desktop/package.json"
+  echo "export const d = 1;" > "$dir/packages/desktop/src/d.ts"
+  printf "import test from 'node:test';\ntest('desktop passes', () => {});\n" > "$dir/packages/desktop/test.mjs"
+
+  (
+    cd "$dir"
+    git init -q
+    git config user.email test@example.com
+    git config user.name test
+    git add -A && git commit -qm base
+    base=$(git rev-parse HEAD)
+
+    if [[ "$target" == "desktop" ]]; then
+      echo "export const d2 = 2;" >> packages/desktop/src/d.ts
+    elif [[ "$target" == "coordinator" ]]; then
+      echo "export const c2 = 2;" >> packages/coordinator/src/c.ts
+    fi
+    git add -A && git commit -qm "change on $target"
+
+    if [[ "$missing_base" -eq 1 ]]; then
+      GITHUB_EVENT_NAME="$event" VERIFY_ALL="$verify_all" SKIP_INSTALL=1 TMPDIR="$dir/tmp" bash scripts/verify.sh > out.txt 2>&1
+    else
+      printf "{\"pull_request\":{\"base\":{\"sha\":\"%s\"}}}" "$base" > event.json
+      GITHUB_EVENT_NAME="$event" GITHUB_EVENT_PATH="$dir/event.json" VERIFY_ALL="$verify_all" SKIP_INSTALL=1 TMPDIR="$dir/tmp" bash scripts/verify.sh > out.txt 2>&1
+    fi
+    echo $? > status.txt
+  )
+
+  status=$(cat "$dir/status.txt")
+  out=$(cat "$dir/out.txt")
+  [[ "$status" -eq 0 ]] || ok=0
+
+  if [[ "$want_coord_test" -eq 1 ]]; then
+    grep -qF "verify: testing package @opensand/coordinator" <<<"$out" || ok=0
+  fi
+
+  if [[ "$want_desktop_test" -eq 1 ]]; then
+    grep -qF "verify: testing package @opensand/desktop" <<<"$out" || ok=0
+  fi
+
+  if [[ "$want_desktop_skip" -eq 1 ]]; then
+    grep -qF "verify: skipping package @opensand/desktop" <<<"$out" || ok=0
+    grep -qF "verify: testing package @opensand/desktop" <<<"$out" && ok=0
+  fi
+
+  grep -qF "verify: ok" <<<"$out" || ok=0
+
+  if [[ "$ok" -eq 1 ]]; then
+    echo "PASS $label (exit $status)"
+  else
+    echo "FAIL $label: exit $status, coord_test=$want_coord_test desktop_test=$want_desktop_test desktop_skip=$want_desktop_skip"
+    sed 's/^/    | /' "$dir/out.txt"
+    FAILED=1
+  fi
+}
+
 mkdir -p "$WORK"
 expect healthy ok 0 "verify: ok"
 expect failing-test failing 1 "verify error: Package @fake/target failed its tests" "✖ deliberately failing test" "verify error: Log directory:" "opensand-verify." "/@fake__target.log"
@@ -228,6 +297,11 @@ expect raw-errors-failing raw-errors-failing 1 "FAIL: new raw error"
 expect_parallel_runs
 expect_docs_only docs-only-skip 0 1
 expect_docs_only docs-and-code-runs-full 1 0
+expect_affected_packages desktop-change-runs-full pull_request desktop 0 0 1 1 0
+expect_affected_packages coordinator-pr-skips-desktop pull_request coordinator 0 0 1 0 1
+expect_affected_packages push-main-runs-full push coordinator 0 0 1 1 0
+expect_affected_packages missing-base-sha-fails-closed pull_request coordinator 1 0 1 1 0
+expect_affected_packages verify-all-forces-full pull_request coordinator 0 1 1 1 0
 
 if [[ -f "$ROOT/scripts/proof-selftest.sh" ]]; then
   echo "==> Running proof-selftest.sh..."
