@@ -1,0 +1,14 @@
+{
+  "id": "group-by",
+  "prompt": "Implement `groupBy(items, key)` in solution.mjs and export it as a named export. Group objects by the string value of the named property; preserve input order within each group and return an empty object for empty input. No dependencies; do not create hidden.test.mjs.",
+  "seed": {
+    "README.md": "# group-by\n\nImplement `groupBy` in solution.mjs as a named export. The harness will run a hidden `node --test hidden.test.mjs` check.\n",
+    "package.json": "{\"type\":\"module\",\"private\":true}\n",
+    "solution.mjs": "export function groupBy(items, key) {\n  throw new Error(\"not implemented\");\n}\n"
+  },
+  "solution": {
+    "solution.mjs": "export function groupBy(items, key) {\n  const out = {};\n  for (const item of items) {\n    const k = String(item[key]);\n    if (!out[k]) out[k] = [];\n    out[k].push(item);\n  }\n  return out;\n}\n"
+  },
+  "check": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { groupBy } from \"./solution.mjs\";\n\ntest(\"duplicate keys and stable order\", () => {\n  const items = [{ k: \"a\", n: 1 }, { k: \"b\", n: 2 }, { k: \"a\", n: 3 }];\n  assert.deepEqual(groupBy(items, \"k\"), {\n    a: [{ k: \"a\", n: 1 }, { k: \"a\", n: 3 }],\n    b: [{ k: \"b\", n: 2 }],\n  });\n});\ntest(\"empty input\", () => assert.deepEqual(groupBy([], \"k\"), {}));\n",
+  "checkCommand": "node --test hidden.test.mjs"
+}

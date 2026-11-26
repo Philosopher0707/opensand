@@ -1,0 +1,14 @@
+{
+  "id": "sum",
+  "prompt": "Implement `sum(numbers)` in solution.mjs and export it as a named export. Return the arithmetic sum of all numbers; an empty array returns 0. Do not add dependencies and do not create a file named hidden.test.mjs (the harness supplies its own hidden check).",
+  "seed": {
+    "README.md": "# sum\n\nImplement `sum` in solution.mjs as a named export. The harness will run a hidden `node --test hidden.test.mjs` check.\n",
+    "package.json": "{\"type\":\"module\",\"private\":true}\n",
+    "solution.mjs": "export function sum(numbers) {\n  throw new Error(\"not implemented\");\n}\n"
+  },
+  "solution": {
+    "solution.mjs": "export function sum(numbers) {\n  return numbers.reduce((total, n) => total + n, 0);\n}\n"
+  },
+  "check": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { sum } from \"./solution.mjs\";\n\ntest(\"empty array\", () => assert.equal(sum([]), 0));\ntest(\"single number\", () => assert.equal(sum([5]), 5));\ntest(\"negatives\", () => assert.equal(sum([-1, -2, -3]), -6));\ntest(\"1..100\", () => assert.equal(sum(Array.from({ length: 100 }, (_, i) => i + 1)), 5050));\n",
+  "checkCommand": "node --test hidden.test.mjs"
+}

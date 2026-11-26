@@ -1,0 +1,14 @@
+{
+  "id": "roman",
+  "prompt": "Implement `toRoman(n)` in solution.mjs and export it as a named export. Convert an integer 1..3999 to its uppercase Roman numeral. No dependencies; do not create hidden.test.mjs.",
+  "seed": {
+    "README.md": "# roman\n\nImplement `toRoman` in solution.mjs as a named export. The harness will run a hidden `node --test hidden.test.mjs` check.\n",
+    "package.json": "{\"type\":\"module\",\"private\":true}\n",
+    "solution.mjs": "export function toRoman(n) {\n  throw new Error(\"not implemented\");\n}\n"
+  },
+  "solution": {
+    "solution.mjs": "export function toRoman(n) {\n  const table = [[1000,\"M\"],[900,\"CM\"],[500,\"D\"],[400,\"CD\"],[100,\"C\"],[90,\"XC\"],[50,\"L\"],[40,\"XL\"],[10,\"X\"],[9,\"IX\"],[5,\"V\"],[4,\"IV\"],[1,\"I\"]];\n  let out = \"\";\n  for (const [value, symbol] of table) while (n >= value) { out += symbol; n -= value; }\n  return out;\n}\n"
+  },
+  "check": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { toRoman } from \"./solution.mjs\";\n\ntest(\"known values\", () => {\n  assert.equal(toRoman(1), \"I\");\n  assert.equal(toRoman(4), \"IV\");\n  assert.equal(toRoman(9), \"IX\");\n  assert.equal(toRoman(58), \"LVIII\");\n  assert.equal(toRoman(1994), \"MCMXCIV\");\n  assert.equal(toRoman(3999), \"MMMCMXCIX\");\n});\n",
+  "checkCommand": "node --test hidden.test.mjs"
+}

@@ -132,6 +132,9 @@ fi
 echo "release-check: running workspace verification suite..."
 SKIP_INSTALL=1 bash "$REPO_ROOT/scripts/verify.sh"
 
+echo "release-check: running quality-scores control gate..."
+bash "$REPO_ROOT/scripts/quality-scores.sh" --control-only
+
 echo "release-check: running packaged app smoke verification..."
 bash "$REPO_ROOT/scripts/smoke-packaged.sh" "${1:-}"
 

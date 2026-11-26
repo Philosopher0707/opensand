@@ -1,0 +1,14 @@
+{
+  "id": "slugify",
+  "prompt": "Implement `slugify(s)` in solution.mjs and export it as a named export. Lowercase, strip accents, replace runs of non-alphanumeric characters with a single hyphen, and trim leading/trailing hyphens. No dependencies; do not create hidden.test.mjs.",
+  "seed": {
+    "README.md": "# slugify\n\nImplement `slugify` in solution.mjs as a named export. The harness will run a hidden `node --test hidden.test.mjs` check.\n",
+    "package.json": "{\"type\":\"module\",\"private\":true}\n",
+    "solution.mjs": "export function slugify(s) {\n  throw new Error(\"not implemented\");\n}\n"
+  },
+  "solution": {
+    "solution.mjs": "export function slugify(s) {\n  return String(s).normalize(\"NFKD\").replace(/[\\u0300-\\u036f]/g, \"\").toLowerCase()\n    .replace(/[^a-z0-9]+/g, \"-\").replace(/^-+|-+$/g, \"\");\n}\n"
+  },
+  "check": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { slugify } from \"./solution.mjs\";\n\ntest(\"accents, spaces and punctuation\", () => assert.equal(slugify(\"Héllo, WORLD!!  test\"), \"hello-world-test\"));\ntest(\"repeated dashes\", () => assert.equal(slugify(\"  a---b  \"), \"a-b\"));\n",
+  "checkCommand": "node --test hidden.test.mjs"
+}

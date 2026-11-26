@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "defaultEngine": "native",
+  "engines": {
+    "native": {
+      "kind": "native",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "model": "qwen3:8b"
+    },
+    "external:opencode": {
+      "kind": "external",
+      "engine": "opencode",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "model": "qwen3:8b"
+    },
+    "external:codex": {
+      "kind": "external",
+      "engine": "codex",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "model": "qwen3:8b"
+    }
+  }
+}

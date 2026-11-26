@@ -1,0 +1,14 @@
+{
+  "id": "csv-line",
+  "prompt": "Implement `parseCsvLine(s)` in solution.mjs and export it as a named export. Split one CSV line into fields: commas inside double quotes are literal, a doubled quote inside a quoted field is one quote, and a trailing comma produces a trailing empty field. No dependencies; do not create hidden.test.mjs.",
+  "seed": {
+    "README.md": "# csv-line\n\nImplement `parseCsvLine` in solution.mjs as a named export. The harness will run a hidden `node --test hidden.test.mjs` check.\n",
+    "package.json": "{\"type\":\"module\",\"private\":true}\n",
+    "solution.mjs": "export function parseCsvLine(s) {\n  throw new Error(\"not implemented\");\n}\n"
+  },
+  "solution": {
+    "solution.mjs": "export function parseCsvLine(s) {\n  const out = [];\n  let cur = \"\", inQuotes = false;\n  for (let i = 0; i < s.length; i++) {\n    const c = s[i];\n    if (inQuotes) {\n      if (c === \"\\\"\") {\n        if (s[i + 1] === \"\\\"\") { cur += \"\\\"\"; i++; } else inQuotes = false;\n      } else cur += c;\n    } else if (c === \"\\\"\") inQuotes = true;\n    else if (c === \",\") { out.push(cur); cur = \"\"; }\n    else cur += c;\n  }\n  out.push(cur);\n  return out;\n}\n"
+  },
+  "check": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { parseCsvLine } from \"./solution.mjs\";\n\ntest(\"quoted comma and trailing empty field\", () => {\n  assert.deepEqual(parseCsvLine('a,\"b,c\",d,'), [\"a\", \"b,c\", \"d\", \"\"]);\n});\ntest(\"escaped quotes\", () => {\n  assert.deepEqual(parseCsvLine('\"x\"\"y\",z'), ['x\"y', \"z\"]);\n});\n",
+  "checkCommand": "node --test hidden.test.mjs"
+}

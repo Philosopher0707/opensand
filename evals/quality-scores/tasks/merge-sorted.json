@@ -1,0 +1,14 @@
+{
+  "id": "merge-sorted",
+  "prompt": "Implement `mergeSorted(a, b)` in solution.mjs and export it as a named export. Merge two already-ascending numeric arrays into one ascending array, keeping duplicates; do not sort descending. No dependencies; do not create hidden.test.mjs.",
+  "seed": {
+    "README.md": "# merge-sorted\n\nImplement `mergeSorted` in solution.mjs as a named export. The harness will run a hidden `node --test hidden.test.mjs` check.\n",
+    "package.json": "{\"type\":\"module\",\"private\":true}\n",
+    "solution.mjs": "export function mergeSorted(a, b) {\n  throw new Error(\"not implemented\");\n}\n"
+  },
+  "solution": {
+    "solution.mjs": "export function mergeSorted(a, b) {\n  const out = [];\n  let i = 0, j = 0;\n  while (i < a.length && j < b.length) out.push(a[i] <= b[j] ? a[i++] : b[j++]);\n  return out.concat(a.slice(i), b.slice(j));\n}\n"
+  },
+  "check": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { mergeSorted } from \"./solution.mjs\";\n\ntest(\"equal values and ascending order\", () => assert.deepEqual(mergeSorted([1, 3, 3], [2, 3, 4]), [1, 2, 3, 3, 3, 4]));\ntest(\"empty arrays\", () => {\n  assert.deepEqual(mergeSorted([], [1, 2]), [1, 2]);\n  assert.deepEqual(mergeSorted([1, 2], []), [1, 2]);\n});\n",
+  "checkCommand": "node --test hidden.test.mjs"
+}

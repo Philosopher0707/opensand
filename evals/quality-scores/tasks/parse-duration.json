@@ -1,0 +1,14 @@
+{
+  "id": "parse-duration",
+  "prompt": "Implement `parseDuration(s)` in solution.mjs and export it as a named export. Parse a compact duration like '1h30m', '45s' or '2d' into total seconds (s=1, m=60, h=3600, d=86400). Throw on invalid input or trailing garbage. No dependencies; do not create hidden.test.mjs.",
+  "seed": {
+    "README.md": "# parse-duration\n\nImplement `parseDuration` in solution.mjs as a named export. The harness will run a hidden `node --test hidden.test.mjs` check.\n",
+    "package.json": "{\"type\":\"module\",\"private\":true}\n",
+    "solution.mjs": "export function parseDuration(s) {\n  throw new Error(\"not implemented\");\n}\n"
+  },
+  "solution": {
+    "solution.mjs": "export function parseDuration(s) {\n  const str = String(s).trim();\n  const units = { s: 1, m: 60, h: 3600, d: 86400 };\n  let total = 0, matched = false, end = 0;\n  for (const m of str.matchAll(/(\\d+)([dhms])/g)) {\n    total += Number(m[1]) * units[m[2]];\n    matched = true;\n    end = m.index + m[0].length;\n  }\n  if (!matched || end !== str.length) throw new Error(\"invalid duration\");\n  return total;\n}\n"
+  },
+  "check": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { parseDuration } from \"./solution.mjs\";\n\ntest(\"compound and single units\", () => {\n  assert.equal(parseDuration(\"1h30m\"), 5400);\n  assert.equal(parseDuration(\"45s\"), 45);\n  assert.equal(parseDuration(\"2d\"), 172800);\n});\ntest(\"invalid input throws\", () => {\n  assert.throws(() => parseDuration(\"abc\"));\n  assert.throws(() => parseDuration(\"10x\"));\n});\n",
+  "checkCommand": "node --test hidden.test.mjs"
+}
