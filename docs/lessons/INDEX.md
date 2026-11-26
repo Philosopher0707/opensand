@@ -193,3 +193,4 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-26 · [Measure serialized security test payloads](2026-11-26-security-test-fixture-size-must-be-measured.md)
 - 2026-11-26 · [Policy RPC: authenticate the caller, keep policy authority server-side, and validate every reply field](2026-11-26-policy-rpc-trust-boundary.md)
 - 2026-11-26 · [Step 4A policy fallback: mode-gate the legacy path, and make strict mode require a declared effect](2026-11-26-step4-policy-strict-effects-regression.md)
+- 2026-11-26 · [Use the repository's current lessons-index interface](2026-11-26-lessons-index-write-flag.md)
