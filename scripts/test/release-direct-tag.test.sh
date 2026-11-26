@@ -117,14 +117,14 @@ if (cd "$FIXTURE" && bash scripts/release-check.sh --verify-main-ci "$OFF_MAIN_C
 fi
 pass "tag commits off main and commits without successful main CI fail closed"
 CI_GUARD_LINES=()
-while IFS=: read -r line _; do CI_GUARD_LINES+=("$line"); done < <(rg -n -- 'release-check\.sh --verify-main-ci' "$ROOT/.github/workflows/release.yml")
+while IFS=: read -r line _; do CI_GUARD_LINES+=("$line"); done < <(grep -nE 'release-check\.sh --verify-main-ci' "$ROOT/.github/workflows/release.yml")
 ARTIFACT_DOWNLOAD_LINES=()
-while IFS=: read -r line _; do ARTIFACT_DOWNLOAD_LINES+=("$line"); done < <(rg -n -- 'gh run download' "$ROOT/.github/workflows/release.yml")
+while IFS=: read -r line _; do ARTIFACT_DOWNLOAD_LINES+=("$line"); done < <(grep -n 'gh run download' "$ROOT/.github/workflows/release.yml")
 [[ ${#CI_GUARD_LINES[@]} -eq 2 && ${#ARTIFACT_DOWNLOAD_LINES[@]} -eq 2 ]] || fail "release workflow must guard both platform artifact paths"
 for index in 0 1; do
   (( CI_GUARD_LINES[index] < ARTIFACT_DOWNLOAD_LINES[index] )) || fail "a platform can attempt artifact fallback before main/CI validation"
 done
-[[ $(rg -c --no-filename -- 'gh run list .*--event push --branch main --commit' "$ROOT/.github/workflows/release.yml") -eq 2 ]] || fail "both artifact lookups must select successful push CI runs on main"
+[[ $(grep -cE 'gh run list .*--event push --branch main --commit' "$ROOT/.github/workflows/release.yml") -eq 2 ]] || fail "both artifact lookups must select successful push CI runs on main"
 pass "both platforms validate main membership and successful main CI before staged-artifact fallback"
 if bash "$FIXTURE/scripts/release-check.sh" --preflight 1.2.4 >/dev/null 2>&1; then
   fail "preflight accepted a version that is not synchronized across package manifests"
@@ -178,10 +178,10 @@ if ! bash "$FIXTURE/scripts/release.sh" 1.2.3 > "$WORK/release-resume.log" 2>&1;
   cat "$WORK/release-resume.log" >&2
   fail "release retry with an existing matching tag failed"
 fi
-rg -q 'resuming release checks' "$WORK/release-resume.log" || fail "release retry did not resume the matching existing tag"
+grep -q 'resuming release checks' "$WORK/release-resume.log" || fail "release retry did not resume the matching existing tag"
 git --git-dir="$WORK/origin.git" show-ref --verify --quiet refs/tags/v1.2.3 || fail "direct-tag flow did not push v1.2.3"
 [[ "$(git -C "$FIXTURE" branch --show-current)" == main ]] || fail "release flow changed branches"
-if rg -q 'pr create|pr-gate' "$GH_CALL_LOG" 2>/dev/null; then fail "release flow invoked a bump PR path"; fi
+if grep -qE 'pr create|pr-gate' "$GH_CALL_LOG" 2>/dev/null; then fail "release flow invoked a bump PR path"; fi
 pass "direct-tag flow pushes v1.2.3 without creating or merging a bump PR"
 
 echo "release-direct-tag: all checks passed."
