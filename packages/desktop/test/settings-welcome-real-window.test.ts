@@ -98,6 +98,7 @@ app.on("browser-window-created", (_e, w) => {
       await wait("document.querySelector('#viewSettings') && !document.querySelector('#viewSettings').classList.contains('hidden')");
       await wait("document.querySelector('#settingsEndpoint') && !document.querySelector('#settingsEndpoint').disabled");
       result.settingsViaMenu = await js("String(window.location.hash).includes('#settings') && document.querySelector('#viewChat').classList.contains('hidden')");
+      await wait("document.querySelector('#settingsVersion') && document.querySelector('#settingsVersion').textContent.trim() !== '…'");
       result.version = await js("document.querySelector('#settingsVersion').textContent.trim()");
       result.providerVisible = await js("Boolean(document.querySelector('#settingsProvider') && document.querySelector('#settingsEndpoint') && document.querySelector('#settingsApiKey') && document.querySelector('#settingsTest'))");
 
