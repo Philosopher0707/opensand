@@ -33,8 +33,29 @@ chmod +x "$FIXTURE/scripts/smoke-linux.sh"
 ARTIFACTS="$WORK/artifacts"
 mkdir -p "$ARTIFACTS"
 printf 'fixture binary\n' > "$ARTIFACTS/OpenSand_1.2.3_amd64.deb"
+printf 'fixture image\n' > "$ARTIFACTS/OpenSand-1.2.3-x86_64.AppImage"
+(cd "$ARTIFACTS" && shasum -a 256 *.AppImage *.deb > SHA256SUMS.txt)
+bash "$FIXTURE/scripts/release-check.sh" --verify-checksums "$ARTIFACTS" linux >/dev/null || fail "valid checksum manifest was rejected"
+cp "$ARTIFACTS/SHA256SUMS.txt" "$WORK/SHA256SUMS-complete.txt"
 (cd "$ARTIFACTS" && shasum -a 256 OpenSand_1.2.3_amd64.deb > SHA256SUMS.txt)
-bash "$FIXTURE/scripts/release-check.sh" --verify-checksums "$ARTIFACTS" >/dev/null || fail "valid checksum was rejected"
+if bash "$FIXTURE/scripts/release-check.sh" --verify-checksums "$ARTIFACTS" linux >/dev/null 2>&1; then
+  fail "checksum manifest that omitted a published AppImage was accepted"
+fi
+cp "$WORK/SHA256SUMS-complete.txt" "$ARTIFACTS/SHA256SUMS.txt"
+pass "checksum manifest must cover exactly every published platform artifact"
+MAC_ARTIFACTS="$WORK/mac-artifacts"
+mkdir -p "$MAC_ARTIFACTS"
+printf 'disk image\n' > "$MAC_ARTIFACTS/OpenSand-1.2.3-arm64.dmg"
+printf 'mac archive\n' > "$MAC_ARTIFACTS/OpenSand-1.2.3-arm64-mac.zip"
+(cd "$MAC_ARTIFACTS" && shasum -a 256 *.dmg *.zip > SHA256SUMS.txt)
+bash "$FIXTURE/scripts/release-check.sh" --verify-checksums "$MAC_ARTIFACTS" mac >/dev/null || fail "valid macOS checksum manifest was rejected"
+cp "$MAC_ARTIFACTS/SHA256SUMS.txt" "$WORK/mac-SHA256SUMS-complete.txt"
+(cd "$MAC_ARTIFACTS" && shasum -a 256 *.dmg > SHA256SUMS.txt)
+if bash "$FIXTURE/scripts/release-check.sh" --verify-checksums "$MAC_ARTIFACTS" mac >/dev/null 2>&1; then
+  fail "macOS checksum manifest that omitted the ZIP was accepted"
+fi
+cp "$WORK/mac-SHA256SUMS-complete.txt" "$MAC_ARTIFACTS/SHA256SUMS.txt"
+pass "macOS checksum manifest must cover exactly every published platform artifact"
 printf '<plist><dict><key>CFBundleShortVersionString</key><string>1.2.3</string><key>CFBundleVersion</key><string>1.2.3</string></dict></plist>\n' > "$WORK/Info.plist"
 bash "$FIXTURE/scripts/release-check.sh" --verify-info-plist 1.2.3 "$WORK/Info.plist" >/dev/null || fail "matching Info.plist was rejected"
 sed 's/<string>1.2.3<\/string><key>CFBundleVersion/<string>9.9.9<\/string><key>CFBundleVersion/' "$WORK/Info.plist" > "$WORK/Info-mismatch.plist"
@@ -62,7 +83,7 @@ pass "mutation probe: removing the Info.plist guard is detected"
 
 # A checksum mutation must also be rejected.
 printf 'tampered binary\n' >> "$ARTIFACTS/OpenSand_1.2.3_amd64.deb"
-if bash "$FIXTURE/scripts/release-check.sh" --verify-checksums "$ARTIFACTS" >/dev/null 2>&1; then
+if bash "$FIXTURE/scripts/release-check.sh" --verify-checksums "$ARTIFACTS" linux >/dev/null 2>&1; then
   fail "tampered artifact checksum was accepted"
 fi
 pass "artifact checksum mismatch fails closed"
@@ -76,6 +97,35 @@ git -C "$FIXTURE" add package.json packages scripts
 git -C "$FIXTURE" commit -qm "fixture"
 git -C "$FIXTURE" remote add origin "$WORK/origin.git"
 git -C "$FIXTURE" push -q -u origin main
+MAIN_COMMIT=$(git -C "$FIXTURE" rev-parse HEAD)
+if (cd "$FIXTURE" && bash scripts/release-check.sh --verify-main-ci "$MAIN_COMMIT" refs/heads/main 123 >/dev/null); then
+  pass "release tag commit on main with a successful CI run is accepted"
+else
+  fail "verified main commit was rejected"
+fi
+if (cd "$FIXTURE" && bash scripts/release-check.sh --verify-main-ci "$MAIN_COMMIT" refs/heads/main "" >/dev/null 2>&1); then
+  fail "main commit without a successful CI run was accepted"
+fi
+git -C "$FIXTURE" checkout -q -b topic/unverified
+printf 'unmerged commit\n' > "$FIXTURE/topic.txt"
+git -C "$FIXTURE" add topic.txt
+git -C "$FIXTURE" commit -qm "unmerged topic"
+OFF_MAIN_COMMIT=$(git -C "$FIXTURE" rev-parse HEAD)
+git -C "$FIXTURE" checkout -q main
+if (cd "$FIXTURE" && bash scripts/release-check.sh --verify-main-ci "$OFF_MAIN_COMMIT" refs/heads/main 456 >/dev/null 2>&1); then
+  fail "off-main tag commit was accepted for fallback release"
+fi
+pass "tag commits off main and commits without successful main CI fail closed"
+CI_GUARD_LINES=()
+while IFS=: read -r line _; do CI_GUARD_LINES+=("$line"); done < <(rg -n -- 'release-check\.sh --verify-main-ci' "$ROOT/.github/workflows/release.yml")
+ARTIFACT_DOWNLOAD_LINES=()
+while IFS=: read -r line _; do ARTIFACT_DOWNLOAD_LINES+=("$line"); done < <(rg -n -- 'gh run download' "$ROOT/.github/workflows/release.yml")
+[[ ${#CI_GUARD_LINES[@]} -eq 2 && ${#ARTIFACT_DOWNLOAD_LINES[@]} -eq 2 ]] || fail "release workflow must guard both platform artifact paths"
+for index in 0 1; do
+  (( CI_GUARD_LINES[index] < ARTIFACT_DOWNLOAD_LINES[index] )) || fail "a platform can attempt artifact fallback before main/CI validation"
+done
+[[ $(rg -c --no-filename -- 'gh run list .*--event push --branch main --commit' "$ROOT/.github/workflows/release.yml") -eq 2 ]] || fail "both artifact lookups must select successful push CI runs on main"
+pass "both platforms validate main membership and successful main CI before staged-artifact fallback"
 if bash "$FIXTURE/scripts/release-check.sh" --preflight 1.2.4 >/dev/null 2>&1; then
   fail "preflight accepted a version that is not synchronized across package manifests"
 fi

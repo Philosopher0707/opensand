@@ -23,9 +23,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
           name="opensand-binaries-${GITHUB_SHA}-mac"
-          run_id=$(gh run list --workflow ci.yml --event push --commit "$GITHUB_SHA" --status success --json databaseId --jq '.[0].databaseId // ""')
-          if [[ -n "$run_id" ]] && gh run download "$run_id" --name "$name" --dir dist/release; then
+          run_id=$(gh run list --workflow ci.yml --event push --branch main --commit "$GITHUB_SHA" --status success --json databaseId --jq '.[0].databaseId // ""')
+          bash scripts/release-check.sh --verify-main-ci "$GITHUB_SHA" refs/remotes/origin/main "$run_id"
+          if gh run download "$run_id" --name "$name" --dir dist/release; then
             echo "found=true" >> "$GITHUB_OUTPUT"
             echo "Using staged artifact $name from CI run $run_id"
           else
@@ -64,7 +66,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${TAG#v}"
-          bash scripts/release-check.sh --verify-checksums dist/release
+          bash scripts/release-check.sh --verify-checksums dist/release mac
           dmg=$(printf '%s\n' dist/release/*.dmg | head -n 1)
           zip=$(printf '%s\n' dist/release/*.zip | head -n 1)
           [[ -f "$dmg" && -f "$zip" ]]
@@ -105,9 +107,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
           name="opensand-binaries-${GITHUB_SHA}-linux"
-          run_id=$(gh run list --workflow ci.yml --event push --commit "$GITHUB_SHA" --status success --json databaseId --jq '.[0].databaseId // ""')
-          if [[ -n "$run_id" ]] && gh run download "$run_id" --name "$name" --dir dist/release; then
+          run_id=$(gh run list --workflow ci.yml --event push --branch main --commit "$GITHUB_SHA" --status success --json databaseId --jq '.[0].databaseId // ""')
+          bash scripts/release-check.sh --verify-main-ci "$GITHUB_SHA" refs/remotes/origin/main "$run_id"
+          if gh run download "$run_id" --name "$name" --dir dist/release; then
             echo "found=true" >> "$GITHUB_OUTPUT"
             echo "Using staged artifact $name from CI run $run_id"
           else
@@ -151,7 +155,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${TAG#v}"
-          bash scripts/release-check.sh --verify-checksums dist/release
+          bash scripts/release-check.sh --verify-checksums dist/release linux
           deb=$(printf '%s\n' dist/release/*.deb | head -n 1)
           [[ -f "$deb" ]]
           package_version=$(dpkg-deb -f "$deb" Version)

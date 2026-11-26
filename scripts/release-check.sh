@@ -62,11 +62,64 @@ if [[ "${1:-}" == "--verify-info-plist" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "--verify-main-ci" ]]; then
+  TAG_COMMIT="${2:-}"
+  MAIN_REF="${3:-}"
+  CI_RUN_ID="${4:-}"
+  if [[ -z "$TAG_COMMIT" || -z "$MAIN_REF" || $# -ne 4 ]]; then
+    echo "release-check: usage: $0 --verify-main-ci <tag-commit> <main-ref> <successful-ci-run-id>" >&2
+    exit 2
+  fi
+  if ! git merge-base --is-ancestor "$TAG_COMMIT" "$MAIN_REF"; then
+    echo "release-check: tag commit $TAG_COMMIT is not reachable from $MAIN_REF; refusing release." >&2
+    exit 1
+  fi
+  if [[ ! "$CI_RUN_ID" =~ ^[0-9]+$ ]]; then
+    echo "release-check: no successful push CI run exists for tag commit $TAG_COMMIT on main." >&2
+    exit 1
+  fi
+  echo "release-check: tag commit is on main and successful CI run $CI_RUN_ID is present."
+  exit 0
+fi
+
 if [[ "${1:-}" == "--verify-checksums" ]]; then
   ARTIFACT_DIR="${2:-}"
-  if [[ -z "$ARTIFACT_DIR" || $# -ne 2 || ! -f "$ARTIFACT_DIR/SHA256SUMS.txt" ]]; then
-    echo "release-check: usage: $0 --verify-checksums <artifact-directory> (SHA256SUMS.txt required)" >&2
+  PLATFORM="${3:-}"
+  if [[ -z "$ARTIFACT_DIR" || $# -ne 3 || ! -f "$ARTIFACT_DIR/SHA256SUMS.txt" ]]; then
+    echo "release-check: usage: $0 --verify-checksums <artifact-directory> <mac|linux> (SHA256SUMS.txt required)" >&2
     exit 2
+  fi
+  shopt -s nullglob
+  case "$PLATFORM" in
+    mac)
+      ARTIFACTS=("$ARTIFACT_DIR"/*.dmg "$ARTIFACT_DIR"/*.zip)
+      DMGS=("$ARTIFACT_DIR"/*.dmg)
+      ZIPS=("$ARTIFACT_DIR"/*.zip)
+      [[ ${#DMGS[@]} -gt 0 && ${#ZIPS[@]} -gt 0 ]] || {
+        echo "release-check: macOS release requires at least one .dmg and one .zip." >&2
+        exit 1
+      }
+      ;;
+    linux)
+      ARTIFACTS=("$ARTIFACT_DIR"/*.AppImage "$ARTIFACT_DIR"/*.deb)
+      APPIMAGES=("$ARTIFACT_DIR"/*.AppImage)
+      DEBS=("$ARTIFACT_DIR"/*.deb)
+      [[ ${#APPIMAGES[@]} -gt 0 && ${#DEBS[@]} -gt 0 ]] || {
+        echo "release-check: Linux release requires at least one .AppImage and one .deb." >&2
+        exit 1
+      }
+      ;;
+    *)
+      echo "release-check: platform must be 'mac' or 'linux'." >&2
+      exit 2
+      ;;
+  esac
+  ARTIFACT_NAMES=("${ARTIFACTS[@]##*/}")
+  EXPECTED_MANIFEST=$(cd "$ARTIFACT_DIR" && shasum -a 256 "${ARTIFACT_NAMES[@]}" | LC_ALL=C sort)
+  ACTUAL_MANIFEST=$(LC_ALL=C sort "$ARTIFACT_DIR/SHA256SUMS.txt")
+  if [[ "$ACTUAL_MANIFEST" != "$EXPECTED_MANIFEST" ]]; then
+    echo "release-check: SHA256SUMS.txt must cover exactly every $PLATFORM release asset." >&2
+    exit 1
   fi
   (cd "$ARTIFACT_DIR" && shasum -a 256 -c SHA256SUMS.txt)
   exit 0
