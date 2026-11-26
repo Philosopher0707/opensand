@@ -131,6 +131,14 @@ if bash "$FIXTURE/scripts/release-check.sh" --preflight 1.2.4 >/dev/null 2>&1; t
 fi
 pass "release preflight rejects a target version that is not merged and synchronized"
 
+# A symlinked checkout must not turn --preflight into a no-op (macOS /tmp -> /private/tmp).
+ln -s "$FIXTURE" "$WORK/symlink-checkout"
+if SYMLINK_OUTPUT=$(bash "$WORK/symlink-checkout/scripts/release-check.sh" --preflight 1.2.4 2>&1); then
+  fail "preflight accepted a mismatched version through a symlinked checkout"
+fi
+[[ "$SYMLINK_OUTPUT" == *"Version consistency check FAILED"* ]] || fail "symlinked preflight failed for the wrong reason: $SYMLINK_OUTPUT"
+pass "release preflight rejects a mismatched version through a symlinked checkout"
+
 # Mock external commands so any attempt to create a PR is visible and cannot succeed silently.
 cat > "$WORK/mock-bin/gh" <<'SH'
 #!/usr/bin/env bash

@@ -144,7 +144,7 @@ export function syncVersions({ targetVersion, baseDir = rootDir } = {}) {
 }
 
 // CLI execution
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+if (process.argv[1] && fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(fileURLToPath(import.meta.url))) {
   const args = process.argv.slice(2);
   const isCheck = args.includes('--check');
   const nonFlagArgs = args.filter((a) => !a.startsWith('--'));

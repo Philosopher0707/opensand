@@ -22,7 +22,11 @@ if [[ "${1:-}" == "--preflight" ]]; then
     exit 2
   fi
   node "$REPO_ROOT/scripts/sync-versions.js" --check "$VERSION"
-  if [[ -n "$(git status --porcelain)" ]]; then
+  if ! STATUS=$(git status --porcelain); then
+    echo "release-check: could not inspect the working tree with git status" >&2
+    exit 1
+  fi
+  if [[ -n "$STATUS" ]]; then
     echo "release-check: working tree has uncommitted changes" >&2
     exit 1
   fi
