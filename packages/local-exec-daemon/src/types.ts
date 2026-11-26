@@ -265,22 +265,30 @@ export const POLICY_RPC_ERRORS = {
   METHOD_NOT_FOUND: -32601,
   INVALID_PARAMS: -32602,
   INTERNAL_ERROR: -32603,
+  UNAUTHORIZED: -32001,
 } as const;
 
-export interface PolicyEvaluateParams {
+/**
+ * Policy context owned by the daemon host. These values are trusted state: they
+ * are set at construction and are never taken from an RPC request.
+ */
+export interface PolicyTrustedContext {
   sessionId: string;
-  toolName: string;
-  args: Record<string, unknown>;
-  declaredEffect?: string;
-  /** Request strict effect-first evaluation; the daemon always enforces it regardless. */
-  strictEffects?: boolean;
-  approvalMode: ApprovalMode | string;
+  approvalMode: ApprovalMode;
   tainted: boolean;
   sandboxed: boolean;
   cwd: string;
   workspaceRoot: string;
-  /** Hosts or endpoints the operator explicitly trusts past the egress deny rules. */
-  allowlistedHosts?: string[];
+  /** Operator-approved egress exceptions; an empty list grants nothing. */
+  allowlistedHosts: string[];
+  /** Effects declared by the tool registry, keyed by tool name. */
+  declaredEffects: Record<string, string>;
+}
+
+/** Only untrusted call inputs travel over RPC; trusted context stays daemon-side. */
+export interface PolicyEvaluateParams {
+  toolName: string;
+  args: Record<string, unknown>;
 }
 
 export interface PolicyEvaluateResult {
@@ -296,6 +304,8 @@ export interface PolicyEvaluateRpcRequest {
   jsonrpc: '2.0';
   id: string | number | null;
   method: typeof POLICY_RPC_METHOD;
+  /** Shared secret issued by the daemon host; authenticates the local caller. */
+  authToken: string;
   params: PolicyEvaluateParams;
 }
 
@@ -308,10 +318,16 @@ export interface PolicyEvaluateRpcResponse {
 
 export interface PolicyDaemonServerOptions {
   policy?: import("./policy-engine.js").PolicyEngine;
+  /** Shared secret required from every caller; fail closed when absent. */
+  authToken: string;
+  /** Trusted daemon state; never populated from a request. */
+  context: PolicyTrustedContext;
 }
 
 export interface PolicyClientOptions {
   socketPath: string;
+  /** Shared secret issued by the daemon host. */
+  authToken: string;
   /** Fail-closed deadline; defaults to POLICY_RPC_TIMEOUT_MS (5000ms). */
   timeoutMs?: number;
 }

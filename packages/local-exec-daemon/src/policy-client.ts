@@ -1,7 +1,7 @@
 /**
  * Structured client for the isolated policy daemon. Every transport failure
- * (unreachable socket, timeout, disconnect, malformed reply) resolves to a
- * fail-closed REQUIRE_APPROVAL — never to ALLOW.
+ * (unreachable socket, timeout, disconnect, malformed or contradictory reply)
+ * resolves to a fail-closed REQUIRE_APPROVAL — never to ALLOW.
  */
 import * as net from 'node:net';
 import { randomBytes } from 'node:crypto';
@@ -14,12 +14,32 @@ import {
 // Alias kept local so the public name stays short at the call site.
 type Request = PolicyEvaluateRpcRequest & { params: PolicyEvaluateParams };
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** A reply is trusted only if every required field is present and self-consistent. */
+function validResult(value: unknown): value is PolicyEvaluateResult {
+  if (!isObject(value)) return false;
+  const { action, allowed, requiresApproval, reason, effect, canonicalPaths } = value;
+  if (typeof reason !== 'string' || typeof effect !== 'string') return false;
+  if (typeof allowed !== 'boolean' || typeof requiresApproval !== 'boolean') return false;
+  if (canonicalPaths !== undefined
+    && (!Array.isArray(canonicalPaths) || !canonicalPaths.every((p) => typeof p === 'string'))) return false;
+  if (action === 'ALLOW') return allowed === true && requiresApproval === false;
+  if (action === 'DENY') return allowed === false && requiresApproval === false;
+  if (action === 'REQUIRE_APPROVAL') return allowed === false && requiresApproval === true;
+  return false;
+}
+
 class PolicyClient {
   readonly socketPath: string;
   readonly timeoutMs: number;
+  private readonly authToken: string;
 
   constructor(options: PolicyClientOptions) {
     this.socketPath = options.socketPath;
+    this.authToken = options.authToken;
     this.timeoutMs = options.timeoutMs ?? POLICY_RPC_TIMEOUT_MS;
   }
 
@@ -27,7 +47,9 @@ class PolicyClient {
     const id = `policy-${Date.now()}-${randomBytes(4).toString('hex')}`;
     const request: Request = {
       jsonrpc: '2.0', id, method: POLICY_RPC_METHOD,
-      params: { ...params, strictEffects: true },
+      authToken: this.authToken,
+      // Only untrusted inputs go on the wire; the daemon owns the policy context.
+      params: { toolName: params.toolName, args: params.args },
     };
 
     return new Promise((resolve) => {
@@ -57,7 +79,7 @@ class PolicyClient {
         const newline = buffer.indexOf('\n');
         if (newline < 0) return;
         const line = buffer.slice(0, newline);
-        let reply: { id?: unknown; result?: PolicyEvaluateResult; error?: { message?: string } };
+        let reply: unknown;
         try {
           reply = JSON.parse(line);
         } catch {
@@ -66,16 +88,19 @@ class PolicyClient {
           return;
         }
         socket.end();
-        if (reply.id !== id) {
+        if (!isObject(reply) || reply.jsonrpc !== '2.0') {
+          fail('invalid reply envelope');
+        } else if (reply.id !== id) {
           fail('reply id mismatch');
-        } else if (!reply.result) {
-          fail(`daemon error: ${reply.error?.message ?? 'no result'}`);
+        } else if (!validResult(reply.result)) {
+          fail('invalid or contradictory policy result');
         } else {
           settled = true;
           resolve(reply.result);
         }
       });
-      socket.on('error', (err) => fail(err.message));
+      // OS errors can contain absolute paths; publish only a stable reason.
+      socket.on('error', () => fail('connection error'));
       socket.on('close', () => fail('daemon disconnected before replying'));
     });
   }
