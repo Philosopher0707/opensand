@@ -197,3 +197,4 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-26 · [Release tags must be reachable from main and have successful main CI](2026-11-26-release-tag-must-have-main-ci.md)
 - 2026-11-26 · [Release-test command mocks must live outside the clean fixture checkout](2026-11-26-release-test-mocks-outside-checkout.md)
 - 2026-11-26 · [Step 4A policy fallback: mode-gate the legacy path, and make strict mode require a declared effect](2026-11-26-step4-policy-strict-effects-regression.md)
+- 2026-11-26 · [Use the repository's current lessons-index interface](2026-11-26-lessons-index-write-flag.md)
