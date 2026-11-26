@@ -182,3 +182,5 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-26 · [A pass-through `errorMessage()` helper hid raw backend errors from the raw-error gate](2026-11-26-errormessage-helper-hid-raw-gallery-errors.md)
 - 2026-11-26 · [A fresh worktree needs workspace builds and a linked Electron binary](2026-11-26-fresh-worktree-build-and-electron.md)
 - 2026-11-26 · [Git diff --no-renames prevents source-to-docs rename from bypassing CI](2026-11-26-git-diff-no-renames-prevents-docs-only-bypass.md)
+- 2026-11-26 · [Policy RPC: authenticate the caller, keep policy authority server-side, and validate every reply field](2026-11-26-policy-rpc-trust-boundary.md)
+- 2026-11-26 · [Step 4A policy fallback: mode-gate the legacy path, and make strict mode require a declared effect](2026-11-26-step4-policy-strict-effects-regression.md)

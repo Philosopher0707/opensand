@@ -6,6 +6,22 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
+import { EFFECTS, NEVER_AUTO, SHELLS } from '@opensand/shared';
+
+/** Known tools mapped to what they DO. Anything absent is an unknown effect and fails closed. */
+const TOOL_EFFECTS: Record<string, string> = {
+  read_file: 'read', list_directory: 'read', grep: 'read', glob: 'read',
+  write_file: 'edit', edit_file: 'edit',
+  exec_command: 'shell',
+  delegate_to_agent: 'delegate', create_agent: 'delegate',
+  web_search: 'network', web_fetch: 'network', http_request: 'network',
+  browser_action: 'browser',
+  memory_write: 'memory',
+};
+
+/** Always-denied egress targets (Invariant 7) unless explicitly allowlisted. */
+const DENIED_HOSTS = ['169.254.169.254', 'metadata.google.internal'];
+const LOOPBACK_WITH_PORT = /(?:127\.0\.0\.1|localhost|\[::1\]):\d+/i;
 
 export type PolicyAction = 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL';
 
@@ -31,6 +47,15 @@ export interface PolicyEvaluationContext {
   args: Record<string, unknown>;
   actor?: string;
   initiator?: 'user' | 'routine' | 'sentinel' | 'subagent';
+  /** Declared effect wins over any tool-name inference. */
+  declaredEffect?: string;
+  /** Force effect-first fail-closed fallback even without a declared effect (RPC path). */
+  strictEffects?: boolean;
+  tainted?: boolean;
+  sandboxed?: boolean;
+  cwd?: string;
+  workspaceRoot?: string;
+  allowlistedHosts?: string[];
 }
 
 export interface PolicyDecision {
@@ -39,6 +64,7 @@ export interface PolicyDecision {
   requiresApproval: boolean;
   matchedRule?: PolicyRule;
   reason: string;
+  effect?: string;
 }
 
 export interface PolicyAuditEntry {
@@ -123,7 +149,22 @@ export class PolicyEngine {
    * 4. Default fallback action applies if no rule matches.
    */
   public evaluate(context: PolicyEvaluationContext): PolicyDecision {
+    const effect = this.resolveEffect(context);
     const activeRules = Array.from(this.rules.values()).filter((r) => r.enabled);
+
+    // Egress boundary is unconditional: no rule may permit cloud metadata or loopback ports.
+    const egressViolation = this.checkNetworkBoundary(context);
+    if (egressViolation) {
+      const decision: PolicyDecision = {
+        action: 'DENY',
+        allowed: false,
+        requiresApproval: false,
+        reason: `Policy violation: ${egressViolation}`,
+        effect,
+      };
+      this.recordAudit(context, decision);
+      return decision;
+    }
 
     // Phase 1: DENY check
     for (const rule of activeRules) {
@@ -133,6 +174,7 @@ export class PolicyEngine {
           allowed: false,
           requiresApproval: false,
           matchedRule: rule,
+          effect,
           reason: `Policy violation: ${rule.name} - ${rule.description || 'Access denied'}`,
         };
         this.recordAudit(context, decision);
@@ -148,6 +190,7 @@ export class PolicyEngine {
           allowed: false,
           requiresApproval: true,
           matchedRule: rule,
+          effect,
           reason: `Approval required: ${rule.name} - ${rule.description || 'Action requires user confirmation'}`,
         };
         this.recordAudit(context, decision);
@@ -163,6 +206,7 @@ export class PolicyEngine {
           allowed: true,
           requiresApproval: false,
           matchedRule: rule,
+          effect,
           reason: `Allowed by policy: ${rule.name}`,
         };
         this.recordAudit(context, decision);
@@ -170,39 +214,67 @@ export class PolicyEngine {
       }
     }
 
-    // Phase 4: Default Fallback Action
-    // Read-only tools are safe to allow by default unless specifically restricted
-    const isReadOnly = ['read_file', 'list_directory', 'grep', 'glob'].includes(context.tool) ||
-      context.tool.startsWith('inspect_');
-
-    // exec_command is governed by the computer-use gate + standing allowlist
-    // in the turn loop, so the engine does not double-gate it here. write_file
-    // is the symmetric case: policy already denies sensitive paths, so the
-    // default action must not re-gate ordinary workspace writes.
-    const isExec = context.tool === 'exec_command';
-    const isWrite = ['write_file', 'edit_file'].includes(context.tool);
-    // CLI-registered tools (delegate_to_agent, create_agent, store_*, ...)
-    // are trusted orchestrator tools; policy governs the system-boundary
-    // tools (read/write/exec/network) and sensitive paths.
-    const isRegistered = !['read_file', 'write_file', 'list_directory', 'exec_command', 'edit_file', 'grep', 'glob'].includes(context.tool);
-    const fallbackAction = isReadOnly || isExec || isWrite || isRegistered ? 'ALLOW' : this.defaultAction;
+    // Legacy in-process callers (no declared effect and no strict flag) keep the
+    // pre-4A registered-tool fallback until Brief 4B declares effects everywhere.
+    // DENY rules, sensitive paths and the egress boundary above still apply to them.
+    const legacyFallback = context.declaredEffect === undefined && context.strictEffects !== true;
+    // Strict effect-first fallback: only a DECLARED/known effect may be
+    // permitted by default; an unknown tool or effect fails closed.
+    const knownEffect = Object.prototype.hasOwnProperty.call(EFFECTS, effect);
+    const hardStop = effect === 'unknown' || !knownEffect || NEVER_AUTO.has(effect) ||
+      effect === 'shell_outside' || (context.tainted === true && SHELLS.has(effect));
+    const fallbackAction: PolicyAction = legacyFallback ? 'ALLOW'
+      : hardStop ? 'REQUIRE_APPROVAL'
+        : knownEffect ? 'ALLOW' : this.defaultAction;
     const decision: PolicyDecision = {
       action: fallbackAction,
       allowed: fallbackAction === 'ALLOW',
       requiresApproval: fallbackAction === 'REQUIRE_APPROVAL',
-      reason: isReadOnly
-        ? `Permitted under default read-only safety policy`
-        : isExec
-          ? `Permitted here; exec_command is governed upstream by computer-use gate + allowlist`
-          : isWrite
-            ? `Permitted; sensitive paths are DENY-gated above`
-            : isRegistered
-              ? `Permitted; registered orchestrator tool`
-              : `Default boundary rule applied (${fallbackAction})`,
+      effect,
+      reason: legacyFallback
+        ? 'Permitted; registered orchestrator tool (legacy in-process fallback)'
+        : hardStop
+          ? `Effect '${effect}' requires interactive approval (fail-closed default)`
+          : `Default boundary rule applied for effect '${effect}' (${fallbackAction})`,
     };
 
     this.recordAudit(context, decision);
     return decision;
+  }
+
+  /** Strict mode requires a declared effect; legacy in-process calls infer from the tool name. */
+  private resolveEffect(context: PolicyEvaluationContext): string {
+    if (context.args.unsandboxed === true) return 'shell_outside';
+    const declared = context.declaredEffect;
+    if (typeof declared === 'string') {
+      // A declared effect that is not recognised is never silently re-inferred.
+      return Object.prototype.hasOwnProperty.call(EFFECTS, declared) ? declared : 'unknown';
+    }
+    if (context.declaredEffect !== undefined || context.strictEffects === true) return 'unknown';
+    if (context.tool.startsWith('inspect_')) return 'read';
+    return TOOL_EFFECTS[context.tool] ?? 'unknown';
+  }
+
+  /** Egress targets that are always denied unless the operator allowlisted them. */
+  private checkNetworkBoundary(context: PolicyEvaluationContext): string | null {
+    const raw = [
+      context.args.url, context.args.domain, context.args.host, context.args.endpoint,
+      context.args.command, context.args.CommandLine, context.args.cmd,
+    ].filter((v): v is string => typeof v === 'string').join(' ').toLowerCase();
+    if (!raw.trim()) return null;
+
+    const allowlist = (context.allowlistedHosts ?? [])
+      .map((entry) => String(entry).toLowerCase()).filter(Boolean);
+    for (const host of DENIED_HOSTS) {
+      if (raw.includes(host) && !allowlist.includes(host)) {
+        return `Cloud metadata endpoint ${host} is denied`;
+      }
+    }
+    const loopback = raw.match(LOOPBACK_WITH_PORT);
+    if (loopback && !allowlist.some((entry) => loopback.some((endpoint) => endpoint.includes(entry)))) {
+      return `Local daemon loopback endpoint ${loopback[0]} is denied`;
+    }
+    return null;
   }
 
   private matchesConditions(rule: PolicyRule, context: PolicyEvaluationContext): boolean {
