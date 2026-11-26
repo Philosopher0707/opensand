@@ -42,6 +42,7 @@ app.on("browser-window-created", (_e, w) => {
       await wait("document.querySelector('#btnSettings') && document.querySelector('#settingEngine')");
       await js("document.querySelector('#btnSettings').click()");
       await wait("document.querySelector('#settingsModal') && !document.querySelector('#settingsModal').classList.contains('hidden') && !document.querySelector('#settingEngine').disabled");
+      await wait("document.querySelector('#settingsVersion') && document.querySelector('#settingsVersion').textContent.trim() !== '…'");
       result.version = await js("document.querySelector('#settingsVersion').textContent.trim()");
       result.hint = await js("document.querySelector('#engineHint').textContent.trim()");
       result.openSandVisible = await js("!document.querySelector('#settingProviderGroup').hidden && !document.querySelector('#settingEndpointGroup').hidden && !document.querySelector('#settingModelGroup').hidden && !document.querySelector('#settingApiKeyGroup').hidden");
