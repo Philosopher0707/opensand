@@ -188,6 +188,7 @@ Entries up to 12.34 live in `AGENTS_LEARNING.md` and are not rewritten.
 - 2026-11-26 · [A fail-closed sanitizer changes every consumer's display contract](2026-11-26-chat-error-allowlist-consumer-contract.md)
 - 2026-11-26 · [A fresh worktree needs workspace builds and a linked Electron binary](2026-11-26-fresh-worktree-build-and-electron.md)
 - 2026-11-26 · [A pass-through `errorMessage()` helper hid raw backend errors from the raw-error gate](2026-11-26-errormessage-helper-hid-raw-gallery-errors.md)
+- 2026-11-26 · [Electron real-window tests need the executable, not the npm shell shim](2026-11-26-electron-real-window-tests-need-the-binary-not-the-shim.md)
 - 2026-11-26 · [Full release-check runs generate proof images inside the package tree](2026-11-26-release-check-generates-package-proof-images.md)
 - 2026-11-26 · [Git diff --no-renames prevents source-to-docs rename from bypassing CI](2026-11-26-git-diff-no-renames-prevents-docs-only-bypass.md)
 - 2026-11-26 · [Measure serialized security test payloads](2026-11-26-security-test-fixture-size-must-be-measured.md)

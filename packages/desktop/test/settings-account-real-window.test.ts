@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,6 +11,7 @@ import { withElectronLock } from "./electron-lock.js";
 import { hermeticElectronEnv, makeTempHome } from "./hermetic-env.js";
 
 const pkgRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const require = createRequire(import.meta.url);
 const shotDir = process.env.OPENSAND_ACCOUNT_SHOT_DIR || "";
 
 const RUNNER = String.raw`
@@ -125,12 +127,13 @@ test("legacy Settings hides provider fields for account engines and shows the re
   env.OPENSAND_STATE_DIR = stateDir;
   env.OPENSAND_ACCOUNT_SHOT_DIR = proofDir;
   env.OPENSAND_EXPECTED_VERSION = pkg.version;
+  const electronExecutable = require("electron") as string;
 
   let stdout = "";
   let stderr = "";
   try {
     const code = await withElectronLock(async () => {
-      const child = spawn(path.join(pkgRoot, "node_modules", ".bin", "electron"), [`--user-data-dir=${tmpDir}`, runner], {
+      const child = spawn(electronExecutable, [`--user-data-dir=${tmpDir}`, runner], {
         cwd: ws,
         env,
         stdio: ["ignore", "pipe", "pipe"],
