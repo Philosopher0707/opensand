@@ -1,0 +1,14 @@
+{
+  "id": "deep-get",
+  "prompt": "Implement `deepGet(obj, path)` in solution.mjs and export it as a named export. `path` is dot-separated; numeric segments index arrays. Return undefined when any segment is missing. No dependencies; do not create hidden.test.mjs.",
+  "seed": {
+    "README.md": "# deep-get\n\nImplement `deepGet` in solution.mjs as a named export. The harness will run a hidden `node --test hidden.test.mjs` check.\n",
+    "package.json": "{\"type\":\"module\",\"private\":true}\n",
+    "solution.mjs": "export function deepGet(obj, path) {\n  throw new Error(\"not implemented\");\n}\n"
+  },
+  "solution": {
+    "solution.mjs": "export function deepGet(obj, path) {\n  let cur = obj;\n  for (const part of path.split(\".\")) {\n    if (cur === null || cur === undefined) return undefined;\n    cur = cur[part];\n  }\n  return cur;\n}\n"
+  },
+  "check": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { deepGet } from \"./solution.mjs\";\nconst obj = { a: { b: [{ c: \"x\" }] } };\n\ntest(\"nested path with numeric index\", () => assert.equal(deepGet(obj, \"a.b.0.c\"), \"x\"));\ntest(\"missing path\", () => assert.equal(deepGet(obj, \"a.b.0.z\"), undefined));\ntest(\"missing root segment\", () => assert.equal(deepGet(obj, \"x.y\"), undefined));\n",
+  "checkCommand": "node --test hidden.test.mjs"
+}

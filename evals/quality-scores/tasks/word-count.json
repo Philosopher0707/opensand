@@ -1,0 +1,14 @@
+{
+  "id": "word-count",
+  "prompt": "Implement `wordCount(s)` in solution.mjs and export it as a named export. Count sequences of letters and digits; newlines and punctuation are separators and repeated words each count. No dependencies; do not create hidden.test.mjs.",
+  "seed": {
+    "README.md": "# word-count\n\nImplement `wordCount` in solution.mjs as a named export. The harness will run a hidden `node --test hidden.test.mjs` check.\n",
+    "package.json": "{\"type\":\"module\",\"private\":true}\n",
+    "solution.mjs": "export function wordCount(s) {\n  throw new Error(\"not implemented\");\n}\n"
+  },
+  "solution": {
+    "solution.mjs": "export function wordCount(s) {\n  const found = String(s).match(/\\b\\w+\\b/g);\n  return found ? found.length : 0;\n}\n"
+  },
+  "check": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { wordCount } from \"./solution.mjs\";\n\ntest(\"punctuation, newlines and repeats\", () => assert.equal(wordCount(\"Hello, hello world!\\nAgain.\"), 4));\ntest(\"empty string\", () => assert.equal(wordCount(\"\"), 0));\n",
+  "checkCommand": "node --test hidden.test.mjs"
+}

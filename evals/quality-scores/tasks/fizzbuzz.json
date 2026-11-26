@@ -1,0 +1,14 @@
+{
+  "id": "fizzbuzz",
+  "prompt": "Implement `fizzbuzz(n)` in solution.mjs and export it as a named export. Return an array of n strings: multiples of 3 are 'Fizz', multiples of 5 are 'Buzz', multiples of both are 'FizzBuzz', otherwise the number as a string. No dependencies; do not create hidden.test.mjs.",
+  "seed": {
+    "README.md": "# fizzbuzz\n\nImplement `fizzbuzz` in solution.mjs as a named export. The harness will run a hidden `node --test hidden.test.mjs` check.\n",
+    "package.json": "{\"type\":\"module\",\"private\":true}\n",
+    "solution.mjs": "export function fizzbuzz(n) {\n  throw new Error(\"not implemented\");\n}\n"
+  },
+  "solution": {
+    "solution.mjs": "export function fizzbuzz(n) {\n  const out = [];\n  for (let i = 1; i <= n; i++) {\n    out.push(i % 15 === 0 ? \"FizzBuzz\" : i % 3 === 0 ? \"Fizz\" : i % 5 === 0 ? \"Buzz\" : String(i));\n  }\n  return out;\n}\n"
+  },
+  "check": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { fizzbuzz } from \"./solution.mjs\";\n\ntest(\"1..16 exact sequence\", () => {\n  assert.deepEqual(fizzbuzz(16), [\n    \"1\", \"2\", \"Fizz\", \"4\", \"Buzz\", \"Fizz\", \"7\", \"8\", \"Fizz\", \"Buzz\",\n    \"11\", \"Fizz\", \"13\", \"14\", \"FizzBuzz\", \"16\",\n  ]);\n});\n",
+  "checkCommand": "node --test hidden.test.mjs"
+}

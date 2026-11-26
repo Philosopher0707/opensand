@@ -1,0 +1,14 @@
+{
+  "id": "balance",
+  "prompt": "Implement `isBalanced(s)` in solution.mjs and export it as a named export. Return true when every (), [] and {} bracket is opened and closed in the right nesting order; return false otherwise. Empty string is balanced. No dependencies; do not create hidden.test.mjs.",
+  "seed": {
+    "README.md": "# balance\n\nImplement `isBalanced` in solution.mjs as a named export. The harness will run a hidden `node --test hidden.test.mjs` check.\n",
+    "package.json": "{\"type\":\"module\",\"private\":true}\n",
+    "solution.mjs": "export function isBalanced(s) {\n  throw new Error(\"not implemented\");\n}\n"
+  },
+  "solution": {
+    "solution.mjs": "export function isBalanced(s) {\n  const close = { \")\": \"(\", \"]\": \"[\", \"}\": \"{\" };\n  const stack = [];\n  for (const c of String(s)) {\n    if (\"([{\".includes(c)) stack.push(c);\n    else if (close[c]) { if (stack.pop() !== close[c]) return false; }\n  }\n  return stack.length === 0;\n}\n"
+  },
+  "check": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { isBalanced } from \"./solution.mjs\";\n\ntest(\"nested and empty\", () => {\n  assert.equal(isBalanced(\"([{}])\"), true);\n  assert.equal(isBalanced(\"\"), true);\n});\ntest(\"mismatched and early close\", () => {\n  assert.equal(isBalanced(\"([)]\"), false);\n  assert.equal(isBalanced(\"())\"), false);\n});\n",
+  "checkCommand": "node --test hidden.test.mjs"
+}
