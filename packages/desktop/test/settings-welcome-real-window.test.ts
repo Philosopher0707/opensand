@@ -45,7 +45,7 @@ async function shot(label) {
   fs.writeFileSync(path.join(shotDir, label + ".png"), (await win.webContents.capturePage()).toPNG());
 }
 
-const result = { welcomeMessage: "", localDisabled: null, keyInputType: "", keyInitiallyEmpty: null, validationError: "", testSuccess: "", testBodyUsesEnteredKey: null, keyMaskedAfterSave: null, chatAfterSave: null, settingsViaMenu: null, secretInDom: null, engine: null, sizes: {}, detectReject: null, externalSave: null };
+const result = { welcomeMessage: "", localDisabled: null, keyInputType: "", keyInitiallyEmpty: null, validationError: "", testSuccess: "", testBodyUsesEnteredKey: null, keyMaskedAfterSave: null, chatAfterSave: null, settingsViaMenu: null, secretInDom: null, version: "", providerVisible: null, accountFields: null, engine: null, sizes: {}, detectReject: null, externalSave: null };
 
 app.on("browser-window-created", (_e, w) => {
   win = w;
@@ -80,7 +80,7 @@ app.on("browser-window-created", (_e, w) => {
       result.validationError = await js("document.querySelector('#welcomeSettingsError').textContent.trim()");
 
       await js(setInput("#welcomeSettingsEndpoint", "https://api.example.com/v1/chat/completions"));
-      await js(setInput("#welcomeSettingsModel", "test-model"));
+      await js(setSelect("#welcomeSettingsModel", "test-model"));
       await js(setInput("#welcomeSettingsApiKey", "sk-test-123"));
       await js("document.querySelector('#welcomeSettingsTest').click()");
       await wait("document.querySelector('#welcomeSettingsSuccess') && document.querySelector('#welcomeSettingsSuccess').textContent.includes('successful')");
@@ -98,6 +98,9 @@ app.on("browser-window-created", (_e, w) => {
       await wait("document.querySelector('#viewSettings') && !document.querySelector('#viewSettings').classList.contains('hidden')");
       await wait("document.querySelector('#settingsEndpoint') && !document.querySelector('#settingsEndpoint').disabled");
       result.settingsViaMenu = await js("String(window.location.hash).includes('#settings') && document.querySelector('#viewChat').classList.contains('hidden')");
+      await wait("document.querySelector('#settingsVersion') && document.querySelector('#settingsVersion').textContent.trim() !== '…'");
+      result.version = await js("document.querySelector('#settingsVersion').textContent.trim()");
+      result.providerVisible = await js("Boolean(document.querySelector('#settingsProvider') && document.querySelector('#settingsEndpoint') && document.querySelector('#settingsApiKey') && document.querySelector('#settingsTest'))");
 
       // The same engine choice as the legacy dialog: every absent binary is disabled with a plain reason.
       await wait("document.querySelector('#settingsEngine')");
@@ -129,7 +132,8 @@ app.on("browser-window-created", (_e, w) => {
       await reloadSettings();
       await wait("Array.from(document.querySelectorAll('#settingsEngine option')).some(o => o.value === 'claude' && !o.disabled)");
       await js(setSelect('#settingsEngine', 'claude'));
-      await js(setInput('#settingsApiKey', 'FAKE_KEY_FOR_RENDER_TEST_0000'));
+      await sleep(150);
+      result.accountFields = await js("({ provider: Boolean(document.querySelector('#settingsProvider')), endpoint: Boolean(document.querySelector('#settingsEndpoint')), apiKey: Boolean(document.querySelector('#settingsApiKey')), test: Boolean(document.querySelector('#settingsTest')), engineModel: Boolean(document.querySelector('#settingsModel')) })");
       await js("document.querySelector('#settingsSave').click()");
       await wait("Boolean(window.__settingsBody)");
       result.externalSave = await js("({ body: window.__settingsBody, testCalls: window.__testCalls })");
@@ -218,12 +222,15 @@ test("Preact welcome → save → chat and Settings menu real-window path (CI on
     assert.strictEqual(res.chatAfterSave, true, "saving finishes on Chat");
     assert.strictEqual(res.secretInDom, true, "the raw key never appears in the page text");
     assert.strictEqual(res.settingsViaMenu, true, "menu/tray IPC opens the real Settings form");
+    assert.match(res.version, /^OpenSand v\d+\.\d+\.\d+/, "Settings footer shows the running package version");
+    assert.strictEqual(res.providerVisible, true, "OpenSand shows provider, endpoint, key and connection test");
+    assert.deepStrictEqual(res.accountFields, { provider: false, endpoint: false, apiKey: false, test: false, engineModel: true }, "account engines hide provider fields and show the engine model");
     assert.strictEqual(res.engine.count, 7, "Settings offers the default plus six coding agents");
     assert.strictEqual(res.engine.value, "opensand", "an unavailable engine falls back to the default");
-    const missingCount = (res.engine.hint.match(/is not installed on this computer/g) || []).length;
-    assert.strictEqual(res.engine.disabled.length, missingCount, "each disabled option has a plain reason");
+    if (res.engine.disabled.length) assert.match(res.engine.hint, /^Not installed: .+\.$/);
+    else assert.strictEqual(res.engine.hint, "");
     assert.strictEqual(res.engine.disabled.includes("opensand"), false, "the default engine is never disabled");
-    assert.doesNotMatch(res.engine.hint, /npm|CLI|--/);
+    assert.doesNotMatch(res.engine.hint, /npm|CLI|--|is not installed on this computer/);
 
     for (const [tag] of [["compact"], ["wide"]] as const) {
       const size = res.sizes[tag];

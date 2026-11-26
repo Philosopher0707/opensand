@@ -10,6 +10,7 @@ import {
   isExternalEngine,
   loadEngineStatus,
   maskedKey,
+  providerFieldsVisible,
   resolveEngineChoice,
   saveErrorMessage,
   savePayload,
@@ -39,6 +40,9 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
   const [engine, setEngine] = useState<EngineId>("opensand");
   const [engineMissing, setEngineMissing] = useState<EngineId[]>([]);
   const [engineHint, setEngineHint] = useState("");
+  const [engineStatus, setEngineStatus] = useState<Array<{ engine: string; installed: boolean; models?: Array<{ id: string; label: string }>; modelsSource?: "live" | "fallback" | "error"; modelsMessage?: string }>>([]);
+  const [engineModels, setEngineModels] = useState<Record<string, string>>({});
+  const [modelsLoading, setModelsLoading] = useState(false);
   const [hasSavedKey, setHasSavedKey] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"save" | "test" | null>(null);
@@ -65,12 +69,16 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
         setProvider(settings.provider ?? "openai");
         setEndpoint(settings.endpoint ?? "");
         setModel(settings.model ?? "");
+        setEngineModels({ ...((settings as any).engineModels ?? {}) });
         setHasSavedKey(Boolean(maskedKey(settings.apiKey)));
         setApiKey(""); // never put the stored key into an input
+        setModelsLoading(true);
         const { detected, unavailable } = await loadEngineStatus(data.detectEngines?.bind(data));
+        setModelsLoading(false);
         if (!live) return;
         const choice = resolveEngineChoice((settings as { engine?: unknown }).engine, detected);
         setEngine(choice.selected);
+        setEngineStatus(detected);
         setEngineMissing(choice.missing);
         setEngineHint(unavailable ? ENGINE_STATUS_UNAVAILABLE : choice.hint);
       })
@@ -84,6 +92,11 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
       live = false;
     };
   }, [data, active, embedded]);
+
+  const selectedEngineStatus = engineStatus.find((item) => item.engine === engine);
+  const selectedEngineModel = engine === "opensand" ? model : (engineModels[engine] ?? "");
+  const offeredModels = selectedEngineStatus?.models ?? [];
+  const savedModelStale = Boolean(selectedEngineModel && !offeredModels.some((item) => item.id === selectedEngineModel));
 
   useEffect(() => {
     if (!active || embedded) return; // no request from the hidden registry panel or the inline welcome form
@@ -100,6 +113,8 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
 
   const form: SettingsForm = { provider, endpoint, model, apiKey };
   const disabled = loading || busy !== null;
+  const accountEngine = isExternalEngine(engine);
+  const showProviderFields = providerFieldsVisible(engine);
 
   const save = async () => {
     setError(null);
@@ -115,7 +130,7 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
     }
     setBusy("save");
     try {
-      await data.saveSettings(savePayload(form, engine));
+      await data.saveSettings(savePayload(form, engine, engineModels));
       setSuccess("Saved. Your provider is ready to use.");
       setHasSavedKey(true);
       setApiKey(""); // a freshly saved key is never rendered back
@@ -170,61 +185,81 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
         </select>
         {engineHint && <p id={id("EngineHint")} class="settings-hint">{engineHint}</p>}
       </div>
+      {showProviderFields && (
+        <>
+          <div class="settings-field">
+            <label for={id("Provider")}>Provider</label>
+            <select
+              id={id("Provider")}
+              value={provider}
+              disabled={disabled}
+              onChange={(event) => setProvider((event.currentTarget as HTMLSelectElement).value as ProviderId)}
+            >
+              <option value="openai">OpenAI-compatible</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="openrouter">OpenRouter</option>
+            </select>
+          </div>
+          <div class="settings-field">
+            <label for={id("Endpoint")}>Endpoint</label>
+            <input
+              id={id("Endpoint")}
+              type="url"
+              value={endpoint}
+              disabled={disabled}
+              autocomplete="off"
+              onInput={(event) => setEndpoint((event.currentTarget as HTMLInputElement).value)}
+            />
+          </div>
+        </>
+      )}
       <div class="settings-field">
-        <label for={id("Provider")}>Provider</label>
-        <select
-          id={id("Provider")}
-          value={provider}
-          disabled={disabled}
-          onChange={(event) => setProvider((event.currentTarget as HTMLSelectElement).value as ProviderId)}
-        >
-          <option value="openai">OpenAI-compatible</option>
-          <option value="anthropic">Anthropic</option>
-          <option value="openrouter">OpenRouter</option>
-        </select>
+        <label for={id("Model")}>{isExternalEngine(engine) ? "Engine model" : "Model"}</label>
+        <>
+            <select
+              id={id("Model")}
+              value={selectedEngineModel}
+              disabled={disabled || modelsLoading || offeredModels.length === 0}
+              onChange={(event) => {
+                const value = (event.currentTarget as HTMLSelectElement).value;
+                if (engine === "opensand") setModel(value);
+                else setEngineModels((current) => ({ ...current, [engine]: value }));
+              }}
+            >
+              {selectedEngineModel && savedModelStale && <option value={selectedEngineModel}>{selectedEngineModel} (no longer offered)</option>}
+              {!selectedEngineModel && <option value="">Choose a model</option>}
+              {offeredModels.map((item) => <option key={item.id} value={item.id}>{item.label === item.id ? item.label : `${item.label} (${item.id})`}</option>)}
+            </select>
+            {modelsLoading && <p class="settings-hint" role="status">Loading models…</p>}
+            {savedModelStale && <p class="settings-hint" role="status">This saved model is no longer offered. It will be kept unless you choose another.</p>}
+            {!modelsLoading && offeredModels.length === 0 && <p class="settings-hint">No models are available for this engine. Check its installation or account, then reopen Settings.</p>}
+            {selectedEngineStatus?.modelsMessage && <p class="settings-hint" role="status">{selectedEngineStatus.modelsMessage}</p>}
+        </>
       </div>
-      <div class="settings-field">
-        <label for={id("Endpoint")}>Endpoint</label>
-        <input
-          id={id("Endpoint")}
-          type="url"
-          value={endpoint}
-          disabled={disabled}
-          autocomplete="off"
-          onInput={(event) => setEndpoint((event.currentTarget as HTMLInputElement).value)}
-        />
-      </div>
-      <div class="settings-field">
-        <label for={id("Model")}>Model</label>
-        <input
-          id={id("Model")}
-          type="text"
-          value={model}
-          disabled={disabled}
-          autocomplete="off"
-          onInput={(event) => setModel((event.currentTarget as HTMLInputElement).value)}
-        />
-      </div>
-      <div class="settings-field">
-        <label for={id("ApiKey")}>API key</label>
-        <input
-          id={id("ApiKey")}
-          type="password"
-          value={apiKey}
-          disabled={disabled}
-          autocomplete="new-password"
-          placeholder={hasSavedKey ? "A key is saved — leave blank to keep it" : "Paste your API key"}
-          onInput={(event) => setApiKey((event.currentTarget as HTMLInputElement).value)}
-        />
-        <p class="settings-hint">Keys are stored encrypted. A saved key is never shown again.</p>
-      </div>
+      {showProviderFields && (
+        <div class="settings-field">
+          <label for={id("ApiKey")}>API key</label>
+          <input
+            id={id("ApiKey")}
+            type="password"
+            value={apiKey}
+            disabled={disabled}
+            autocomplete="new-password"
+            placeholder={hasSavedKey ? "A key is saved — leave blank to keep it" : "Paste your API key"}
+            onInput={(event) => setApiKey((event.currentTarget as HTMLInputElement).value)}
+          />
+          <p class="settings-hint">Keys are stored encrypted. A saved key is never shown again.</p>
+        </div>
+      )}
       <div class="settings-actions">
         <button id={id("Save")} type="submit" class="btn btn-primary" disabled={disabled}>
           {busy === "save" ? "Saving…" : "Save settings"}
         </button>
-        <button id={id("Test")} type="button" class="btn btn-secondary" disabled={disabled || isExternalEngine(engine)} onClick={() => void test()}>
-          {busy === "test" ? "Testing…" : "Test connection"}
-        </button>
+        {showProviderFields && (
+          <button id={id("Test")} type="button" class="btn btn-secondary" disabled={disabled} onClick={() => void test()}>
+            {busy === "test" ? "Testing…" : "Test connection"}
+          </button>
+        )}
         {onCancel && (
           <button id={id("Cancel")} type="button" class="btn btn-ghost" disabled={busy !== null} onClick={onCancel}>
             Back
@@ -245,7 +280,7 @@ export function SettingsView({ data, active, onSelect, embedded, onSaved, onCanc
           <div class="dashboard-title">Provider Settings</div>
           <div class="dashboard-subtitle">Connect a model provider. You can change it at any time.</div>
         </div>
-        {loading ? <p class="settings-loading" role="status">Loading settings…</p> : formNode}
+        {loading ? <p class="settings-loading" role="status">Loading settings…{modelsLoading ? " Loading models…" : ""}</p> : formNode}
         <p id="settingsVersion" class="settings-version" aria-live="polite">{version}</p>
       </div>
     </div>

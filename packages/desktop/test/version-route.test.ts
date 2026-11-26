@@ -3,7 +3,17 @@ import * as assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { DesktopServer } from '../src/desktop-server.js';
+import { resolveAppVersion } from '../src/main.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+test('unpackaged Electron uses the desktop package version instead of the Electron binary version', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf8'));
+  assert.equal(resolveAppVersion({ isPackaged: false, getVersion: () => '45.2.3' }), pkg.version);
+  assert.equal(resolveAppVersion({ isPackaged: true, getVersion: () => '9.9.9' }), '9.9.9');
+});
 
 test('GET /api/version returns only the app and electron versions', async () => {
   const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-version-'));

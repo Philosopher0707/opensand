@@ -249,6 +249,7 @@ export interface DesktopSettings {
   maxContextTokens?: number;
   approvalMode?: ApprovalMode;
   engine?: 'opensand' | 'claude' | 'opencode' | 'codex' | 'copilot' | 'antigravity' | 'workbuddy';
+  engineModels?: Partial<Record<NonNullable<DesktopSettings['engine']>, string>>;
 }
 
 export interface SessionSummary {

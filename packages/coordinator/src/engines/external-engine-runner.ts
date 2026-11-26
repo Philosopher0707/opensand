@@ -5,6 +5,7 @@ import type { LocalExecDaemon } from "@opensand/local-exec-daemon";
 import type { HookDispatcher } from "../hooks.js";
 import type { ApprovalHandler, TurnEvent, ChatMessage, SessionMetadata } from "../types.js";
 import type { ExternalEngineConfig, EngineDetectionResult } from "./types.js";
+import { DETECTABLE_ENGINE_IDS, listModels } from "./model-discovery.js";
 
 // @ts-ignore - plain .mjs vendor files
 import { runTurn as runAgentTurn, ENGINES, findBinary, engineVersion, versionStatus } from "./vendor/agent_wrap.mjs";
@@ -344,17 +345,11 @@ export class ExternalEngineTurnRunner {
   }
 }
 
-export async function detectEngines(): Promise<EngineDetectionResult[]> {
+export async function detectEngines(options: { endpoint?: string; provider?: "openai" | "anthropic" | "openrouter"; apiKey?: string } = {}): Promise<EngineDetectionResult[]> {
   const results: EngineDetectionResult[] = [];
-  const engineList: Array<ExternalEngineConfig["engine"]> = [
-    "claude",
-    "codex",
-    "copilot",
-    "antigravity",
-    "opencode",
-    "workbuddy",
-  ];
-  for (const id of engineList) {
+  const openSandModels = await listModels({ engine: "opensand", ...options });
+  results.push({ engine: "opensand", label: "OpenSand", installed: true, binaryPath: null, version: null, versionStatus: "unchecked", authenticated: false, ...openSandModels });
+  for (const id of DETECTABLE_ENGINE_IDS) {
     const spec = (ENGINES as any)[id] || (ENGINE_FACTS as any)[id];
     const bin = findBinary(id);
     let version: string | null = null;
@@ -378,6 +373,7 @@ export async function detectEngines(): Promise<EngineDetectionResult[]> {
       version,
       versionStatus: vStatus,
       authenticated: false,
+      ...(await listModels({ engine: id, binary: bin })),
     });
   }
   return results;

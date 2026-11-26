@@ -1174,6 +1174,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const settingProvider = document.getElementById('settingProvider');
   const settingEngine = document.getElementById('settingEngine');
   const engineHint = document.getElementById('engineHint');
+  const settingEngineModelGroup = document.getElementById('settingEngineModelGroup');
+  const settingEngineModel = document.getElementById('settingEngineModel');
+  const engineModelHint = document.getElementById('engineModelHint');
   const settingEndpoint = document.getElementById('settingEndpoint');
   const settingModel = document.getElementById('settingModel');
   const settingApiKey = document.getElementById('settingApiKey');
@@ -5627,6 +5630,53 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  let detectedEngines = [];
+  let engineModels = {};
+
+  function renderEngineModelChoices() {
+    if (!settingEngineModel || !settingEngineModelGroup) return;
+    const selectedEngine = settingEngine?.value || 'opensand';
+    const external = selectedEngine !== 'opensand';
+    settingEngineModelGroup.hidden = !external;
+    for (const id of ['settingProviderGroup', 'settingEndpointGroup', 'settingModelGroup', 'settingApiKeyGroup']) {
+      const group = document.getElementById(id);
+      if (group) group.hidden = external;
+    }
+    if (!external) return;
+
+    const status = detectedEngines.find((item) => item?.engine === selectedEngine);
+    const models = Array.isArray(status?.models) ? status.models : [];
+    const selected = engineModels[selectedEngine] || '';
+    const stale = selected && !models.some((item) => item.id === selected);
+    settingEngineModel.replaceChildren();
+    if (!selected) {
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Choose a model';
+      settingEngineModel.appendChild(placeholder);
+    }
+    if (stale) {
+      const saved = document.createElement('option');
+      saved.value = selected;
+      saved.textContent = `${selected} (no longer offered)`;
+      settingEngineModel.appendChild(saved);
+    }
+    for (const model of models) {
+      const option = document.createElement('option');
+      option.value = model.id;
+      option.textContent = model.label && model.label !== model.id ? `${model.label} (${model.id})` : model.id;
+      settingEngineModel.appendChild(option);
+    }
+    settingEngineModel.value = selected || '';
+    settingEngineModel.disabled = models.length === 0;
+    if (engineModelHint) {
+      engineModelHint.textContent = status?.modelsMessage
+        || (models.length ? '' : 'No models are available for this engine. Check its installation or account, then reopen Settings.');
+    }
+  }
+
+  settingEngine?.addEventListener('change', renderEngineModelChoices);
+
   async function refreshSettingsVersion() {
     if (!settingsVersion) return;
     try {
@@ -5641,6 +5691,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Settings
   btnSettings.onclick = async () => {
     const s = await client.getSettings();
+    engineModels = { ...(s.engineModels || {}) };
+    detectedEngines = [];
     let detectedProvider = s.provider || 'openai';
     if ((!s.provider || s.provider === 'openai') && s.endpoint?.includes('openrouter.ai')) {
       detectedProvider = 'openrouter';
@@ -5653,18 +5705,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       settingEngine.value = choices.some((o) => o.value === s.engine) ? s.engine : 'opensand';
       let detected = [];
       try { detected = await client.detectEngines(); } catch {}
-      const reasons = [];
+      const missing = [];
       for (const option of choices) {
         const found = Array.isArray(detected) ? detected.find((e) => e && e.engine === option.value) : null;
         const installed = Boolean(found && found.installed);
         option.disabled = !installed;
-        if (!installed) reasons.push(`${option.dataset.label || option.textContent.trim()} is not installed on this computer.`);
+        if (!installed) missing.push(option.dataset.label || option.textContent.trim());
       }
       if (settingEngine.selectedOptions[0]?.disabled) settingEngine.value = 'opensand';
+      detectedEngines = Array.isArray(detected) ? detected : [];
+      renderEngineModelChoices();
       if (engineHint) {
-        engineHint.textContent = reasons.length
-          ? `${reasons.join(' ')} Install what you want to use, then reopen Settings to select it.`
-          : '';
+        engineHint.textContent = missing.length ? `Not installed: ${missing.join(', ')}.` : '';
       }
     }
     const hasStoredKey = !!s.apiKey && s.apiKey !== 'none';
@@ -5687,15 +5739,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   btnCloseSettings.onclick = () => settingsModal.classList.add('hidden');
   btnSaveSettings.onclick = async () => {
     const mode = settingApprovalMode ? settingApprovalMode.value : (settingAutoApprove?.checked ? 'auto' : 'ask');
-    const engineOption = settingEngine?.selectedOptions?.[0];
+    const selectedEngine = settingEngine?.selectedOptions?.[0]?.disabled ? 'opensand' : (settingEngine?.value || 'opensand');
     const payload = {
       provider: settingProvider.value,
       endpoint: settingEndpoint.value,
       model: settingModel.value,
       approvalMode: mode,
       autoApprove: mode === 'auto',
-      engine: engineOption?.disabled ? 'opensand' : (settingEngine?.value || 'opensand'),
+      engine: selectedEngine,
     };
+    if (selectedEngine !== 'opensand' && settingEngineModel?.value) payload.engineModels = { ...engineModels, [selectedEngine]: settingEngineModel.value };
     const newKey = settingApiKey.value.trim();
     if (newKey) payload.apiKey = newKey;
     await client.updateSettings(payload);
