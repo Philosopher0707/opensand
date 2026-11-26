@@ -5,10 +5,9 @@
 #
 # Steps:
 #   1. Disk space check (calls clean-disk.sh if free space < 8 GB)
-#   2. Bump version in package.json and packages via sync-versions.js, commit, push, create PR
-#   3. Merge bump PR via scripts/pr-gate.sh (on exit 3, prints re-run instructions and exits 3)
-#   4. Create and push tag v<version>
-#   5. Download release artifacts (*.zip and *.dmg) from GitHub Release
+#   2. Verify clean origin/main checkout and synchronized package versions
+#   3. Create and push tag v<version> directly (no bump branch or PR)
+#   4. Download release artifacts (*.zip and *.dmg) from GitHub Release
 #   6. Generate release notes from PR titles merged since the previous tag, grouped by
 #      conventional prefix (feat / fix / docs / other) with each PR number, and set them
 #      as the GitHub release body
@@ -26,7 +25,6 @@ cd "$ROOT"
 source "$ROOT/scripts/lib/free-space.sh"
 
 CLEAN_DISK_SCRIPT="${OPENSAND_CLEAN_DISK_SCRIPT:-$ROOT/scripts/clean-disk.sh}"
-PR_GATE_SCRIPT="${OPENSAND_PR_GATE_SCRIPT:-$ROOT/scripts/pr-gate.sh}"
 SMOKE_SCRIPT="${OPENSAND_SMOKE_SCRIPT:-$ROOT/scripts/smoke-packaged.sh}"
 LINUX_SMOKE_SCRIPT="${OPENSAND_LINUX_SMOKE_SCRIPT:-$ROOT/scripts/smoke-linux.sh}"
 HEALTH_CHECK_SCRIPT="${OPENSAND_HEALTH_CHECK_SCRIPT:-$ROOT/scripts/install-health-check.sh}"
@@ -85,7 +83,7 @@ VERSION="${RAW_VERSION#v}"
 TAG="v$VERSION"
 
 # --- Step 1: Disk Space Guard (< 8 GB) ---
-echo "==> [Step 1/9] Checking free disk space..."
+echo "==> [Step 1/5] Checking free disk space..."
 AVAIL_GB=$(df -k "$DISK_PATH" 2>/dev/null | awk 'NR==2 {print int($4 / 1024 / 1024)}' || echo "10")
 if [[ "$AVAIL_GB" -lt 8 ]]; then
   echo "Disk space is under 8 GB (${AVAIL_GB} GB available on $DISK_PATH)."
@@ -103,189 +101,68 @@ else
   echo "PASS: disk space is sufficient (${AVAIL_GB} GB available)."
 fi
 
-# --- Step 2: Version Bump & PR ---
-echo "==> [Step 2/9] Checking package version and bump PR..."
-CURRENT_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "")
-BUMP_BRANCH="chore/bump-v${VERSION}"
-
-BUMP_PR_NUM=""
-if PR_LIST_JSON=$(gh pr list --head "$BUMP_BRANCH" --state all --json number,state 2>/dev/null); then
-  BUMP_PR_NUM=$(node -e '
-    try {
-      const list = JSON.parse(process.argv[1]);
-      if (Array.isArray(list) && list.length > 0) {
-        console.log(list[0].number || "");
-      }
-    } catch { process.exit(0); }
-  ' "$PR_LIST_JSON")
-fi
-
-if [[ "$CURRENT_VERSION" == "$VERSION" ]]; then
-  echo "PASS: package.json is already at version $VERSION"
-elif [[ -n "$BUMP_PR_NUM" ]]; then
-  echo "PASS: bump PR #$BUMP_PR_NUM already exists for branch $BUMP_BRANCH"
-else
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "DRY RUN: would sync versions to $VERSION via node scripts/sync-versions.js $VERSION"
-    echo "DRY RUN: would create branch $BUMP_BRANCH, commit, push, and open PR"
-    BUMP_PR_NUM="999"
+# --- Step 2: Release preflight ---
+echo "==> [Step 2/5] Checking release preflight for $TAG..."
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  node "$ROOT/scripts/sync-versions.js" --check
+  CURRENT_VERSION=$(node -p "require('./package.json').version")
+  if [[ "$CURRENT_VERSION" != "$VERSION" ]]; then
+    echo "DRY RUN: package manifests are consistently at $CURRENT_VERSION; a real $TAG release requires merging 'node scripts/sync-versions.js $VERSION' to main first."
   else
-    echo "Bumping version to $VERSION on branch $BUMP_BRANCH..."
-    git checkout -b "$BUMP_BRANCH"
-    node "$ROOT/scripts/sync-versions.js" "$VERSION"
-    git add package.json packages/*/package.json
-    git commit -m "chore(release): bump version to $VERSION"
-    git push -u origin "$BUMP_BRANCH"
-    BUMP_PR_OUT=$(gh pr create --title "chore(release): bump version to $VERSION" --body "Release version bump to $VERSION" --head "$BUMP_BRANCH" --base main)
-    BUMP_PR_NUM=$(echo "$BUMP_PR_OUT" | grep -oE '[0-9]+$' || true)
-    if [[ -z "$BUMP_PR_NUM" ]]; then
-      BUMP_PR_NUM=$(gh pr view --json number -q '.number' 2>/dev/null || echo "")
-    fi
-    echo "Created bump PR #$BUMP_PR_NUM: $BUMP_PR_OUT"
+    echo "DRY RUN: version manifests match $VERSION."
   fi
-fi
-
-# --- Step 3: Gate & Merge Bump PR ---
-echo "==> [Step 3/9] Checking bump PR merge status via pr-gate..."
-if [[ -n "$BUMP_PR_NUM" ]]; then
-  IS_MERGED=0
-  if PR_VIEW=$(gh pr view "$BUMP_PR_NUM" --json state -q '.state' 2>/dev/null); then
-    if [[ "$PR_VIEW" == "MERGED" ]]; then
-      IS_MERGED=1
-      echo "PASS: bump PR #$BUMP_PR_NUM is already merged"
-    fi
-  elif PR_VIEW_JSON=$(gh pr view "$BUMP_PR_NUM" --json state 2>/dev/null); then
-    PR_STATE=$(node -e '
-      try {
-        const obj = JSON.parse(process.argv[1]);
-        console.log(obj.state || "");
-      } catch { process.exit(0); }
-    ' "$PR_VIEW_JSON")
-    if [[ "$PR_STATE" == "MERGED" ]]; then
-      IS_MERGED=1
-      echo "PASS: bump PR #$BUMP_PR_NUM is already merged"
-    fi
-  fi
-
-  if [[ "$IS_MERGED" -eq 0 ]]; then
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-      echo "DRY RUN: would run 'scripts/pr-gate.sh $BUMP_PR_NUM'"
-    else
-      # Main can move while the bump PR's CI runs; that is a recoverable stale base,
-      # not a gate failure. Update the PR here so CI re-runs and resume on the next call.
-      STALE_BASE=0
-      if BASE_JSON=$(gh pr view "$BUMP_PR_NUM" --json baseRefOid 2>/dev/null); then
-        BASE_OID=$(node -e '
-          try {
-            console.log(JSON.parse(process.argv[1]).baseRefOid || "");
-          } catch { process.exit(0); }
-        ' "$BASE_JSON")
-        if [[ -n "$BASE_OID" ]] && REMOTE_MAIN=$(git ls-remote origin refs/heads/main 2>/dev/null | awk '{print $1}'); then
-          if [[ -n "$REMOTE_MAIN" && "$BASE_OID" != "$REMOTE_MAIN" ]]; then
-            STALE_BASE=1
-          fi
-        fi
-      fi
-      if [[ "$STALE_BASE" -eq 1 ]]; then
-        echo "Bump PR #$BUMP_PR_NUM base is behind origin/main; running 'gh pr update-branch $BUMP_PR_NUM --rebase'..."
-        gh pr update-branch "$BUMP_PR_NUM" --rebase
-        echo "PASS: updated bump PR #$BUMP_PR_NUM base; CI is re-running. Re-run scripts/release.sh $VERSION later."
-        exit 3
-      fi
-      echo "Running scripts/pr-gate.sh $BUMP_PR_NUM..."
-      GATE_STATUS=0
-      bash "$PR_GATE_SCRIPT" "$BUMP_PR_NUM" || GATE_STATUS=$?
-      if [[ "$GATE_STATUS" -eq 3 ]]; then
-        echo "CI is still pending for bump PR #$BUMP_PR_NUM. Re-run scripts/release.sh $VERSION later."
-        exit 3
-      elif [[ "$GATE_STATUS" -ne 0 ]]; then
-        echo "FAIL: pr-gate failed for bump PR #$BUMP_PR_NUM with exit $GATE_STATUS" >&2
-        exit "$GATE_STATUS"
-      fi
-      echo "PASS: bump PR #$BUMP_PR_NUM successfully gated and merged."
-    fi
-  fi
+  echo "DRY RUN: would require a clean checkout exactly at origin/main and run scripts/release-check.sh --preflight $VERSION before tagging"
 else
-  echo "PASS: no pending bump PR to merge."
+  if ! git fetch origin; then
+    echo "FAIL: git fetch origin failed before creating tag $TAG." >&2
+    exit 1
+  fi
+  LOCAL_HEAD=$(git rev-parse HEAD)
+  ORIGIN_MAIN=$(git rev-parse refs/remotes/origin/main 2>/dev/null || true)
+  if [[ -z "$ORIGIN_MAIN" || "$LOCAL_HEAD" != "$ORIGIN_MAIN" ]]; then
+    echo "FAIL: local HEAD ($LOCAL_HEAD) does not match origin/main (${ORIGIN_MAIN:-missing}); refusing to tag." >&2
+    exit 1
+  fi
+  if [[ -n "$(git status --porcelain)" ]]; then
+    echo "FAIL: working tree is not clean; refusing to tag." >&2
+    exit 1
+  fi
+  bash "$ROOT/scripts/release-check.sh" --preflight "$VERSION"
+  if ! REMOTE_TAGS=$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}"); then
+    echo "FAIL: unable to inspect remote tag $TAG." >&2
+    exit 1
+  fi
+  echo "PASS: clean origin/main checkout and all package manifests match $VERSION."
 fi
 
-# --- Step 4: Create and push release tag ---
-echo "==> [Step 4/9] Checking release tag $TAG..."
-TAG_EXISTS=0
-if REMOTE_TAG=$(git ls-remote --tags origin "refs/tags/$TAG" 2>/dev/null); then
-  if [[ -n "$REMOTE_TAG" ]]; then
-    TAG_EXISTS=1
-    echo "PASS: release tag $TAG already exists on origin"
-  fi
-fi
-
-if [[ "$TAG_EXISTS" -eq 1 ]]; then
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "DRY RUN: would verify tag $TAG points to commit with package version $VERSION"
-  else
-    # Tag already exists on origin: check that the tag's commit has $VERSION
-    git fetch origin "refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null || git fetch origin --tags 2>/dev/null || git fetch origin 2>/dev/null || true
-    TAG_COMMIT=$(git rev-parse "refs/tags/$TAG^{commit}" 2>/dev/null || git rev-parse "$TAG^{commit}" 2>/dev/null || true)
-    if [[ -z "$TAG_COMMIT" ]]; then
-      TAG_COMMIT=$(echo "$REMOTE_TAG" | awk 'NR==1 {print $1}')
-    fi
-
-    TAG_VERSION=""
-    if [[ -n "$TAG_COMMIT" ]]; then
-      TAG_VERSION=$(git show "$TAG_COMMIT:packages/desktop/package.json" 2>/dev/null | node -e '
-        try {
-          const fs = require("fs");
-          const input = fs.readFileSync(0, "utf-8");
-          console.log(JSON.parse(input).version || "");
-        } catch { process.exit(0); }
-      ' 2>/dev/null || echo "")
-    fi
-
-    if [[ "$TAG_VERSION" != "$VERSION" ]]; then
-      echo "FAIL: release tag $TAG on origin points to commit ${TAG_COMMIT:-unknown} with package version '${TAG_VERSION:-missing}', expected '$VERSION'." >&2
-      echo "  Fix hint: delete the stale tag on origin ('git push origin :refs/tags/$TAG') and locally ('git tag -d $TAG')," >&2
-      echo "            update your local checkout to origin/main ('git pull origin main'), and re-run 'scripts/release.sh $VERSION'." >&2
-      exit 1
-    fi
-    echo "PASS: release tag $TAG commit ($TAG_COMMIT) verified with package version $VERSION."
-  fi
+# --- Step 3: Create and push the release tag directly ---
+echo "==> [Step 3/5] Checking release tag $TAG..."
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "DRY RUN: would create annotated tag '$TAG' at HEAD and push it to origin; no branch, bump PR, or pr-gate is used."
 else
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "DRY RUN: would run 'git fetch origin' and verify HEAD equals origin/main and packages/desktop/package.json equals $VERSION"
-    echo "DRY RUN: would create and push tag '$TAG'"
+  REMOTE_TAG_COMMIT=$(printf '%s\n' "$REMOTE_TAGS" | awk -v ref="refs/tags/$TAG^{}" '$2 == ref {print $1}')
+  if [[ -z "$REMOTE_TAG_COMMIT" ]]; then
+    REMOTE_TAG_COMMIT=$(printf '%s\n' "$REMOTE_TAGS" | awk -v ref="refs/tags/$TAG" '$2 == ref {print $1}')
+  fi
+  LOCAL_TAG_COMMIT=$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null || true)
+  if [[ -n "$REMOTE_TAG_COMMIT" ]]; then
+    if [[ -z "$LOCAL_TAG_COMMIT" ]]; then
+      git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+      LOCAL_TAG_COMMIT=$(git rev-parse "refs/tags/$TAG^{commit}")
+    fi
+    if [[ "$LOCAL_TAG_COMMIT" != "$LOCAL_HEAD" || "$REMOTE_TAG_COMMIT" != "$LOCAL_HEAD" ]]; then
+      echo "FAIL: existing tag $TAG does not point to the verified origin/main commit $LOCAL_HEAD." >&2
+      exit 1
+    fi
+    echo "PASS: existing remote tag $TAG points to verified origin/main commit $LOCAL_HEAD; resuming release checks."
   else
-    echo "Fetching origin to verify checkout before tagging..."
-    if ! git fetch origin; then
-      echo "FAIL: 'git fetch origin' failed before creating tag $TAG." >&2
+    if [[ -n "$LOCAL_TAG_COMMIT" && "$LOCAL_TAG_COMMIT" != "$LOCAL_HEAD" ]]; then
+      echo "FAIL: local tag $TAG points to $LOCAL_TAG_COMMIT, expected $LOCAL_HEAD." >&2
       exit 1
     fi
-
-    LOCAL_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
-    ORIGIN_MAIN=$(git rev-parse origin/main 2>/dev/null || git rev-parse refs/remotes/origin/main 2>/dev/null || true)
-
-    if [[ -z "$LOCAL_HEAD" || -z "$ORIGIN_MAIN" || "$LOCAL_HEAD" != "$ORIGIN_MAIN" ]]; then
-      echo "FAIL: local HEAD (${LOCAL_HEAD:-unknown}) does not match origin/main (${ORIGIN_MAIN:-unknown})." >&2
-      echo "  Refusing to create release tag $TAG on a stale or mismatched checkout." >&2
-      echo "  Update to origin/main first: git checkout main && git pull origin main" >&2
-      exit 1
+    if [[ -z "$LOCAL_TAG_COMMIT" ]]; then
+      git tag -a "$TAG" -m "Release $TAG"
     fi
-
-    DESKTOP_PKG="${OPENSAND_DESKTOP_PKG:-$ROOT/packages/desktop/package.json}"
-    PKG_VERSION=$(node -e '
-      try {
-        const pkg = require(process.argv[1]);
-        console.log(pkg.version || "");
-      } catch { process.exit(0); }
-    ' "$DESKTOP_PKG" 2>/dev/null || echo "")
-
-    if [[ "$PKG_VERSION" != "$VERSION" ]]; then
-      echo "FAIL: packages/desktop/package.json version ('$PKG_VERSION') does not match release version '$VERSION'." >&2
-      echo "  Refusing to create release tag $TAG with mismatched package version." >&2
-      exit 1
-    fi
-
-    echo "Creating and pushing release tag $TAG..."
-    git tag -a "$TAG" -m "Release $TAG"
     git push origin "refs/tags/$TAG:refs/tags/$TAG"
     echo "PASS: tag $TAG pushed to origin."
   fi

@@ -39,7 +39,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify
-        run: SKIP_INSTALL=1 bash scripts/verify.sh
+        run: |
+          set -euo pipefail
+          SKIP_INSTALL=1 bash scripts/verify.sh
+          bash scripts/test/release-direct-tag.test.sh
 
   security-gates:
     name: Security gates (audit + secret scan)
@@ -114,4 +117,66 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify
-        run: SKIP_INSTALL=1 bash scripts/verify.sh
+        run: |
+          set -euo pipefail
+          SKIP_INSTALL=1 bash scripts/verify.sh
+          bash scripts/test/release-direct-tag.test.sh
+
+  stage-release-macos:
+    name: Stage release binaries (macOS)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-and-test, security-gates, build-and-test-macos]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - run: pnpm install --frozen-lockfile
+      - name: Package and checksum
+        run: |
+          set -euo pipefail
+          pnpm package:mac
+          cd dist/release
+          shasum -a 256 *.dmg *.zip > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opensand-binaries-${{ github.sha }}-mac
+          path: dist/release/
+          retention-days: 7
+
+  stage-release-linux:
+    name: Stage release binaries (Linux)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-and-test, security-gates, build-and-test-macos]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - run: pnpm install --frozen-lockfile
+      - name: Install Linux packaging and smoke dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libgtk-3-0 libnss3 libxss1 libasound2 libgbm1 \
+            libx11-xcb1 libxcb-dri3-0 libdrm2 libatk-bridge2.0-0
+      - name: Package, smoke-test and checksum
+        run: |
+          set -euo pipefail
+          pnpm package:linux
+          bash scripts/smoke-linux.sh dist/release/*.deb
+          cd dist/release
+          shasum -a 256 *.AppImage *.deb > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opensand-binaries-${{ github.sha }}-linux
+          path: dist/release/
+          retention-days: 7
