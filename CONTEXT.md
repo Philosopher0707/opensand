@@ -333,3 +333,18 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 - Final whole-implementation review: ✅ READY — no regressions to chief-of-staff, sidecar tree, parallel sessions, delegated persistence or delegation routing. Residual low risks: delegated approval events lack per-session attribution (focused session used); `--system-prompt` is a retained-child snapshot.
 - General lessons filed in `~/commonplace/sources/2026-11-23-cli-agent-auth-framework.md` (merged into architecture-and-wiring, security, documentation-and-claims); project lesson `AGENTS_LEARNING.md` 11.24; daily memory updated.
 - **Status: COMPLETE.**
+
+## Agent Canvas — floating windows for live agent work (in progress)
+
+### P0 — Baseline (COMPLETE)
+- Checkout: `feat/agent-settings-ui` at `780c26b`; pre-existing dirty files (CLI test, desktop `package.json`, `pnpm-lock.yaml`, `scripts/pre-commit.sh`, untracked docs/screenshots) were recorded and left untouched.
+- Green baseline: `pnpm --filter @opensand/coordinator run build && … test && pnpm --filter @opensand/desktop run build && … test` exit 0 — coordinator **302/302**, desktop **151/151**, 0 skipped.
+
+### P1 — Canvas shell and live event routing (COMPLETE)
+- New modules: `renderer/modules/canvas-layout.js` (pure `clampWindow`, `cascadePosition`, `fitAll`, `normalizePersisted`; all loops bounded) and `renderer/modules/agent-canvas.js` (window chrome, drag/resize, pan/zoom, dock, tabs, minimise/maximise/close, layout persistence, and the migrated board event router).
+- `renderer/index.html`: `#parallelGrid` now hosts `#canvasLayer` + `#canvasEmpty`; toolbar gains Fit / 100% / Follow and a bottom dock. `renderer/app.js` swaps `initParallelBoard` for `initAgentCanvas` at the same boot point, passing `getPendingApprovals` so approvals stay on the canonical queue. `renderer/styles.css` adds the three-plane visual system using existing tokens only; no new palette or icons.
+- Internal view name stays `parallel`: the chat handler at `app.js:5327` relies on it to avoid duplicate rendering. Existing `#parallelGrid .pb-pane`, `.pane-agent`, `.pb-input`, `.pb-send`, status text and `window.__parallelState` are preserved for real-window harness coverage.
+- New `test/canvas-layout.test.ts` (4 geometry/restore tests) and one new real-window harness case (focus, Alt+Arrow move, minimise/restore, fit, follow toggle, new window, layout persistence, close).
+- Red phase observed: 15/15 real-window cases failed with "renderer did not settle" because of a syntax typo in `agent-canvas.js` (`agents[...]`); `node --check` found it at line 193, fixed before rerun. Second red phase found two windows stacked at 0,0 because `bounds()` returned 0 while the view was hidden, plus browser-default white inputs; fixed with a bounds fallback, side-by-side placement and token-based input styling.
+- Green phase: desktop **156/156** (baseline 151 + 4 unit + 1 harness), 0 fail / 0 skipped, build exit 0. Live Electron capture at 1440×900 shows two side-by-side dark windows, dock and toolbar; screenshot reviewed.
+- Concerns: `pre-commit.sh` and `pnpm-lock.yaml` remain pre-existing user changes and are excluded from every commit.

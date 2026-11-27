@@ -701,20 +701,32 @@
         <div class="dashboard-container parallel-board">
           <div class="dashboard-header">
             <div>
-              <div class="dashboard-title">Parallel Board</div>
-              <div class="dashboard-subtitle">Independent sessions, independent streams. Each pane owns one live turn — send to several at once and watch them race.</div>
+              <div class="dashboard-title"><svg class="icon" aria-hidden="true"><use href="#i-window"/></svg> Agent Canvas</div>
+              <div class="dashboard-subtitle">Independent sessions, independently visible. Drag, resize and watch each agent work.</div>
             </div>
             <div class="parallel-actions">
-              <button id="btnParallelAdd" class="btn btn-primary" title="Add another session pane">+ Pane</button>
-              <button id="btnParallelClear" class="btn btn-secondary" title="Close every pane">Clear</button>
+              <button id="btnParallelAdd" class="btn btn-primary" title="Open another agent window"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> New agent</button>
+              <button id="btnFitAll" class="btn btn-icon-ghost" title="Fit every window in view" aria-label="Fit every window in view"><svg class="icon" aria-hidden="true"><use href="#i-expand"/></svg></button>
+              <button id="btnZoomReset" class="btn btn-icon-ghost" title="Reset zoom to 100%" aria-label="Reset zoom to 100%">100%</button>
+              <button id="btnFollowMode" class="btn btn-secondary" title="Focus each newly active agent" aria-pressed="false">Overview</button>
+              <button id="btnParallelClear" class="btn btn-icon-ghost" title="Close every window" aria-label="Close every window"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg></button>
             </div>
           </div>
           <div class="parallel-toolbar">
-            <input id="parallelBroadcastInput" class="input" type="text" autocomplete="off" placeholder="Broadcast one prompt to every pane…" />
+            <input id="parallelBroadcastInput" class="input" type="text" autocomplete="off" placeholder="Broadcast one prompt to every agent…" />
             <button id="btnParallelBroadcast" class="btn btn-secondary">Broadcast ↗</button>
             <span id="parallelStatus" class="parallel-status">0 running · 0 panes</span>
           </div>
-          <div id="parallelGrid" class="parallel-grid"></div>
+          <div id="parallelGrid" class="agent-canvas">
+            <div id="canvasLayer" class="canvas-layer"></div>
+            <div id="canvasEmpty" class="canvas-empty hidden">
+              <svg class="icon" aria-hidden="true"><use href="#i-window"/></svg>
+              <div class="canvas-empty-title">No agent windows yet</div>
+              <div class="canvas-empty-hint">Send to several bots and watch them work side by side.</div>
+            </div>
+          </div>
+          <div id="canvasOrphans" class="canvas-orphans hidden" role="status"></div>
+          <div id="canvasDock" class="canvas-dock" aria-label="Agent windows"></div>
         </div>
       </div>
     </main>

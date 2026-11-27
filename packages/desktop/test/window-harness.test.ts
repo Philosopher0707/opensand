@@ -341,6 +341,78 @@ test("Real-Window Harness: Parallel Board mounts independent panes", async (t) =
   assert.match(r.interactResult?.status || "", /3 pane/, "Status must reflect pane count");
 });
 
+test("Real-Window Harness: agent canvas supports focus, minimise, fit and layout persistence", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-canvas-home-"));
+  const agentPath = path.join(tmpHome, ".opensand", "agents");
+  fs.mkdirSync(agentPath, { recursive: true });
+  const now = Date.now();
+  for (const [id, name] of [
+    ["agent_canvas_alpha_ab12cd34", "Canvas Alpha"],
+    ["agent_canvas_beta_ab12cd34", "Canvas Beta"],
+  ] as Array<[string, string]>) {
+    fs.writeFileSync(path.join(agentPath, `${id}.json`), JSON.stringify({
+      id, name, role: "Worker", systemPrompt: "Work.", kind: "AGENT",
+      model: "default", provider: "global", createdAt: now, updatedAt: now,
+    }), "utf8");
+  }
+
+  const script = [
+    "(async () => {",
+    "  await new Promise((r) => setTimeout(r, 400));",
+    "  document.getElementById('navBtnParallel')?.click();",
+    "  await new Promise((r) => setTimeout(r, 400));",
+    "  const windows = () => Array.from(document.querySelectorAll('#parallelGrid .ag-window'));",
+    "  const before = window.__canvasState.getWindows();",
+    "  const head = windows()[0]?.querySelector('.ag-head');",
+    "  head?.focus();",
+    "  head?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true }));",
+    "  const afterMove = window.__canvasState.getWindows()[0];",
+    "  windows()[1]?.querySelector('.pb-stream')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));",
+    "  const zAfterFocus = Number(getComputedStyle(windows()[1]).zIndex);",
+    "  windows()[0]?.querySelector('.ag-min')?.click();",
+    "  const minimized = window.__canvasState.getWindows()[0]?.minimized;",
+    "  const dockCount = document.querySelectorAll('#canvasDock .canvas-dock-item').length;",
+    "  document.querySelector('#canvasDock .canvas-dock-item')?.click();",
+    "  const restored = !window.__canvasState.getWindows()[0]?.minimized;",
+    "  document.getElementById('btnFitAll')?.click();",
+    "  const view = window.__canvasState.getViewport();",
+    "  document.getElementById('btnFollowMode')?.click();",
+    "  const mode = window.__canvasState.getMode();",
+    "  document.getElementById('btnParallelAdd')?.click();",
+    "  const count = window.__canvasState.getWindows().length;",
+    "  const saved = JSON.parse(localStorage.getItem('opensand.agentCanvas.layout.v1') || '{}');",
+    "  windows()[2]?.querySelector('.ag-close')?.click();",
+    "  return {",
+    "    initialCount: before.length,",
+    "    movedX: afterMove.x - before[0].x,",
+    "    zAfterFocus,",
+    "    minimized, dockCount, restored,",
+    "    view, mode, count,",
+    "    savedCount: saved.windows?.length || 0,",
+    "    finalCount: window.__canvasState.getWindows().length,",
+    "  };",
+    "})()",
+  ].join("\n");
+
+  try {
+    const r = await runHarness("default", { home: tmpHome, shotTag: "agent-canvas", interactScript: script });
+    if (r.skipped) { t.skip(r.skipped); return; }
+    const v = r.interactResult || {};
+    assert.strictEqual(v.initialCount, 2, `canvas must start with two windows (${JSON.stringify(v)})`);
+    assert.strictEqual(v.movedX, 16, `Alt+Arrow must move a window by 16px (${JSON.stringify(v)})`);
+    assert.strictEqual(v.minimized, true, `minimise must hide the window (${JSON.stringify(v)})`);
+    assert.strictEqual(v.dockCount, 2, `dock must list every window (${JSON.stringify(v)})`);
+    assert.strictEqual(v.restored, true, `dock click must restore the window (${JSON.stringify(v)})`);
+    assert.ok(v.view.zoom >= 0.5 && v.view.zoom <= 1, `fit all must clamp zoom (${JSON.stringify(v)})`);
+    assert.strictEqual(v.mode, "follow", `mode must toggle (${JSON.stringify(v)})`);
+    assert.strictEqual(v.count, 3, `new agent must open a third window (${JSON.stringify(v)})`);
+    assert.strictEqual(v.savedCount, 3, `layout must persist after changes (${JSON.stringify(v)})`);
+    assert.strictEqual(v.finalCount, 2, `close must remove exactly one window (${JSON.stringify(v)})`);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test("Real-Window Harness: per-pane bot selection routes sends and status", async (t) => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-parallel-bots-home-"));
   const agentPath = path.join(tmpHome, ".opensand", "agents");

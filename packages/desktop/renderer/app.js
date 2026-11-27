@@ -5,7 +5,7 @@
 import { renderMarkdown, renderMarkdownCached, escapeHtml } from './modules/chat/markdown.js';
 import { createApprovalQueue } from './modules/chat/approval-queue.js';
 import { createArtifactCanvas } from './modules/chat/canvas.js';
-import { initParallelBoard } from './modules/parallel-board.js';
+import { initAgentCanvas } from './modules/agent-canvas.js';
 import { createModelPicker } from './modules/model-picker.js';
 import { createSessionBuffers } from './modules/session-buffers.js';
 import { createBotRail, setBotCardBadge, setBotCardStatus } from './modules/bot-rail.js';
@@ -797,11 +797,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   let currentView = 'chat';
-  let parallelBoard = null;
+  let agentCanvas = null;
 
   const viewTitles = {
     chat: 'Chat & Dialogue',
-    parallel: 'Parallel Board — Concurrent Sessions',
+    parallel: 'Agent Canvas — Live Agent Work',
     graphs: 'Agent Graphs & Cyclical Loops',
     sentinel: 'Workspace Sentinel & Self-Healing',
     rooms: 'Multi-Agent Collaborative Rooms',
@@ -869,7 +869,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (viewName === 'boundaries') refreshBoundaries();
     if (viewName === 'webhooks') refreshWebhooks();
     if (viewName === 'connectors') refreshConnectors();
-    if (viewName === 'parallel') parallelBoard?.refreshAgents();
+    if (viewName === 'parallel') agentCanvas?.refreshAgents();
   }
 
   footerNavBtns.forEach((btn) => {
@@ -6413,14 +6413,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   setTurnBusy(false);
   await refreshTokenBadge();
 
-  // Parallel Board — each pane owns a session id, bot and event stream.
-  parallelBoard = initParallelBoard({
+  // Agent Canvas — each floating window owns a session, bot and event stream.
+  agentCanvas = initAgentCanvas({
     client,
     getView: () => currentView,
     getAgents: () => client.getAgents(),
     registerSessionAgent,
+    getPendingApprovals: () => pendingApprovals,
   });
-  client.onEvent((event) => parallelBoard.handleEvent(event));
+  client.onEvent((event) => agentCanvas.handleEvent(event));
 
   // Per-bot model picker. One shared popover; bot cards are its entry points.
   const modelPicker = createModelPicker({
