@@ -519,6 +519,39 @@ export class DesktopIpcBridge extends EventEmitter {
     }
   }
 
+  /**
+   * Canvas layout lives in the state dir, not localStorage: the desktop server
+   * binds a fresh port on every launch, so origin-scoped storage cannot survive
+   * a restart.
+   */
+  public getCanvasLayout(): unknown | null {
+    try {
+      const raw = fs.readFileSync(path.join(this.baseDir, 'canvas-layout.json'), 'utf8');
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  public setCanvasLayout(layout: unknown): { success: boolean } {
+    try {
+      if (!layout || typeof layout !== 'object') return { success: false };
+      const windows = (layout as { windows?: unknown }).windows;
+      if (!Array.isArray(windows) || windows.length > 6) return { success: false };
+      const text = JSON.stringify(layout);
+      if (text.length > 64 * 1024) return { success: false };
+      const file = path.join(this.baseDir, 'canvas-layout.json');
+      fs.mkdirSync(this.baseDir, { recursive: true, mode: 0o700 });
+      const tmp = `${file}.${Date.now()}.${Math.random().toString(36).slice(2, 6)}.tmp`;
+      fs.writeFileSync(tmp, text, { mode: 0o600 });
+      fs.renameSync(tmp, file);
+      return { success: true };
+    } catch {
+      return { success: false };
+    }
+  }
+
   public emitEvent(
     type: DesktopEvent['type'],
     data: unknown,

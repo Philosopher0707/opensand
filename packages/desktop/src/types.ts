@@ -35,6 +35,8 @@ export interface OpenSandBridgeApi {
   cancelTurn?: () => Promise<{ success: boolean; cancelled: boolean }>;
   approveTool: (approvalId: string, decision: ApprovalDecision) => Promise<{ success: boolean }>;
   listPendingApprovals?: () => Promise<ToolApprovalRequest[]>;
+  getCanvasLayout?: () => Promise<unknown | null>;
+  setCanvasLayout?: (layout: unknown) => Promise<{ success: boolean }>;
   getToolDiscovery?: () => Promise<ToolDiscoverySummary>;
   executeTool?: (name: string, args: Record<string, any>, context?: any) => Promise<any>;
   ensureDaemon?: () => Promise<any>;

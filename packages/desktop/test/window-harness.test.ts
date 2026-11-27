@@ -413,6 +413,62 @@ test("Real-Window Harness: agent canvas supports focus, minimise, fit and layout
   }
 });
 
+test("Real-Window Harness: canvas routes concurrent agent events to the owning window", async (t) => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-canvas-events-home-"));
+  const script = [
+    "(async () => {",
+    "  await new Promise((r) => setTimeout(r, 400));",
+    "  document.getElementById('navBtnParallel')?.click();",
+    "  await new Promise((r) => setTimeout(r, 400));",
+    "  const panes = window.__parallelState.getPanes();",
+    "  const a = panes[0].sessionId;",
+    "  const b = panes[1].sessionId;",
+    "  const emit = (type, sessionId, data, extra) => window.__railState.emit({ type, sessionId, data, ...(extra || {}) });",
+    "  emit('token', a, { token: 'ALPHA-1' });",
+    "  emit('token', b, { token: 'BETA-1' });",
+    "  emit('token', a, { token: 'ALPHA-2' });",
+    "  emit('tool_call', a, { name: 'read_file', args: { path: '/tmp/report.md' } });",
+    "  emit('approval_required', b, { approvalId: 'appr-1', toolName: 'exec_command', args: {} });",
+    "  emit('subagent', a, { event: { type: 'turn_completed', finalContent: 'SUBAGENT-DONE' } }, { subagent: { parentSessionId: a, agentName: 'writer' } });",
+    "  emit('turn_complete', a, { response: 'ALPHA-FINAL' });",
+    "  const list = window.__canvasState.getWindows();",
+    "  const bySession = (sid) => { const w = list.find((n) => n.sessionId === sid); return Array.from(document.querySelectorAll('#parallelGrid .ag-window')).find((n) => n.dataset.pane === w.id); };",
+    "  const aNode = bySession(a);",
+    "  const bNode = bySession(b);",
+    "  Array.from(aNode.querySelectorAll('.ag-tab')).find((tab) => tab.dataset.tab === 'files').click();",
+    "  Array.from(bNode.querySelectorAll('.ag-tab')).find((tab) => tab.dataset.tab === 'approvals').click();",
+    "  return {",
+    "    aText: aNode.querySelector('.ag-stream').textContent,",
+    "    bText: bNode.querySelector('.ag-stream').textContent,",
+    "    filesText: aNode.querySelector('[data-panel=files]').textContent,",
+    "    approvalsText: bNode.querySelector('[data-panel=approvals]').textContent,",
+    "    aState: aNode.dataset.state,",
+    "    bState: bNode.dataset.state,",
+    "  };",
+    "})()",
+  ].join("\n");
+
+  try {
+    const r = await runHarness("default", { home: tmpHome, interactScript: script });
+    if (r.skipped) { t.skip(r.skipped); return; }
+    const v = r.interactResult || {};
+    assert.match(v.aText || "", /ALPHA-1/);
+    assert.match(v.aText || "", /ALPHA-2/);
+    assert.ok(!(v.aText || "").includes("ALPHA-FINAL"), "final answer must not duplicate streamed tokens");
+    assert.match(v.aText || "", /tool · read_file/);
+    assert.match(v.aText || "", /writer · SUBAGENT-DONE/);
+    assert.ok(!(v.aText || "").includes("BETA-1"), `alpha window must not receive beta tokens: ${JSON.stringify(v)}`);
+    assert.match(v.bText || "", /BETA-1/);
+    assert.ok(!(v.bText || "").includes("ALPHA"), `beta window must not receive alpha tokens: ${JSON.stringify(v)}`);
+    assert.match(v.filesText || "", /\/tmp\/report\.md/);
+    assert.match(v.approvalsText || "", /exec_command/);
+    assert.strictEqual(v.aState, "done");
+    assert.strictEqual(v.bState, "approval");
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
 test("Real-Window Harness: per-pane bot selection routes sends and status", async (t) => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-ui-parallel-bots-home-"));
   const agentPath = path.join(tmpHome, ".opensand", "agents");

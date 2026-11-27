@@ -348,3 +348,21 @@ OpenSand is organized as a pnpm TypeScript monorepo with 4 packages:
 - Red phase observed: 15/15 real-window cases failed with "renderer did not settle" because of a syntax typo in `agent-canvas.js` (`agents[...]`); `node --check` found it at line 193, fixed before rerun. Second red phase found two windows stacked at 0,0 because `bounds()` returned 0 while the view was hidden, plus browser-default white inputs; fixed with a bounds fallback, side-by-side placement and token-based input styling.
 - Green phase: desktop **156/156** (baseline 151 + 4 unit + 1 harness), 0 fail / 0 skipped, build exit 0. Live Electron capture at 1440×900 shows two side-by-side dark windows, dock and toolbar; screenshot reviewed.
 - Concerns: `pre-commit.sh` and `pnpm-lock.yaml` remain pre-existing user changes and are excluded from every commit.
+
+### P2 — Live event routing and approval attribution (COMPLETE)
+- `agent-canvas.js` keeps one `sessionId` router: token/thought/tool_call/tool_result/subagent/approval_required/turn_complete/cancelled/error all land in the owning window. Background/resumed turns now create their answer line on the first token, instead of losing streamed work when no composer send preceded it. `finalContent` is not appended after streamed tokens (no duplicate answer).
+- Approvals are attributed from `event.sessionId` (the bridge already attaches it at `ipc-bridge.ts:1031`); the window shows an amber ring, an Approvals-tab row and a Review button that focuses the canonical `approvalQueue`. No second approval path or new DesktopEvent type.
+- New harness case drives two concurrent sessions with tokens, a tool call, a subagent result and an approval, asserting zero cross-talk, state chips and tab contents.
+
+### P3 — Restart-safe layout persistence (COMPLETE)
+- Root cause found by a two-launch Electron probe: the desktop server binds a fresh random port each launch, so `localStorage` (origin = host:port) cannot survive a restart. Original layout was silently replaced on every boot.
+- Added `getCanvasLayout`/`setCanvasLayout` through `ipc-bridge.ts` → `main.ts` → `preload.cts` → `types.ts` → `OpenSandClient`. The layout is stored atomically (0600, tmp+rename) in `~/.opensand/canvas-layout.json`; the renderer keeps `localStorage` only as a fast per-origin cache and prefers the state-dir file on load. Payload is rejected at the bridge when it is not an object, has more than 6 windows, or exceeds 64 KiB.
+- New bridge test: round-trip across two bridge instances over one state dir, `null` on a fresh dir, and rejection of oversized/malformed payloads.
+- Live two-launch verification (same `--user-data-dir`, different server ports, seeded session): restored window at `x=111,y=222,w=400,h=300`, `mode: follow`, `zoom: 0.8`, session history rendered once, stale `gone_session` reported in the orphan note and not opened as a ghost window.
+- Two red phases fixed: history was read from `turns/messages` while the bridge returns `events`/`transcript`; and restored panes called `loadHistory` twice, doubling transcript text.
+
+### P5 — Verification (COMPLETE)
+- Final gate: `pnpm --filter @opensand/coordinator run build && … test && pnpm --filter @opensand/desktop run build && … test` — coordinator 302/302, desktop **158/158**, 0 fail / 0 skipped.
+- Flake noted honestly: the unrelated "Preact shell frame seeded sessions" real-window case failed twice in full-suite runs (0 session rows) but passed isolated and on full reruns; no code change between the failing and passing runs. No fix attempted outside this feature's scope.
+- Visual evidence: live Electron capture at 1440×900 reviewed — two side-by-side dark windows, dot-grid canvas, token-styled inputs and dock. Earlier capture defect (both windows stacked at 0,0 because the hidden view reports zero bounds) fixed with a bounds fallback and side-by-side placement.
+- **Status: COMPLETE.**

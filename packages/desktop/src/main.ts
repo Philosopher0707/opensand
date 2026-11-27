@@ -192,6 +192,9 @@ export class DesktopApp {
       return this.bridge.listPendingApprovals();
     });
 
+    ipcMain.handle('opensand:getCanvasLayout', async () => this.bridge.getCanvasLayout());
+    ipcMain.handle('opensand:setCanvasLayout', async (_: any, layout: unknown) => this.bridge.setCanvasLayout(layout));
+
     ipcMain.handle('opensand:getToolDiscovery', async () => {
       return this.bridge.getToolDiscovery();
     });

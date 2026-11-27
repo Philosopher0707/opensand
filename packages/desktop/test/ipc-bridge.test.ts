@@ -56,6 +56,33 @@ test('DesktopIpcBridge - manages settings and persistent config', () => {
   }
 });
 
+test('DesktopIpcBridge - canvas layout persists outside origin-scoped storage', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opensand-bridge-canvas-'));
+  try {
+    const bridge = new DesktopIpcBridge({ baseDir: tmpDir });
+    assert.strictEqual(bridge.getCanvasLayout(), null);
+
+    const layout = {
+      windows: [{ sessionId: 'sess_1', agentId: 'agent_1', x: 111, y: 222, w: 400, h: 300, z: 5, minimized: false }],
+      viewport: { panX: 12, panY: 15, zoom: 0.8 },
+      mode: 'follow',
+    };
+    assert.deepStrictEqual(bridge.setCanvasLayout(layout), { success: true });
+    assert.deepStrictEqual(bridge.getCanvasLayout(), layout);
+
+    // A second bridge over the same state dir sees the same layout.
+    const second = new DesktopIpcBridge({ baseDir: tmpDir });
+    assert.deepStrictEqual(second.getCanvasLayout(), layout);
+
+    // Unbounded or malformed payloads are rejected at the trust boundary.
+    assert.deepStrictEqual(bridge.setCanvasLayout({ windows: new Array(7).fill({ sessionId: 'x' }) }), { success: false });
+    assert.deepStrictEqual(bridge.setCanvasLayout(null), { success: false });
+    assert.deepStrictEqual(bridge.getCanvasLayout(), layout);
+  } finally {
+    rmTmp(tmpDir);
+  }
+});
+
 test("loadSession infers the owning bot agent from a bot_<id> session id", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensand-bot-infer-"));
   try {

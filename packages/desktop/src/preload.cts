@@ -28,6 +28,10 @@ try {
         ipcRenderer.invoke('opensand:approveTool', { approvalId, decision }),
       listPendingApprovals: () =>
         ipcRenderer.invoke('opensand:listPendingApprovals'),
+      getCanvasLayout: () =>
+        ipcRenderer.invoke('opensand:getCanvasLayout'),
+      setCanvasLayout: (layout: unknown) =>
+        ipcRenderer.invoke('opensand:setCanvasLayout', layout),
       getToolDiscovery: () =>
         ipcRenderer.invoke('opensand:getToolDiscovery'),
       cancelTurn: (sessionId?: string) =>

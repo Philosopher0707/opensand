@@ -285,6 +285,20 @@ class OpenSandClient {
     return res.json();
   }
 
+  async getCanvasLayout() {
+    if (this.isElectron && window.opensand?.getCanvasLayout) {
+      return window.opensand.getCanvasLayout();
+    }
+    return null;
+  }
+
+  async setCanvasLayout(layout) {
+    if (this.isElectron && window.opensand?.setCanvasLayout) {
+      return window.opensand.setCanvasLayout(layout);
+    }
+    return { success: false };
+  }
+
   async getDiagnostics() {
     const res = await fetch('/api/diagnostics');
     const data = await res.json().catch(() => ({}));
@@ -6419,7 +6433,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     getView: () => currentView,
     getAgents: () => client.getAgents(),
     registerSessionAgent,
-    getPendingApprovals: () => pendingApprovals,
   });
   client.onEvent((event) => agentCanvas.handleEvent(event));
 

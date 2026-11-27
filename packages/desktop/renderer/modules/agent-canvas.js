@@ -26,7 +26,6 @@ export function initAgentCanvas({
   getView,
   getAgents,
   registerSessionAgent,
-  getPendingApprovals,
   maxWindows = MAX_WINDOWS,
 }) {
   const canvas = document.getElementById('parallelGrid');
@@ -71,29 +70,40 @@ export function initAgentCanvas({
     pane.node.style.height = `${pane.h}px`;
   }
 
-  function saveLayout() {
+  async function saveLayout() {
+    const payload = {
+      windows: [...windows.values()].map((p) => ({
+        sessionId: p.sessionId,
+        agentId: p.agentId,
+        x: p.x,
+        y: p.y,
+        w: p.w,
+        h: p.h,
+        z: p.z,
+        minimized: p.minimized,
+      })),
+      viewport,
+      mode,
+    };
     try {
-      const payload = {
-        windows: [...windows.values()].map((p) => ({
-          sessionId: p.sessionId,
-          agentId: p.agentId,
-          x: p.x,
-          y: p.y,
-          w: p.w,
-          h: p.h,
-          z: p.z,
-          minimized: p.minimized,
-        })),
-        viewport,
-        mode,
-      };
       localStorage.setItem(LAYOUT_KEY, JSON.stringify(payload));
+    } catch {
+      // Origin storage is a fast cache; the state-dir file is authoritative.
+    }
+    try {
+      await client.setCanvasLayout?.(payload);
     } catch {
       // A layout is a convenience, never a reason to break a turn.
     }
   }
 
-  function readLayout() {
+  async function readLayout() {
+    try {
+      const stored = await client.getCanvasLayout?.();
+      if (stored && typeof stored === 'object') return stored;
+    } catch {
+      // Fall through to the per-origin cache.
+    }
     try {
       const raw = localStorage.getItem(LAYOUT_KEY);
       return raw ? JSON.parse(raw) : null;
@@ -166,10 +176,23 @@ export function initAgentCanvas({
   async function loadHistory(pane) {
     try {
       const data = await client.loadSession(pane.sessionId);
-      const turns = data?.turns || data?.messages || [];
-      for (const turn of turns) {
-        const text = typeof turn === 'string' ? turn : (turn.content ?? turn.text ?? '');
-        if (text) append(pane, turn.role === 'assistant' ? 'assistant' : 'user', String(text));
+      const seenText = new Set();
+      const add = (text, role) => {
+        const value = String(text ?? '').trim();
+        // The bridge projects one message into both an event and the legacy
+        // transcript; collapse repeats from the two projections.
+        if (!value || seenText.has(value)) return;
+        seenText.add(value);
+        append(pane, role, value);
+      };
+      const events = data?.turns || data?.messages || data?.events;
+      if (Array.isArray(events) && events.length) {
+        for (const turn of events) {
+          const text = typeof turn === 'string' ? turn : (turn.content ?? turn.text ?? '');
+          add(text, turn.role === 'assistant' ? 'assistant' : 'user');
+        }
+      } else if (typeof data?.transcript === 'string') {
+        add(data.transcript, 'assistant');
       }
     } catch {
       // A window with no history is still usable.
@@ -442,10 +465,9 @@ export function initAgentCanvas({
       pane.files.appendChild(row);
     }
     pane.approvals.replaceChildren();
-    const pending = typeof getPendingApprovals === 'function' ? getPendingApprovals() : null;
-    const own = pending && typeof pending.forEach === 'function'
-      ? [...pending.entries()].filter(([, value]) => value?.sessionId === pane.sessionId)
-      : [...pane.approvalsSeen.values()].map((value) => ({ toolName: value.toolName, args: value.args }));
+    // Attribution comes from the event's sessionId; decisions still go through
+    // the canonical approval queue via the Review button below.
+    const own = [...pane.approvalsSeen.entries()];
     if (!own.length) {
       const note = document.createElement('div');
       note.className = 'ag-list-empty';
@@ -565,7 +587,13 @@ export function initAgentCanvas({
       case 'token':
       case 'text_delta': {
         const delta = event.data?.token ?? event.token ?? event.text ?? '';
-        if (delta && pane.assistant) pane.assistant.textContent += String(delta);
+        if (!delta) break;
+        // A resumed or delegated turn may stream before this window sent
+        // anything; create its answer line so the work is never invisible.
+        if (!pane.assistant || pane.assistant.parentElement !== pane.stream) {
+          pane.assistant = append(pane, 'assistant', '');
+        }
+        pane.assistant.textContent += String(delta);
         break;
       }
       case 'thought':
@@ -671,7 +699,7 @@ export function initAgentCanvas({
 
   async function boot() {
     applyViewport();
-    const saved = readLayout();
+    const saved = await readLayout();
     if (saved && Array.isArray(saved.windows) && saved.windows.length) {
       let sessions = [];
       try {
@@ -682,10 +710,7 @@ export function initAgentCanvas({
       }
       const layout = normalizePersisted(saved, sessions, bounds());
       for (const id of [...windows.keys()]) closeWindow(id, { silent: true });
-      for (const item of layout.windows) {
-        const pane = createWindow(item.sessionId, item.agentId, item);
-        if (pane) void loadHistory(pane);
-      }
+      for (const item of layout.windows) createWindow(item.sessionId, item.agentId, item);
       for (const orphan of layout.orphans) if (!orphans.includes(orphan)) orphans.push(orphan);
       viewport = layout.viewport;
       mode = layout.mode;
