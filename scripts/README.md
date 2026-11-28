@@ -59,6 +59,8 @@ All scripts in this directory are cataloged below. Automated verification is enf
 | `proof-report.sh` | Generate markdown proof report with PR metadata, diff hunks, CI IDs, red-green, and mutation logs | Automated job proof / PR review | `proof-selftest.sh` |
 | `proof-selftest.sh` | Hermetic selftest suite for proof-red-green, mutate, and proof-report scripts | Pre-commit / verification | Self |
 | `pr-gate.sh` | 5-step pre-merge verification and checkpoint gate; re-running it on an already-merged PR only re-checks main CI (never rebase/tag/push); `--when-green` rebases a PR that fell behind main (max 3 attempts), self-healing an INDEX.md-only conflict and regenerating the index after every rebase, before waiting for CI; after merge it waits for main CI and exits 4 on red; queued CI runs extend the no-checks grace window (per-run Jobs API as source of truth); a watch exit with no failed check is retried as pending to the deadline | Pre-merge review workflow | `pr-gate-selftest.sh` |
+| `pr-gate-batch.sh` | Ordered batch merge train: runs a caller-supplied PR list through `pr-gate.sh` under one lock, stopping at the first failure; lock path and gate executable are injectable for hermetic tests | Manual / Atlas batch lane | `pr-gate-batch-selftest.sh` |
+| `pr-gate-batch-selftest.sh` | Hermetic selftest: ordered multi-PR train, stop on first failure, live-lock refusal, custom-lock isolation/cleanup and stale-lock eviction | Pre-commit / verification | Self |
 | `pr-gate-selftest.sh` | Hermetic selftest for PR gate script, including the already-merged idempotency cases (no rebase/tag/push, exit 0 green, 4 red), the INDEX.md-only conflict auto-resolve, clean-rebase index regeneration, fail-closed stale index, post-merge main CI green/red/no-run/opt-out cases and the queued-CI-run cases (queued → green/red/timeout naming queued jobs, run-list lag → Jobs API decides), and pending-watch exits followed by success, a named failure, or a bounded pending timeout | Pre-commit / verification | Self |
 | `pre-commit.sh` | Git pre-commit hook enforcing staged-secret scan, blanket-add guard, staged/untracked PNG artifact refusal and test suite | Git pre-commit hook | `pre-commit-selftest.sh` |
 | `pre-commit-selftest.sh` | Hermetic selftest for `pre-commit.sh`: clean commit allowed, secrets and staged/untracked PNGs refused, explicit binary override warned, hook run from outside the repo | Pre-commit / verification | Self |
@@ -303,6 +305,20 @@ All scripts in this directory are cataloged below. Automated verification is enf
 - **Exit Codes**: `0` on success, `1` on failure.
 - **Selftest**: Self-testing.
 - **Trigger**: Pre-commit hook, test verification (`verify-selftest.sh`).
+
+### `pr-gate-batch.sh`
+- **Purpose**: Ordered batch merge train coordinator. Candidate selection stays with the caller (Atlas queries `gh pr list --label rigel-pass` and passes the FIFO list); the train itself delegates each PR to `scripts/pr-gate.sh` and stops at the first failure, so no later PR is merged after an earlier one fails.
+- **Usage**: `scripts/pr-gate-batch.sh [--dry-run] [--batch-size N] <PR-number>...` (`--batch-size` caps how many of the supplied PRs are processed). `OPENSAND_MERGE_TRAIN_LOCK` overrides the lock directory (default `~/.opensand/merge-train.lock`); `PR_GATE_CMD` overrides the gate executable (default `scripts/pr-gate.sh`) for hermetic tests. The lock is an atomically created directory with a JSON payload (`pid`, `trainId`, `startTime`, `host`, `token`); it is released on EXIT/INT/TERM, and a dead-holder or >30-minute-old lock is evicted with a warning. A live holder is refused without touching any PR.
+- **Exit Codes**: `0` all PRs completed, `1` bad usage or active lock, otherwise the failing gate's exit code with no further PR processed.
+- **Selftest**: `scripts/pr-gate-batch-selftest.sh`.
+- **Trigger**: Manual batch lane / Atlas.
+
+### `pr-gate-batch-selftest.sh`
+- **Purpose**: Hermetic selftest with a stub gate on `PR_GATE_CMD` (no gh/network): ordered happy path with default lock cleanup, stop-on-first-failure with no later call and no leaked lock, live-lock contention refused without running a gate, custom-lock used during the gate while the default path stays untouched, and a stale (dead-PID) lock evicted before the train proceeds.
+- **Usage**: `scripts/pr-gate-batch-selftest.sh` (`PR_GATE_BATCH_SCRIPT=<path>` tests another copy; point it at a mutant for a mutation proof).
+- **Exit Codes**: `0` on success, `1` on failure.
+- **Selftest**: Self-testing.
+- **Trigger**: Pre-commit hook, test verification.
 
 ### `pr-gate.sh`
 - **Owner Checkout Guard**: refuses (exit 4 with "pr-gate.sh: refusing to run from the owner's checkout; use ~/dev/_scratch/opensand-base") when `--git-common-dir` matches `$HOME/dev/opensand/.git` (or `OPENSAND_PROTECTED_CHECKOUT`). Overridden only with `OPENSAND_OWNER=1`.
